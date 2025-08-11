@@ -49,7 +49,7 @@ export default async function handler(req, res) {
             ELSE 'late-night'
           END as meal_category
         FROM food_nutrition_data_table 
-        WHERE UserID = ? AND DATE(CreatedAt) >= ? AND DATE(CreatedAt) <= ?
+        WHERE UserID = ? AND DATE(CreatedAt) >= ? AND DATE(CreatedAt) <= ? AND IsDeleted = 0
         ORDER BY CreatedAt DESC
       `, [userId, startOfDay.toISOString(), endOfDay.toISOString()]);
 

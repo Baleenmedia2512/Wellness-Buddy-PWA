@@ -68,9 +68,9 @@ public class GalleryMonitorService extends Service {
     private static final String GEMINI_API_KEY_PREF = "gemini_api_key";
     
     // Database API configuration
-    // private static final String API_BASE_URL = "http://10.0.2.2:3000"; // For Android emulator (localhost:3000)
-    // private static final String API_BASE_URL = "http://192.168.1.100:3000"; // For physical device (replace with your PC IP)
-    private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
+    private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
+    // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
+    // private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
 
     @Override
     public void onCreate() {

@@ -31,3 +31,8 @@ CREATE TABLE food_nutrition_data_table (
   INDEX idx_created_at (CreatedAt),
   INDEX idx_processed_by (ProcessedBy)
 );
+
+ALTER TABLE food_nutrition_data_table ADD COLUMN ImageBase64 LONGTEXT DEFAULT NULL;
+
+ALTER TABLE food_nutrition_data_table
+ADD COLUMN IsDeleted TINYINT(1) NOT NULL DEFAULT 0 

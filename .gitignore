@@ -50,6 +50,7 @@ jspm_packages/
 .env.test.local
 .env.production.local
 .env.production
+.env.android
 
 # API keys and secrets
 .env.example

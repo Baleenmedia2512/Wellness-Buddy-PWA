@@ -19,7 +19,6 @@ import {
   onAuthStateChange,
   isGoogleUser,
   isMobileDevice,
-  isNativePlatform,
   cleanup
 } from './services/firebase';
 import Header from './components/Header';
@@ -48,9 +47,27 @@ function WellnessBuddyApp() {
   );
   const fileInputRef = useRef(null);
 
-  // Success popup state
-  const [showSuccessPopup, setShowSuccessPopup] = useState(false);
-  const [savedAnalysisId, setSavedAnalysisId] = useState(null);
+  // Success popup state - support for multiple popups with localStorage persistence
+  const [successPopups, setSuccessPopups] = useState(() => {
+    // Try to load popups immediately on initialization
+    console.log('🔄 Initializing popup state...');
+    try {
+      const saved = localStorage.getItem('wellnessBuddy_successPopups');
+      if (saved) {
+        const parsedPopups = JSON.parse(saved);
+        const validPopups = parsedPopups.filter(popup => 
+          popup && popup.id && popup.nutritionData && popup.imagePreview
+        );
+        console.log('✅ Found', validPopups.length, 'saved popups');
+        return validPopups;
+      }
+      console.log('ℹ️ No saved popups found');
+      return [];
+    } catch (error) {
+      console.error('❌ Failed to load saved popups:', error);
+      return [];
+    }
+  });
   const [saveLoading, setSaveLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -58,6 +75,7 @@ function WellnessBuddyApp() {
   // Helper functions for navigation with localStorage persistence
   const showNutritionDashboardPage = () => {
     setShowNutritionDashboard(true);
+    // Don't clear popups when navigating - let them persist
     localStorage.setItem('currentPage', 'nutrition-dashboard');
   };
 
@@ -220,6 +238,18 @@ function WellnessBuddyApp() {
     };
   }, []);
 
+  // Persist popups to localStorage whenever they change
+  useEffect(() => {
+    console.log('💾 Popup state changed:', successPopups.length, 'popups');
+    
+    try {
+      localStorage.setItem('wellnessBuddy_successPopups', JSON.stringify(successPopups));
+      console.log('✅ Saved', successPopups.length, 'popups to localStorage');
+    } catch (error) {
+      console.error('❌ Failed to save popups to localStorage:', error);
+    }
+  }, [successPopups]);
+
   const handleImageSelect = async (file) => {
     if (!user) {
       setError('Please sign in to analyze food images');
@@ -230,8 +260,7 @@ function WellnessBuddyApp() {
     setError(null);
     setNutritionData(null);
 
-    setShowSuccessPopup(false);
-    setSavedAnalysisId(null);
+    // Don't clear existing popups - let them stack up
     setSaveError(null);
 
     const reader = new FileReader();
@@ -256,8 +285,21 @@ function WellnessBuddyApp() {
             analysisResult: result,
             deviceInfo: window.navigator.userAgent
           });
-          setSavedAnalysisId(saveRes.id);
-          setShowSuccessPopup(true);
+          
+          // Add new popup to the array (stack them up)
+          const newPopup = {
+            id: Date.now().toString(),
+            analysisId: saveRes.id,
+            nutritionData: result,
+            imagePreview: e.target.result,
+            timestamp: new Date()
+          };
+          console.log('🎉 Adding new popup:', newPopup.id, 'to existing', successPopups.length, 'popups');
+          setSuccessPopups(prev => {
+            const updated = [...prev, newPopup];
+            console.log('📦 Updated popup array length:', updated.length);
+            return updated;
+          });
         } catch (err) {
           setSaveError('Failed to save analysis: ' + (err.message || 'Unknown error'));
         } finally {
@@ -276,34 +318,53 @@ function WellnessBuddyApp() {
   };
 
   // Success popup handlers
-  const handleSuccessPopupClose = () => {
-    setShowSuccessPopup(false);
+  const handleSuccessPopupClose = (popupId) => {
+    console.log('❌ Closing popup:', popupId);
+    if (popupId) {
+      // Remove specific popup
+      setSuccessPopups(prev => {
+        const filtered = prev.filter(popup => popup.id !== popupId);
+        console.log('🗑️ Removed popup', popupId, '- remaining:', filtered.length);
+        return filtered;
+      });
+    } else {
+      // Legacy support - close all popups
+      console.log('🧹 Closing all popups (legacy mode)');
+      setSuccessPopups([]);
+    }
   };
 
-  const handleSuccessPopupDelete = async () => {
-    if (!savedAnalysisId) return;
+  const handleSuccessPopupDelete = async (popupId) => {
+    const popup = successPopups.find(p => p.id === popupId);
+    if (!popup || !popup.analysisId) {
+      console.log('⚠️ No popup or analysis ID found for deletion:', popupId);
+      return;
+    }
+    
+    console.log('🗑️ Deleting analysis:', popup.analysisId, 'for popup:', popupId);
     setDeleteLoading(true);
     try {
-      await deleteNutritionAnalysis({ id: savedAnalysisId });
-      setShowSuccessPopup(false);
-      setSavedAnalysisId(null);
-      setNutritionData(null);
-      setImagePreview(null);
-      setSelectedImage(null);
+      await deleteNutritionAnalysis({ id: popup.analysisId });
+      // Remove this popup from the array
+      setSuccessPopups(prev => {
+        const filtered = prev.filter(p => p.id !== popupId);
+        console.log('✅ Deleted popup', popupId, '- remaining:', filtered.length);
+        return filtered;
+      });
+      
+      // If this was the current analysis, clear it
+      if (nutritionData && popup.nutritionData === nutritionData) {
+        console.log('🧹 Clearing current analysis data');
+        setNutritionData(null);
+        setImagePreview(null);
+        setSelectedImage(null);
+      }
     } catch (err) {
+      console.error('❌ Failed to delete analysis:', err);
       setSaveError('Failed to delete: ' + (err.message || 'Unknown error'));
     } finally {
       setDeleteLoading(false);
     }
-  };
-
-  const handleSuccessPopupSave = () => {
-    setShowSuccessPopup(false);
-  };
-
-  const handleSuccessPopupViewDetails = (nutritionData) => {
-    setShowSuccessPopup(false);
-    showNutritionDashboardPage();
   };
 
   const getFriendlyErrorMessage = (error) => {
@@ -325,18 +386,38 @@ function WellnessBuddyApp() {
   };
 
   const resetApp = () => {
+    console.log('🔄 Resetting app...');
+    
     setSelectedImage(null);
     setImagePreview(null);
     setNutritionData(null);
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
+    setSuccessPopups([]); // Clear all success popups
+    setSaveError(null);
     localStorage.removeItem('isOtpVerified');
     localStorage.removeItem('otpUser');
     localStorage.removeItem('currentPage'); // Clear current page
+    localStorage.removeItem('wellnessBuddy_successPopups'); // Clear saved popups
+    
+    // Also clean up any old user-specific popup keys
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('successPopups_')) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to clean up old popup keys:', error);
+    }
+    
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
+    
+    console.log('✅ App reset complete');
   };
 
   const handleSignIn = async (forceRedirect = false) => {
@@ -549,11 +630,9 @@ function WellnessBuddyApp() {
 
         {/* Success Save Popup */}
         <SuccessSavePopup
-          open={showSuccessPopup}
+          popups={successPopups}
           onClose={handleSuccessPopupClose}
           onDelete={handleSuccessPopupDelete}
-          nutritionData={nutritionData}
-          imagePreview={imagePreview}
         />
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
