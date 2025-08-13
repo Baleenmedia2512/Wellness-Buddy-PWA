@@ -68,9 +68,9 @@ public class GalleryMonitorService extends Service {
     private static final String GEMINI_API_KEY_PREF = "gemini_api_key";
     
     // Database API configuration
-    private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
+    // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
     // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
-    // private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
+    private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
 
     @Override
     public void onCreate() {
@@ -285,20 +285,23 @@ public class GalleryMonitorService extends Service {
         for (String imagePath : queue) {
             Log.d(TAG, "Analyzing image: " + imagePath);
             String result = geminiApiClient.analyzeImage(imagePath);
-            
-            // 🆕 Save to MariaDB database in background thread
+
+            // 🆕 Save to MariaDB database in background thread, with imageBase64
             final String currentUserId = getCurrentUserId();
+            final String imageBase64 = DatabaseSyncClient.encodeImageToBase64(imagePath);
             executorService.execute(() -> {
                 boolean saved = databaseSyncClient.saveAnalysis(
                     currentUserId,                    // User ID from SharedPreferences
                     imagePath,                        // Full image path
                     result,                           // Gemini JSON response
-                    System.currentTimeMillis()        // Timestamp
+                    System.currentTimeMillis(),       // Timestamp
+                    "Android Background Service",    // Device info
+                    imageBase64                       // Image as base64
                 );
-                
+
                 if (saved) {
                     Log.d(TAG, "✅ Analysis saved to MariaDB successfully for user: " + currentUserId);
-                    
+
                     // 🚨 DEBUG: Show success notification (removable for production)
                     if (SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
                         // Post notification on main thread to ensure it's shown
@@ -311,7 +314,7 @@ public class GalleryMonitorService extends Service {
                     retryQueue.add(currentUserId, imagePath, result, System.currentTimeMillis());
                 }
             });
-            
+
             showAnalysisNotification(imagePath, result);
             foodImageQueue.remove(imagePath);
         }

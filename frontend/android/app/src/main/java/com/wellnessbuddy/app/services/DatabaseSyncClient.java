@@ -1,3 +1,20 @@
+import android.util.Base64;
+import java.io.File;
+import java.io.FileInputStream;
+    // Utility to encode image file to base64 (with data URL prefix)
+    public static String encodeImageToBase64(String imagePath) {
+        try {
+            File file = new File(imagePath);
+            FileInputStream fis = new FileInputStream(file);
+            byte[] bytes = new byte[(int) file.length()];
+            fis.read(bytes);
+            fis.close();
+            return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to encode image to base64", e);
+            return null;
+        }
+    }
 package com.wellnessbuddy.app.services;
 
 import android.content.Context;
@@ -85,44 +102,53 @@ public class DatabaseSyncClient {
         }
     }
     
+    // Overload for backward compatibility (no imageBase64)
     public boolean saveAnalysis(String userId, String imagePath, String analysisResult, long timestamp) {
-        return saveAnalysis(userId, imagePath, analysisResult, timestamp, "Android Background Service");
+        return saveAnalysis(userId, imagePath, analysisResult, timestamp, "Android Background Service", null);
     }
-    
+
     public boolean saveAnalysis(String userId, String imagePath, String analysisResult, long timestamp, String deviceInfo) {
+        return saveAnalysis(userId, imagePath, analysisResult, timestamp, deviceInfo, null);
+    }
+
+    // New method: accepts imageBase64 and sends it to backend
+    public boolean saveAnalysis(String userId, String imagePath, String analysisResult, long timestamp, String deviceInfo, String imageBase64) {
         try {
             Log.d(TAG, "Saving analysis to database for user: " + userId);
-            
+
             JSONObject requestBody = new JSONObject();
             requestBody.put("userId", userId);
             requestBody.put("imagePath", imagePath);
             requestBody.put("analysisResult", new JSONObject(analysisResult));
             requestBody.put("timestamp", timestamp);
             requestBody.put("deviceInfo", deviceInfo);
-            
+            if (imageBase64 != null && !imageBase64.isEmpty()) {
+                requestBody.put("ImageBase64", imageBase64);
+            }
+
             Request request = new Request.Builder()
                 .url(apiBaseUrl + "/api/save-background-analysis")
                 .post(RequestBody.create(
-                    requestBody.toString(), 
+                    requestBody.toString(),
                     MediaType.parse("application/json")
                 ))
                 .addHeader("Content-Type", "application/json")
                 .addHeader("User-Agent", "WellnessBuddy-Android/1.0")
                 .build();
-                
+
             Response response = client.newCall(request).execute();
             String responseBody = response.body() != null ? response.body().string() : "";
             boolean success = response.isSuccessful();
-            
+
             if (success) {
                 Log.d(TAG, "✅ Analysis saved to MariaDB successfully: " + responseBody);
             } else {
                 Log.e(TAG, "❌ MariaDB save failed: " + response.code() + " - " + responseBody);
             }
-            
+
             response.close();
             return success;
-            
+
         } catch (Exception e) {
             Log.e(TAG, "❌ Error saving analysis to MariaDB", e);
             return false;

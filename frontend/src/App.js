@@ -3,6 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import SuccessSavePopup from './components/SuccessSavePopup';
+import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
+import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import TestImageGuide from './components/TestImageGuide';
 import CameraTest from './components/CameraTest';
@@ -50,7 +52,6 @@ function WellnessBuddyApp() {
   // Success popup state - support for multiple popups with localStorage persistence
   const [successPopups, setSuccessPopups] = useState(() => {
     // Try to load popups immediately on initialization
-    console.log('🔄 Initializing popup state...');
     try {
       const saved = localStorage.getItem('wellnessBuddy_successPopups');
       if (saved) {
@@ -58,16 +59,89 @@ function WellnessBuddyApp() {
         const validPopups = parsedPopups.filter(popup => 
           popup && popup.id && popup.nutritionData && popup.imagePreview
         );
-        console.log('✅ Found', validPopups.length, 'saved popups');
         return validPopups;
       }
-      console.log('ℹ️ No saved popups found');
       return [];
     } catch (error) {
-      console.error('❌ Failed to load saved popups:', error);
       return [];
     }
   });
+
+  // Background nutrition popup state
+  const [bgNutritionPopup, setBgNutritionPopup] = useState(null);
+  // Show background nutrition popup if new record exists and not acknowledged
+  useEffect(() => {
+    const maybeShowBgNutritionPopup = async () => {
+      if (!user) return;
+      // Always use DB UserID only
+      let dbUserId = user.id;
+      if (!dbUserId) {
+        dbUserId = await getUserId(user);
+      }
+      console.log('🔍 Checking for background nutrition for user:', dbUserId);
+      if (!dbUserId) return;
+      const latest = await fetchLatestBackgroundNutrition(dbUserId);
+      console.log('🔍 Latest background nutrition record:', latest);
+      if (!latest) return;
+      // Only show if not acknowledged
+      const lastAckId = localStorage.getItem('wellnessBuddy_lastBgNutritionId');
+      if (String(latest.ID) !== String(lastAckId)) {
+        // Try to get image preview from AnalysisData or fallback
+        let imagePreview = null;
+        if (latest.ImageBase64) {
+          if (latest.ImageBase64.startsWith('data:image')) {
+            imagePreview = latest.ImageBase64;
+          } else {
+            imagePreview = `data:image/jpeg;base64,${latest.ImageBase64}`;
+          }
+        } else if (latest.ImagePath) {
+          imagePreview = latest.ImagePath;
+        }
+        // Parse nutrition data from AnalysisData JSON
+        let nutritionData = null;
+        try {
+          const parsed = typeof latest.AnalysisData === 'string' ? JSON.parse(latest.AnalysisData) : latest.AnalysisData;
+          // Flatten food item nutrition and set a better title
+          let detailedItems = Array.isArray(parsed.foods)
+            ? parsed.foods.map(item => ({
+                ...item,
+                calories: item.nutrition?.calories ?? 0,
+                protein: item.nutrition?.protein ?? 0,
+                carbs: item.nutrition?.carbs ?? 0,
+                fat: item.nutrition?.fat ?? 0,
+                fiber: item.nutrition?.fiber ?? 0
+              }))
+            : [];
+          // Set a better title/category
+          let category = {};
+          if (detailedItems.length === 1) {
+            category.name = detailedItems[0].name;
+          } else if (detailedItems.length > 1) {
+            category.name = `Mixed Foods (${detailedItems.length} items)`;
+          } else {
+            category.name = 'Food';
+          }
+          nutritionData = {
+            ...parsed,
+            nutrition: parsed.total || {},
+            detailedItems,
+            category
+          };
+        } catch {
+          nutritionData = null;
+        }
+        setBgNutritionPopup({
+          id: `bg-${latest.ID}`,
+          analysisId: latest.ID,
+          nutritionData,
+          imagePreview,
+          timestamp: latest.CreatedAt
+        });
+      }
+    };
+    maybeShowBgNutritionPopup();
+  }, [user]);
+
   const [saveLoading, setSaveLoading] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -265,7 +339,8 @@ function WellnessBuddyApp() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      setImagePreview(e.target.result);
+      const imageBase64 = e.target.result;
+      setImagePreview(imageBase64);
 
       // Analyze food after preview is ready
       try {
@@ -278,20 +353,21 @@ function WellnessBuddyApp() {
         try {
           // Always prioritize user email for team_table lookup, fallback to other identifiers
           const userIdentifier = user.email || user.id || user.uid || 'anonymous';
-          
+
           const saveRes = await saveNutritionAnalysis({
             userId: userIdentifier,
             imagePath: file.name,
+            imageBase64,
             analysisResult: result,
             deviceInfo: window.navigator.userAgent
           });
-          
+
           // Add new popup to the array (stack them up)
           const newPopup = {
             id: Date.now().toString(),
             analysisId: saveRes.id,
             nutritionData: result,
-            imagePreview: e.target.result,
+            imagePreview: imageBase64,
             timestamp: new Date()
           };
           console.log('🎉 Adding new popup:', newPopup.id, 'to existing', successPopups.length, 'popups');
@@ -319,17 +395,18 @@ function WellnessBuddyApp() {
 
   // Success popup handlers
   const handleSuccessPopupClose = (popupId) => {
-    console.log('❌ Closing popup:', popupId);
+    // If closing background nutrition popup
+    if (bgNutritionPopup && popupId === bgNutritionPopup.id) {
+      localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(bgNutritionPopup.analysisId));
+      setBgNutritionPopup(null);
+      return;
+    }
     if (popupId) {
-      // Remove specific popup
       setSuccessPopups(prev => {
         const filtered = prev.filter(popup => popup.id !== popupId);
-        console.log('🗑️ Removed popup', popupId, '- remaining:', filtered.length);
         return filtered;
       });
     } else {
-      // Legacy support - close all popups
-      console.log('🧹 Closing all popups (legacy mode)');
       setSuccessPopups([]);
     }
   };
@@ -628,9 +705,9 @@ function WellnessBuddyApp() {
 
         {nutritionData && <NutritionCard data={nutritionData} />}
 
-        {/* Success Save Popup */}
+        {/* Success Save Popup: show both background and regular popups together */}
         <SuccessSavePopup
-          popups={successPopups}
+          popups={bgNutritionPopup ? [bgNutritionPopup, ...successPopups] : successPopups}
           onClose={handleSuccessPopupClose}
           onDelete={handleSuccessPopupDelete}
         />

@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { userId, imagePath, analysisResult, timestamp, deviceInfo } = req.body;
+  const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64 } = req.body;
 
   if (!userId || !imagePath || !analysisResult) {
     return res.status(400).json({ 
@@ -91,16 +91,20 @@ export default async function handler(req, res) {
       database: process.env.DB_NAME
     });
 
-    // Insert into the new table structure
+
+    // Insert into the new table structure, now including ImageBase64
     const insertQuery = `
       INSERT INTO food_nutrition_data_table (
         UserID, ImagePath, AnalysisData, ConfidenceScore, 
         TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-        ProcessedBy, DeviceInfo
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ProcessedBy, DeviceInfo, ImageBase64
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const analysisDataJson = typeof analysisResult === 'string' ? analysisResult : JSON.stringify(analysisResult);
+
+    // If ImageBase64 is empty string, store as null
+    const imageBase64ToSave = (ImageBase64 && ImageBase64.trim() !== '') ? ImageBase64 : null;
 
     const [result] = await connection.execute(insertQuery, [
       userId,
@@ -113,12 +117,11 @@ export default async function handler(req, res) {
       totalFat,
       totalFiber,
       processedBy,
-      deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Buddy Web App')
+      deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Buddy Web App'),
+      imageBase64ToSave
     ]);
 
     await connection.end();
-
-    console.log(`✅ Nutrition analysis saved for user ${userId}, ID: ${result.insertId}, ProcessedBy: ${processedBy}, Confidence: ${confidenceScore}`);
 
     res.status(200).json({
       success: true,

@@ -32,10 +32,7 @@ export default async function handler(req, res) {
     
     // First, try a simple query without LIMIT/OFFSET to test
     const [rows] = await connection.execute(
-      `SELECT 
-        ID, ImagePath, AnalysisData, ConfidenceScore, 
-        TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-        ProcessedBy, DeviceInfo, CreatedAt
+      `SELECT *
        FROM food_nutrition_data_table 
        WHERE UserID = ? 
        ORDER BY CreatedAt DESC`,

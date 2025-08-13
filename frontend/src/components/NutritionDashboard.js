@@ -860,10 +860,17 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
                                 onClick={() => setSelectedMeal(meal)}
                               >
                                 <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                                  {meal.ImagePath ? (
-                                    <img 
-                                      src={meal.ImagePath} 
-                                      alt={foodData.name} 
+                                  {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
+                                    <img
+                                      src={meal.ImageBase64.startsWith('data:image') ? meal.ImageBase64 : `data:image/jpeg;base64,${meal.ImageBase64}`}
+                                      alt={foodData.name}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => { e.target.style.display = 'none'; }}
+                                    />
+                                  ) : meal.ImagePath ? (
+                                    <img
+                                      src={meal.ImagePath}
+                                      alt={foodData.name}
                                       className="w-full h-full object-cover"
                                       onError={(e) => { e.target.style.display = 'none'; }}
                                     />
@@ -923,7 +930,17 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
                 <div className="relative max-h-[80vh] flex flex-col">
                   {/* Image with Gradient and Text Overlay */}
                   <div className="relative">
-                    {selectedMeal.ImagePath ? (
+                    {selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== '' ? (
+                      <img
+                        src={selectedMeal.ImageBase64.startsWith('data:image') ? selectedMeal.ImageBase64 : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`}
+                        alt={foodData.name}
+                        className="w-full h-72 object-cover"
+                        onError={(e) => {
+                          e.target.src =
+                            'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=880&q=80';
+                        }}
+                      />
+                    ) : selectedMeal.ImagePath ? (
                       <img
                         src={selectedMeal.ImagePath}
                         alt={foodData.name}

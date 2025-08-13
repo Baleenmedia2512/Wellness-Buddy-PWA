@@ -36,7 +36,7 @@ export default async function handler(req, res) {
       
       const [nutritionData] = await connection.execute(`
         SELECT 
-          ID, ImagePath, AnalysisData, ConfidenceScore,
+          ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore,
           TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
           ProcessedBy, DeviceInfo, CreatedAt,
           HOUR(CreatedAt) as meal_hour,
@@ -140,7 +140,7 @@ export default async function handler(req, res) {
     // Get recent analyses
     const [recentAnalyses] = await connection.execute(
       `SELECT 
-        ID, ImagePath, TotalCalories, TotalProtein, TotalCarbs, TotalFat,
+        ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat,
         ProcessedBy, CreatedAt
        FROM food_nutrition_data_table 
        WHERE UserID = ? 

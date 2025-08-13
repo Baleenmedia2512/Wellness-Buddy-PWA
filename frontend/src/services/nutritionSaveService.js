@@ -76,15 +76,12 @@ function transformToBackgroundServiceFormat(analysisResult) {
 export async function lookupUserId(email, firebaseUid = null) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
-    console.log('[lookupUserId] Looking up:', { email, firebaseUid });
     const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, firebaseUid })
     });
-    console.log('[lookupUserId] Response status:', res.status);
     const data = await res.json();
-    console.log('[lookupUserId] Response data:', data);
     if (!res.ok) throw new Error(data.message || 'Failed to lookup user ID');
     return data;
   } catch (err) {
@@ -94,13 +91,14 @@ export async function lookupUserId(email, firebaseUid = null) {
 }
 
 /**
+/**
  * Utility to upload nutrition analysis result to backend DB
  * Always uses the real UserID from team_table for consistency
+ * Accepts imageBase64 (data URL or raw base64) and sends it to the backend as ImageBase64
  * Returns: { success, id, ... }
  */
-export async function saveNutritionAnalysis({ userId, imagePath, analysisResult, deviceInfo }) {
+export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-  console.log('apiBaseUrl:', apiBaseUrl);
   
   try {
     // Always lookup the real UserID from team_table
@@ -108,12 +106,10 @@ export async function saveNutritionAnalysis({ userId, imagePath, analysisResult,
     
     // If userId looks like an email, lookup the team_table UserID
     if (userId && userId.includes('@')) {
-      console.log('[saveNutritionAnalysis] Email detected, looking up team_table UserID');
       try {
         const lookupResult = await lookupUserId(userId);
         if (lookupResult.success && lookupResult.userId) {
           actualUserId = lookupResult.userId;
-          console.log('[saveNutritionAnalysis] Using team_table UserID:', actualUserId);
         } else {
           console.warn('[saveNutritionAnalysis] No UserID found in team_table for:', userId);
           throw new Error('User not found in team_table. Please contact support.');
@@ -124,7 +120,6 @@ export async function saveNutritionAnalysis({ userId, imagePath, analysisResult,
       }
     } else if (userId && !isNaN(userId)) {
       // If it's already a numeric ID, use it directly
-      console.log('[saveNutritionAnalysis] Using provided UserID:', userId);
       actualUserId = userId;
     } else {
       // Handle other cases (uid, anonymous, etc.)
@@ -135,15 +130,12 @@ export async function saveNutritionAnalysis({ userId, imagePath, analysisResult,
     // Transform analysisResult to match background service format (foods array + total object)
     const transformedAnalysisResult = transformToBackgroundServiceFormat(analysisResult);
     
-    console.log('[saveNutritionAnalysis] Sending:', { userId: actualUserId, imagePath, analysisResult: transformedAnalysisResult, deviceInfo });
     const res = await fetch(`${apiBaseUrl}/api/save-background-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: actualUserId, imagePath, analysisResult: transformedAnalysisResult, deviceInfo })
+      body: JSON.stringify({ userId: actualUserId, imagePath, ImageBase64: imageBase64, analysisResult: transformedAnalysisResult, deviceInfo })
     });
-    console.log('[saveNutritionAnalysis] Response status:', res.status);
     const data = await res.json();
-    console.log('[saveNutritionAnalysis] Response data:', data);
     if (!res.ok) throw new Error(data.message || 'Failed to save analysis');
     return data;
   } catch (err) {
@@ -159,15 +151,12 @@ export async function saveNutritionAnalysis({ userId, imagePath, analysisResult,
 export async function deleteNutritionAnalysis({ id }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
-    console.log('[deleteNutritionAnalysis] Sending:', { id });
     const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id })
     });
-    console.log('[deleteNutritionAnalysis] Response status:', res.status);
     const data = await res.json();
-    console.log('[deleteNutritionAnalysis] Response data:', data);
     if (!res.ok) throw new Error(data.message || 'Failed to delete analysis');
     return data;
   } catch (err) {
