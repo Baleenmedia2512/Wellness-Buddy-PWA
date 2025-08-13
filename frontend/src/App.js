@@ -130,13 +130,30 @@ function WellnessBuddyApp() {
         } catch {
           nutritionData = null;
         }
-        setBgNutritionPopup({
-          id: `bg-${latest.ID}`,
-          analysisId: latest.ID,
-          nutritionData,
-          imagePreview,
-          timestamp: latest.CreatedAt
-        });
+        
+        // Only set the popup if nutritionData is valid and has meaningful values
+        if (nutritionData && nutritionData.nutrition) {
+          const nutrition = nutritionData.nutrition;
+          const hasValidNutritionData = 
+            (nutrition.calories && nutrition.calories > 0) ||
+            (nutrition.protein && nutrition.protein > 0) ||
+            (nutrition.carbs && nutrition.carbs > 0) ||
+            (nutrition.fat && nutrition.fat > 0);
+          
+          if (hasValidNutritionData) {
+            setBgNutritionPopup({
+              id: `bg-${latest.ID}`,
+              analysisId: latest.ID,
+              nutritionData,
+              imagePreview,
+              timestamp: latest.CreatedAt
+            });
+          } else {
+            console.log('⚠️ Skipping background nutrition popup - no meaningful nutrition data');
+          }
+        } else {
+          console.log('⚠️ Skipping background nutrition popup - invalid nutrition data');
+        }
       }
     };
     maybeShowBgNutritionPopup();

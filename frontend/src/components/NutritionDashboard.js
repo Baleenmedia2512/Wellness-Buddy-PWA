@@ -35,52 +35,67 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
     return 'late-night';
   };
 
+
+  // Helper to format 24hr time to AM/PM
+  const formatTimeAMPM = (hour, minute = 0) => {
+    const d = new Date();
+    d.setHours(hour);
+    d.setMinutes(minute);
+    return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+  };
+
   const getMealCategoryInfo = (category) => {
     const categories = {
       'breakfast': {
         name: 'Breakfast',
         icon: '🍳',
-        time: '5:00 - 10:00',
+        timeRange: { start: { h: 5, m: 0 }, end: { h: 10, m: 0 } },
         color: 'from-green-400 to-emerald-400',
         targetCalories: 525
       },
       'morning-snack': {
         name: 'Morning Snack',
         icon: '☕',
-        time: '10:00 - 12:00',
+        timeRange: { start: { h: 10, m: 0 }, end: { h: 12, m: 0 } },
         color: 'from-emerald-400 to-teal-400',
         targetCalories: 262
       },
       'lunch': {
         name: 'Lunch',
         icon: '🍽️',
-        time: '12:00 - 16:00',
+        timeRange: { start: { h: 12, m: 0 }, end: { h: 16, m: 0 } },
         color: 'from-teal-400 to-cyan-400',
         targetCalories: 650
       },
       'evening-snack': {
         name: 'Evening Snack',
         icon: '🍎',
-        time: '16:00 - 18:00',
+        timeRange: { start: { h: 16, m: 0 }, end: { h: 18, m: 0 } },
         color: 'from-cyan-400 to-blue-400',
         targetCalories: 200
       },
       'dinner': {
         name: 'Dinner',
         icon: '🍝',
-        time: '18:00 - 23:00',
+        timeRange: { start: { h: 18, m: 0 }, end: { h: 23, m: 0 } },
         color: 'from-blue-400 to-indigo-400',
         targetCalories: 700
       },
       'late-night': {
         name: 'Late Night',
         icon: '🌙',
-        time: '23:00 - 5:00',
+        timeRange: { start: { h: 23, m: 0 }, end: { h: 5, m: 0 } },
         color: 'from-gray-400 to-slate-400',
         targetCalories: 150
       }
     };
     return categories[category] || categories['late-night'];
+  };
+
+  // Helper to format a time range object to AM/PM string
+  const formatTimeRangeAMPM = (range) => {
+    if (!range) return '';
+    return `${formatTimeAMPM(range.start.h, range.start.m)} - ${formatTimeAMPM(range.end.h, range.end.m)}`;
   };
 
 
@@ -835,7 +850,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
                             {/* <span className="text-2xl">{categoryInfo.icon}</span> */}
                             <div>
                               <h3 className="text-lg font-semibold text-gray-800">{categoryInfo.name}</h3>
-                              <p className="text-sm text-gray-500">{categoryInfo.time}</p>
+                              <p className="text-sm text-gray-500">{formatTimeRangeAMPM(categoryInfo.timeRange)}</p>
                             </div>
                           </div>
                           <div className="text-right">
@@ -845,7 +860,10 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
                         </div>
                         
                         <div className="space-y-3">
-                          {meals.map((meal) => {
+                          {meals
+                            .slice() // copy to avoid mutating original
+                            .sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt))
+                            .map((meal) => {
                             const foodData = parseAnalysisData(meal.AnalysisData);
                             const mealTime = new Date(meal.CreatedAt).toLocaleTimeString('en-US', {
                               hour: '2-digit',
@@ -1104,6 +1122,27 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
                     <button
                       className="w-full flex items-center justify-center gap-2 rounded-lg bg-red-500 text-white text-sm font-medium px-4 py-2 
                                 shadow-sm hover:bg-red-600 hover:shadow-md active:scale-95 transition-all duration-200"
+                      onClick={async () => {
+                        if (!selectedMeal?.ID) return;
+                        
+                        try {
+                          const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+                            method: 'DELETE',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ id: selectedMeal.ID })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            // Remove from UI
+                            setAnalyses(prev => prev.filter(m => m.ID !== selectedMeal.ID));
+                            setSelectedMeal(null);
+                          } else {
+                            alert(data.message || 'Failed to delete.');
+                          }
+                        } catch (err) {
+                          alert('Failed to delete. Please try again.');
+                        }
+                      }}
                     >
                       <svg
                         className="w-4 h-4"

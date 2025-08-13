@@ -6,37 +6,31 @@ const styles = `
     from { opacity: 0; transform: translateY(10px); }
     to { opacity: 1; transform: translateY(0); }
   }
-  .animate-fadeIn {
-    animation: fadeIn 0.3s ease-out;
-  }
+  .animate-fadeIn { animation: fadeIn 0.3s ease-out; }
+
   @keyframes stackExpand {
     from { transform: scale(0.95); opacity: 0.8; }
     to { transform: scale(1); opacity: 1; }
   }
-  .animate-stackExpand {
-    animation: stackExpand 0.3s ease-out;
-  }
+  .animate-stackExpand { animation: stackExpand 0.3s ease-out; }
+
   @keyframes gentle-pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
   }
-  .animate-gentle-pulse {
-    animation: gentle-pulse 2s ease-in-out infinite;
-  }
+  .animate-gentle-pulse { animation: gentle-pulse 2s ease-in-out infinite; }
+
   @keyframes slideOut {
-    from { transform: translateX(0); opacity: 1; }
+    from { transform: translateX(var(--swipe-x, 0)); opacity: 1; }
     to { transform: translateX(100%); opacity: 0; }
   }
-  .animate-slideOut {
-    animation: slideOut 0.3s ease-in-out forwards;
-  }
+  .animate-slideOut { animation: slideOut 0.3s ease-in-out forwards; }
+
   @keyframes slideOutLeft {
-    from { transform: translateX(0); opacity: 1; }
+    from { transform: translateX(var(--swipe-x, 0)); opacity: 1; }
     to { transform: translateX(-100%); opacity: 0; }
   }
-  .animate-slideOutLeft {
-    animation: slideOutLeft 0.3s ease-in-out forwards;
-  }
+  .animate-slideOutLeft { animation: slideOutLeft 0.3s ease-in-out forwards; }
 `;
 
 // Inject styles if not already present
@@ -47,34 +41,27 @@ if (typeof document !== 'undefined' && !document.getElementById('success-popup-s
   document.head.appendChild(styleSheet);
 }
 
-const SuccessSavePopup = ({ 
-  open, // Deprecated - for backward compatibility
-  popups, 
-  onClose, 
-  onDelete, 
-  nutritionData, // Deprecated - for backward compatibility  
-  imagePreview // Deprecated - for backward compatibility
+const SuccessSavePopup = ({
+  open,               // Deprecated - legacy single popup
+  popups,
+  onClose,
+  onDelete,
+  nutritionData,      // Deprecated - legacy single popup
+  imagePreview
 }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [isStackExpanded, setIsStackExpanded] = useState(false);
   const [swipeState, setSwipeState] = useState({});
   const [slidingPopups, setSlidingPopups] = useState(new Set());
   const containerRef = useRef(null);
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
   const toggleExpanded = (id) => {
-    // If we're expanding details and the stack is currently collapsed, expand the stack first
-    if (!isStackExpanded && expandedId !== id) {
-      setIsStackExpanded(true);
-    }
-    
-    const newExpandedId = expandedId === id ? null : id;
-    setExpandedId(newExpandedId);
-    
-    // If we're hiding details and stack is expanded with only one item having details,
-    // keep the stack expanded to maintain proper layering
+    if (!isStackExpanded && expandedId !== id) setIsStackExpanded(true);
+    setExpandedId(expandedId === id ? null : id);
   };
 
-  // Swipe detection logic
+  // --- Swipe handling (uses CSS var --swipe-x to compose with base transform) ---
   const handleTouchStart = (id, event) => {
     const touch = event.touches[0];
     setSwipeState(prev => ({
@@ -98,23 +85,15 @@ const SuccessSavePopup = ({
     const absDeltaX = Math.abs(deltaX);
     const absDeltaY = Math.abs(deltaY);
 
-    // Determine if this is a horizontal swipe
     if (absDeltaX > 10 && absDeltaX > absDeltaY) {
       if (!state.isSwiping) {
-        setSwipeState(prev => ({
-          ...prev,
-          [id]: { ...state, isSwiping: true }
-        }));
+        setSwipeState(prev => ({ ...prev, [id]: { ...state, isSwiping: true } }));
       }
-      
-      // Apply real-time transform during swipe
       const element = event.currentTarget;
-      const swipeProgress = Math.min(absDeltaX / 150, 1); // 150px for full swipe
-      element.style.transform = `translateX(${deltaX}px)`;
-      element.style.opacity = 1 - swipeProgress * 0.5;
-      
-      // Prevent scrolling during horizontal swipe
-      event.preventDefault();
+      const swipeProgress = Math.min(absDeltaX / 150, 1);
+      element.style.setProperty('--swipe-x', `${deltaX}px`); // compose; do not overwrite base transform
+      element.style.opacity = String(1 - swipeProgress * 0.5);
+      event.preventDefault(); // prevent vertical scroll when swiping horizontally
     }
   };
 
@@ -124,222 +103,234 @@ const SuccessSavePopup = ({
 
     const deltaX = event.changedTouches[0].clientX - state.startX;
     const absDeltaX = Math.abs(deltaX);
-    const swipeThreshold = 100; // Minimum distance for swipe to close
-
-    // Reset transform
+    const swipeThreshold = 100;
     const element = event.currentTarget;
-    
+
     if (state.isSwiping && absDeltaX > swipeThreshold) {
-      // Trigger slide out animation
+      // slide away
       setSlidingPopups(prev => new Set([...prev, id]));
-      element.style.transform = '';
+      element.style.removeProperty('--swipe-x');
       element.style.opacity = '';
       element.classList.add(deltaX > 0 ? 'animate-slideOut' : 'animate-slideOutLeft');
-      
-      // Remove popup after animation
       setTimeout(() => {
         onClose(id);
         setSlidingPopups(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(id);
-          return newSet;
+          const n = new Set(prev);
+          n.delete(id);
+          return n;
         });
       }, 300);
     } else {
-      // Reset position
-      element.style.transform = '';
+      // snap back to base transform (just clear the CSS var; keep base transform)
+      element.style.removeProperty('--swipe-x');
       element.style.opacity = '';
     }
 
-    // Clean up swipe state
     setSwipeState(prev => {
-      const newState = { ...prev };
-      delete newState[id];
-      return newState;
+      const n = { ...prev };
+      delete n[id];
+      return n;
     });
+  };
+  // ------------------------------------------------------------------------------
+
+  // Helper function to validate nutrition data
+  const isValidNutritionData = (data) => {
+    if (!data) return false;
+    
+    // Check if it's an empty object
+    if (typeof data === 'object' && Object.keys(data).length === 0) return false;
+    
+    // Check if it's an empty array
+    if (Array.isArray(data) && data.length === 0) return false;
+    
+    // Check if nutrition data exists and has meaningful values
+    const nutrition = data.nutrition;
+    if (!nutrition) return false;
+    
+    // Check if at least one nutrition value is meaningful (> 0)
+    const hasNutritionData = 
+      (nutrition.calories && nutrition.calories > 0) ||
+      (nutrition.protein && nutrition.protein > 0) ||
+      (nutrition.carbs && nutrition.carbs > 0) ||
+      (nutrition.fat && nutrition.fat > 0);
+    
+    return hasNutritionData;
   };
 
   // Handle both old single popup mode and new multiple popup mode
   const effectivePopups = useMemo(() => {
-    return popups || (open && nutritionData && imagePreview ? [{
-      id: 'legacy',
-      nutritionData,
-      imagePreview,
-      timestamp: new Date()
-    }] : []);
+    // Filter out invalid popups and validate nutrition data
+    const validatePopup = (popup) => {
+      if (!popup || !popup.nutritionData) return false;
+      return isValidNutritionData(popup.nutritionData);
+    };
+
+    if (popups) {
+      // Filter out invalid popups
+      return popups.filter(validatePopup);
+    }
+    
+    // Legacy single popup mode - validate nutrition data
+    if (open && nutritionData && imagePreview && isValidNutritionData(nutritionData)) {
+      return [{ id: 'legacy', nutritionData, imagePreview, timestamp: new Date() }];
+    }
+    
+    return [];
   }, [popups, open, nutritionData, imagePreview]);
 
-  // Handle clicks outside the popup container to collapse stack
+  // Click outside to collapse the stack
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (containerRef.current && !containerRef.current.contains(event.target)) {
         setIsStackExpanded(false);
+        setExpandedId(null);
       }
     };
-
     if (isStackExpanded) {
       document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
+      return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [isStackExpanded]);
 
   const handleStackClick = (event) => {
-    // Don't expand if clicking on the "View details" button or close button
     const target = event.target;
-    const isViewDetailsButton = target.closest('button')?.textContent?.includes('details') || 
-                               target.closest('button')?.textContent?.includes('Hide details');
+    const isViewDetailsButton =
+      target.closest('button')?.textContent?.includes('details') ||
+      target.closest('button')?.textContent?.includes('Hide details');
     const isCloseButton = target.closest('button')?.getAttribute('title') === 'Close';
     const isDeleteButton = target.closest('button')?.textContent?.includes('Delete');
-    
-    // Don't expand if this was part of a swipe gesture
     const anySwipeActive = Object.values(swipeState).some(state => state.isSwiping);
-    
-    // If someone clicks "View details", don't toggle the stack - let the toggleExpanded handle it
+
     if (!isViewDetailsButton && !isCloseButton && !isDeleteButton && !anySwipeActive) {
       setIsStackExpanded(!isStackExpanded);
-      // Reset any expanded details when collapsing stack
-      if (isStackExpanded) {
-        setExpandedId(null);
-      }
+      if (isStackExpanded) setExpandedId(null);
     }
   };
 
-  // Reset expanded details when stack collapses
   const handleCollapseStack = () => {
     setIsStackExpanded(false);
-    setExpandedId(null); // Always reset expanded details when collapsing
+    setExpandedId(null);
   };
-  
 
   const renderNutritionDetails = (data) => {
-    const { nutrition, category, detailedItems = [] } = data;
-  const totalItems = detailedItems.length;
-
-  return (
-    <div className="bg-white rounded-lg overflow-hidden">
-      {/* Summary Header */}
-      <div className="py-3 border-b border-gray-100">
-        <div className="flex justify-between items-start">
-          <div>
+    const { nutrition, detailedItems = [] } = data;
+    return (
+      <div className="bg-white rounded-lg overflow-hidden">
+        <div className="py-3 border-b border-gray-100">
+          <div className="flex justify-between items-start">
             <h3 className="font-medium text-gray-900">Nutrition Summary</h3>
+            <span className="text-sm bg-green-100 text-green-600 px-2 py-1 rounded">
+              {nutrition.calories} kcal
+            </span>
           </div>
-          <span className="text-sm bg-green-100 text-green-600 px-2 py-1 rounded">
-            {nutrition.calories} kcal
-          </span>
         </div>
-      </div>
 
-      {/* Detailed Items */}
-      {detailedItems.length > 0 && (
-      <div className="p-3 bg-gray-50">
-        <h4 className="text-xs font-semibold text-gray-500 mb-2 tracking-wide">
-          FOOD ITEMS
-        </h4>
-        <div className="space-y-2">
-          {detailedItems.map((item, index) => (
-            <div key={index} className="flex justify-between items-center text-sm">
-              
-              {/* Left: Index + Name + Portion */}
-              <div className="flex items-center gap-2">
-                <div className="w-5 h-5 bg-gray-200 rounded flex items-center justify-center text-xs font-medium text-gray-600">
-                  {index + 1}
+        {!!detailedItems.length && (
+          <div className="p-3 bg-gray-50">
+            <h4 className="text-xs font-semibold text-gray-500 mb-2 tracking-wide">FOOD ITEMS</h4>
+            <div className="space-y-2">
+              {detailedItems.map((item, index) => (
+                <div key={index} className="flex justify-between items-center text-sm">
+                  <div className="flex items-center gap-2">
+                    <div className="w-5 h-5 bg-gray-200 rounded flex items-center justify-center text-xs font-medium text-gray-600">
+                      {index + 1}
+                    </div>
+                    <div>
+                      <p className="font-medium text-gray-800">{item.name}</p>
+                      <p className="text-[11px] text-gray-500">{item.portionDescription}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold text-gray-800">{item.calories} kcal</p>
+                    <p className="text-[11px] text-gray-500">
+                      <span className="text-blue-600">{item.protein}P</span> •{' '}
+                      <span className="text-orange-600">{item.carbs}C</span> •{' '}
+                      <span className="text-yellow-600">{item.fat}F</span> •{' '}
+                      <span className="text-green-600">{item.fiber}Fb</span>
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <p className="font-medium text-gray-800">{item.name}</p>
-                  <p className="text-[11px] text-gray-500">{item.portionDescription}</p>
-                </div>
-              </div>
-              
-              {/* Right: Calories + Macros */}
-              <div className="text-right">
-                <p className="font-semibold text-gray-800">{item.calories} kcal</p>
-                <p className="text-[11px] text-gray-500">
-                  <span className="text-blue-600">{item.protein}P</span> •{" "}
-                  <span className="text-orange-600">{item.carbs}C</span> •{" "}
-                  <span className="text-yellow-600">{item.fat}F</span> •{" "}
-                  <span className="text-green-600">{item.fiber}Fb</span>
-                </p>
-              </div>
-
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-    )}
+          </div>
+        )}
 
-      {/* Nutrition Grid */}
-      <div className="grid grid-cols-4 gap-px bg-gray-100">
-        <div className="bg-white p-2 text-center">
-          <p className="text-xs text-blue-500">Protein</p>
-          <p className="font-medium">{nutrition.protein}g</p>
+        <div className="grid grid-cols-4 gap-px bg-gray-100">
+          <div className="bg-white p-2 text-center">
+            <p className="text-xs text-blue-500">Protein</p>
+            <p className="font-medium">{nutrition.protein}g</p>
+          </div>
+          <div className="bg-white p-2 text-center">
+            <p className="text-xs text-orange-500">Carbs</p>
+            <p className="font-medium">{nutrition.carbs}g</p>
+          </div>
+          <div className="bg-white p-2 text-center">
+            <p className="text-xs text-yellow-500">Fat</p>
+            <p className="font-medium">{nutrition.fat}g</p>
+          </div>
+          <div className="bg-white p-2 text-center">
+            <p className="text-xs text-green-500">Fiber</p>
+            <p className="font-medium">{nutrition.fiber}g</p>
+          </div>
         </div>
-        <div className="bg-white p-2 text-center">
-          <p className="text-xs text-orange-500">Carbs</p>
-          <p className="font-medium">{nutrition.carbs}g</p>
-        </div>
-        <div className="bg-white p-2 text-center">
-          <p className="text-xs text-yellow-500">Fat</p>
-          <p className="font-medium">{nutrition.fat}g</p>
-        </div>
-        <div className="bg-white p-2 text-center">
-          <p className="text-xs text-green-500">Fiber</p>
-          <p className="font-medium">{nutrition.fiber}g</p>
-        </div>
-      </div>
       </div>
     );
   };
 
   const renderPopup = (popupData, id, isSingle = false, index = 0, total = 1) => {
     const isExpanded = expandedId === id;
-    
-    // Handle both legacy single popup and new multiple popup format
+
     let data, image;
     if (isSingle) {
-      // Legacy single popup mode
       data = nutritionData;
       image = imagePreview;
     } else if (popupData) {
-      // New multiple popup mode
       data = popupData.nutritionData;
       image = popupData.imagePreview;
     } else {
       return null;
     }
 
-    // Calculate stacking offsets for true layered effect
+    // Additional validation - don't render if data is invalid
+    if (!data || !isValidNutritionData(data)) {
+      return null;
+    }
+
     const isTopCard = index === total - 1;
-    const stackOffset = total > 1 ? (total - 1 - index) * 2 : 0; // Even tighter stacking
-    const scaleOffset = total > 1 ? (total - 1 - index) * 0.01 : 0; // Minimal scale reduction
-    const opacityOffset = total > 1 ? Math.max(0.8, 1 - (total - 1 - index) * 0.08) : 1; // Keep cards more visible
-
-    // Show full cards when stack is expanded, or when it's the top card, or when there's only one card
+    const stackOffset = total > 1 ? (total - 1 - index) * 2 : 0;
+    const scaleOffset = total > 1 ? (total - 1 - index) * 0.01 : 0;
+    const opacityOffset = total > 1 ? Math.max(0.8, 1 - (total - 1 - index) * 0.08) : 1;
     const showFullCard = isStackExpanded || isTopCard || total === 1;
+    const marginTop = isStackExpanded ? (index === 0 ? 0 : '4px')
+                                      : (index === 0 ? 0 : `-${60 - (total - 1 - index) * 2}px`);
 
-    // Calculate margin for layered stacking vs expanded view - much tighter when collapsed
-    const marginTop = isStackExpanded ? 
-      (index === 0 ? 0 : '4px') : // Small gap when expanded
-      (index === 0 ? 0 : `-${60 - (total - 1 - index) * 2}px`); // Much tighter overlap when collapsed
+    const baseTransform = !isStackExpanded
+      ? `translateY(-${stackOffset}px) scale(${1 - scaleOffset})`
+      : '';
 
     return (
-      <div 
+      <div
         key={id}
-        className={`pointer-events-auto w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden transition-all duration-300 ease-out ${
+        className={`relative pointer-events-auto w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden transition-all duration-300 ease-out ${
           isExpanded ? 'max-w-md' : ''
         } ${total > 1 ? 'cursor-pointer hover:shadow-xl' : ''} ${
           showFullCard && isStackExpanded && total > 1 ? 'animate-stackExpand' : ''
         }`}
-        style={{ 
-          transform: isStackExpanded ? 'none' : `translateY(-${stackOffset}px) scale(${1 - scaleOffset})`,
+        style={{
+          // Keep base stacking transform and always compose the swipe offset.
+          transform: `${baseTransform} translateX(var(--swipe-x, 0px))`.trim(),
           opacity: showFullCard ? 1 : opacityOffset,
-          zIndex: isExpanded ? 1000 + total + 10 : 50 + index, // Higher z-index for expanded details
-          marginTop: marginTop,
-          pointerEvents: 'auto', // Make all cards clickable
-          boxShadow: total > 1 && !isStackExpanded ? 
-            `0 ${Math.max(2, 6 - index)}px ${Math.max(4, 12 - index * 2)}px rgba(0, 0, 0, ${Math.max(0.08, 0.15 - index * 0.03)})` : 
-            '0 4px 12px rgba(0, 0, 0, 0.1)'
+          zIndex: isExpanded ? 1000 + total + 10 : 50 + index,
+          marginTop,
+          pointerEvents: 'auto',
+          boxShadow:
+            total > 1 && !isStackExpanded
+              ? `0 ${Math.max(2, 6 - index)}px ${Math.max(4, 12 - index * 2)}px rgba(0, 0, 0, ${Math.max(
+                  0.08,
+                  0.15 - index * 0.03
+                )})`
+              : '0 4px 12px rgba(0, 0, 0, 0.1)'
         }}
         onClick={total > 1 ? handleStackClick : undefined}
         onTouchStart={(e) => handleTouchStart(id, e)}
@@ -348,7 +339,6 @@ const SuccessSavePopup = ({
       >
         <div className="p-3">
           <div className="flex items-start gap-3">
-            {/* Image */}
             {image && (
               <img
                 src={image}
@@ -356,8 +346,7 @@ const SuccessSavePopup = ({
                 className="w-16 h-16 object-cover rounded-lg border border-gray-100 flex-shrink-0"
               />
             )}
-            
-            {/* Info */}
+
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
                 <span className="font-semibold text-gray-800 text-sm truncate">
@@ -366,15 +355,13 @@ const SuccessSavePopup = ({
                 <span className="px-1.5 py-0.5 rounded-md bg-green-50 text-xs text-green-600 font-medium whitespace-nowrap">
                   ✓ Saved
                 </span>
-                {/* Stack indicator */}
                 {total > 1 && isTopCard && !isStackExpanded && (
                   <span className="px-1.5 py-0.5 rounded-md bg-green-50 text-xs text-green-600 font-medium whitespace-nowrap">
                     +{total - 1} more
                   </span>
                 )}
               </div>
-              
-              {/* Nutrition Info */}
+
               <div className="text-xs text-gray-500 mb-1.5">
                 <div className="flex flex-wrap gap-x-1 gap-y-0.5">
                   <span>{data?.nutrition?.calories || 0} kcal</span>
@@ -383,8 +370,7 @@ const SuccessSavePopup = ({
                   <span>· {data?.nutrition?.fat || 0}g fat</span>
                 </div>
               </div>
-              
-              {/* View Details Link */}
+
               <button
                 onClick={() => toggleExpanded(id)}
                 className="text-xs text-green-600 hover:text-green-700 font-medium transition-colors flex items-center gap-1"
@@ -394,21 +380,10 @@ const SuccessSavePopup = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                 </svg>
               </button>
-              
-              {/* Stack expansion hint */}
-              {/* {total > 1 && isTopCard && !isStackExpanded && (
-                <div className="text-xs text-blue-600 mt-1 opacity-75 animate-gentle-pulse flex items-center gap-1">
-                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 11l5-5m0 0l5 5m-5-5v12" />
-                  </svg>
-                  Tap to expand stack
-                </div>
-              )} */}
             </div>
-            
-            {/* Close Button */}
+
             <button
-              onClick={() => isSingle ? onClose() : onClose(id)}
+              onClick={() => (isSingle ? onClose() : onClose(id))}
               className="p-1 hover:bg-gray-50 rounded-md transition-colors flex-shrink-0"
               title="Close"
             >
@@ -417,18 +392,44 @@ const SuccessSavePopup = ({
               </svg>
             </button>
           </div>
-          
-          {/* Expanded Details */}
+
           <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
             {isExpanded && renderNutritionDetails(data)}
           </div>
         </div>
-        
-        {/* Delete Button - Only visible when expanded */}
+
         {isExpanded && (
           <div className="px-3 pb-3">
             <button
-              onClick={() => isSingle ? onDelete() : onDelete(id)}
+              onClick={async () => {
+                if (isSingle) {
+                  onDelete();
+                  return;
+                }
+                // Multi-popup mode: call backend API before removing
+                const popup = popups?.find(p => p.id === id);
+                const analysisId = popup?.analysisId;
+                if (!analysisId) {
+                  onDelete(id);
+                  return;
+                }
+                try {
+                  const url = `${apiBaseUrl}/api/delete-background-analysis`;
+                  const res = await fetch(url, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id: analysisId })
+                  });
+                  const data = await res.json();
+                  if (data.success) {
+                    onDelete(id);
+                  } else {
+                    alert(data.message || 'Failed to delete.');
+                  }
+                } catch (err) {
+                  alert('Failed to delete. Please try again.');
+                }
+              }}
               className="w-full bg-red-500 hover:bg-red-600 text-white text-sm font-medium py-2 px-3 rounded-lg transition-colors flex items-center justify-center gap-1.5"
             >
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -455,17 +456,9 @@ const SuccessSavePopup = ({
   if (!effectivePopups || effectivePopups.length === 0) return null;
 
   return (
-    <div 
-      ref={containerRef}
-      className="fixed z-50 bottom-4 left-4 right-4 flex justify-center pointer-events-none"
-    >
-      <div className="relative w-full max-w-sm">
-        {/* Render popups in reverse order so the latest is on top */}
-        {effectivePopups.map((popup, idx) => 
-          renderPopup(popup, popup.id, false, idx, effectivePopups.length)
-        )}
-        
-        {/* Collapse hint when stack is expanded - now clickable */}
+    <div ref={containerRef} className="fixed z-50 bottom-4 left-4 right-4 flex justify-center pointer-events-none">
+      <div className="relative autow w-full max-w-sm">
+        {effectivePopups.map((popup, idx) => renderPopup(popup, popup.id, false, idx, effectivePopups.length))}
         {isStackExpanded && effectivePopups.length > 1 && (
           <div className="text-center mt-2 pointer-events-auto animate-fadeIn">
             <button

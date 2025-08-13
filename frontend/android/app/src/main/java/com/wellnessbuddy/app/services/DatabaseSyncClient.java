@@ -1,26 +1,12 @@
-import android.util.Base64;
-import java.io.File;
-import java.io.FileInputStream;
-    // Utility to encode image file to base64 (with data URL prefix)
-    public static String encodeImageToBase64(String imagePath) {
-        try {
-            File file = new File(imagePath);
-            FileInputStream fis = new FileInputStream(file);
-            byte[] bytes = new byte[(int) file.length()];
-            fis.read(bytes);
-            fis.close();
-            return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to encode image to base64", e);
-            return null;
-        }
-    }
 package com.wellnessbuddy.app.services;
 
 import android.content.Context;
+import android.util.Base64;
 import android.util.Log;
 import okhttp3.*;
 import org.json.JSONObject;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 
@@ -174,6 +160,21 @@ public class DatabaseSyncClient {
         } catch (Exception e) {
             Log.e(TAG, "❌ Database connection test error", e);
             return false;
+        }
+    }
+    
+    // Utility to encode image file to base64 (with data URL prefix)
+    public static String encodeImageToBase64(String imagePath) {
+        try {
+            File file = new File(imagePath);
+            FileInputStream fis = new FileInputStream(file);
+            byte[] bytes = new byte[(int) file.length()];
+            fis.read(bytes);
+            fis.close();
+            return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
+        } catch (Exception e) {
+            Log.e("DatabaseSyncClient", "Failed to encode image to base64", e);
+            return null;
         }
     }
 }

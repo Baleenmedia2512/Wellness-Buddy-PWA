@@ -89,22 +89,22 @@ export default async function handler(req, res) {
 
     // Get user statistics
     const [totalCount] = await connection.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ?',
+      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
 
     const [todayCount] = await connection.execute(
-      'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE UserID = ? AND DATE(CreatedAt) = CURDATE()',
+      'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE UserID = ? AND DATE(CreatedAt) = CURDATE() AND IsDeleted = 0',
       [userId]
     );
 
     const [weekCount] = await connection.execute(
-      'SELECT COUNT(*) as week FROM food_nutrition_data_table WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)',
+      'SELECT COUNT(*) as week FROM food_nutrition_data_table WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0',
       [userId]
     );
 
     const [backgroundCount] = await connection.execute(
-      'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE UserID = ? AND ProcessedBy = "background_service"',
+      'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE UserID = ? AND ProcessedBy = "background_service" AND IsDeleted = 0',
       [userId]
     );
 
@@ -117,7 +117,7 @@ export default async function handler(req, res) {
         SUM(TotalFat) as totalFat,
         SUM(TotalFiber) as totalFiber
        FROM food_nutrition_data_table 
-       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)`,
+       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0`,
       [userId]
     );
 
@@ -131,7 +131,7 @@ export default async function handler(req, res) {
         SUM(TotalFat) as fat,
         COUNT(*) as meals
        FROM food_nutrition_data_table 
-       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0
        GROUP BY DATE(CreatedAt)
        ORDER BY date DESC`,
       [userId]
@@ -143,7 +143,7 @@ export default async function handler(req, res) {
         ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat,
         ProcessedBy, CreatedAt
        FROM food_nutrition_data_table 
-       WHERE UserID = ? 
+       WHERE UserID = ? AND IsDeleted = 0
        ORDER BY CreatedAt DESC 
        LIMIT 10`,
       [userId]

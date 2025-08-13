@@ -33,7 +33,7 @@ export default async function handler(req, res) {
 
     // Delete the analysis record
     const [result] = await connection.execute(
-      'DELETE FROM food_nutrition_data_table WHERE ID = ?',
+      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ?',
       [id]
     );
 
