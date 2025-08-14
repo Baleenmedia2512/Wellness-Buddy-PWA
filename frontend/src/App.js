@@ -727,6 +727,14 @@ function WellnessBuddyApp() {
           popups={bgNutritionPopup ? [bgNutritionPopup, ...successPopups] : successPopups}
           onClose={handleSuccessPopupClose}
           onDelete={handleSuccessPopupDelete}
+          onRestore={(popupId, popup) => {
+            // Only restore if not already present
+            setSuccessPopups(prev => {
+              if (prev.find(p => p.id === popupId)) return prev;
+              // Insert at the end (or you can insert at original index if you want)
+              return [...prev, popup];
+            });
+          }}
         />
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">

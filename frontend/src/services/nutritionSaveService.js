@@ -152,7 +152,7 @@ export async function deleteNutritionAnalysis({ id }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
     const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
-      method: 'POST',
+      method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id })
     });

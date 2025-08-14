@@ -747,56 +747,63 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                                   />
                                 );
                               }
-
                               const foodData = parseAnalysisData(meal.AnalysisData);
                               const mealTime = new Date(meal.CreatedAt).toLocaleTimeString('en-US', {
                                 hour: '2-digit',
                                 minute: '2-digit'
                               });
                               const calories = foodData.nutrition.calories || meal.TotalCalories || 0;
-
                               return (
-                                <div
+                                <MealCard
                                   key={meal.ID}
-                                  className="bg-white/60 backdrop-blur-md rounded-xl p-4 flex items-center space-x-4 shadow-sm border border-gray-200/80 hover:shadow-md hover:border-gray-300 transition-all duration-300 cursor-pointer"
-                                  onClick={() => setSelectedMeal(meal)}
-                                >
-                                  <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-                                    {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
-                                      <img
-                                        src={
-                                          meal.ImageBase64.startsWith('data:image')
-                                            ? meal.ImageBase64
-                                            : `data:image/jpeg;base64,${meal.ImageBase64}`
-                                        }
-                                        alt={foodData.name}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          e.target.style.display = 'none';
-                                        }}
-                                      />
-                                    ) : meal.ImagePath ? (
-                                      <img
-                                        src={meal.ImagePath}
-                                        alt={foodData.name}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                          e.target.style.display = 'none';
-                                        }}
-                                      />
-                                    ) : (
-                                      <span className="text-2xl">🍽️</span>
-                                    )}
-                                  </div>
-                                  <div className="flex-1">
-                                    <h4 className="font-semibold text-gray-800 truncate">{foodData.name}</h4>
-                                    <p className="text-sm text-gray-500">{mealTime}</p>
-                                  </div>
-                                  <div className="text-right">
-                                    <p className="font-bold text-lg text-gray-800">{Math.round(calories)}</p>
-                                    <p className="text-xs text-gray-500 -mt-1">kcal</p>
-                                  </div>
-                                </div>
+                                  meal={meal}
+                                  foodData={foodData}
+                                  mealTime={mealTime}
+                                  calories={calories}
+                                  onDelete={async (mealToDelete) => {
+                                    setDeletingId(mealToDelete.ID);
+                                    try {
+                                      const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+                                        method: 'DELETE',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ id: mealToDelete.ID })
+                                      });
+                                      const data = await res.json();
+                                      if (data.success) {
+                                        const n = parseAnalysisData(mealToDelete.AnalysisData).nutrition || {};
+                                        applyDailyDelta({
+                                          calories: -(n.calories || mealToDelete.TotalCalories || 0),
+                                          protein: -(n.protein || mealToDelete.TotalProtein || 0),
+                                          carbs: -(n.carbs || mealToDelete.TotalCarbs || 0),
+                                          fat: -(n.fat || mealToDelete.TotalFat || 0),
+                                          fiber: -(n.fiber || mealToDelete.TotalFiber || 0),
+                                          mealCountDelta: -1
+                                        });
+                                        const placeholder = {
+                                          ID: `undo-${mealToDelete.ID}`,
+                                          isUndoPlaceholder: true,
+                                          CreatedAt: mealToDelete.CreatedAt
+                                        };
+                                        setAnalyses((prev) => prev.filter((m) => m.ID !== mealToDelete.ID).concat(placeholder));
+                                        setUndoState((prev) => ({
+                                          ...prev,
+                                          [placeholder.ID]: {
+                                            originalMeal: mealToDelete,
+                                            expiresAt: Date.now() + UNDO_SECONDS * 1000,
+                                            ttlSeconds: UNDO_SECONDS
+                                          }
+                                        }));
+                                      } else {
+                                        alert(data.message || 'Failed to delete.');
+                                      }
+                                    } catch {
+                                      alert('Failed to delete. Please try again.');
+                                    } finally {
+                                      setDeletingId(null);
+                                    }
+                                  }}
+                                  onClick={(mealObj) => setSelectedMeal(mealObj)}
+                                />
                               );
                             })}
                         </div>
@@ -1062,3 +1069,205 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 };
 
 export default NutritionDashboard;
+
+// --- MealCard with improved swipe-to-delete UI ---
+const SWIPE_DELETE_THRESHOLD = 100; // px
+const SWIPE_MAX = 120; // px
+
+const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => {
+  const [swipeX, setSwipeX] = React.useState(0);
+  const [isSwiping, setIsSwiping] = React.useState(false);
+  const [animating, setAnimating] = React.useState(false);
+  const touchStartX = React.useRef(0);
+  const touchCurrentX = React.useRef(0);
+
+  // Touch handlers
+  const handleTouchStart = (e) => {
+    if (e.touches.length !== 1) return;
+    setIsSwiping(true);
+    setAnimating(false);
+    touchStartX.current = e.touches[0].clientX;
+    touchCurrentX.current = e.touches[0].clientX;
+  };
+  const handleTouchMove = (e) => {
+    if (!isSwiping || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - touchStartX.current;
+    if (dx < 0) {
+      setSwipeX(Math.max(dx, -SWIPE_MAX));
+      touchCurrentX.current = e.touches[0].clientX;
+    }
+  };
+  const handleTouchEnd = () => {
+    if (!isSwiping) return;
+    setIsSwiping(false);
+    if (swipeX < -SWIPE_DELETE_THRESHOLD) {
+      // Animate out, then delete
+      setSwipeX(-window.innerWidth); // slide out
+      setAnimating(true);
+      setTimeout(() => {
+        onDelete(meal);
+        setSwipeX(0);
+        setAnimating(false);
+      }, 250);
+    } else {
+      // Snap back
+      setSwipeX(0);
+      setAnimating(true);
+      setTimeout(() => setAnimating(false), 250);
+    }
+  };
+
+  // Delete area width
+  const DELETE_WIDTH = 88; // px, matches your screenshot
+
+  // Calculate progress for animations
+  const progress = Math.min(1, Math.abs(swipeX) / SWIPE_DELETE_THRESHOLD);
+  const isNearThreshold = Math.abs(swipeX) > SWIPE_DELETE_THRESHOLD * 0.8;
+
+  return (
+    <div className="relative w-full" style={{ touchAction: 'pan-y', height: 80 }}>
+      {/* Enhanced Delete background */}
+      <div
+        className="absolute top-0 right-0 h-full flex items-center justify-center z-0 overflow-hidden"
+        style={{
+          width: DELETE_WIDTH,
+          background: isNearThreshold 
+            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95))' 
+            : 'linear-gradient(135deg, rgba(244, 67, 54, 0.85), rgba(211, 47, 47, 0.85))',
+          borderRadius: '0 1rem 1rem 0',
+          transition: isSwiping ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          opacity: Math.min(1, Math.abs(swipeX) / (SWIPE_DELETE_THRESHOLD * 0.6)),
+          transform: `scale(${0.95 + progress * 0.05})`,
+          boxShadow: progress > 0.5 
+            ? `inset 0 0 20px rgba(255, 255, 255, ${0.1 + progress * 0.1})` 
+            : 'none'
+        }}
+      >
+        {/* Animated background pattern */}
+        <div 
+          className="absolute inset-0 opacity-20"
+          style={{
+            background: 'radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.3) 0%, transparent 70%)',
+            transform: `scale(${0.8 + progress * 0.4}) rotate(${progress * 45}deg)`,
+            transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
+          }}
+        />
+        
+        {/* Delete icon with enhanced animation */}
+        <div 
+          className="relative z-10"
+          style={{
+            transform: `scale(${0.9 + progress * 0.2}) rotate(${isNearThreshold ? '5deg' : '0deg'})`,
+            transition: isSwiping ? 'none' : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}
+        >
+          <svg 
+            className="w-8 h-8 text-white drop-shadow-lg" 
+            fill="none" 
+            stroke="currentColor" 
+            viewBox="0 0 24 24"
+            style={{
+              filter: isNearThreshold 
+                ? 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.6))' 
+                : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))',
+              strokeWidth: isNearThreshold ? 2.5 : 2
+            }}
+          >
+            <path 
+              strokeLinecap="round" 
+              strokeLinejoin="round" 
+              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
+            />
+          </svg>
+        </div>
+
+        {/* Pulsing effect when near threshold */}
+        {isNearThreshold && (
+          <div 
+            className="absolute inset-0 rounded-r-2xl"
+            style={{
+              background: 'rgba(255, 255, 255, 0.2)',
+              animation: 'pulse 0.8s infinite alternate',
+              animationTimingFunction: 'ease-in-out'
+            }}
+          />
+        )}
+
+        {/* Progress indicator dots */}
+        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-1">
+          {[0, 1, 2].map(i => (
+            <div
+              key={i}
+              className="w-1 h-1 rounded-full bg-white"
+              style={{
+                opacity: progress > (i * 0.33) ? 0.8 : 0.3,
+                transform: `scale(${progress > (i * 0.33) ? 1.2 : 0.8})`,
+                transition: 'all 0.2s ease-out'
+              }}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Card (unchanged) */}
+      <div
+        className={
+          `relative bg-white/60 backdrop-blur-md rounded-xl p-4 flex items-center space-x-4 shadow-lg border border-gray-200/80 hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer z-10 select-none ` +
+          (animating ? 'transition-transform duration-300' : '')
+        }
+        style={{
+          transform: `translateX(${swipeX}px)`,
+          transition: animating ? 'transform 0.25s cubic-bezier(.4,1.4,.6,1)' : undefined,
+          minHeight: 72,
+        }}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        onClick={() => !isSwiping && onClick(meal)}
+      >
+        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
+          {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
+            <img
+              src={
+                meal.ImageBase64.startsWith('data:image')
+                  ? meal.ImageBase64
+                  : `data:image/jpeg;base64,${meal.ImageBase64}`
+              }
+              alt={foodData.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : meal.ImagePath ? (
+            <img
+              src={meal.ImagePath}
+              alt={foodData.name}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
+            />
+          ) : (
+            <span className="text-2xl">🍽️</span>
+          )}
+        </div>
+        <div className="flex-1">
+          <h4 className="font-semibold text-gray-800 truncate">{foodData.name}</h4>
+          <p className="text-sm text-gray-500">{mealTime}</p>
+        </div>
+        <div className="text-right">
+          <p className="font-bold text-lg text-gray-800">{Math.round(calories)}</p>
+          <p className="text-xs text-gray-500 -mt-1">kcal</p>
+        </div>
+      </div>
+
+      <style jsx>{`
+        @keyframes pulse {
+          0% { opacity: 0.2; }
+          100% { opacity: 0.4; }
+        }
+      `}</style>
+    </div>
+  );
+};
