@@ -163,7 +163,6 @@ const SuccessSavePopup = ({
       const el = e.currentTarget;
       el.style.setProperty('--swipe-x', `${dx}px`);
       el.style.opacity = String(1 - Math.min(Math.abs(dx) / 150, 1) * 0.5);
-      e.preventDefault();
     }
   };
   const handleTouchEnd = (id, e) => {

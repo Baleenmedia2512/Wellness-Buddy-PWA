@@ -278,7 +278,14 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl }) => {
 
         // For 3+ items: "First & other {count-1} item(s)"
         const others = count - 1;
-        return `${first} + ${others} more`;
+        return (
+          <>
+            {first}{' '}
+            <span className="text-gray-500 text-sm font-normal">
+              + {others} more
+            </span>
+          </>
+        );
       };
 
       // Unified format: foods[] + total
@@ -1070,204 +1077,201 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
 export default NutritionDashboard;
 
-// --- MealCard with improved swipe-to-delete UI ---
-const SWIPE_DELETE_THRESHOLD = 100; // px
-const SWIPE_MAX = 120; // px
+// --- MealCard with creative, minimal swipe-left to delete (progress bar) ---
+const SWIPE_DELETE_THRESHOLD = 140;  // px — where delete becomes armed
+const SWIPE_MAX = 140;              // px — limit the drag distance
 
 const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => {
-  const [swipeX, setSwipeX] = React.useState(0);
-  const [isSwiping, setIsSwiping] = React.useState(false);
+  const [dx, setDx] = React.useState(0);          // current translateX (negative = left)
+  const [dragging, setDragging] = React.useState(false);
   const [animating, setAnimating] = React.useState(false);
-  const touchStartX = React.useRef(0);
-  const touchCurrentX = React.useRef(0);
+  const [armed, setArmed] = React.useState(false);
 
-  // Touch handlers
-  const handleTouchStart = (e) => {
-    if (e.touches.length !== 1) return;
-    setIsSwiping(true);
+  const startXRef = React.useRef(0);
+  const rafRef    = React.useRef(null);
+  const elRef     = React.useRef(null);
+
+  const cancelRAF = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
+  // Pointer Events
+  const onPointerDown = (e) => {
+    if (!e.isPrimary) return;
+    cancelRAF();
+    setDragging(true);
     setAnimating(false);
-    touchStartX.current = e.touches[0].clientX;
-    touchCurrentX.current = e.touches[0].clientX;
+    startXRef.current = e.clientX;
+    elRef.current?.setPointerCapture?.(e.pointerId);
   };
-  const handleTouchMove = (e) => {
-    if (!isSwiping || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - touchStartX.current;
-    if (dx < 0) {
-      setSwipeX(Math.max(dx, -SWIPE_MAX));
-      touchCurrentX.current = e.touches[0].clientX;
+
+  const onPointerMove = (e) => {
+    if (!dragging || !e.isPrimary) return;
+    const delta = e.clientX - startXRef.current;
+
+    // only allow left swipe; clamp to max
+    const nextDx = Math.max(Math.min(delta, 0), -SWIPE_MAX);
+
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        setDx(nextDx);
+        rafRef.current = null;
+
+        const isNowArmed = Math.abs(nextDx) >= SWIPE_DELETE_THRESHOLD;
+        if (isNowArmed !== armed) {
+          setArmed(isNowArmed);
+          if (isNowArmed && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try { navigator.vibrate(10); } catch {}
+          }
+        }
+      });
     }
   };
-  const handleTouchEnd = () => {
-    if (!isSwiping) return;
-    setIsSwiping(false);
-    if (swipeX < -SWIPE_DELETE_THRESHOLD) {
-      // Animate out, then delete
-      setSwipeX(-window.innerWidth); // slide out
+
+  const finishInteraction = (e) => {
+    if (!dragging) return;
+    setDragging(false);
+    cancelRAF();
+    elRef.current?.releasePointerCapture?.(e?.pointerId);
+
+    if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
+      // Delete: slide out then invoke onDelete
       setAnimating(true);
-      setTimeout(() => {
-        onDelete(meal);
-        setSwipeX(0);
-        setAnimating(false);
-      }, 250);
+      // set in next frame to ensure transition is applied
+      requestAnimationFrame(() => {
+        setDx(-window.innerWidth);
+        setTimeout(() => {
+          onDelete(meal);
+          setAnimating(false);
+          setDx(0);
+          setArmed(false);
+        }, 220);
+      });
     } else {
-      // Snap back
-      setSwipeX(0);
+      // Snap back: enable transition, then set dx=0 in next frame
       setAnimating(true);
-      setTimeout(() => setAnimating(false), 250);
+      requestAnimationFrame(() => {
+        setDx(0);
+        setTimeout(() => {
+          setAnimating(false);
+          setArmed(false);
+        }, 220);
+      });
     }
   };
 
-  // Delete area width
-  const DELETE_WIDTH = 88; // px, matches your screenshot
+  const onPointerUp = (e) => finishInteraction(e);
+  const onPointerCancel = (e) => finishInteraction(e);
+  const onPointerLeave = (e) => finishInteraction(e);
 
-  // Calculate progress for animations
-  const progress = Math.min(1, Math.abs(swipeX) / SWIPE_DELETE_THRESHOLD);
-  const isNearThreshold = Math.abs(swipeX) > SWIPE_DELETE_THRESHOLD * 0.8;
+  React.useEffect(() => () => cancelRAF(), []);
+
+  const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
+  const scale = 1 - Math.min(0.03, Math.abs(dx) / 1000); // subtle compress
 
   return (
-    <div className="relative w-full" style={{ touchAction: 'pan-y', height: 80 }}>
-      {/* Enhanced Delete background */}
-      <div
-        className="absolute top-0 right-0 h-full flex items-center justify-center z-0 overflow-hidden"
-        style={{
-          width: DELETE_WIDTH,
-          background: isNearThreshold 
-            ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.95), rgba(220, 38, 38, 0.95))' 
-            : 'linear-gradient(135deg, rgba(244, 67, 54, 0.85), rgba(211, 47, 47, 0.85))',
-          borderRadius: '0 1rem 1rem 0',
-          transition: isSwiping ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          opacity: Math.min(1, Math.abs(swipeX) / (SWIPE_DELETE_THRESHOLD * 0.6)),
-          transform: `scale(${0.95 + progress * 0.05})`,
-          boxShadow: progress > 0.5 
-            ? `inset 0 0 20px rgba(255, 255, 255, ${0.1 + progress * 0.1})` 
-            : 'none'
-        }}
-      >
-        {/* Animated background pattern */}
-        <div 
-          className="absolute inset-0 opacity-20"
+    <div className="relative w-full" style={{ touchAction: 'pan-y', height: 84 }}>
+      {/* Right-side reveal (delete icon) */}
+      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+        <div
+          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
           style={{
-            background: 'radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.3) 0%, transparent 70%)',
-            transform: `scale(${0.8 + progress * 0.4}) rotate(${progress * 45}deg)`,
-            transition: isSwiping ? 'none' : 'transform 0.3s ease-out'
-          }}
-        />
-        
-        {/* Delete icon with enhanced animation */}
-        <div 
-          className="relative z-10"
-          style={{
-            transform: `scale(${0.9 + progress * 0.2}) rotate(${isNearThreshold ? '5deg' : '0deg'})`,
-            transition: isSwiping ? 'none' : 'transform 0.2s cubic-bezier(0.4, 0, 0.2, 1)'
+            opacity: progress,
+            transform: `scale(${0.6 + progress * 0.4})`,
+            transition: dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
           }}
         >
-          <svg 
-            className="w-8 h-8 text-white drop-shadow-lg" 
-            fill="none" 
-            stroke="currentColor" 
+          <svg
+            className="w-6 h-6 text-white"
             viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
             style={{
-              filter: isNearThreshold 
-                ? 'drop-shadow(0 0 8px rgba(255, 255, 255, 0.6))' 
-                : 'drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3))',
-              strokeWidth: isNearThreshold ? 2.5 : 2
+              transform: `rotate(${armed ? 10 : 0}deg)`,
+              transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)',
+              strokeWidth: armed ? 2.2 : 2,
             }}
           >
-            <path 
-              strokeLinecap="round" 
-              strokeLinejoin="round" 
-              d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" 
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
           </svg>
         </div>
-
-        {/* Pulsing effect when near threshold */}
-        {isNearThreshold && (
-          <div 
-            className="absolute inset-0 rounded-r-2xl"
-            style={{
-              background: 'rgba(255, 255, 255, 0.2)',
-              animation: 'pulse 0.8s infinite alternate',
-              animationTimingFunction: 'ease-in-out'
-            }}
-          />
-        )}
-
-        {/* Progress indicator dots */}
-        <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-1">
-          {[0, 1, 2].map(i => (
-            <div
-              key={i}
-              className="w-1 h-1 rounded-full bg-white"
-              style={{
-                opacity: progress > (i * 0.33) ? 0.8 : 0.3,
-                transform: `scale(${progress > (i * 0.33) ? 1.2 : 0.8})`,
-                transition: 'all 0.2s ease-out'
-              }}
-            />
-          ))}
-        </div>
       </div>
 
-      {/* Card (unchanged) */}
+      {/* Foreground card */}
       <div
-        className={
-          `relative bg-white/60 backdrop-blur-md rounded-xl p-4 flex items-center space-x-4 shadow-lg border border-gray-200/80 hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer z-10 select-none ` +
-          (animating ? 'transition-transform duration-300' : '')
-        }
-        style={{
-          transform: `translateX(${swipeX}px)`,
-          transition: animating ? 'transform 0.25s cubic-bezier(.4,1.4,.6,1)' : undefined,
-          minHeight: 72,
+        ref={elRef}
+        role="button"
+        aria-label={`${foodData.name}, ${Math.round(calories)} kilocalories`}
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Backspace' || e.key === 'Delete') onDelete(meal);
+          if (e.key === 'Enter') onClick(meal);
         }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        onClick={() => !isSwiping && onClick(meal)}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onPointerLeave={onPointerLeave}
+        onClick={() => {
+          if (!dragging && Math.abs(dx) < 5) onClick(meal);
+        }}
+        className="relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl select-none cursor-pointer overflow-hidden"
+        style={{
+          transform: `translateX(${dx}px) scale(${scale})`,
+          transition: animating ? 'transform 220ms cubic-bezier(.2,.8,.2,1.2), box-shadow 220ms ease' : 'none',
+          minHeight: 76,
+          willChange: 'transform',
+          boxShadow: `
+            0 10px 30px -10px rgba(0,0,0,${progress * 0.15 + 0.05}),
+            inset 0 0 0 1px rgba(0,0,0,0.05)
+          `,
+        }}
       >
-        <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden">
-          {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
-            <img
-              src={
-                meal.ImageBase64.startsWith('data:image')
-                  ? meal.ImageBase64
-                  : `data:image/jpeg;base64,${meal.ImageBase64}`
-              }
-              alt={foodData.name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          ) : meal.ImagePath ? (
-            <img
-              src={meal.ImagePath}
-              alt={foodData.name}
-              className="w-full h-full object-cover"
-              onError={(e) => {
-                e.target.style.display = 'none';
-              }}
-            />
-          ) : (
-            <span className="text-2xl">🍽️</span>
-          )}
-        </div>
-        <div className="flex-1">
-          <h4 className="font-semibold text-gray-800 truncate">{foodData.name}</h4>
-          <p className="text-sm text-gray-500">{mealTime}</p>
-        </div>
-        <div className="text-right">
-          <p className="font-bold text-lg text-gray-800">{Math.round(calories)}</p>
-          <p className="text-xs text-gray-500 -mt-1">kcal</p>
+        {/* Progress bar at bottom */}
+        <div
+          className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+          style={{
+            width: `${progress * 100}%`,
+            transition: dragging ? 'none' : 'width 220ms ease',
+            opacity: progress > 0 ? 1 : 0,
+          }}
+        />
+
+        <div className="p-4 flex items-center gap-4">
+          <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+            {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
+              <img
+                src={meal.ImageBase64.startsWith('data:image') ? meal.ImageBase64 : `data:image/jpeg;base64,${meal.ImageBase64}`}
+                alt={foodData.name}
+                className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : meal.ImagePath ? (
+              <img
+                src={meal.ImagePath}
+                alt={foodData.name}
+                className="w-full h-full object-cover"
+                onError={(e) => { e.currentTarget.style.display = 'none'; }}
+              />
+            ) : (
+              <span className="text-2xl">🍽️</span>
+            )}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <h4 className="font-semibold text-gray-900 truncate">{foodData.name}</h4>
+            <p className="text-sm text-gray-500">{mealTime}</p>
+          </div>
+
+          <div className="text-right">
+            <p className="font-bold text-lg text-gray-900">{Math.round(calories)}</p>
+            <p className="text-[11px] text-gray-500 -mt-0.5 tracking-wide">kcal</p>
+          </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0% { opacity: 0.2; }
-          100% { opacity: 0.4; }
-        }
-      `}</style>
     </div>
   );
 };
