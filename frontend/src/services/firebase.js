@@ -203,7 +203,7 @@ export const onAuthStateChange = (callback) => {
     auth,
     (user) => {
       if (user) {
-        console.log('✅ Auth state: User authenticated', user.email);
+        console.log('✅ Auth state: User authenticated');
       } else {
         console.log('❌ Auth state: User not authenticated');
       }

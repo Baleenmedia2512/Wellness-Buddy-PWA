@@ -78,10 +78,8 @@ function WellnessBuddyApp() {
       if (!dbUserId) {
         dbUserId = await getUserId(user);
       }
-      console.log('🔍 Checking for background nutrition for user:', dbUserId);
       if (!dbUserId) return;
       const latest = await fetchLatestBackgroundNutrition(dbUserId);
-      console.log('🔍 Latest background nutrition record:', latest);
       if (!latest) return;
       // Only show if not acknowledged
       const lastAckId = localStorage.getItem('wellnessBuddy_lastBgNutritionId');
@@ -331,11 +329,9 @@ function WellnessBuddyApp() {
 
   // Persist popups to localStorage whenever they change
   useEffect(() => {
-    console.log('💾 Popup state changed:', successPopups.length, 'popups');
     
     try {
       localStorage.setItem('wellnessBuddy_successPopups', JSON.stringify(successPopups));
-      console.log('✅ Saved', successPopups.length, 'popups to localStorage');
     } catch (error) {
       console.error('❌ Failed to save popups to localStorage:', error);
     }
@@ -387,10 +383,8 @@ function WellnessBuddyApp() {
             imagePreview: imageBase64,
             timestamp: new Date()
           };
-          console.log('🎉 Adding new popup:', newPopup.id, 'to existing', successPopups.length, 'popups');
           setSuccessPopups(prev => {
             const updated = [...prev, newPopup];
-            console.log('📦 Updated popup array length:', updated.length);
             return updated;
           });
         } catch (err) {
@@ -431,24 +425,20 @@ function WellnessBuddyApp() {
   const handleSuccessPopupDelete = async (popupId) => {
     const popup = successPopups.find(p => p.id === popupId);
     if (!popup || !popup.analysisId) {
-      console.log('⚠️ No popup or analysis ID found for deletion:', popupId);
       return;
     }
     
-    console.log('🗑️ Deleting analysis:', popup.analysisId, 'for popup:', popupId);
     setDeleteLoading(true);
     try {
       await deleteNutritionAnalysis({ id: popup.analysisId });
       // Remove this popup from the array
       setSuccessPopups(prev => {
         const filtered = prev.filter(p => p.id !== popupId);
-        console.log('✅ Deleted popup', popupId, '- remaining:', filtered.length);
         return filtered;
       });
       
       // If this was the current analysis, clear it
       if (nutritionData && popup.nutritionData === nutritionData) {
-        console.log('🧹 Clearing current analysis data');
         setNutritionData(null);
         setImagePreview(null);
         setSelectedImage(null);
@@ -480,8 +470,6 @@ function WellnessBuddyApp() {
   };
 
   const resetApp = () => {
-    console.log('🔄 Resetting app...');
-    
     setSelectedImage(null);
     setImagePreview(null);
     setNutritionData(null);
@@ -510,8 +498,6 @@ function WellnessBuddyApp() {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-    
-    console.log('✅ App reset complete');
   };
 
   const handleSignIn = async (forceRedirect = false) => {
@@ -536,7 +522,6 @@ function WellnessBuddyApp() {
         setError('Popup was blocked. Trying redirect method...');
         // Automatically retry with redirect
         setTimeout(() => {
-          console.log('🔄 Retrying with redirect due to popup block');
           handleSignIn(true);
         }, 1000);
         return;
@@ -665,6 +650,16 @@ function WellnessBuddyApp() {
     );
   }
 
+  // Remove success popup for a meal if deleted in dashboard (before undo expires)
+  const handleDashboardMealDelete = (deletedAnalysisId) => {
+    if (!deletedAnalysisId) return;
+    setSuccessPopups(prev => prev.filter(p => p.analysisId !== deletedAnalysisId));
+    // Also remove if it's the background popup
+    if (bgNutritionPopup && bgNutritionPopup.analysisId === deletedAnalysisId) {
+      setBgNutritionPopup(null);
+    }
+  };
+
   // If showing nutrition dashboard, render it as a full page
   if (showNutritionDashboard) {
     return (
@@ -672,6 +667,7 @@ function WellnessBuddyApp() {
         user={user}
         onBack={showMainPage}
         apiBaseUrl={apiBaseUrl}
+        onMealDelete={handleDashboardMealDelete}
       />
     );
   }

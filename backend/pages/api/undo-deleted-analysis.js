@@ -61,8 +61,6 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(`✅ Background analysis restored, ID: ${id}`);
-
     return res.status(200).json({
       success: true,
       message: 'Analysis restored successfully',

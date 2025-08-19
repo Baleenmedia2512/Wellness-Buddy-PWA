@@ -343,6 +343,23 @@ Use USDA values. Return valid JSON only, no markdown.`;
         };
       }, { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
 
+      // Match the formatFoodsTitle helper logic
+      let categoryName = '';
+      const foods = data.foods || [];
+      const count = foods.length || 0;
+      if (count === 0) {
+        categoryName = 'Unknown Food';
+      } else if (count === 1) {
+        categoryName = (foods[0]?.name || 'Unknown Food').trim();
+      } else if (count === 2) {
+        const first = (foods[0]?.name || 'Unknown Food').trim();
+        const second = (foods[1]?.name || 'another item').trim();
+        categoryName = `${first} & ${second}`;
+      } else {
+        const first = (foods[0]?.name || 'Unknown Food').trim();
+        const others = count - 1;
+        categoryName = `${first} + ${others} more`;
+      }
       return {
         nutrition: {
           calories: Math.round(totalNutrition.calories || 0),
@@ -352,7 +369,7 @@ Use USDA values. Return valid JSON only, no markdown.`;
           fiber: Math.round(totalNutrition.fiber || 0)
         },
         category: {
-          name: data.foods.length > 1 ? `Mixed Foods (${data.foods.length} items)` : data.foods[0].name
+          name: categoryName
         },
         source: 'Google Gemini AI - Fast Analysis',
         isRealData: true,
