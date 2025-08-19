@@ -184,7 +184,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
             const lookupResponse = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ email: user.email, firebaseUid: user.uid })
+              body: JSON.stringify({ email: user.email })
             });
             const lookupData = await lookupResponse.json();
             if (lookupData.success && lookupData.userId) actualUserId = lookupData.userId;

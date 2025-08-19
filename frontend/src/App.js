@@ -269,15 +269,26 @@ function WellnessBuddyApp() {
     const unsubscribe = onAuthStateChange((user) => {
       setUser(user);
       setAuthLoading(false);
-      
-      // 🆕 Set user context for background service when user changes
+
+      // Set user context for background service when user changes
       if (user && Capacitor.isNativePlatform()) {
-        // For OTP users, use the database UserId directly; for Firebase users, use UID
-        const userId = user.id || user.uid || user.email || 'anonymous';  // user.id for OTP, user.uid for Firebase
-        const userEmail = user.email || null;
-        GalleryMonitor.setCurrentUser(userId, userEmail);
+        (async () => {
+          try {
+            const dbUserId = await getUserId(user);
+            if (dbUserId && dbUserId.userId && user.email) {
+                window.Capacitor.Plugins.GalleryMonitor.setCurrentUser({
+                  userId: dbUserId.userId,
+                  userEmail: user.email
+                });
+            }
+          } catch (err) {
+            console.warn('Failed to set current user for background service:', err);
+          }
+        })();
       } else if (!user && Capacitor.isNativePlatform()) {
-        GalleryMonitor.clearCurrentUser();
+        if (window?.Capacitor?.Plugins?.GalleryMonitor?.clearCurrentUser) {
+          window.Capacitor.Plugins.GalleryMonitor.clearCurrentUser();
+        }
       }
     });
 

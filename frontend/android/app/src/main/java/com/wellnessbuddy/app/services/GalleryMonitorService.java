@@ -323,36 +323,23 @@ public class GalleryMonitorService extends Service {
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
         android.content.SharedPreferences prefs = getSharedPreferences("WellnessBuddy", MODE_PRIVATE);
-        String firebaseInfo = prefs.getString("current_user_id", null);
         String userEmail = prefs.getString("current_user_email", null);
-        
         // Log all stored preferences for debugging
         Log.d(TAG, "🔍 SharedPreferences Debug:");
-        Log.d(TAG, "  - current_user_id: " + firebaseInfo);
         Log.d(TAG, "  - current_user_email: " + userEmail);
-        
-        // First check if we have a cached database UserId
         String cachedDbUserId = prefs.getString("cached_db_user_id", null);
         Log.d(TAG, "  - cached_db_user_id: " + cachedDbUserId);
-        
+
+        // Only allow DB userId (from cache or lookup)
         if (cachedDbUserId != null && !cachedDbUserId.isEmpty()) {
             Log.d(TAG, "✅ Using cached database UserId: " + cachedDbUserId);
             return cachedDbUserId;
         }
-        
-        // For OTP users, firebaseInfo might already be the database UserId
-        // Check if firebaseInfo is numeric (database UserId) vs alphanumeric (Firebase UID)
-        if (firebaseInfo != null && firebaseInfo.matches("\\d+")) {
-            Log.d(TAG, "✅ Using OTP database UserId directly: " + firebaseInfo);
-            // Cache it for future use
-            prefs.edit().putString("cached_db_user_id", firebaseInfo).apply();
-            return firebaseInfo;
-        }
-        
+
         // Try to get database UserId using email lookup (this will cache the result)
         if (userEmail != null && !userEmail.isEmpty()) {
             Log.d(TAG, "🔍 Attempting database lookup for email: " + userEmail);
-            String dbUserId = databaseSyncClient.lookupDatabaseUserId(userEmail, firebaseInfo);
+            String dbUserId = databaseSyncClient.lookupDatabaseUserId(userEmail, null);
             if (dbUserId != null) {
                 Log.d(TAG, "✅ Using database UserId from lookup: " + dbUserId + " for email: " + userEmail);
                 return dbUserId;
@@ -360,30 +347,10 @@ public class GalleryMonitorService extends Service {
                 Log.w(TAG, "❌ Database UserId lookup failed for email: " + userEmail);
             }
         }
-        
-        // ** TEMPORARY TESTING: Use known test user **
-        // TODO: Remove this after proper login is implemented
-        Log.w(TAG, "⚠️ No valid user found in SharedPreferences, using test user");
-        String testEmail = "logeshwaran67677@gmail.com";
-        String testDbUserId = databaseSyncClient.lookupDatabaseUserId(testEmail, null);
-        if (testDbUserId != null) {
-            Log.d(TAG, "✅ Using test database UserId: " + testDbUserId + " for email: " + testEmail);
-            // Cache it for future use
-            prefs.edit().putString("cached_db_user_id", testDbUserId).apply();
-            prefs.edit().putString("current_user_email", testEmail).apply();
-            return testDbUserId;
-        }
-        
-        // Fallback to original logic if database lookup fails
-        if (firebaseInfo == null || firebaseInfo.equals("anonymous")) {
-            // Try to get from other sources or generate a device-specific ID
-            String deviceId = android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
-            Log.w(TAG, "No user ID found, using device ID: " + deviceId);
-            return deviceId;
-        }
-        
-        Log.w(TAG, "Using Firebase info as fallback: " + firebaseInfo);
-        return firebaseInfo;
+
+        // If no DB userId, return null and log error
+        Log.e(TAG, "❌ No valid database userId found. Aborting analysis save.");
+        return null;
     }
 
     // Removed: JS will poll for queued images

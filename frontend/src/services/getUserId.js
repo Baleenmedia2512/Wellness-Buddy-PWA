@@ -7,8 +7,7 @@ export async function getUserId(user) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   if (!user) return null;
   const email = user.email || null;
-  const firebaseUid = user.uid || null;
-  if (!email && !firebaseUid) return null;
+  if (!email) return null;
   try {
     const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
