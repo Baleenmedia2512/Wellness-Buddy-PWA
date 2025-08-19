@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import GalleryMonitorPlugin from '../plugins/galleryMonitorPlugin';
+import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 
 export const GalleryMonitor = {
   async initialize() {
@@ -23,7 +23,7 @@ export const GalleryMonitor = {
       if (Capacitor.getPlatform() === 'android') {
         await GalleryMonitorPlugin.setCurrentUser({ 
           userId, 
-          userEmail: userEmail || userId // Use email if provided, otherwise fall back to userId
+          userEmail: userEmail // Use email if provided, otherwise fall back to userId
         });
       }
     } catch (error) {

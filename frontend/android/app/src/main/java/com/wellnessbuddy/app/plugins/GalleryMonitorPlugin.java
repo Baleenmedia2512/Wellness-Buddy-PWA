@@ -91,28 +91,44 @@ public class GalleryMonitorPlugin extends Plugin {
     public void setCurrentUser(PluginCall call) {
         try {
             String userId = call.getString("userId");
-            String userEmail = call.getString("userEmail");
-            
-            if (userId == null || userId.isEmpty()) {
-                call.reject("User ID is required");
-                return;
+            if (userId == null) {
+            Integer userIdNum = call.getInt("userId");
+            if (userIdNum != null) userId = String.valueOf(userIdNum);
             }
-            
+
+            String userEmail = call.getString("userEmail");
+
+            String cachedDbUserId = call.getString("cachedDbUserId");
+            if (cachedDbUserId == null) {
+            Integer cachedDbUserIdNum = call.getInt("cachedDbUserId");
+            if (cachedDbUserIdNum != null) cachedDbUserId = String.valueOf(cachedDbUserIdNum);
+            }
+
+            Log.d(TAG, "setCurrentUser called with: userId=" + userId +
+                        ", userEmail=" + userEmail + ", cachedDbUserId=" + cachedDbUserId);
+
+            if (userId == null || userId.isEmpty()) {
+            call.reject("User ID is required");
+            return;
+            }
+
             SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
             editor.putString("current_user_id", userId);
-            
-            // Store email for database UserId lookup and clear cached DB UserId
+
             if (userEmail != null && !userEmail.isEmpty()) {
-                editor.putString("current_user_email", userEmail);
-                // Clear cached database UserId when new user logs in
-                editor.remove("cached_db_user_id");
-                Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
-            } else {
-                editor.remove("cached_db_user_id");
-                Log.d(TAG, "✅ Current user set - ID: " + userId + " (no email provided, DB cache cleared)");
+            editor.putString("current_user_email", userEmail);
             }
-            
+
+            if (cachedDbUserId != null && !cachedDbUserId.isEmpty()) {
+            editor.putString("cached_db_user_id", cachedDbUserId);
+            Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail +
+                        ", cached_db_user_id: " + cachedDbUserId);
+            } else {
+            editor.remove("cached_db_user_id");
+            Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
+            }
+
             editor.apply();
             call.resolve();
         } catch (Exception e) {
@@ -120,6 +136,7 @@ public class GalleryMonitorPlugin extends Plugin {
             call.reject("Failed to set current user", e);
         }
     }
+
     
     @PluginMethod
     public void getCurrentUser(PluginCall call) {

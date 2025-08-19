@@ -1,6 +1,6 @@
 // src/services/getUserId.js
 /**
- * Looks up the real UserID from the backend using email or firebaseUid.
+ * Looks up the real UserID from the backend using email.
  * Returns the UserID from the DB, or null if not found.
  */
 export async function getUserId(user) {
@@ -12,7 +12,7 @@ export async function getUserId(user) {
     const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, firebaseUid })
+      body: JSON.stringify({ email })
     });
     const data = await res.json();
     if (data.success && data.userId) {

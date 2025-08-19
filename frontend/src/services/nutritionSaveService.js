@@ -73,13 +73,13 @@ function transformToBackgroundServiceFormat(analysisResult) {
  * Utility to lookup the real UserID from team_table based on email
  * Returns: { success, userId, ... }
  */
-export async function lookupUserId(email, firebaseUid = null) {
+export async function lookupUserId(email) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
     const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, firebaseUid })
+      body: JSON.stringify({ email })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to lookup user ID');

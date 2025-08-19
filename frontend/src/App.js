@@ -191,6 +191,23 @@ function WellnessBuddyApp() {
   }
 };
 
+
+  const handleSaveUserCache = async (user) => {
+    console.log('handleSaveUserCache is initiated');
+    if (user && Capacitor.isNativePlatform()) {
+      console.log('1st condition met')
+        try {
+          const dbUserId = await getUserId(user);
+          if (dbUserId && user.email) {
+            console.log('Setting GalleryMonitor current user:', dbUserId, user.email);
+            GalleryMonitor.setCurrentUser(String(dbUserId), user.email);
+          }
+        } catch (err) {
+          console.warn('Failed to set current user for background service:', err);
+        }
+    }
+  }
+
   
   // Set up StatusBar to appear above content (not overlaid)
   useEffect(() => {
@@ -203,6 +220,7 @@ function WellnessBuddyApp() {
       });
     }
   }, []);
+  
 
   useEffect(() => {
     const initializeGalleryMonitoring = async () => {
@@ -269,26 +287,10 @@ function WellnessBuddyApp() {
     const unsubscribe = onAuthStateChange((user) => {
       setUser(user);
       setAuthLoading(false);
-
+      console.log('On profile creation task, make sure to set from DB here');
       // Set user context for background service when user changes
       if (user && Capacitor.isNativePlatform()) {
-        (async () => {
-          try {
-            const dbUserId = await getUserId(user);
-            if (dbUserId && dbUserId.userId && user.email) {
-                window.Capacitor.Plugins.GalleryMonitor.setCurrentUser({
-                  userId: dbUserId.userId,
-                  userEmail: user.email
-                });
-            }
-          } catch (err) {
-            console.warn('Failed to set current user for background service:', err);
-          }
-        })();
-      } else if (!user && Capacitor.isNativePlatform()) {
-        if (window?.Capacitor?.Plugins?.GalleryMonitor?.clearCurrentUser) {
-          window.Capacitor.Plugins.GalleryMonitor.clearCurrentUser();
-        }
+        handleSaveUserCache(user);
       }
     });
 
@@ -308,9 +310,10 @@ function WellnessBuddyApp() {
           console.warn('⚠️ Camera check failed:', error);
         }
       };
-
+      
       checkCamera();
       requestAllPermissions(); // 🔔 request permissions after login
+      handleSaveUserCache(user);
     }
   }, [user]);
 
@@ -322,6 +325,8 @@ function WellnessBuddyApp() {
       if (otpUser) {
         try {
           setUser(JSON.parse(otpUser));
+          console.log('OTP user restored:', JSON.parse(otpUser));
+          handleSaveUserCache(JSON.parse(otpUser));
         } catch (error) {
           console.error('❌ Failed to restore OTP user:', error);
           localStorage.removeItem('otpUser');

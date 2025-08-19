@@ -14,6 +14,11 @@ import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+    
+        // Register the GalleryMonitorPlugin
+        registerPlugin(GalleryMonitorPlugin.class);
+        android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
+        
         super.onCreate(savedInstanceState);
 
         // Configure status bar with native look
@@ -46,9 +51,6 @@ public class MainActivity extends BridgeActivity {
         } else {
             startService(serviceIntent);
         }
-        
-        // Register the GalleryMonitorPlugin
-        registerPlugin(GalleryMonitorPlugin.class);
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());

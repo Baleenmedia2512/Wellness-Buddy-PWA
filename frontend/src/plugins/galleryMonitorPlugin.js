@@ -1,5 +1,3 @@
 import { registerPlugin } from '@capacitor/core';
 
-const GalleryMonitorPlugin = registerPlugin('GalleryMonitor');
-
-export default GalleryMonitorPlugin;
+export const GalleryMonitorPlugin = registerPlugin('GalleryMonitor');

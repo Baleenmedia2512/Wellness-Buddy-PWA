@@ -40,10 +40,6 @@ public class DatabaseSyncClient {
             if (email != null && !email.isEmpty()) {
                 requestBody.put("email", email);
             }
-            if (firebaseUid != null && !firebaseUid.isEmpty()) {
-                requestBody.put("firebaseUid", firebaseUid);
-            }
-            
             Request request = new Request.Builder()
                 .url(apiBaseUrl + "/api/lookup-user-id")
                 .post(RequestBody.create(
