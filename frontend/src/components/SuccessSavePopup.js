@@ -16,12 +16,23 @@ const UNDO_ANIMATED_ONCE = new Set();
 const styles = `
   @keyframes fadeIn { from { opacity: 0; transform: translateY(10px);} to { opacity: 1; transform: translateY(0);} }
   .animate-fadeIn { animation: fadeIn 0.25s ease-out; }
+
   @keyframes stackExpand { from { transform: scale(0.95); opacity: 0.8;} to { transform: scale(1); opacity: 1;} }
   .animate-stackExpand { animation: stackExpand 0.25s ease-out; }
-  @keyframes slideOut { from { transform: translateX(var(--swipe-x, 0)); opacity: 1;} to { transform: translateX(100%); opacity: 0;} }
+
+  /* Slide out uses base stack transform + the swipe offset captured at release */
+  @keyframes slideOut {
+    from { transform: var(--base-transform) translateX(var(--swipe-x, 0)); opacity: 1; }
+    to   { transform: var(--base-transform) translateX(100%); opacity: 0; }
+  }
   .animate-slideOut { animation: slideOut 0.3s ease-in-out forwards; }
-  @keyframes slideOutLeft { from { transform: translateX(var(--swipe-x, 0)); opacity: 1;} to { transform: translateX(-100%); opacity: 0;} }
+
+  @keyframes slideOutLeft {
+    from { transform: var(--base-transform) translateX(var(--swipe-x, 0)); opacity: 1; }
+    to   { transform: var(--base-transform) translateX(-100%); opacity: 0; }
+  }
   .animate-slideOutLeft { animation: slideOutLeft 0.3s ease-in-out forwards; }
+
   @keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('success-popup-styles')) {
@@ -53,6 +64,12 @@ const SuccessSavePopup = ({
   const [pendingRestore, setPendingRestore] = useState({});
   // Hide cards locally as soon as delete is tapped (before parent/DB confirm)
   const [locallyHidden, setLocallyHidden] = useState({});
+
+  // NEW: control slide-out via React so re-renders don't kill the animation
+  // { [id]: 'left' | 'right' }
+  const [dismissDirById, setDismissDirById] = useState({});
+  // Freeze the release offset in px: { [id]: number }
+  const [dismissStartX, setDismissStartX] = useState({});
 
   // Expire UNDO rows
   useEffect(() => {
@@ -173,6 +190,7 @@ const SuccessSavePopup = ({
     const t = e.touches[0];
     setSwipeState(prev => ({ ...prev, [id]: { startX: t.clientX, startY: t.clientY, isSwiping: false } }));
   };
+
   const handleTouchMove = (id, e) => {
     const s = swipeState[id];
     if (!s) return;
@@ -185,18 +203,25 @@ const SuccessSavePopup = ({
       el.style.opacity = String(1 - Math.min(Math.abs(dx) / 150, 1) * 0.5);
     }
   };
+
   const handleTouchEnd = (id, e) => {
     const s = swipeState[id];
     if (!s) return;
     const dx = e.changedTouches[0].clientX - s.startX;
     const el = e.currentTarget;
+
     if (s.isSwiping && Math.abs(dx) > 100) {
-      el.style.removeProperty('--swipe-x'); el.style.opacity = '';
-      el.classList.add(dx > 0 ? 'animate-slideOut' : 'animate-slideOutLeft');
-      setTimeout(() => onClose(id), 300);
+      // Let animation control opacity; keep the swipe offset frozen via state
+      el.style.opacity = '';
+
+      setDismissStartX(prev => ({ ...prev, [id]: dx }));
+      setDismissDirById(prev => ({ ...prev, [id]: dx > 0 ? 'right' : 'left' }));
     } else {
-      el.style.removeProperty('--swipe-x'); el.style.opacity = '';
+      el.style.removeProperty('--swipe-x');
+      el.style.opacity = '';
     }
+
+    // Clear transient swipe state (doesn't affect animation now that it's state-driven)
     setSwipeState(prev => { const n = { ...prev }; delete n[id]; return n; });
   };
 
@@ -256,7 +281,9 @@ const SuccessSavePopup = ({
     id,
     touchHandlers,
     forceFlat = false,
-    zBoost = 0
+    zBoost = 0,
+    dismissDir = null,     // 'left' | 'right' | null
+    freezeX = 0            // px at release
   }) => {
     const isTop = index === total - 1;
     const stackOffset  = total > 1 ? (total - 1 - index) * 2    : 0;
@@ -275,17 +302,25 @@ const SuccessSavePopup = ({
       ? ''
       : (!isStackExpanded ? `translateY(-${stackOffset}px) scale(${1 - scaleOffset})` : '');
 
+    const slideClass =
+      dismissDir === 'right' ? 'animate-slideOut'
+      : dismissDir === 'left' ? 'animate-slideOutLeft'
+      : '';
+
     return (
       <div
         key={id}
         className={`relative pointer-events-auto w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden transition-all duration-300 ease-out
-          ${showFull && isStackExpanded && total > 1 && !forceFlat ? 'animate-stackExpand' : ''}`}
+          ${showFull && isStackExpanded && total > 1 && !forceFlat ? 'animate-stackExpand' : ''} ${slideClass}`}
         style={{
-          transform: `${baseTransform} translateX(var(--swipe-x, 0px))`.trim(),
+          '--base-transform': baseTransform || 'none',
+          '--swipe-x': dismissDir ? `${freezeX}px` : undefined,
+          transform: `var(--base-transform) translateX(var(--swipe-x, 0px))`,
           opacity: showFull ? 1 : opacityOffset,
           zIndex: (forceFlat ? 1000 : 50) + index + zBoost,
           marginTop,
-          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+          willChange: 'transform'
         }}
         {...touchHandlers}
       >
@@ -402,15 +437,34 @@ const SuccessSavePopup = ({
     if (!data || !isValidNutritionData(data)) return null;
     const isExpanded = expandedId === id;
 
+    // slide-out control for this card
+    const dismissDir = dismissDirById[id] || null;
+    const freezeX = dismissStartX[id] ?? 0;
+
+    const callOnClose = () => (isSingle ? onClose() : onClose(id));
+
     return renderCardShell({
       id,
       index,
       total,
+      dismissDir,
+      freezeX,
       touchHandlers: {
         onClick: total > 1 ? handleStackClick : undefined,
         onTouchStart: (e) => handleTouchStart(id, e),
         onTouchMove:  (e) => handleTouchMove(id, e),
         onTouchEnd:   (e) => handleTouchEnd(id, e),
+        onAnimationEnd: (e) => {
+          // Only react to our slide-out animations
+          if (e.animationName === 'slideOut' || e.animationName === 'slideOutLeft') {
+            // cleanup
+            setDismissDirById(prev => { const n = { ...prev }; delete n[id]; return n; });
+            setDismissStartX(prev => { const n = { ...prev }; delete n[id]; return n; });
+            // remove the CSS var so future renders start clean
+            e.currentTarget.style.removeProperty('--swipe-x');
+            callOnClose();
+          }
+        }
       },
       children: (
         <>
