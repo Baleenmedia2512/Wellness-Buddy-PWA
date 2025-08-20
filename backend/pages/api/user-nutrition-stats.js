@@ -38,7 +38,8 @@ export default async function handler(req, res) {
         SELECT 
           ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore,
           TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-          ProcessedBy, DeviceInfo, CreatedAt,
+          ProcessedBy, DeviceInfo,
+          DATE_FORMAT(CreatedAt, '%Y-%m-%d %H:%i:%s') as CreatedAt,
           HOUR(CreatedAt) as meal_hour,
           CASE 
             WHEN HOUR(CreatedAt) >= 5 AND HOUR(CreatedAt) < 10 THEN 'breakfast'
