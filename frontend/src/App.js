@@ -69,8 +69,28 @@ function WellnessBuddyApp() {
 
   // Background nutrition popup state
   const [bgNutritionPopup, setBgNutritionPopup] = useState(null);
+
+  // Make a compact, user-friendly title from foods[]
+  const titleFromFoods = (foods = []) => {
+    const count = Array.isArray(foods) ? foods.length : 0;
+    if (count === 0) return 'Food';
+
+    const safe = (v) => (v?.toString?.() || '').trim();
+    const first = safe(foods[0]?.name) || 'Food';
+
+    if (count === 1) return first;
+
+    if (count === 2) {
+      const second = safe(foods[1]?.name) || 'another item';
+      return `${first} & ${second}`;
+    }
+
+    return `${first} + ${count - 1} more`;
+  };
+
   // Show background nutrition popup if new record exists and not acknowledged
   useEffect(() => {
+    
     const maybeShowBgNutritionPopup = async () => {
       if (!user) return;
       // Always use DB UserID only
@@ -110,15 +130,10 @@ function WellnessBuddyApp() {
                 fiber: item.nutrition?.fiber ?? 0
               }))
             : [];
-          // Set a better title/category
-          let category = {};
-          if (detailedItems.length === 1) {
-            category.name = detailedItems[0].name;
-          } else if (detailedItems.length > 1) {
-            category.name = `Mixed Foods (${detailedItems.length} items)`;
-          } else {
-            category.name = 'Food';
-          }
+
+          // Title like: "Idli", "Idli & Sambar", "Idli + 2 more"
+          const category = { name: titleFromFoods(detailedItems) };
+
           nutritionData = {
             ...parsed,
             nutrition: parsed.total || {},
@@ -439,21 +454,23 @@ function WellnessBuddyApp() {
   };
 
   const handleSuccessPopupDelete = async (popupId) => {
-    const popup = successPopups.find(p => p.id === popupId);
-    if (!popup || !popup.analysisId) {
+    // If deleting the special bg popup, just drop it from bg state.
+    if (bgNutritionPopup && popupId === bgNutritionPopup.id) {
+      // (Optional) mark as acknowledged so it won't be fetched again immediately
+      // localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(bgNutritionPopup.analysisId));
+      setBgNutritionPopup(null);
       return;
     }
-    
+
+    // Normal saved popups (non-bg)
+    const popup = successPopups.find(p => p.id === popupId);
+    if (!popup || !popup.analysisId) return;
+
     setDeleteLoading(true);
     try {
       await deleteNutritionAnalysis({ id: popup.analysisId });
-      // Remove this popup from the array
-      setSuccessPopups(prev => {
-        const filtered = prev.filter(p => p.id !== popupId);
-        return filtered;
-      });
-      
-      // If this was the current analysis, clear it
+      setSuccessPopups(prev => prev.filter(p => p.id !== popupId));
+
       if (nutritionData && popup.nutritionData === nutritionData) {
         setNutritionData(null);
         setImagePreview(null);
@@ -739,12 +756,26 @@ function WellnessBuddyApp() {
           popups={bgNutritionPopup ? [bgNutritionPopup, ...successPopups] : successPopups}
           onClose={handleSuccessPopupClose}
           onDelete={handleSuccessPopupDelete}
-          onRestore={(popupId, popup) => {
-            // Only restore if not already present
+          onRestore={(popupId, popup, indexHint, meta) => {
+            // If this is the background popup, put it back at the head
+            if (popupId?.startsWith?.('bg-')) {
+              setBgNutritionPopup(popup);
+              // make sure it isn't also in successPopups
+              setSuccessPopups(prev => prev.filter(p => p.id !== popupId));
+              return;
+            }
+
+            // Normal saved popup: reinsert at its previous position
             setSuccessPopups(prev => {
               if (prev.find(p => p.id === popupId)) return prev;
-              // Insert at the end (or you can insert at original index if you want)
-              return [...prev, popup];
+
+              let insertAt = typeof indexHint === 'number' ? indexHint : prev.length;
+              if (meta?.hasBgHead) insertAt = Math.max(0, insertAt - 1);
+
+              insertAt = Math.max(0, Math.min(insertAt, prev.length));
+              const next = prev.slice();
+              next.splice(insertAt, 0, popup);
+              return next;
             });
           }}
         />

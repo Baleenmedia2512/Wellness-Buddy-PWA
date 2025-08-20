@@ -1,6 +1,16 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+// frontend/src/components/SuccessSavePopup.js
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useLayoutEffect,
+} from 'react';
 
 const UNDO_SECONDS = 10;
+
+// Prevents double fade in StrictMode
+const UNDO_ANIMATED_ONCE = new Set();
 
 // Inject styles once
 const styles = `
@@ -24,9 +34,9 @@ if (typeof document !== 'undefined' && !document.getElementById('success-popup-s
 const SuccessSavePopup = ({
   open,                 // legacy single card
   popups,               // [{ id, imagePreview, nutritionData, analysisId? }]
-  onClose,              // (id?) => void        - closes/dismisses a card (not delete)
-  onDelete,             // (id)  => void        - remove from parent list after delete
-  onRestore,            // (id, popup) => void  - add back to parent list on undo (optional)
+  onClose,              // (id?) => void
+  onDelete,             // (id)  => void
+  onRestore,            // (id, popup, indexHint, meta) => void
   nutritionData,        // legacy
   imagePreview          // legacy
 }) => {
@@ -37,22 +47,22 @@ const SuccessSavePopup = ({
   const [swipeState, setSwipeState] = useState({});
   const [deletingId, setDeletingId] = useState(null);
 
-  // Inline undo placeholders: { [pid]: { popup, expiresAt, index } }
+  // Inline undo placeholders: { [pid]: { popup, expiresAt, index, ttlSeconds?, baseIndex? } }
   const [inlineUndos, setInlineUndos] = useState({});
-  // Optimistic re-show when undo is clicked (until parent re-adds): { [popupId]: { popup, index } }
+  // Optimistic re-show when undo is clicked: { [popupId]: { popup, index } }
   const [pendingRestore, setPendingRestore] = useState({});
+  // Hide cards locally as soon as delete is tapped (before parent/DB confirm)
+  const [locallyHidden, setLocallyHidden] = useState({});
 
-  // Expire inline undo placeholders precisely
+  // Expire UNDO rows
   useEffect(() => {
     const timers = [];
-    Object.entries(inlineUndos).forEach(([pid, { expiresAt }]) => {
+    Object.entries(inlineUndos).forEach(([pid, { expiresAt, popup }]) => {
       const ms = Math.max(0, expiresAt - Date.now());
       const t = setTimeout(() => {
-        setInlineUndos(prev => {
-          const n = { ...prev };
-          delete n[pid];
-          return n;
-        });
+        setInlineUndos(prev => { const n = { ...prev }; delete n[pid]; return n; });
+        setLocallyHidden(prev => { const n = { ...prev }; delete n[popup?.id]; return n; });
+        UNDO_ANIMATED_ONCE.delete(pid);
       }, ms);
       timers.push(t);
     });
@@ -69,6 +79,14 @@ const SuccessSavePopup = ({
     });
   }, [popups]);
 
+  // Auto-expand only when an UNDO first appears
+  const undoCount = Object.keys(inlineUndos).length;
+  const prevUndoCount = useRef(0);
+  useLayoutEffect(() => {
+    if (prevUndoCount.current === 0 && undoCount > 0) setIsStackExpanded(true);
+    prevUndoCount.current = undoCount;
+  }, [undoCount]);
+
   const isValidNutritionData = (data) => {
     if (!data) return false;
     if (typeof data === 'object' && Object.keys(data).length === 0) return false;
@@ -79,19 +97,18 @@ const SuccessSavePopup = ({
 
   const effectivePopups = useMemo(() => {
     const valid = (p) => p && p.nutritionData && isValidNutritionData(p.nutritionData);
-    if (popups) return popups.filter(valid);
-    if (open && nutritionData && imagePreview && isValidNutritionData(nutritionData)) {
-      return [{ id: 'legacy', imagePreview, nutritionData }];
-    }
-    return [];
+    const list = popups ? popups.filter(valid)
+      : (open && nutritionData && imagePreview && isValidNutritionData(nutritionData))
+        ? [{ id: 'legacy', imagePreview, nutritionData }]
+        : [];
+    // de-dupe by id (prevents bg dupes)
+    return list.filter((p, i, arr) => arr.findIndex(x => x.id === p.id) === i);
   }, [popups, open, nutritionData, imagePreview]);
 
-  // Compose what we render: base popups + any pending restores (if not already present) + inline undo placeholders at captured indices
+  // Compose: base (minus locally hidden) + pending restores + inline undo placeholders
   const composed = useMemo(() => {
-    // Start with base list
-    const base = [...effectivePopups];
+    const base = effectivePopups.filter(p => !locallyHidden[p.id]);
 
-    // Insert pending restored cards (so UNDO shows card immediately at the same spot)
     Object.values(pendingRestore).forEach(({ popup, index }) => {
       if (!base.find(p => p.id === popup.id)) {
         const i = Math.min(Math.max(0, index), base.length);
@@ -99,7 +116,6 @@ const SuccessSavePopup = ({
       }
     });
 
-    // Insert inline undo placeholders at their original indices
     const undoEntries = Object.entries(inlineUndos)
       .map(([pid, v]) => ({ pid, ...v }))
       .sort((a, b) => a.index - b.index);
@@ -107,14 +123,18 @@ const SuccessSavePopup = ({
     const out = [...base];
     let added = 0;
     for (const u of undoEntries) {
-      // If the popup is already back (pending or parent), don't render the placeholder
-      if (out.find(p => p.id === u.popup.id)) continue;
+      if (out.find(p => p.id === u.popup.id)) continue; // avoid dup if restored
       const i = Math.min(Math.max(0, u.index + added), out.length);
       out.splice(i, 0, { __undo: true, pid: u.pid, entry: u });
       added++;
     }
     return out;
-  }, [effectivePopups, inlineUndos, pendingRestore]);
+  }, [effectivePopups, inlineUndos, pendingRestore, locallyHidden]);
+
+  const hasBgHead = useMemo(
+    () => Boolean(popups?.[0]?.id?.startsWith('bg-')),
+    [popups]
+  );
 
   // Stack behavior helpers
   const containerRef = useRef(null);
@@ -203,7 +223,7 @@ const SuccessSavePopup = ({
                     <div className="w-5 h-5 bg-gray-200 rounded flex items-center justify-center text-xs font-medium text-gray-600">{i + 1}</div>
                     <div>
                       <p className="font-medium text-gray-800">{item.name}</p>
-                      <p className="text-[11px] text-gray-500">{item.portionDescription}</p>
+                      <p className="text-[11px] text-gray-500">{item.portionDescription || item.portion}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -228,29 +248,44 @@ const SuccessSavePopup = ({
     );
   };
 
-  const renderCardShell = ({ children, index, total, id, touchHandlers }) => {
+  // Shell wrapper with optional "flat" mode for Undo rows
+  const renderCardShell = ({
+    children,
+    index,
+    total,
+    id,
+    touchHandlers,
+    forceFlat = false,
+    zBoost = 0
+  }) => {
     const isTop = index === total - 1;
-    const stackOffset = total > 1 ? (total - 1 - index) * 2 : 0;
-    const scaleOffset = total > 1 ? (total - 1 - index) * 0.01 : 0;
+    const stackOffset  = total > 1 ? (total - 1 - index) * 2    : 0;
+    const scaleOffset  = total > 1 ? (total - 1 - index) * 0.01 : 0;
     const opacityOffset = total > 1 ? Math.max(0.8, 1 - (total - 1 - index) * 0.08) : 1;
-    const showFull = isStackExpanded || isTop || total === 1;
-    const marginTop = isStackExpanded ? (index === 0 ? 0 : '4px') : (index === 0 ? 0 : `-${60 - (total - 1 - index) * 2}px`);
-    const baseTransform = !isStackExpanded ? `translateY(-${stackOffset}px) scale(${1 - scaleOffset})` : '';
+
+    // Undo rows (forceFlat) do not participate in stack compression
+    const showFull   = forceFlat || isStackExpanded || isTop || total === 1;
+    const marginTop  = forceFlat
+      ? (index === 0 ? 0 : '6px')
+      : (isStackExpanded
+          ? (index === 0 ? 0 : '4px')
+          : (index === 0 ? 0 : `-${60 - (total - 1 - index) * 2}px`));
+
+    const baseTransform = forceFlat
+      ? ''
+      : (!isStackExpanded ? `translateY(-${stackOffset}px) scale(${1 - scaleOffset})` : '');
 
     return (
       <div
         key={id}
         className={`relative pointer-events-auto w-full bg-white rounded-xl shadow-lg border border-gray-100 overflow-hidden transition-all duration-300 ease-out
-          ${showFull && isStackExpanded && total > 1 ? 'animate-stackExpand' : ''}`}
+          ${showFull && isStackExpanded && total > 1 && !forceFlat ? 'animate-stackExpand' : ''}`}
         style={{
           transform: `${baseTransform} translateX(var(--swipe-x, 0px))`.trim(),
           opacity: showFull ? 1 : opacityOffset,
-          zIndex: 50 + index,
+          zIndex: (forceFlat ? 1000 : 50) + index + zBoost,
           marginTop,
-          boxShadow:
-            total > 1 && !isStackExpanded
-              ? `0 ${Math.max(2, 6 - index)}px ${Math.max(4, 12 - index * 2)}px rgba(0,0,0,${Math.max(0.08, 0.15 - index * 0.03)})`
-              : '0 4px 12px rgba(0,0,0,0.1)'
+          boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
         }}
         {...touchHandlers}
       >
@@ -261,92 +296,105 @@ const SuccessSavePopup = ({
 
   // Inline UNDO card (replaces a deleted card at the same index)
   const UndoInline = ({ pid, entry, index, total }) => {
-  const { popup, expiresAt, ttlSeconds = UNDO_SECONDS } = entry;
+    const { popup, expiresAt, ttlSeconds = UNDO_SECONDS, baseIndex } = entry;
 
-  // Text refresh only (doesn't touch the bar animation)
-  const [now, setNow] = React.useState(Date.now());
-  React.useEffect(() => {
-    const iv = setInterval(() => setNow(Date.now()), 500); // lighter & smooth
-    return () => clearInterval(iv);
-  }, []);
+    // Freeze index/total at mount
+    const mountIndex = useRef(index);
+    const mountTotal = useRef(total);
 
-  // Freeze animation config at mount so it never restarts on re-renders
-  const { totalS, delayAtMount } = React.useMemo(() => {
-    const totalS = Math.max(0, ttlSeconds);
-    const startedAt = expiresAt - totalS * 1000;
-    const elapsed = Math.min(totalS, Math.max(0, (Date.now() - startedAt) / 1000));
-    return { totalS, delayAtMount: -elapsed }; // negative delay jumps to the correct point
-  }, [expiresAt, ttlSeconds]);
+    // Only fade in once per pid
+    const shouldFadeIn = useMemo(() => {
+      if (UNDO_ANIMATED_ONCE.has(pid)) return false;
+      UNDO_ANIMATED_ONCE.add(pid);
+      return true;
+    }, [pid]);
 
-  const remaining = Math.ceil(Math.max(0, expiresAt - now) / 1000);
-  const title = popup?.nutritionData?.category?.name || 'Food';
+    // Text refresh
+    const [now, setNow] = useState(Date.now());
+    useEffect(() => {
+      const iv = setInterval(() => setNow(Date.now()), 500);
+      return () => clearInterval(iv);
+    }, []);
 
-  const handleUndo = async () => {
-    // optimistically restore right where it was
-    setInlineUndos(prev => { const n = { ...prev }; delete n[pid]; return n; });
-    setPendingRestore(prev => ({ ...prev, [popup.id]: { popup, index } }));
+    // Progress bar negative delay
+    const { totalS, delayAtMount } = useMemo(() => {
+      const totalS = Math.max(0, ttlSeconds);
+      const startedAt = expiresAt - totalS * 1000;
+      const elapsed = Math.min(totalS, Math.max(0, (Date.now() - startedAt) / 1000));
+      return { totalS, delayAtMount: -elapsed };
+    }, [expiresAt, ttlSeconds]);
 
-    try {
-      if (popup.analysisId) {
-        const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/undo-deleted-analysis`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: popup.analysisId })
-        });
-        const data = await res.json();
-        if (!data?.success) throw new Error(data?.message || 'Undo failed');
+    const remaining = Math.ceil(Math.max(0, expiresAt - now) / 1000);
+    const title = popup?.nutritionData?.category?.name || 'Food';
+
+    const handleUndo = async () => {
+      setInlineUndos(prev => { const n = { ...prev }; delete n[pid]; return n; });
+      UNDO_ANIMATED_ONCE.delete(pid);
+
+      setLocallyHidden(prev => { const n = { ...prev }; delete n[popup.id]; return n; });
+
+      // Show immediately where it was until parent re-adds
+      setPendingRestore(prev => ({ ...prev, [popup.id]: { popup, index: mountIndex.current } }));
+
+      try {
+        if (popup.analysisId) {
+          const res = await fetch(`${process.env.REACT_APP_API_BASE_URL}/api/undo-deleted-analysis`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: popup.analysisId })
+          });
+          const data = await res.json();
+          if (!data?.success) throw new Error(data?.message || 'Undo failed');
+        }
+        onRestore && onRestore(popup.id, popup, (baseIndex ?? index), { hasBgHead });
+      } catch (e) {
+        setPendingRestore(prev => { const n = { ...prev }; delete n[popup.id]; return n; });
+        setInlineUndos(prev => ({ ...prev, [pid]: { popup, expiresAt, ttlSeconds, index: mountIndex.current } }));
+        setLocallyHidden(prev => ({ ...prev, [popup.id]: true }));
+        alert(e?.message || 'Failed to undo. Please try again.');
       }
-      onRestore && onRestore(popup.id, popup);
-    } catch (e) {
-      // revert if server undo fails
-      setPendingRestore(prev => { const n = { ...prev }; delete n[popup.id]; return n; });
-      setInlineUndos(prev => ({ ...prev, [pid]: { popup, expiresAt, ttlSeconds, index } }));
-      alert(e?.message || 'Failed to undo. Please try again.');
-    }
-  };
+    };
 
-  // shell wrapper you already have:
-  return renderCardShell({
-    id: `undo-${pid}`,
-    index,
-    total,
-    touchHandlers: {}, // no swipe on undo row
-    children: (
-      <div className="relative p-3 animate-fadeIn">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">🗑️</div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-gray-800 truncate">
-              <span className="font-medium">Removed</span> “{title}”
-            </p>
-            <p className="text-[11px] text-amber-700/80">Undo available for {remaining}s</p>
+    return renderCardShell({
+      id: `undo-${pid}`,
+      index: mountIndex.current,
+      total: mountTotal.current,
+      touchHandlers: {}, // no swipe on undo row
+      forceFlat: true,
+      children: (
+        <div className={`relative p-3 ${shouldFadeIn ? 'animate-fadeIn' : ''}`}>
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">🗑️</div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-gray-800 truncate">
+                <span className="font-medium">Removed</span> “{title}”
+              </p>
+              <p className="text-[11px] text-amber-700/80">Undo available for {remaining}s</p>
+            </div>
+            <button
+              onClick={handleUndo}
+              className="px-3 py-1.5 rounded-full text-sm font-medium border border-amber-300 text-amber-800 hover:bg-amber-100 active:scale-95 transition"
+            >
+              Undo
+            </button>
           </div>
-          <button
-            onClick={handleUndo}
-            className="px-3 py-1.5 rounded-full text-sm font-medium border border-amber-300 text-amber-800
-                       hover:bg-amber-100 active:scale-95 transition"
-          >
-            Undo
-          </button>
+
+          {/* progress bar */}
+          <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-amber-200 overflow-hidden rounded-b-xl">
+            <span
+              key={pid}
+              className="block h-full bg-amber-600 origin-left will-change-transform"
+              style={{
+                transformOrigin: 'left',
+                transform: 'translateZ(0)',
+                animation: `countdown-shrink ${totalS}s linear ${delayAtMount}s forwards`
+              }}
+            />
+          </span>
         </div>
-
-        {/* smooth, GPU-accelerated cooldown bar */}
-        <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-amber-200 overflow-hidden rounded-b-xl">
-          <span
-            key={pid} /* force one-time mount */
-            className="block h-full bg-amber-600 origin-left will-change-transform"
-            style={{
-              transformOrigin: 'left',
-              transform: 'translateZ(0)',             // GPU hint
-              animation: `countdown-shrink ${totalS}s linear ${delayAtMount}s forwards`
-            }}
-          />
-        </span>
-      </div>
-    )
-  });
-};
-
+      )
+    });
+  };
 
   const renderPopup = (popup, id, isSingle, index, total) => {
     const data  = isSingle ? nutritionData : popup.nutritionData;
@@ -369,8 +417,11 @@ const SuccessSavePopup = ({
           <div className="p-3">
             <div className="flex items-start gap-3">
               {image && (
-                <img src={image} alt="Food preview"
-                  className="w-16 h-16 object-cover rounded-lg border border-gray-100 flex-shrink-0"/>
+                <img
+                  src={image}
+                  alt="Food preview"
+                  className="w-16 h-16 object-cover rounded-lg border border-gray-100 flex-shrink-0"
+                />
               )}
 
               <div className="flex-1 min-w-0">
@@ -429,12 +480,36 @@ const SuccessSavePopup = ({
               <button
                 disabled={deletingId === id}
                 onClick={async () => {
-                  if (open && !popups) { onDelete(); return; } // legacy
+                  // Legacy single-card path
+                  if (open && !popups) { onDelete(); return; }
 
                   const analysisId = popup.analysisId;
                   if (!analysisId) { onDelete(id); return; }
 
+                  if (deletingId === id) return;
                   setDeletingId(id);
+
+                  // OPTIMISTIC: hide card + insert UNDO at this exact index
+                  setIsStackExpanded(true); // expand to avoid restack flicker
+                  setLocallyHidden(prev => ({ ...prev, [id]: true }));
+
+                  const baseIndex = effectivePopups.findIndex(p => p.id === id);
+
+                  const pid = `undo-${id}-${Date.now()}`;
+                  setInlineUndos(prev => ({
+                    ...prev,
+                    [pid]: {
+                      pid,
+                      popup,
+                      expiresAt: Date.now() + UNDO_SECONDS * 1000,
+                      ttlSeconds: UNDO_SECONDS,
+                      index,     // UI index (composed)
+                      baseIndex, // original index in effectivePopups
+                    }
+                  }));
+
+                  try { if ('vibrate' in navigator) navigator.vibrate(8); } catch {}
+
                   try {
                     const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
                       method: 'DELETE',
@@ -442,18 +517,16 @@ const SuccessSavePopup = ({
                       body: JSON.stringify({ id: analysisId })
                     });
                     const json = await res.json();
-                    if (!json?.success) throw new Error(json?.message || 'Failed to delete');
 
-                    // remove from parent list
+                    if (!(res.ok || res.status === 404 || res.status === 410) || json?.success === false) {
+                      throw new Error(json?.message || 'Failed to delete.');
+                    }
+
                     onDelete(id);
-
-                    // create inline undo placeholder at this exact index
-                    const pid = `undo-${id}-${Date.now()}`;
-                    setInlineUndos(prev => ({
-                      ...prev,
-                      [pid]: { popup, expiresAt: Date.now() + UNDO_SECONDS * 1000, ttlSeconds: UNDO_SECONDS, index }
-                    }));
                   } catch (e) {
+                    setLocallyHidden(prev => { const n = { ...prev }; delete n[id]; return n; });
+                    setInlineUndos(prev => { const n = { ...prev }; delete n[pid]; return n; });
+                    UNDO_ANIMATED_ONCE.delete(pid);
                     alert(e?.message || 'Failed to delete. Please try again.');
                   } finally {
                     setDeletingId(null);
@@ -463,7 +536,8 @@ const SuccessSavePopup = ({
                   ${deletingId === id ? 'bg-red-400 cursor-not-allowed' : 'bg-red-500 hover:bg-red-600'}`}
               >
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
                 {deletingId === id ? 'Removing…' : 'Remove'}
               </button>
@@ -476,10 +550,14 @@ const SuccessSavePopup = ({
 
   // --- Render root -----------------------------------------------------------
 
-  const hasAnything = composed.length > 0 || Object.keys(inlineUndos).length > 0 || Object.keys(pendingRestore).length > 0;
+  const hasAnything =
+    composed.length > 0 ||
+    Object.keys(inlineUndos).length > 0 ||
+    Object.keys(pendingRestore).length > 0;
+
   if (!hasAnything) return null;
 
-  // Single legacy mode
+  // Legacy mode (single)
   if (open && !popups) {
     return (
       <div className="fixed z-50 bottom-4 left-4 right-4 flex justify-center pointer-events-none">
@@ -490,12 +568,19 @@ const SuccessSavePopup = ({
     );
   }
 
-  // Stack mode with inline undo
+  // Split composed into "stack items" and "undo items" depending on expanded state.
+  // When collapsed -> undo rows are rendered in a floating overlay on top of the stack.
+  // When expanded   -> undo rows are rendered inline at their captured indices.
+  const stackItems   = isStackExpanded ? composed : composed.filter(x => !x.__undo);
+  const overlayUndos = isStackExpanded ? []       : composed.filter(x => x.__undo);
+
   return (
     <div ref={containerRef} className="fixed z-50 bottom-4 left-4 right-4 flex justify-center pointer-events-none">
       <div className="relative w-full max-w-sm pointer-events-auto">
-        {composed.map((item, idx) => {
-          const total = composed.length;
+
+        {/* Normal stack items (cards + inline undo if expanded) */}
+        {stackItems.map((item, idx) => {
+          const total = stackItems.length;
           if (item.__undo) {
             return (
               <UndoInline
@@ -510,7 +595,26 @@ const SuccessSavePopup = ({
           return renderPopup(item, item.id, false, idx, total);
         })}
 
-        {isStackExpanded && composed.length > 1 && (
+        {/* Floating Undo overlay (only when collapsed) */}
+        {!isStackExpanded && overlayUndos.length > 0 && (
+          <div
+            className="absolute inset-x-0 top-0 pointer-events-none"
+            style={{ zIndex: 2000 }}
+          >
+            {overlayUndos.map((item, idx) => (
+              <div key={item.pid} className="pointer-events-auto">
+                <UndoInline
+                  pid={item.pid}
+                  entry={item.entry}
+                  index={idx}                    // visual order inside overlay stack
+                  total={overlayUndos.length}    // used only for spacing; rows are flat
+                />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isStackExpanded && stackItems.length > 1 && (
           <div className="text-center mt-2">
             <button
               onClick={() => { setIsStackExpanded(false); setExpandedId(null); }}

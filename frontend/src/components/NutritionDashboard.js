@@ -258,6 +258,79 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
     }, 300);
   };
 
+  // Parent: pass this to <MealCard onDelete={...} />
+  const handleOptimisticDelete = async (mealToDelete) => {
+    const n = parseAnalysisData(mealToDelete.AnalysisData).nutrition || {};
+    const deltas = {
+      calories: -(n.calories || mealToDelete.TotalCalories || 0),
+      protein:  -(n.protein  || mealToDelete.TotalProtein  || 0),
+      carbs:    -(n.carbs    || mealToDelete.TotalCarbs    || 0),
+      fat:      -(n.fat      || mealToDelete.TotalFat      || 0),
+      fiber:    -(n.fiber    || mealToDelete.TotalFiber    || 0),
+      mealCountDelta: -1,
+    };
+
+    const placeholder = {
+      ID: `undo-${mealToDelete.ID}`,
+      isUndoPlaceholder: true,
+      CreatedAt: mealToDelete.CreatedAt,
+    };
+
+    // Replace in place (critical for no flicker / no “floating delete”)
+    setAnalyses(prev => {
+      const idx = prev.findIndex(m => m.ID === mealToDelete.ID);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      next.splice(idx, 1, placeholder);
+      return next;
+    });
+
+    setUndoState(prev => ({
+      ...prev,
+      [placeholder.ID]: {
+        originalMeal: mealToDelete,
+        expiresAt: Date.now() + UNDO_SECONDS * 1000,
+        ttlSeconds: UNDO_SECONDS,
+      }
+    }));
+
+    applyDailyDelta(deltas);
+
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: mealToDelete.ID }),
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.message || 'Delete failed');
+      if (onMealDelete) onMealDelete(mealToDelete.ID);
+    } catch (err) {
+      // Rollback on failure
+      setAnalyses(prev => {
+        const idx = prev.findIndex(m => m.ID === placeholder.ID);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next.splice(idx, 1, mealToDelete);
+        return next;
+      });
+      setUndoState(prev => {
+        const next = { ...prev };
+        delete next[placeholder.ID];
+        return next;
+      });
+      applyDailyDelta({
+        calories: -deltas.calories,
+        protein:  -deltas.protein,
+        carbs:    -deltas.carbs,
+        fat:      -deltas.fat,
+        fiber:    -deltas.fiber,
+        mealCountDelta: -deltas.mealCountDelta,
+      });
+      alert(err.message || 'Failed to delete. Please try again.');
+    }
+  };
+
   const parseAnalysisData = (analysisData, moreTextColor = "text-gray-500") => {
     try {
       const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
@@ -384,6 +457,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
   const foodName = parseAnalysisData(originalMeal.AnalysisData).name || 'Food';
   const remainingSecs = Math.ceil(Math.max(0, expiresAt - now) / 1000);
+
+  
 
   return (
     <div className="relative bg-white border border-amber-200/70 rounded-xl p-3 flex items-center gap-3 shadow-sm">
@@ -843,127 +918,99 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
             </div>
 
             {/* Meals */}
-            <div className="px-4 md:px-6 space-y-4">
-              {dailyStats.mealCount === 0 ? (
-                <div className="text-center py-16 px-6 backdrop-blur-xl bg-white/30 rounded-2xl shadow-lg border border-white/40">
-                  <div className="text-6xl mb-4">🥗</div>
-                  <h3 className="text-xl font-semibold text-gray-800 mb-2">No Meals Logged</h3>
-                  <p className="text-gray-600 max-w-xs mx-auto">
-                    Use the camera to snap a photo of your food and see your nutrition insights here.
-                  </p>
-                </div>
-              ) : (
-                <>
-                  {['breakfast', 'morning-snack', 'lunch', 'evening-snack', 'dinner', 'late-night'].map((category) => {
-                    const meals = groupedMeals[category] || [];
-                    if (meals.length === 0) return null;
-                    console.log(`Rendering category: ${category}`, meals);
+<div className="px-4 md:px-6 space-y-4">
+  {(() => {
+    // NEW: decide empty vs list based on *actual* items and placeholders
+    const hasUndoPlaceholders = analyses.some(a => a.isUndoPlaceholder);
+    const hasRealMeals = analyses.some(a => !a.isUndoPlaceholder);
 
-                    const categoryInfo = getMealCategoryInfo(category);
-                    const categoryCalories = meals.reduce((sum, meal) => {
-                      if (meal.isUndoPlaceholder) return sum;
-                      const foodData = parseAnalysisData(meal.AnalysisData);
-                      return sum + (foodData.nutrition.calories || meal.TotalCalories || 0);
-                    }, 0);
+    if (!hasRealMeals && !hasUndoPlaceholders) {
+      return (
+        <div className="text-center py-16 px-6 backdrop-blur-xl bg-white/30 rounded-2xl shadow-lg border border-white/40">
+          <div className="text-6xl mb-4">🥗</div>
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">No Meals Logged</h3>
+          <p className="text-gray-600 max-w-xs mx-auto">
+            Use the camera to snap a photo of your food and see your nutrition insights here.
+          </p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        {['breakfast', 'morning-snack', 'lunch', 'evening-snack', 'dinner', 'late-night'].map((category) => {
+          const meals = groupedMeals[category] || [];
+          if (meals.length === 0) return null;
+
+          const categoryInfo = getMealCategoryInfo(category);
+          const categoryCalories = meals.reduce((sum, meal) => {
+            if (meal.isUndoPlaceholder) return sum;
+            const foodData = parseAnalysisData(meal.AnalysisData);
+            return sum + (foodData.nutrition.calories || meal.TotalCalories || 0);
+          }, 0);
+
+          return (
+            <div key={category}>
+              <div className="flex items-center justify-between mb-3 px-2">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-800">{categoryInfo.name}</h3>
+                  <p className="text-sm text-gray-500">{formatTimeRangeAMPM(categoryInfo.timeRange)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-base font-semibold text-gray-800">{Math.round(categoryCalories)}</p>
+                  <p className="text-xs text-gray-500">kcal</p>
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                {meals
+                  .slice()
+                  .sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt))
+                  .map((meal) => {
+                    // Show undo row if this is a placeholder
+                    if (meal.isUndoPlaceholder) {
+                      const entry = undoState[meal.ID];
+                      if (!entry) return null;
+                      return (
+                        <UndoRow
+                          key={meal.ID}
+                          pid={meal.ID}
+                          originalMeal={entry.originalMeal}
+                          expiresAt={entry.expiresAt}
+                          ttlSeconds={entry.ttlSeconds ?? UNDO_SECONDS}
+                        />
+                      );
+                    }
+
+                    // Regular meal card
+                    const foodData = parseAnalysisData(meal.AnalysisData);
+                    const mealTime = new Date(meal.CreatedAt).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    });
+                    const calories = foodData.nutrition.calories || meal.TotalCalories || 0;
 
                     return (
-                      <div key={category}>
-                        <div className="flex items-center justify-between mb-3 px-2">
-                          <div>
-                            <h3 className="text-lg font-semibold text-gray-800">{categoryInfo.name}</h3>
-                            <p className="text-sm text-gray-500">{formatTimeRangeAMPM(categoryInfo.timeRange)}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-base font-semibold text-gray-800">{Math.round(categoryCalories)}</p>
-                            <p className="text-xs text-gray-500">kcal</p>
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          {meals
-                            .slice()
-                            .sort((a, b) => new Date(a.CreatedAt) - new Date(b.CreatedAt))
-                            .map((meal) => {
-                              if (meal.isUndoPlaceholder) {
-                                const entry = undoState[meal.ID];
-                                if (!entry) return null;
-                                return (
-                                  <UndoRow
-                                    key={meal.ID}
-                                    pid={meal.ID}
-                                    originalMeal={entry.originalMeal}
-                                    expiresAt={entry.expiresAt}
-                                    ttlSeconds={entry.ttlSeconds ?? UNDO_SECONDS}
-                                  />
-                                );
-                              }
-                              const foodData = parseAnalysisData(meal.AnalysisData);
-                              const mealTime = new Date(meal.CreatedAt).toLocaleTimeString('en-US', {
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              });
-                              const calories = foodData.nutrition.calories || meal.TotalCalories || 0;
-                              return (
-                                <MealCard
-                                  key={meal.ID}
-                                  meal={meal}
-                                  foodData={foodData}
-                                  mealTime={mealTime}
-                                  calories={calories}
-                                  onDelete={async (mealToDelete) => {
-                                    setDeletingId(mealToDelete.ID);
-                                    try {
-                                      const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
-                                        method: 'DELETE',
-                                        headers: { 'Content-Type': 'application/json' },
-                                        body: JSON.stringify({ id: mealToDelete.ID })
-                                      });
-                                      const data = await res.json();
-                                      if (data.success) {
-                                        const n = parseAnalysisData(mealToDelete.AnalysisData).nutrition || {};
-                                        applyDailyDelta({
-                                          calories: -(n.calories || mealToDelete.TotalCalories || 0),
-                                          protein: -(n.protein || mealToDelete.TotalProtein || 0),
-                                          carbs: -(n.carbs || mealToDelete.TotalCarbs || 0),
-                                          fat: -(n.fat || mealToDelete.TotalFat || 0),
-                                          fiber: -(n.fiber || mealToDelete.TotalFiber || 0),
-                                          mealCountDelta: -1
-                                        });
-                                        const placeholder = {
-                                          ID: `undo-${mealToDelete.ID}`,
-                                          isUndoPlaceholder: true,
-                                          CreatedAt: mealToDelete.CreatedAt
-                                        };
-                                        setAnalyses((prev) => prev.filter((m) => m.ID !== mealToDelete.ID).concat(placeholder));
-                                        setUndoState((prev) => ({
-                                          ...prev,
-                                          [placeholder.ID]: {
-                                            originalMeal: mealToDelete,
-                                            expiresAt: Date.now() + UNDO_SECONDS * 1000,
-                                            ttlSeconds: UNDO_SECONDS
-                                          }
-                                        }));
-                                        if (onMealDelete) onMealDelete(mealToDelete.ID);
-                                      } else {
-                                        alert(data.message || 'Failed to delete.');
-                                      }
-                                    } catch {
-                                      alert('Failed to delete. Please try again.');
-                                    } finally {
-                                      setDeletingId(null);
-                                    }
-                                  }}
-                                  onClick={(mealObj) => setSelectedMeal(mealObj)}
-                                />
-                              );
-                            })}
-                        </div>
-                      </div>
+                      <MealCard
+                        key={meal.ID}
+                        meal={meal}
+                        foodData={foodData}
+                        mealTime={mealTime}
+                        calories={calories}
+                        onDelete={handleOptimisticDelete}
+                        onClick={(mealObj) => setSelectedMeal(mealObj)}
+                      />
                     );
                   })}
-                </>
-              )}
+              </div>
             </div>
+          );
+        })}
+      </>
+    );
+  })()}
+</div>
+
           </>
         )}
       </div>
@@ -1126,7 +1173,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                     )}
                   </div>
 
-                  {/* Delete with in-button loading + create Undo placeholder */}
+                  {/* Delete with in-button loading + create Undo placeholder (OPTIMISTIC) */}
                   <div className="p-4 pt-0">
                     <button
                       disabled={deletingId === selectedMeal?.ID}
@@ -1137,51 +1184,94 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       }`}
                       onClick={async () => {
                         if (!selectedMeal?.ID) return;
-                        setDeletingId(selectedMeal.ID);
 
+                        // Capture the meal reference immediately (modal will close)
+                        const meal = selectedMeal;
+                        setDeletingId(meal.ID);
+
+                        // Compute nutrition deltas for instant feedback
+                        const n = parseAnalysisData(meal.AnalysisData).nutrition || {};
+                        const deltas = {
+                          calories: -(n.calories || meal.TotalCalories || 0),
+                          protein:  -(n.protein  || meal.TotalProtein  || 0),
+                          carbs:    -(n.carbs    || meal.TotalCarbs    || 0),
+                          fat:      -(n.fat      || meal.TotalFat      || 0),
+                          fiber:    -(n.fiber    || meal.TotalFiber    || 0),
+                          mealCountDelta: -1
+                        };
+
+                        // Build placeholder that sorts in the same slot
+                        const placeholder = {
+                          ID: `undo-${meal.ID}`,
+                          isUndoPlaceholder: true,
+                          CreatedAt: meal.CreatedAt
+                        };
+
+                        // --- OPTIMISTIC UI ---
+                        // Replace the meal in-place with the placeholder (no flicker/snap-back)
+                        setAnalyses(prev => {
+                          const idx = prev.findIndex(m => m.ID === meal.ID);
+                          if (idx === -1) {
+                            // Fallback: remove then append placeholder
+                            return prev.filter(m => m.ID !== meal.ID).concat(placeholder);
+                          }
+                          const next = prev.slice();
+                          next.splice(idx, 1, placeholder);
+                          return next;
+                        });
+
+                        // Start undo countdown
+                        setUndoState(prev => ({
+                          ...prev,
+                          [placeholder.ID]: {
+                            originalMeal: meal,
+                            expiresAt: Date.now() + UNDO_SECONDS * 1000, // absolute expiry
+                            ttlSeconds: UNDO_SECONDS
+                          }
+                        }));
+
+                        // Update totals immediately
+                        applyDailyDelta(deltas);
+
+                        // Close modal immediately for a snappy feel
+                        setSelectedMeal(null);
+
+                        // --- Server call; rollback if it fails ---
                         try {
                           const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
                             method: 'DELETE',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: selectedMeal.ID })
+                            body: JSON.stringify({ id: meal.ID })
                           });
                           const data = await res.json();
+                          if (!data.success) throw new Error(data.message || 'Failed to delete.');
+                          if (onMealDelete) onMealDelete(meal.ID);
+                        } catch (err) {
+                          // Rollback: remove placeholder, restore meal in-place, reverse deltas
+                          setAnalyses(prev => {
+                            const idx = prev.findIndex(m => m.ID === placeholder.ID);
+                            if (idx === -1) return prev; // nothing to rollback
+                            const next = prev.slice();
+                            next.splice(idx, 1, meal);
+                            return next;
+                          });
 
-                          if (data.success) {
-                            // subtract totals now
-                            const n = parseAnalysisData(selectedMeal.AnalysisData).nutrition || {};
-                            applyDailyDelta({
-                              calories: -(n.calories || selectedMeal.TotalCalories || 0),
-                              protein: -(n.protein || selectedMeal.TotalProtein || 0),
-                              carbs: -(n.carbs || selectedMeal.TotalCarbs || 0),
-                              fat: -(n.fat || selectedMeal.TotalFat || 0),
-                              fiber: -(n.fiber || selectedMeal.TotalFiber || 0),
-                              mealCountDelta: -1
-                            });
+                          setUndoState(prev => {
+                            const next = { ...prev };
+                            delete next[placeholder.ID];
+                            return next;
+                          });
 
-                            // placeholder at same time position
-                            const placeholder = {
-                              ID: `undo-${selectedMeal.ID}`,
-                              isUndoPlaceholder: true,
-                              CreatedAt: selectedMeal.CreatedAt
-                            };
+                          applyDailyDelta({
+                            calories: -deltas.calories,
+                            protein:  -deltas.protein,
+                            carbs:    -deltas.carbs,
+                            fat:      -deltas.fat,
+                            fiber:    -deltas.fiber,
+                            mealCountDelta: -deltas.mealCountDelta
+                          });
 
-                            setAnalyses((prev) => prev.filter((m) => m.ID !== selectedMeal.ID).concat(placeholder));
-                            setUndoState((prev) => ({
-                              ...prev,
-                              [placeholder.ID]: {
-                                originalMeal: selectedMeal,
-                                expiresAt: Date.now() + UNDO_SECONDS * 1000, // absolute expiry
-                                ttlSeconds: UNDO_SECONDS
-                              }
-                            }));
-
-                            setSelectedMeal(null); // close modal
-                          } else {
-                            alert(data.message || 'Failed to delete.');
-                          }
-                        } catch {
-                          alert('Failed to delete. Please try again.');
+                          alert(err.message || 'Failed to delete. Please try again.');
                         } finally {
                           setDeletingId(null);
                         }
@@ -1208,6 +1298,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       )}
                     </button>
                   </div>
+
                 </div>
               );
             })()}
@@ -1221,14 +1312,16 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 export default NutritionDashboard;
 
 // --- MealCard with creative, minimal swipe-left to delete (progress bar) ---
-const SWIPE_DELETE_THRESHOLD = 140;  // px — where delete becomes armed
-const SWIPE_MAX = 140;              // px — limit the drag distance
+const SWIPE_DELETE_THRESHOLD = 140;  // px
+const SWIPE_MAX = 140;               // px
 
 const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => {
-  const [dx, setDx] = React.useState(0);          // current translateX (negative = left)
+  const [dx, setDx] = React.useState(0);
   const [dragging, setDragging] = React.useState(false);
   const [animating, setAnimating] = React.useState(false);
   const [armed, setArmed] = React.useState(false);
+  const [leaving, setLeaving] = React.useState(false); // NEW: card is exiting
+  const [deletedOnce, setDeletedOnce] = React.useState(false); // NEW: guard
 
   const startXRef = React.useRef(0);
   const rafRef    = React.useRef(null);
@@ -1241,9 +1334,8 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
     }
   };
 
-  // Pointer Events
   const onPointerDown = (e) => {
-    if (!e.isPrimary) return;
+    if (!e.isPrimary || leaving) return;
     cancelRAF();
     setDragging(true);
     setAnimating(false);
@@ -1252,17 +1344,13 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
   };
 
   const onPointerMove = (e) => {
-    if (!dragging || !e.isPrimary) return;
+    if (!dragging || !e.isPrimary || leaving) return;
     const delta = e.clientX - startXRef.current;
-
-    // only allow left swipe; clamp to max
     const nextDx = Math.max(Math.min(delta, 0), -SWIPE_MAX);
-
     if (!rafRef.current) {
       rafRef.current = requestAnimationFrame(() => {
         setDx(nextDx);
         rafRef.current = null;
-
         const isNowArmed = Math.abs(nextDx) >= SWIPE_DELETE_THRESHOLD;
         if (isNowArmed !== armed) {
           setArmed(isNowArmed);
@@ -1281,29 +1369,32 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
     elRef.current?.releasePointerCapture?.(e?.pointerId);
 
     if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
-      // Delete: slide out then invoke onDelete
+      if (deletedOnce) return;         // guard against double fire
+      setDeletedOnce(true);
+      setLeaving(true);                // lock input & visuals
       setAnimating(true);
-      // set in next frame to ensure transition is applied
+
+      // Slide out and let parent replace with placeholder immediately
       requestAnimationFrame(() => {
         setDx(-window.innerWidth);
         setTimeout(() => {
-          onDelete(meal);
-          setAnimating(false);
-          setDx(0);
-          setArmed(false);
-        }, 220);
+          onDelete(meal);              // optimistic replace (in-place)
+          // Do NOT reset dx or animating; this component will unmount next render.
+        }, 180); // exit timing tuned for snap-free feel
       });
-    } else {
-      // Snap back: enable transition, then set dx=0 in next frame
-      setAnimating(true);
-      requestAnimationFrame(() => {
-        setDx(0);
-        setTimeout(() => {
-          setAnimating(false);
-          setArmed(false);
-        }, 220);
-      });
+
+      return;
     }
+
+    // Not past threshold: snap back
+    setAnimating(true);
+    requestAnimationFrame(() => {
+      setDx(0);
+      setTimeout(() => {
+        setAnimating(false);
+        setArmed(false);
+      }, 220);
+    });
   };
 
   const onPointerUp = (e) => finishInteraction(e);
@@ -1313,11 +1404,12 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
   React.useEffect(() => () => cancelRAF(), []);
 
   const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
-  const scale = 1 - Math.min(0.03, Math.abs(dx) / 1000); // subtle compress
+  const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
 
   return (
+    // Keep a fixed height so layout doesn’t jump while swapping for placeholder
     <div className="relative w-full" style={{ touchAction: 'pan-y', height: 84 }}>
-      {/* Right-side reveal (delete icon) */}
+      {/* Background delete reveal (only visible while dragging, never after unmount) */}
       <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
         <div
           className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
@@ -1350,7 +1442,8 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
         aria-label={`${foodData.name}, ${Math.round(calories)} kilocalories`}
         tabIndex={0}
         onKeyDown={(e) => {
-          if (e.key === 'Backspace' || e.key === 'Delete') onDelete(meal);
+          if (leaving) return;
+          if (e.key === 'Backspace' || e.key === 'Delete') finishInteraction(e); // go through same flow
           if (e.key === 'Enter') onClick(meal);
         }}
         onPointerDown={onPointerDown}
@@ -1359,12 +1452,13 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
         onPointerCancel={onPointerCancel}
         onPointerLeave={onPointerLeave}
         onClick={() => {
-          if (!dragging && Math.abs(dx) < 5) onClick(meal);
+          if (!dragging && Math.abs(dx) < 5 && !leaving) onClick(meal);
         }}
-        className="relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl select-none cursor-pointer overflow-hidden"
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl select-none cursor-pointer overflow-hidden
+          ${leaving ? 'pointer-events-none' : ''}`}
         style={{
           transform: `translateX(${dx}px) scale(${scale})`,
-          transition: animating ? 'transform 220ms cubic-bezier(.2,.8,.2,1.2), box-shadow 220ms ease' : 'none',
+          transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1), box-shadow 180ms ease' : 'none',
           minHeight: 76,
           willChange: 'transform',
           boxShadow: `
@@ -1373,12 +1467,12 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
           `,
         }}
       >
-        {/* Progress bar at bottom */}
+        {/* Bottom progress bar (feedback while swiping) */}
         <div
           className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
           style={{
             width: `${progress * 100}%`,
-            transition: dragging ? 'none' : 'width 220ms ease',
+            transition: dragging ? 'none' : 'width 180ms ease',
             opacity: progress > 0 ? 1 : 0,
           }}
         />
