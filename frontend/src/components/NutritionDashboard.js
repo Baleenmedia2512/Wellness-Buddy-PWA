@@ -857,6 +857,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                   {['breakfast', 'morning-snack', 'lunch', 'evening-snack', 'dinner', 'late-night'].map((category) => {
                     const meals = groupedMeals[category] || [];
                     if (meals.length === 0) return null;
+                    console.log(`Rendering category: ${category}`, meals);
 
                     const categoryInfo = getMealCategoryInfo(category);
                     const categoryCalories = meals.reduce((sum, meal) => {

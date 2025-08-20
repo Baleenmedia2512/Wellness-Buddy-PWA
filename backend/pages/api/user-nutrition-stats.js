@@ -55,7 +55,17 @@ export default async function handler(req, res) {
       `, [userId, startOfDay.toISOString(), endOfDay.toISOString()]);
 
       // Calculate daily totals
-      const dailyTotals = nutritionData.reduce((totals, record) => ({
+      // Filter out records with empty foods array in AnalysisData
+      const filteredNutritionData = nutritionData.filter(record => {
+        try {
+          const data = JSON.parse(record.AnalysisData);
+          return Array.isArray(data.foods) && data.foods.length > 0;
+        } catch {
+          return true; // keep if cannot parse (to avoid hiding valid but malformed data)
+        }
+      });
+
+      const dailyTotals = filteredNutritionData.reduce((totals, record) => ({
         totalCalories: totals.totalCalories + (record.TotalCalories || 0),
         totalProtein: totals.totalProtein + (record.TotalProtein || 0),
         totalCarbs: totals.totalCarbs + (record.TotalCarbs || 0),
@@ -75,7 +85,7 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        data: nutritionData,
+        data: filteredNutritionData,
         dailyTotals: {
           ...dailyTotals,
           totalCalories: Math.round(dailyTotals.totalCalories * 100) / 100,
@@ -84,7 +94,7 @@ export default async function handler(req, res) {
           totalFat: Math.round(dailyTotals.totalFat * 100) / 100,
           totalFiber: Math.round(dailyTotals.totalFiber * 100) / 100
         },
-        queryInfo: { userId, date, recordCount: nutritionData.length }
+        queryInfo: { userId, date, recordCount: filteredNutritionData.length }
       });
     }
 
