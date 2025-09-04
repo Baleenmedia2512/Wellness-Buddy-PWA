@@ -49,6 +49,8 @@ jspm_packages/
 .env.development.local
 .env.test.local
 .env.production.local
+# .env.production is ignored for security; remove this line if your team tracks production env files in version control
+.env.production
 
 # API keys and secrets
 .env.example
