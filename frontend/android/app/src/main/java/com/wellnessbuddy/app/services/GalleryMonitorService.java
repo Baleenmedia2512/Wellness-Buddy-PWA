@@ -65,8 +65,8 @@ public class GalleryMonitorService extends Service {
     private static final String GEMINI_API_KEY_PREF = "gemini_api_key";
     
     // Database API configuration
-    // private static final String API_BASE_URL = "http://10.0.2.2:3000"; // For Android emulator (localhost:3000)
-    // private static final String API_BASE_URL = "http://192.168.1.100:3000"; // For physical device (replace with your PC IP)
+    // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
+    // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
     private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
 
     @Override
@@ -282,20 +282,23 @@ public class GalleryMonitorService extends Service {
         for (String imagePath : queue) {
             Log.d(TAG, "Analyzing image: " + imagePath);
             String result = geminiApiClient.analyzeImage(imagePath);
-            
-            // 🆕 Save to MariaDB database in background thread
+
+            // 🆕 Save to MariaDB database in background thread, with imageBase64
             final String currentUserId = getCurrentUserId();
+            final String imageBase64 = DatabaseSyncClient.encodeImageToBase64(imagePath);
             executorService.execute(() -> {
                 boolean saved = databaseSyncClient.saveAnalysis(
                     currentUserId,                    // User ID from SharedPreferences
                     imagePath,                        // Full image path
                     result,                           // Gemini JSON response
-                    System.currentTimeMillis()        // Timestamp
+                    System.currentTimeMillis(),       // Timestamp
+                    "Android Background Service",    // Device info
+                    imageBase64                       // Image as base64
                 );
-                
+
                 if (saved) {
                     Log.d(TAG, "✅ Analysis saved to MariaDB successfully for user: " + currentUserId);
-                    
+
                     // 🚨 DEBUG: Show success notification (removable for production)
                     if (SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
                         // Post notification on main thread to ensure it's shown
@@ -308,7 +311,7 @@ public class GalleryMonitorService extends Service {
                     retryQueue.add(currentUserId, imagePath, result, System.currentTimeMillis());
                 }
             });
-            
+
             showAnalysisNotification(imagePath, result);
             foodImageQueue.remove(imagePath);
         }
@@ -317,36 +320,23 @@ public class GalleryMonitorService extends Service {
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
         android.content.SharedPreferences prefs = getSharedPreferences("WellnessBuddy", MODE_PRIVATE);
-        String firebaseInfo = prefs.getString("current_user_id", null);
         String userEmail = prefs.getString("current_user_email", null);
-        
         // Log all stored preferences for debugging
         Log.d(TAG, "🔍 SharedPreferences Debug:");
-        Log.d(TAG, "  - current_user_id: " + firebaseInfo);
         Log.d(TAG, "  - current_user_email: " + userEmail);
-        
-        // First check if we have a cached database UserId
         String cachedDbUserId = prefs.getString("cached_db_user_id", null);
         Log.d(TAG, "  - cached_db_user_id: " + cachedDbUserId);
-        
+
+        // Only allow DB userId (from cache or lookup)
         if (cachedDbUserId != null && !cachedDbUserId.isEmpty()) {
             Log.d(TAG, "✅ Using cached database UserId: " + cachedDbUserId);
             return cachedDbUserId;
         }
-        
-        // For OTP users, firebaseInfo might already be the database UserId
-        // Check if firebaseInfo is numeric (database UserId) vs alphanumeric (Firebase UID)
-        if (firebaseInfo != null && firebaseInfo.matches("\\d+")) {
-            Log.d(TAG, "✅ Using OTP database UserId directly: " + firebaseInfo);
-            // Cache it for future use
-            prefs.edit().putString("cached_db_user_id", firebaseInfo).apply();
-            return firebaseInfo;
-        }
-        
+
         // Try to get database UserId using email lookup (this will cache the result)
         if (userEmail != null && !userEmail.isEmpty()) {
             Log.d(TAG, "🔍 Attempting database lookup for email: " + userEmail);
-            String dbUserId = databaseSyncClient.lookupDatabaseUserId(userEmail, firebaseInfo);
+            String dbUserId = databaseSyncClient.lookupDatabaseUserId(userEmail, null);
             if (dbUserId != null) {
                 Log.d(TAG, "✅ Using database UserId from lookup: " + dbUserId + " for email: " + userEmail);
                 return dbUserId;
@@ -354,30 +344,10 @@ public class GalleryMonitorService extends Service {
                 Log.w(TAG, "❌ Database UserId lookup failed for email: " + userEmail);
             }
         }
-        
-        // ** TEMPORARY TESTING: Use known test user **
-        // TODO: Remove this after proper login is implemented
-        Log.w(TAG, "⚠️ No valid user found in SharedPreferences, using test user");
-        String testEmail = "logeshwaran67677@gmail.com";
-        String testDbUserId = databaseSyncClient.lookupDatabaseUserId(testEmail, null);
-        if (testDbUserId != null) {
-            Log.d(TAG, "✅ Using test database UserId: " + testDbUserId + " for email: " + testEmail);
-            // Cache it for future use
-            prefs.edit().putString("cached_db_user_id", testDbUserId).apply();
-            prefs.edit().putString("current_user_email", testEmail).apply();
-            return testDbUserId;
-        }
-        
-        // Fallback to original logic if database lookup fails
-        if (firebaseInfo == null || firebaseInfo.equals("anonymous")) {
-            // Try to get from other sources or generate a device-specific ID
-            String deviceId = android.provider.Settings.Secure.getString(getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);
-            Log.w(TAG, "No user ID found, using device ID: " + deviceId);
-            return deviceId;
-        }
-        
-        Log.w(TAG, "Using Firebase info as fallback: " + firebaseInfo);
-        return firebaseInfo;
+
+        // If no DB userId, return null and log error
+        Log.e(TAG, "❌ No valid database userId found. Aborting analysis save.");
+        return null;
     }
 
     // Removed: JS will poll for queued images
@@ -480,6 +450,22 @@ public class GalleryMonitorService extends Service {
                 .setContentText(contentText)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);
+
+        // Make notification clickable - opens app with background history flag
+        Intent notificationIntent = new Intent(this, MainActivity.class);
+        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        notificationIntent.putExtra("openBackgroundHistory", true);
+        
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this, 
+                (int) System.currentTimeMillis(), 
+                notificationIntent,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                        : PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        
+        builder.setContentIntent(pendingIntent);
 
         // Try to show the image in the notification
         try {

@@ -51,6 +51,8 @@ jspm_packages/
 .env.production.local
 # .env.production is ignored for security; remove this line if your team tracks production env files in version control
 .env.production
+.env.production
+.env.android
 
 # API keys and secrets
 .env.example

@@ -1,6 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import GalleryMonitorPlugin from '../plugins/galleryMonitorPlugin';
+import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 
 export const GalleryMonitor = {
   async initialize() {
@@ -23,9 +23,8 @@ export const GalleryMonitor = {
       if (Capacitor.getPlatform() === 'android') {
         await GalleryMonitorPlugin.setCurrentUser({ 
           userId, 
-          userEmail: userEmail || userId // Use email if provided, otherwise fall back to userId
+          userEmail: userEmail // Use email if provided, otherwise fall back to userId
         });
-        console.log('✅ Current user set for background service:', { userId, userEmail });
       }
     } catch (error) {
       console.error('Failed to set current user for background service:', error);
@@ -52,7 +51,6 @@ export const GalleryMonitor = {
     try {
       if (Capacitor.getPlatform() === 'android') {
         await GalleryMonitorPlugin.clearCurrentUser();
-        console.log('✅ Current user cleared from background service');
       }
     } catch (error) {
       console.error('Failed to clear current user from background service:', error);
@@ -97,7 +95,6 @@ export const GalleryMonitor = {
       // Register app state change listener for background handling
       App.addListener('appStateChange', async (state) => {
         if (!state.isActive) {
-          console.log('App going to background, checking gallery...');
           await this.checkGallery();
         }
       });
@@ -158,7 +155,6 @@ export const GalleryMonitor = {
   async analyzeImage(image) {
     // Note: This method is now primarily handled by the Android background service
     // The service directly calls Gemini API and saves to database
-    console.log('Analyzing image in background service:', image.path);
     
     // If you need to analyze from JavaScript for UI purposes, keep this:
     try {
@@ -173,7 +169,6 @@ export const GalleryMonitor = {
   async saveAnalysis(analysis) {
     // Note: Database saving is now handled by the Android background service
     // This method can be used for local storage or UI updates
-    console.log('Analysis will be saved by background service:', analysis);
     
     // Optional: Save to local storage for UI purposes
     try {
@@ -190,7 +185,6 @@ export const GalleryMonitor = {
       }
       
       localStorage.setItem('backgroundAnalyses', JSON.stringify(savedAnalyses));
-      console.log('✅ Analysis cached locally for UI');
     } catch (error) {
       console.error('Failed to cache analysis locally:', error);
     }
@@ -210,7 +204,6 @@ export const GalleryMonitor = {
   clearLocalBackgroundAnalyses() {
     try {
       localStorage.removeItem('backgroundAnalyses');
-      console.log('✅ Local background analyses cleared');
     } catch (error) {
       console.error('Failed to clear local background analyses:', error);
     }

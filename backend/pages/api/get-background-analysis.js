@@ -32,12 +32,9 @@ export default async function handler(req, res) {
     
     // First, try a simple query without LIMIT/OFFSET to test
     const [rows] = await connection.execute(
-      `SELECT 
-        ID, ImagePath, AnalysisData, ConfidenceScore, 
-        TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-        ProcessedBy, DeviceInfo, CreatedAt
+      `SELECT *
        FROM food_nutrition_data_table 
-       WHERE UserID = ? 
+       WHERE UserID = ? AND IsDeleted = 0
        ORDER BY CreatedAt DESC`,
       [userId]
     );
@@ -47,7 +44,7 @@ export default async function handler(req, res) {
 
     // Get total count for pagination
     const [countResult] = await connection.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ?',
+      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
 

@@ -15,10 +15,9 @@ export default async function handler(req, res) {
 
   // Extract email from query params (GET) or body (POST)
   const email = req.method === 'GET' ? req.query.email : req.body?.email;
-  const firebaseUid = req.method === 'GET' ? req.query.firebaseUid : req.body?.firebaseUid;
 
-  if (!email && !firebaseUid) {
-    return res.status(400).json({ message: 'Email or Firebase UID is required' });
+  if (!email) {
+    return res.status(400).json({ message: 'Email is required' });
   }
 
   try {
@@ -34,7 +33,7 @@ export default async function handler(req, res) {
     let params = [email];
 
     // If no email provided, we could extend this to support other lookup methods
-    if (!email && firebaseUid) {
+    if (!email) {
       // For now, we'll return an error since we need email to match with team_table
       await connection.end();
       return res.status(400).json({ 
