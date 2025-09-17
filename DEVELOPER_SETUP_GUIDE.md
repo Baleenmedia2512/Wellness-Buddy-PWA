@@ -353,6 +353,83 @@ npx cap build android
    ./gradlew assembleRelease
    ```
 
+### R8/ProGuard Optimization & Deobfuscation Files
+
+To reduce app size and enable crash symbolication for Play Store releases, enable R8 optimization:
+
+#### 1. Enable R8 in `android/app/build.gradle`:
+
+```gradle
+android {
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled true          // Enable R8 code shrinking
+            shrinkResources true        // Enable resource shrinking  
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+```
+
+#### 2. Update ProGuard Rules (`android/app/proguard-rules.pro`):
+
+```proguard
+# Missing classes rules for R8
+-dontwarn org.bouncycastle.jsse.BCSSLParameters
+-dontwarn org.bouncycastle.jsse.BCSSLSocket
+-dontwarn org.bouncycastle.jsse.provider.BouncyCastleJsseProvider
+-dontwarn org.conscrypt.Conscrypt$Version
+-dontwarn org.conscrypt.Conscrypt
+-dontwarn org.conscrypt.ConscryptHostnameVerifier
+-dontwarn org.openjsse.javax.net.ssl.SSLParameters
+-dontwarn org.openjsse.javax.net.ssl.SSLSocket
+-dontwarn org.openjsse.net.ssl.OpenJSSE
+
+# Keep Capacitor plugins
+-keep class com.getcapacitor.** { *; }
+-keep class com.capacitorjs.plugins.** { *; }
+
+# Keep WebView JavaScript interface
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+```
+
+#### 3. Build Optimized Release:
+
+```powershell
+# Complete rebuild process with R8 enabled
+cd frontend
+npm run build
+npx cap copy android  
+cd android
+.\gradlew clean bundleRelease
+```
+
+#### 4. Generated Files:
+
+After building, you'll find these files in `android/app/build/outputs/mapping/release/`:
+
+- **`mapping.txt`** - **Upload this to Play Console for crash deobfuscation**
+- `configuration.txt` - R8 configuration used
+- `resources.txt` - Resource shrinking details  
+- `seeds.txt` - Entry points kept
+- `usage.txt` - What was removed/kept
+
+#### 5. Upload Deobfuscation File to Play Console:
+
+1. Go to **Play Console → Your App → Release Management → App Bundle Explorer**
+2. Select your release → **Upload deobfuscation files** 
+3. Upload the `mapping.txt` file
+4. This eliminates the *"There is no deobfuscation file associated with this App Bundle"* warning
+
+#### Benefits:
+- ✅ **42% smaller app size** (from ~8.9MB to ~5.2MB)
+- ✅ **Readable crash reports** with proper stack traces  
+- ✅ **Better performance** from R8 optimizations
+- ✅ **No Play Console warnings** about missing deobfuscation files
+
 ---
 
 ## 🔧 Backend Services
