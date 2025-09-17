@@ -61,11 +61,6 @@ export default function DeleteAccount() {
         </a>
       </div>
 
-      <div style={{ textAlign: 'center', marginTop: '24px' }}>
-        <a href="/" style={{ color: '#6b7280', textDecoration: 'none' }}>
-          ← Back to App
-        </a>
-      </div>
     </div>
   );
 }
