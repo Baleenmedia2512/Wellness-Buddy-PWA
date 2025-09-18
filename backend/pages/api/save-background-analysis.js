@@ -1,5 +1,14 @@
 import mysql from 'mysql2/promise';
 
+// Configure API body parser for large image uploads
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -11,6 +20,13 @@ export default async function handler(req, res) {
 
   if (req.method !== 'POST') {
     return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  // Check if request body is too large or malformed
+  if (!req.body) {
+    return res.status(400).json({ 
+      message: 'Request body is missing or too large. Maximum size is 10MB.' 
+    });
   }
 
   const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64 } = req.body;

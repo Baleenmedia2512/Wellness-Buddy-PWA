@@ -135,7 +135,25 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId: actualUserId, imagePath, ImageBase64: imageBase64, analysisResult: transformedAnalysisResult, deviceInfo })
     });
-    const data = await res.json();
+    
+    // Check if response is JSON before parsing
+    const contentType = res.headers.get('content-type');
+    let data;
+    
+    if (contentType && contentType.includes('application/json')) {
+      data = await res.json();
+    } else {
+      // Handle non-JSON responses (like HTML error pages)
+      const text = await res.text();
+      console.error('Non-JSON response:', text);
+      
+      if (text.includes('Body exceeded') || text.includes('Request entity too large')) {
+        throw new Error('Image file is too large. Please try with a smaller image (max 10MB).');
+      }
+      
+      throw new Error('Server returned an unexpected response format');
+    }
+    
     if (!res.ok) throw new Error(data.message || 'Failed to save analysis');
     return data;
   } catch (err) {

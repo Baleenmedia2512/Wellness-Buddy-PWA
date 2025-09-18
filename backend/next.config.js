@@ -12,6 +12,11 @@ const nextConfig = {
       },
     ];
   },
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb', // Increase body size limit to 10MB for image uploads
+    },
+  },
 };
 
 module.exports = nextConfig;
