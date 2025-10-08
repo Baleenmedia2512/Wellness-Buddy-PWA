@@ -10,7 +10,9 @@
     "@capacitor/cli": "^7.4.2",
     "@capacitor/core": "^7.4.2",
     "@capacitor/push-notifications": "^7.0.1",
-    "@capacitor/status-bar": "^7.0.1",
+    "@capacitor/status-bar": "^7.0.3",
+    "@capawesome/capacitor-android-edge-to-edge-support": "^7.2.3",
+    "@capgo/capacitor-navigation-bar": "^7.1.33",
     "@google/generative-ai": "^0.24.1",
     "@ionic/react": "^8.6.4",
     "@ionic/react-router": "^8.6.4",
@@ -31,17 +33,15 @@
     "postcss": "^8.4.24",
     "tailwindcss": "^3.3.0"
   },
-   "scripts": {
+  "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
-
     "android:clean": "cd android && gradlew.bat clean",
     "android:assembleDebug": "cd android && gradlew.bat assembleDebug",
-
     "android:fullbuild": "npm run build && npx cap sync android && npm run android:clean && npm run android:assembleDebug"
   },
   "eslintConfig": {
