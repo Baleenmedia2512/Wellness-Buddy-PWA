@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core';
-import { StatusBar } from '@capacitor/status-bar';
+import { StatusBar, Style } from '@capacitor/status-bar';
 
 // Dynamic plugin loading for Android
-export const initializeMobileUI = async () => {
+const initializeEdgeToEdgePlugins = async () => {
   if (Capacitor.getPlatform() === 'android') {
     try {
       const { EdgeToEdgeSupport } = await import('@capawesome/capacitor-android-edge-to-edge-support');
@@ -10,20 +10,14 @@ export const initializeMobileUI = async () => {
       
       // Configure edge-to-edge support
       await EdgeToEdgeSupport.enable({
-        statusBarColor: '#f8fafc',
-        statusBarStyle: 'light',
+        statusBarColor: '#f8fafc', // Light gray background
+        statusBarStyle: 'light', // 'light' means dark icons on light background
         navigationBarColor: '#ffffff',
         navigationBarStyle: 'light'
       });
 
-      // Configure status bar
-      await StatusBar.setStyle({ style: 'LIGHT' });
-      
-      // Configure navigation bar
-      await NavigationBar.setColor({
-        color: '#ffffff',
-        darkButtons: true
-      });
+      // Set status bar style (dark icons on light background)
+      await StatusBar.setStyle({ style: Style.Light });
 
       console.log('✅ Mobile UI initialized successfully');
     } catch (error) {

@@ -14,29 +14,11 @@ import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-    
+        super.onCreate(savedInstanceState);
+        
         // Register the GalleryMonitorPlugin
         registerPlugin(GalleryMonitorPlugin.class);
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
-        
-        super.onCreate(savedInstanceState);
-
-        // Configure status bar with native look
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-            // Set status bar color
-            getWindow().setStatusBarColor(android.graphics.Color.parseColor("#e6f4ea"));
-            
-            // Ensure status bar is opaque (not translucent)
-            getWindow().clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
-            getWindow().addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            
-            // Set dark content for light status bar background  
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
-                getWindow().getDecorView().setSystemUiVisibility(
-                    View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
-                );
-            }
-        }
 
         // Request runtime permissions
         requestAllPermissions();
