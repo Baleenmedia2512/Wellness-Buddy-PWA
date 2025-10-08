@@ -6,7 +6,8 @@ import {
   signInWithPopup,
   getRedirectResult,
   signInWithCredential,
-  onAuthStateChanged
+  onAuthStateChanged,
+  updateProfile
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@southdevs/capacitor-google-auth';
@@ -82,10 +83,24 @@ export const signInWithGoogle = async (forceRedirect = false) => {
 
       // Sign in with native Google Auth
       const result = await GoogleAuth.signIn();
+      
+      // Get additional user info from Google Auth result
+      const userInfo = {
+        displayName: result.name,
+        email: result.email,
+        photoURL: result.imageUrl // Ensure we capture the image URL
+      };
 
       // Create Firebase credential from Google result
       const credential = GoogleAuthProvider.credential(result.authentication.idToken);
       const userCredential = await signInWithCredential(auth, credential);
+      
+      // Update user profile with Google info if photo is missing
+      if (!userCredential.user.photoURL && userInfo.photoURL) {
+        await updateProfile(userCredential.user, {
+          photoURL: userInfo.photoURL
+        });
+      }
       
       return userCredential.user;
     } else {
