@@ -382,9 +382,64 @@ function WellnessBuddyApp() {
     }
   }, [successPopups]);
 
+  // Auto-dismiss save error after 5 seconds
+  useEffect(() => {
+    if (saveError) {
+      const timer = setTimeout(() => {
+        setSaveError(null);
+      }, 5000); // 5 seconds
+
+      return () => clearTimeout(timer); // Cleanup on unmount or when saveError changes
+    }
+  }, [saveError]);
+
+  // Helper function to compress images
+  const compressImage = (base64, quality = 0.7) => {
+    return new Promise((resolve) => {
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const img = new Image();
+      
+      img.onload = () => {
+        // Calculate new dimensions (max 1920px width)
+        let { width, height } = img;
+        const maxWidth = 1920;
+        
+        if (width > maxWidth) {
+          height = (height * maxWidth) / width;
+          width = maxWidth;
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        // Draw and compress
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      
+      img.src = base64;
+    });
+  };
+
   const handleImageSelect = async (file) => {
     if (!user) {
       setError('Please sign in to analyze food images');
+      return;
+    }
+
+    // Debug: Log file details
+    console.log('📁 File selected:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      sizeInMB: (file.size / 1024 / 1024).toFixed(2)
+    });
+
+    // Check file size (10MB limit)
+    if (file.size > 10 * 1024 * 1024) {
+      setError('📸 Image file is too large. Please choose a smaller image (max 10MB).');
       return;
     }
 
@@ -395,7 +450,21 @@ function WellnessBuddyApp() {
 
     const reader = new FileReader();
     reader.onload = async (e) => {
-      const imageBase64 = e.target.result;
+      let imageBase64 = e.target.result;
+      
+      // Compress large images for better upload success
+      if (imageBase64.length > 2 * 1024 * 1024) { // 2MB base64 limit
+        try {
+          imageBase64 = await compressImage(imageBase64, 0.7); // 70% quality
+          console.log('🗜️ Image compressed from', 
+            (e.target.result.length / 1024 / 1024).toFixed(2), 'MB to', 
+            (imageBase64.length / 1024 / 1024).toFixed(2), 'MB'
+          );
+        } catch (compressError) {
+          console.warn('⚠️ Image compression failed, using original:', compressError);
+        }
+      }
+      
       setImagePreview(imageBase64);
 
       try {
@@ -407,6 +476,16 @@ function WellnessBuddyApp() {
         setSaveLoading(true);
         try {
           const userIdentifier = user.email || user.id || user.uid || 'anonymous';
+          
+          // Debug: Log environment info
+          console.log('💾 Attempting to save analysis:', {
+            apiBaseUrl: apiBaseUrl,
+            userIdentifier: userIdentifier,
+            imageSize: imageBase64 ? (imageBase64.length / 1024 / 1024).toFixed(2) + ' MB' : 'N/A',
+            analysisResultSize: JSON.stringify(result).length,
+            isProduction: process.env.NODE_ENV === 'production'
+          });
+
           const saveRes = await saveNutritionAnalysis({
             userId: userIdentifier,
             imagePath: file.name,
@@ -414,6 +493,8 @@ function WellnessBuddyApp() {
             analysisResult: result,
             deviceInfo: window.navigator.userAgent
           });
+
+          console.log('✅ Save successful:', saveRes);
 
           const newPopup = {
             id: Date.now().toString(),
@@ -424,7 +505,17 @@ function WellnessBuddyApp() {
           };
           setSuccessPopups((prev) => [...prev, newPopup]);
         } catch (err) {
-          setSaveError('Failed to save analysis: ' + (err.message || 'Unknown error'));
+          // Debug: Log detailed error info
+          console.error('❌ Save failed:', {
+            error: err,
+            message: err.message,
+            stack: err.stack,
+            apiBaseUrl: apiBaseUrl,
+            userIdentifier: user.email || user.id || user.uid || 'anonymous'
+          });
+          
+          const friendlySaveError = getFriendlyErrorMessage(err);
+          setSaveError(friendlySaveError);
         } finally {
           setSaveLoading(false);
         }
@@ -487,18 +578,39 @@ function WellnessBuddyApp() {
 
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || '';
+    
+    // Server and network errors
     if (rawMessage.includes('503') || rawMessage.includes('overloaded')) {
       return '⚡ Server is currently busy. Please try again in a few minutes.';
-    } else if (rawMessage.includes('No food items detected')) {
+    } else if (rawMessage.includes('Server returned an unexpected response format')) {
+      return '💾 Unable to save your analysis right now. Your food data is still displayed above!';
+    } else if (rawMessage.includes('Image file is too large')) {
+      return '📸 Image file is too large. Please try with a smaller photo (max 10MB).';
+    } else if (rawMessage.includes('network') || rawMessage.includes('Failed to fetch')) {
+      return '🌐 Network issue. Please check your internet connection and try again.';
+    } else if (rawMessage.includes('500') || rawMessage.includes('Internal Server Error')) {
+      return '⚙️ Server error occurred. Please try again in a few moments.';
+    } else if (rawMessage.includes('timeout')) {
+      return '⏱️ Request timed out. Please try again with better internet connection.';
+    }
+    
+    // AI analysis errors
+    else if (rawMessage.includes('No food items detected')) {
       return '⚠️ No food items were detected in the image. Try with a clearer photo.';
     } else if (rawMessage.includes('Invalid response format')) {
-      return '⚙️ Received unexpected data from server. Please try again later.';
-    } else if (rawMessage.includes('network') || rawMessage.includes('Failed to fetch')) {
-      return '🌐 Network issue. Please check your internet connection.';
+      return '🤖 AI returned unexpected data. Please try analyzing the image again.';
     } else if (rawMessage.includes('API key is not configured')) {
-      return '⚙️ Server is missing or invalid. Please check your setup.';
+      return '⚙️ AI service is not available right now. Please try again later.';
+    } else if (rawMessage.includes('models/') && rawMessage.includes('not found')) {
+      return '🤖 AI model is not available. Please try again later.';
     }
-    return '❌ Food analysis failed. Please try again later.';
+    
+    // Generic fallback
+    else if (rawMessage.toLowerCase().includes('analysis')) {
+      return '🍽️ Unable to save your food analysis. The nutrition data is still shown above!';
+    }
+    
+    return '❌ Something went wrong. Please try again later.';
   };
 
   const resetApp = () => {

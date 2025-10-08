@@ -151,6 +151,14 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
         throw new Error('Image file is too large. Please try with a smaller image (max 10MB).');
       }
       
+      if (res.status === 500) {
+        throw new Error('Internal Server Error');
+      }
+      
+      if (res.status === 503) {
+        throw new Error('Server is currently overloaded');
+      }
+      
       throw new Error('Server returned an unexpected response format');
     }
     
