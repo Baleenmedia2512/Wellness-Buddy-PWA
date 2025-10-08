@@ -5,19 +5,25 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 const initializeEdgeToEdgePlugins = async () => {
   if (Capacitor.getPlatform() === 'android') {
     try {
-      const { EdgeToEdgeSupport } = await import('@capawesome/capacitor-android-edge-to-edge-support');
-      const { NavigationBar } = await import('@capgo/capacitor-navigation-bar');
+      // First set the status bar style to ensure proper initialization
+      await StatusBar.setStyle({ style: Style.Light });
       
-      // Configure edge-to-edge support
+      // Then configure edge-to-edge support
+      const { EdgeToEdgeSupport } = await import('@capawesome/capacitor-android-edge-to-edge-support');
       await EdgeToEdgeSupport.enable({
-        statusBarColor: '#f8fafc', // Light gray background
-        statusBarStyle: 'light', // 'light' means dark icons on light background
-        navigationBarColor: '#ffffff',
-        navigationBarStyle: 'light'
+        statusBarColor: '#FFFFFF',
+        statusBarStyle: 'light',
+        navigationBarColor: '#FFFFFF',
+        navigationBarStyle: 'light',
+        statusBarOverlay: false // Ensure no overlay issues
       });
 
-      // Set status bar style (dark icons on light background)
-      await StatusBar.setStyle({ style: Style.Light });
+      // Finally configure navigation bar
+      const { NavigationBar } = await import('@capgo/capacitor-navigation-bar');
+      await NavigationBar.setColor({
+        color: '#FFFFFF',
+        darkButtons: true
+      });
 
       console.log('✅ Mobile UI initialized successfully');
     } catch (error) {

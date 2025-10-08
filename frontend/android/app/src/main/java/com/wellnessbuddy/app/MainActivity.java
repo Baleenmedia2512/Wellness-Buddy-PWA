@@ -15,10 +15,33 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
+
         // Register the GalleryMonitorPlugin
         registerPlugin(GalleryMonitorPlugin.class);
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
+        
+        // Ensure dark status bar icons on all Android versions
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            // Android 11+ (API 30+)
+            getWindow().getDecorView().getWindowInsetsController().setSystemBarsAppearance(
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS,
+                android.view.WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+            );
+        } else {
+            // Android 6.0 - Android 10 (API 23-29)
+            int flags = getWindow().getDecorView().getSystemUiVisibility();
+            flags |= android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            flags |= android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE;
+            flags |= android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN;
+            getWindow().getDecorView().setSystemUiVisibility(flags);
+        }
+
+        // Set status bar background color
+        getWindow().setStatusBarColor(android.graphics.Color.WHITE);
+        
+        // Ensure proper window flags
+        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
+        getWindow().clearFlags(android.view.WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
 
         // Request runtime permissions
         requestAllPermissions();
