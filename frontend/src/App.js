@@ -1,8 +1,10 @@
 // src/App.js
 import React, { useState, useRef, useEffect } from 'react';
+import { useIonRouter } from '@ionic/react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import SuccessSavePopup from './components/SuccessSavePopup';
+import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
@@ -127,6 +129,33 @@ function WellnessBuddyApp() {
       return [];
     }
   });
+
+  // Navigation hook for back button handling
+  const ionRouter = useIonRouter();
+
+  // Toast state for back button exit message
+  const [toast, setToast] = useState({ message: '', visible: false });
+
+  // Show toast message
+  const showToast = (message) => {
+    setToast({ message, visible: true });
+    setTimeout(() => setToast({ message: '', visible: false }), 2000);
+  };
+
+  // Initialize back button handler
+  useEffect(() => {
+    const goBack = () => {
+      if (showNutritionDashboard) {
+        setShowNutritionDashboard(false);
+        localStorage.setItem('currentPage', 'main');
+        return true;
+      }
+      return ionRouter.canGoBack() && ionRouter.goBack();
+    };
+    
+    initializeBackButton(goBack, showToast, !showNutritionDashboard);
+    return () => cleanupBackButton();
+  }, [ionRouter, showNutritionDashboard]);
 
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
@@ -817,6 +846,13 @@ function WellnessBuddyApp() {
             <span className="text-sm font-medium">Insights</span>
           </button>
         </div>
+
+        {/* Back button toast message */}
+        {toast.visible && (
+          <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
+            {toast.message}
+          </div>
+        )}
 
         <ImageUpload
           onImageSelect={handleImageSelect}
