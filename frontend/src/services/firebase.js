@@ -85,21 +85,46 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       const result = await GoogleAuth.signIn();
       
       // Get additional user info from Google Auth result
+      // Process the image URL to handle potential issues
+      let processedPhotoUrl = result.imageUrl;
+      if (processedPhotoUrl) {
+        // Remove any size restrictions and get highest quality
+        processedPhotoUrl = processedPhotoUrl
+          .replace('s96-c', 's384-c')  // Increase size
+          .replace(/\?.*$/, '');  // Remove any query parameters that might cause issues
+        
+        // Ensure HTTPS
+        if (!processedPhotoUrl.startsWith('https://')) {
+          processedPhotoUrl = processedPhotoUrl.replace('http://', 'https://');
+        }
+      }
+
       const userInfo = {
         displayName: result.name,
         email: result.email,
-        photoURL: result.imageUrl // Ensure we capture the image URL
+        photoURL: processedPhotoUrl
       };
 
       // Create Firebase credential from Google result
       const credential = GoogleAuthProvider.credential(result.authentication.idToken);
       const userCredential = await signInWithCredential(auth, credential);
       
-      // Update user profile with Google info if photo is missing
-      if (!userCredential.user.photoURL && userInfo.photoURL) {
-        await updateProfile(userCredential.user, {
-          photoURL: userInfo.photoURL
-        });
+      // Always update with high quality photo URL
+      if (userInfo.photoURL) {
+        try {
+          // Add cache buster and ensure HTTPS
+          const timestamp = new Date().getTime();
+          const photoURL = userInfo.photoURL.includes('?') 
+            ? `${userInfo.photoURL}&t=${timestamp}` 
+            : `${userInfo.photoURL}?t=${timestamp}`;
+
+          await updateProfile(userCredential.user, {
+            photoURL: photoURL
+          });
+          console.log('✅ Profile photo updated with high quality version');
+        } catch (error) {
+          console.warn('⚠️ Failed to update profile photo:', error);
+        }
       }
       
       return userCredential.user;
