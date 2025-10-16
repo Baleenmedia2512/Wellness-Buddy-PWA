@@ -8,7 +8,8 @@ const config = {
       scopes: ['profile', 'email'],
       serverClientId: '610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com',
       forceCodeForRefreshToken: true
-    }
+    },
+    GalleryMonitor: {}
   }
 };
 

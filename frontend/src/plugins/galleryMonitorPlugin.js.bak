@@ -1,0 +1,87 @@
+import { registerPlugin, Capacitor } from '@capacitor/core';
+
+const galleryMonitorConfig = {
+
+const registerGalleryMonitorPlugin = async () => {
+  try {
+    return registerPlugin('GalleryMonitor', {
+  web: {
+    async setCurrentUser() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async getCurrentUser() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async clearCurrentUser() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async requestPermissions() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async startService() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async stopService() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    },
+    async checkGallery() {
+      throw new Error('GalleryMonitor is not supported in web environment');
+    }
+  }
+});
+
+// Add a wrapper to check platform and plugin availability
+export const GalleryMonitorPlugin = {
+  async ensurePluginAvailable() {
+    if (Capacitor.getPlatform() !== 'android') {
+      throw new Error('GalleryMonitor is only supported on Android');
+    }
+    
+    if (!GalleryMonitor) {
+      throw new Error('GalleryMonitor plugin is not available');
+    }
+  },
+
+  async setCurrentUser(options) {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.setCurrentUser(options);
+  },
+
+  async getCurrentUser() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.getCurrentUser();
+  },
+
+  async clearCurrentUser() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.clearCurrentUser();
+  },
+
+  async requestPermissions() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.requestPermissions();
+  },
+
+  async startService() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.startService();
+  },
+
+  async stopService() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.stopService();
+  },
+
+  async checkGallery() {
+    await this.ensurePluginAvailable();
+    return GalleryMonitor.checkGallery();
+  },
+
+  addListener(eventName, listenerFunc) {
+    if (Capacitor.getPlatform() !== 'android') {
+      console.warn('GalleryMonitor listeners are only supported on Android');
+      return { remove: () => {} };
+    }
+    return GalleryMonitor.addListener(eventName, listenerFunc);
+  }
+};

@@ -377,25 +377,70 @@ public class GalleryMonitorService extends Service {
         }
     }
     
-    // Auto-restart service if killed (swipe away or system kill)
+    // ❌ DEPRECATED: onTaskRemoved restart mechanism is unreliable
+    // This method does NOT fire on force-stop, only when app is removed from Recents
+    // Service restart is now handled by ServiceHeartbeatWorker (15-minute periodic check)
     @Override
     public void onTaskRemoved(Intent rootIntent) {
         super.onTaskRemoved(rootIntent);
-        Log.d(TAG, "onTaskRemoved called, restarting service...");
-        Intent restartServiceIntent = new Intent(getApplicationContext(), GalleryMonitorService.class);
-        restartServiceIntent.setPackage(getPackageName());
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getApplicationContext().startForegroundService(restartServiceIntent);
-        } else {
-            getApplicationContext().startService(restartServiceIntent);
-        }
+        Log.d(TAG, "⚠️ onTaskRemoved called - Note: This does NOT fire on force-stop");
+        Log.d(TAG, "Service restart now handled by ServiceHeartbeatWorker (15-min periodic check)");
+        
+        // ❌ DO NOT use WorkManager here - this method is unreliable
+        // The ServiceHeartbeatWorker will detect service death and restart it
+        
+        /* REMOVED - Unreliable restart logic:
+        // Schedule restart using WorkManager with exponential backoff
+        androidx.work.WorkManager workManager = androidx.work.WorkManager.getInstance(getApplicationContext());
+        
+        // Cancel any existing restart work
+        workManager.cancelAllWorkByTag("gallery_service_restart");
+        
+        // Create constraints
+        androidx.work.Constraints constraints = new androidx.work.Constraints.Builder()
+                .setRequiresCharging(false)
+                .setRequiresBatteryNotLow(true)
+                .build();
+        
+        // Create work request with exponential backoff
+        androidx.work.OneTimeWorkRequest restartWork = 
+            new androidx.work.OneTimeWorkRequest.Builder(ServiceRestartWorker.class)
+                .setConstraints(constraints)
+                .addTag("gallery_service_restart")
+                .setBackoffCriteria(
+                    androidx.work.BackoffPolicy.EXPONENTIAL,
+                    androidx.work.OneTimeWorkRequest.MIN_BACKOFF_MILLIS,
+                    java.util.concurrent.TimeUnit.MILLISECONDS)
+                .build();
+        
+        // Enqueue work
+        workManager.enqueue(restartWork);
+        */
     }
     
-    // Ensure service is restarted if killed by system
+    // Enhanced start command handling
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand called");
-        return START_STICKY;
+        
+        // Ensure proper foreground service type for Android 10+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+                
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING;
+                }
+                
+                stopForeground(true);
+                startForeground(NOTIFICATION_ID, createNotification(), foregroundServiceType);
+            } catch (Exception e) {
+                Log.e(TAG, "Error setting foreground service type", e);
+            }
+        }
+        
+        // Use START_REDELIVER_INTENT to ensure the service gets the last intent when restarted
+        return START_REDELIVER_INTENT;
     }
 
     @Nullable
@@ -410,6 +455,13 @@ public class GalleryMonitorService extends Service {
         int calories = -1;
         double protein = -1, carbs = -1, fat = -1, fiber = -1;
         boolean hasFood = false;
+        
+        // Check if result is a valid JSON before parsing
+        if (result == null || result.startsWith("Analysis failed") || result.startsWith("Error:") || result.equals("No result")) {
+            Log.d(TAG, "Skipping notification for non-JSON result: " + result);
+            return;
+        }
+        
         try {
             JSONObject obj = new JSONObject(result);
             JSONArray foods = obj.optJSONArray("foods");
@@ -428,6 +480,8 @@ public class GalleryMonitorService extends Service {
             }
         } catch (Exception e) {
             Log.e(TAG, "Error parsing Gemini result for notification", e);
+            Log.d(TAG, "Result that failed to parse: " + result);
+            return;
         }
 
         if (!hasFood) {

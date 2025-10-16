@@ -26,6 +26,111 @@ public class GalleryMonitorPlugin extends Plugin {
     public void load() {
         super.load();
         instance = this;
+        Log.d(TAG, "✅ GalleryMonitor plugin loaded");
+    }
+    
+    @PluginMethod
+    public void echo(PluginCall call) {
+        try {
+            String value = call.getString("value");
+            if (value == null) {
+                call.reject("Must provide a value");
+                return;
+            }
+
+            JSObject ret = new JSObject();
+            ret.put("value", value);
+            Log.d(TAG, "Echo called with value: " + value);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to echo value", e);
+            call.reject("Failed to echo value", e);
+        }
+    }
+
+    @PluginMethod
+    public void requestPermissions(PluginCall call) {
+        try {
+            // We'll implement actual permission requests later
+            JSObject result = new JSObject();
+            result.put("granted", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            call.reject("Failed to request permissions", e);
+        }
+    }
+
+    @PluginMethod
+    public void setCurrentUser(PluginCall call) {
+        try {
+            String userId = call.getString("userId");
+            if (userId == null) {
+                Integer userIdNum = call.getInt("userId");
+                if (userIdNum != null) {
+                    userId = String.valueOf(userIdNum);
+                } else {
+                    call.reject("userId is required");
+                    return;
+                }
+            }
+
+            String userEmail = call.getString("userEmail");
+            String cachedDbUserId = call.getString("cachedDbUserId");
+
+            if (cachedDbUserId == null) {
+                Integer cachedDbUserIdNum = call.getInt("cachedDbUserId");
+                if (cachedDbUserIdNum != null) cachedDbUserId = String.valueOf(cachedDbUserIdNum);
+            }
+
+            Log.d(TAG, "setCurrentUser called with: userId=" + userId +
+                      ", userEmail=" + userEmail + ", cachedDbUserId=" + cachedDbUserId);
+
+            if (userId == null || userId.isEmpty()) {
+                call.reject("User ID is required");
+                return;
+            }
+
+            // Save user info in preferences
+            SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
+            SharedPreferences.Editor editor = prefs.edit();
+            editor.putString("current_user_id", userId);
+
+            if (userEmail != null && !userEmail.isEmpty()) {
+                editor.putString("current_user_email", userEmail);
+            }
+
+            if (cachedDbUserId != null && !cachedDbUserId.isEmpty()) {
+                editor.putString("cached_db_user_id", cachedDbUserId);
+                Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail +
+                          ", cached_db_user_id: " + cachedDbUserId);
+            } else {
+                editor.remove("cached_db_user_id");
+                Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
+            }
+
+            editor.apply();
+            
+            // Start/update service with new user info
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+            serviceIntent.putExtra("userId", userId);
+            if (userEmail != null) {
+                serviceIntent.putExtra("userEmail", userEmail);
+            }
+            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            
+            JSObject result = new JSObject();
+            result.put("success", true);
+            call.resolve(result);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to set current user", e);
+            call.reject("Failed to set current user", e);
+        }
     }
     
     // Static method to trigger notification events from MainActivity
@@ -72,72 +177,29 @@ public class GalleryMonitorPlugin extends Plugin {
     }
     
     @PluginMethod
-    public void requestPermissions(PluginCall call) {
-        // In a real implementation, you would request runtime permissions here
-        JSObject ret = new JSObject();
-        ret.put("granted", true);
-        call.resolve(ret);
-    }
-    
-    @PluginMethod
     public void checkGallery(PluginCall call) {
         // This would trigger an immediate gallery check
-        JSObject ret = new JSObject();
-        ret.put("newImages", new JSONArray());
-        call.resolve(ret);
-    }
-    
-    @PluginMethod
-    public void setCurrentUser(PluginCall call) {
         try {
-            String userId = call.getString("userId");
-            if (userId == null) {
-            Integer userIdNum = call.getInt("userId");
-            if (userIdNum != null) userId = String.valueOf(userIdNum);
-            }
-
-            String userEmail = call.getString("userEmail");
-
-            String cachedDbUserId = call.getString("cachedDbUserId");
-            if (cachedDbUserId == null) {
-            Integer cachedDbUserIdNum = call.getInt("cachedDbUserId");
-            if (cachedDbUserIdNum != null) cachedDbUserId = String.valueOf(cachedDbUserIdNum);
-            }
-
-            Log.d(TAG, "setCurrentUser called with: userId=" + userId +
-                        ", userEmail=" + userEmail + ", cachedDbUserId=" + cachedDbUserId);
-
-            if (userId == null || userId.isEmpty()) {
-            call.reject("User ID is required");
-            return;
-            }
-
-            SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
-            SharedPreferences.Editor editor = prefs.edit();
-            editor.putString("current_user_id", userId);
-
-            if (userEmail != null && !userEmail.isEmpty()) {
-            editor.putString("current_user_email", userEmail);
-            }
-
-            if (cachedDbUserId != null && !cachedDbUserId.isEmpty()) {
-            editor.putString("cached_db_user_id", cachedDbUserId);
-            Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail +
-                        ", cached_db_user_id: " + cachedDbUserId);
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+            serviceIntent.setAction("CHECK_GALLERY");
+            
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
             } else {
-            editor.remove("cached_db_user_id");
-            Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
+                context.startService(serviceIntent);
             }
-
-            editor.apply();
-            call.resolve();
+            
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
         } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to set current user", e);
-            call.reject("Failed to set current user", e);
+            call.reject("Failed to check gallery", e);
         }
     }
 
-    
+
+
     @PluginMethod
     public void getCurrentUser(PluginCall call) {
         try {

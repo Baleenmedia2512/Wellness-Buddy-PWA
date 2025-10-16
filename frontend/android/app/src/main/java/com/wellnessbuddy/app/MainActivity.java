@@ -14,10 +14,11 @@ import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-
-        // Register the GalleryMonitorPlugin
+        // Register the GalleryMonitorPlugin BEFORE super.onCreate()
         registerPlugin(GalleryMonitorPlugin.class);
+        
+        super.onCreate(savedInstanceState);
+        
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
         
         // Ensure dark status bar icons on all Android versions
@@ -56,6 +57,10 @@ public class MainActivity extends BridgeActivity {
         } else {
             startService(serviceIntent);
         }
+        
+        // ✅ Schedule periodic heartbeat to ensure service stays alive
+        com.wellnessbuddy.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
+        android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());

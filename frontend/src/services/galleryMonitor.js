@@ -3,6 +3,9 @@ import { App } from '@capacitor/app';
 import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 
 export const GalleryMonitor = {
+  _isInitialized: false,
+  _initializationPromise: null,
+
   async initialize() {
     // Check if we're running on Android
     if (Capacitor.getPlatform() !== 'android') {
@@ -10,24 +13,75 @@ export const GalleryMonitor = {
       return false;
     }
 
-    // Request permissions
-    const hasPermission = await this.requestPermissions();
-    if (!hasPermission) return false;
+    if (this._initializationPromise) {
+      return this._initializationPromise;
+    }
 
-    // Start the service
-    return this.startMonitoring();
+    this._initializationPromise = new Promise(async (resolve) => {
+      try {
+        // Request permissions
+        const hasPermission = await this.requestPermissions();
+        if (!hasPermission) {
+          this._isInitialized = false;
+          resolve(false);
+          return;
+        }
+
+        // Start the service
+        const started = await this.startMonitoring();
+        this._isInitialized = started;
+        resolve(started);
+      } catch (error) {
+        console.error('Failed to initialize GalleryMonitor:', error);
+        this._isInitialized = false;
+        resolve(false);
+      }
+    });
+
+    return this._initializationPromise;
+  },
+
+  async ensureInitialized() {
+    if (this._isInitialized) return true;
+    return this.initialize();
   },
 
   async setCurrentUser(userId, userEmail = null) {
+    if (Capacitor.getPlatform() !== 'android') return;
+
     try {
-      if (Capacitor.getPlatform() === 'android') {
-        await GalleryMonitorPlugin.setCurrentUser({ 
-          userId, 
-          userEmail: userEmail // Use email if provided, otherwise fall back to userId
-        });
+      // Ensure plugin is initialized
+      await this.ensureInitialized();
+      
+      const maxRetries = 3;
+      let lastError = null;
+      
+      for (let i = 0; i < maxRetries; i++) {
+        try {
+          await GalleryMonitorPlugin.setCurrentUser({ 
+            userId, 
+            userEmail: userEmail // Use email if provided, otherwise fall back to userId
+          });
+          return; // Success
+        } catch (error) {
+          lastError = error;
+          console.warn(`Attempt ${i + 1} failed to set current user:`, error);
+          
+          if (error.message?.includes('not implemented')) {
+            // Wait a bit before retrying to allow plugin initialization
+            await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+          } else {
+            break; // Don't retry other types of errors
+          }
+        }
       }
+      
+      // If we get here, all retries failed
+      throw lastError || new Error('Failed to set current user after multiple attempts');
     } catch (error) {
       console.error('Failed to set current user for background service:', error);
+      // Re-throw the error so the caller can handle it
+      throw error;
     }
   },
 

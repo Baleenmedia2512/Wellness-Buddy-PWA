@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
 import okhttp3.*;
+import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.File;
 import java.io.FileInputStream;
@@ -97,11 +98,25 @@ public class DatabaseSyncClient {
     public boolean saveAnalysis(String userId, String imagePath, String analysisResult, long timestamp, String deviceInfo, String imageBase64) {
         try {
             Log.d(TAG, "Saving analysis to database for user: " + userId);
+            
+            // Check if analysisResult is valid JSON before processing
+            if (analysisResult == null || analysisResult.startsWith("Analysis failed") || analysisResult.startsWith("Error:") || analysisResult.equals("No result")) {
+                Log.d(TAG, "❌ Skipping database save for non-JSON result: " + analysisResult);
+                return false;
+            }
 
             JSONObject requestBody = new JSONObject();
             requestBody.put("userId", userId);
             requestBody.put("imagePath", imagePath);
-            requestBody.put("analysisResult", new JSONObject(analysisResult));
+            
+            // Safely parse the analysisResult
+            try {
+                requestBody.put("analysisResult", new JSONObject(analysisResult));
+            } catch (JSONException e) {
+                Log.e(TAG, "❌ Invalid JSON in analysisResult, skipping save: " + analysisResult);
+                return false;
+            }
+            
             requestBody.put("timestamp", timestamp);
             requestBody.put("deviceInfo", deviceInfo);
             if (imageBase64 != null && !imageBase64.isEmpty()) {
