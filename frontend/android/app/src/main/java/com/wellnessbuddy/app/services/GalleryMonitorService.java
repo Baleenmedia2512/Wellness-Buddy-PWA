@@ -168,7 +168,7 @@ public class GalleryMonitorService extends Service {
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Gallery Monitor Active")
-                .setContentText("Wellness Buddy is monitoring new food photos.")
+                .setContentText("Monitoring camera photos for food analysis")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -183,7 +183,7 @@ public class GalleryMonitorService extends Service {
                     "Gallery Monitor",
                     NotificationManager.IMPORTANCE_DEFAULT
             );
-            channel.setDescription("Monitors for new food photos and database saves");
+            channel.setDescription("Monitors camera photos for food analysis");
             channel.enableLights(true);
             channel.enableVibration(true);
             channel.setShowBadge(true);
@@ -212,27 +212,27 @@ public class GalleryMonitorService extends Service {
     }
 
     private void checkGalleryForNewImages() {
-        Log.d(TAG, "Checking for new images...");
+        Log.d(TAG, "Checking for new images in DCIM/Camera only...");
 
-        List<File> imageDirs = Arrays.asList(
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
-                Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        );
+        // Only monitor DCIM/Camera folder - removed Screenshots and Downloads
+        File dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+        File cameraDir = new File(dcimDir, "Camera");
 
         try {
             final File[] latestImage = {null};
             final long[] latestModified = {lastCheckedTime};
 
-            for (File dir : imageDirs) {
-                if (dir != null && dir.exists()) {
-                    scanDirectoryForNewImages(dir, imageFile -> {
-                        if (imageFile != null && imageFile.lastModified() > latestModified[0]) {
-                            latestImage[0] = imageFile;
-                            latestModified[0] = imageFile.lastModified();
-                        }
-                    });
-                }
+            // Check DCIM/Camera folder only
+            if (cameraDir.exists() && cameraDir.isDirectory()) {
+                Log.d(TAG, "📂 Scanning: " + cameraDir.getAbsolutePath());
+                scanDirectoryForNewImages(cameraDir, imageFile -> {
+                    if (imageFile != null && imageFile.lastModified() > latestModified[0]) {
+                        latestImage[0] = imageFile;
+                        latestModified[0] = imageFile.lastModified();
+                    }
+                });
+            } else {
+                Log.d(TAG, "⚠️ Camera folder not found: " + cameraDir.getAbsolutePath());
             }
 
             if (latestImage[0] != null) {
