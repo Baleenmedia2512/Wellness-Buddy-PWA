@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LogOut, Camera, User, History } from 'lucide-react';
+import { getVersionString } from '../config/version';
 
 const Header = ({ user, onTestCamera, onSignOut, onShowBackgroundHistory }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,6 +108,13 @@ const Header = ({ user, onTestCamera, onSignOut, onShowBackgroundHistory }) => {
                       <p className="text-xs text-gray-500">Logout from your account</p>
                     </div>
                   </button>
+                </div>
+
+                {/* Version info at bottom */}
+                <div className="px-4 py-2.5 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                  <p className="text-[11px] font-medium text-gray-400 text-center tracking-wide">
+                    {getVersionString()}
+                  </p>
                 </div>
               </div>
             </>
