@@ -72,13 +72,13 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.2.0',
+  VERSION: '1.2.1',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 3,
+  VERSION_CODE: 4,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Authentication Fix & Stability',
+  RELEASE_NAME: 'Google Sign-In Fix',
   
   // Build date
   BUILD_DATE: '2025-10-29',
@@ -86,6 +86,12 @@ export const APP_VERSION = {
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.2.1 (Code 4) - 2025-10-29
+ *   🔐 Fixed Google Sign-In for signed release builds
+ *   🔧 Added SHA-256 certificate configuration
+ *   ✨ Enhanced version display with clean UI
+ *   🐛 Resolved OAuth authentication issues
  * 
  * Version 1.2.0 (Code 3) - 2025-10-29
  *   🔐 Fixed Google Sign-In for release builds

@@ -14,22 +14,6 @@
       },
       "oauth_client": [
         {
-          "client_id": "610941252952-1ovol30kmvb8g0cbg3u85521aq1bj4el.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "25f340c610614d704d17bcfc6ec12db35a813930"
-          }
-        },
-        {
-          "client_id": "610941252952-in3q7dasg7cn44kh9mtgaq12rc42v882.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "d6cf38eebca47e5486f0e083f676a104a3494327"
-          }
-        },
-        {
           "client_id": "610941252952-m9hukk2fkn8e3p4kf8kq12gcm2iv4qoh.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
