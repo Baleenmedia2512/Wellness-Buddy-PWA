@@ -53,6 +53,7 @@ function WellnessBuddyApp() {
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
+  const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const fileInputRef = useRef(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
@@ -164,10 +165,112 @@ function WellnessBuddyApp() {
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
 
+  const [saveLoading, setSaveLoading] = useState(false);
+  const [saveError, setSaveError] = useState(null);
+
+  // Check user status (Active/Inactive) using lookup-user-id API
+  const checkUserStatus = useCallback(async (user) => {
+    if (!user) {
+      return true; // If no user, skip check
+    }
+    
+    try {
+      const userEmail = user.email || user.Email;
+      
+      if (!userEmail) {
+        return true;
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail })
+      });
+
+      const data = await response.json();
+      
+      // User not found in database
+      if (!data.success || data.userNotFound) {
+        setShowUserNotFoundModal(true);
+        setIsUserActive(false);
+        return false;
+      }
+      
+      // User found but inactive
+      if (data.success && !data.isActive) {
+        setShowInactiveModal(true);
+        setIsUserActive(false);
+        return false;
+      }
+      
+      // User is active - clear any modal states
+      setShowInactiveModal(false);
+      setShowUserNotFoundModal(false);
+      setIsUserActive(true);
+      
+      return true;
+    } catch (error) {
+      console.error('Error checking user status:', error);
+      // On error, allow user to continue (fail-open)
+      setIsUserActive(true);
+      return true;
+    }
+  }, [apiBaseUrl]);
+
+  // Helper functions for navigation with localStorage persistence
+  const showNutritionDashboardPage = useCallback(async () => {
+    // Re-check user status in real-time before opening dashboard
+    if (user) {
+      const isActive = await checkUserStatus(user);
+      if (!isActive) {
+        setError('Your account is inactive. Please contact support to reactivate.');
+        return;
+      }
+    }
+    setShowNutritionDashboard(true);
+    localStorage.setItem('currentPage', 'nutrition-dashboard');
+  }, [user, checkUserStatus]);
+
+  const showMainPage = () => {
+    setShowNutritionDashboard(false);
+    localStorage.setItem('currentPage', 'main');
+  };
+
+  const requestAllPermissions = async () => {
+    if (!Capacitor.isNativePlatform()) return;
+    try {
+      await PushNotifications.requestPermissions();
+    } catch (err) {
+      console.warn('❌ Permission request failed:', err);
+    }
+  };
+
+  const handleInactiveModalClose = async () => {
+    setShowInactiveModal(false);
+    
+    // Add small delay to ensure modal is visible before sign out
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    await handleSignOut();
+  };
+
+  const handleUserNotFoundModalClose = async () => {
+    setShowUserNotFoundModal(false);
+    
+    // Add small delay to ensure modal is visible before sign out
+    await new Promise(resolve => setTimeout(resolve, 300));
+    
+    await handleSignOut();
+  };
+
   // Show background nutrition popup if new record exists and not acknowledged
   useEffect(() => {
     const maybeShowBgNutritionPopup = async () => {
       if (!user) return;
+      
+      // Re-check user status in real-time
+      const isActive = await checkUserStatus(user);
+      if (!isActive) return;
 
       // Always use DB UserID only
       let dbUserId = user.id;
@@ -241,115 +344,7 @@ function WellnessBuddyApp() {
     };
 
     maybeShowBgNutritionPopup();
-  }, [user]);
-
-  const [saveLoading, setSaveLoading] = useState(false);
-  const [deleteLoading, setDeleteLoading] = useState(false);
-  const [saveError, setSaveError] = useState(null);
-
-  // Helper functions for navigation with localStorage persistence
-  const showNutritionDashboardPage = () => {
-    setShowNutritionDashboard(true);
-    localStorage.setItem('currentPage', 'nutrition-dashboard');
-  };
-
-  const showMainPage = () => {
-    setShowNutritionDashboard(false);
-    localStorage.setItem('currentPage', 'main');
-  };
-
-  const requestAllPermissions = async () => {
-    if (!Capacitor.isNativePlatform()) return;
-    try {
-      await PushNotifications.requestPermissions();
-    } catch (err) {
-      console.warn('❌ Permission request failed:', err);
-    }
-  };
-
-  // Check user status (Active/Inactive) using lookup-user-id API
-  const checkUserStatus = useCallback(async (user) => {
-    console.log('🔍 [checkUserStatus] Starting status check for user:', user);
-    
-    if (!user) {
-      console.log('⚠️ [checkUserStatus] No user provided, skipping check');
-      return true; // If no user, skip check
-    }
-    
-    try {
-      const userEmail = user.email || user.Email;
-      
-      console.log('📧 [checkUserStatus] User email:', userEmail);
-      
-      if (!userEmail) {
-        console.warn('⚠️ [checkUserStatus] No email found for status check');
-        return true;
-      }
-
-      console.log('📡 [checkUserStatus] Calling lookup-user-id API with email:', userEmail);
-
-      const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail })
-      });
-
-      console.log('📥 [checkUserStatus] API response status:', response.status);
-
-      const data = await response.json();
-      
-      console.log('📋 [checkUserStatus] API response data:', data);
-      
-      // User not found in database
-      if (!data.success || data.userNotFound) {
-        console.warn('❌ [checkUserStatus] User not found in database');
-        console.warn('🔴 [checkUserStatus] Showing UserNotFoundModal');
-        setShowUserNotFoundModal(true);
-        return false;
-      }
-      
-      // User found but inactive
-      if (data.success && !data.isActive) {
-        console.warn('⚠️ [checkUserStatus] User is INACTIVE');
-        console.warn('🔴 [checkUserStatus] User Status:', data.status);
-        console.warn('🔴 [checkUserStatus] isActive:', data.isActive);
-        console.warn('🔴 [checkUserStatus] Showing InactiveUserModal');
-        setShowInactiveModal(true);
-        return false;
-      }
-      
-      // User is active
-      console.log('✅ [checkUserStatus] User is ACTIVE - allowing access');
-      console.log('✅ [checkUserStatus] User Status:', data.status);
-      console.log('✅ [checkUserStatus] isActive:', data.isActive);
-      return true;
-    } catch (error) {
-      console.error('❌ [checkUserStatus] Error occurred:', error);
-      console.error('❌ [checkUserStatus] Error details:', {
-        message: error.message,
-        stack: error.stack
-      });
-      // On error, allow user to continue (fail-open)
-      console.warn('⚠️ [checkUserStatus] Failing open - allowing access due to error');
-      return true;
-    }
-  }, [apiBaseUrl]);
-
-  const handleInactiveModalClose = async () => {
-    console.log('🔴 [handleInactiveModalClose] Closing InactiveUserModal');
-    console.log('🚪 [handleInactiveModalClose] Signing out user');
-    setShowInactiveModal(false);
-    // Sign out the user
-    await handleSignOut();
-  };
-
-  const handleUserNotFoundModalClose = async () => {
-    console.log('🟠 [handleUserNotFoundModalClose] Closing UserNotFoundModal');
-    console.log('🚪 [handleUserNotFoundModalClose] Signing out user');
-    setShowUserNotFoundModal(false);
-    // Sign out the user
-    await handleSignOut();
-  };
+  }, [user, checkUserStatus]);
 
   const handleSaveUserCache = async (user) => {
     console.log('handleSaveUserCache is initiated');
@@ -413,7 +408,7 @@ function WellnessBuddyApp() {
       App.removeAllListeners();
       if (cleanupFn) cleanupFn();
     };
-  }, []);
+  }, [showNutritionDashboardPage]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -436,33 +431,21 @@ function WellnessBuddyApp() {
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
-      console.log('🔐 [Auth State Change] User state changed:', user ? 'User signed in' : 'User signed out');
-      
       if (user) {
-        console.log('👤 [Auth State Change] User details:', {
-          email: user.email,
-          displayName: user.displayName,
-          uid: user.uid
-        });
-        
-        console.log('🔍 [Auth State Change] Running status check...');
         // Check user status before allowing access
         const isActive = await checkUserStatus(user);
-        console.log('📊 [Auth State Change] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
         
         if (!isActive) {
-          console.log('❌ [Auth State Change] Access denied - clearing user state');
-          setUser(null);
+          // Don't clear user state immediately - let modal show first
+          // Modal close handler will sign out and clear state
+          setUser(user); // Keep user state so modal can show user email
           setAuthLoading(false);
           return;
         }
-        
-        console.log('✅ [Auth State Change] Access granted - setting user state');
       }
       
       setUser(user);
       setAuthLoading(false);
-      console.log('On profile creation task, make sure to set from DB here');
       if (user && Capacitor.isNativePlatform()) {
         handleSaveUserCache(user);
       }
@@ -492,37 +475,27 @@ function WellnessBuddyApp() {
   // Handle OTP user restoration
   useEffect(() => {
     const restoreOtpUser = async () => {
-      console.log('🔄 [OTP Restoration] Checking if OTP user needs restoration...');
-      console.log('🔄 [OTP Restoration] isOtpVerified:', isOtpVerified, 'user:', user ? 'exists' : 'null');
-      
       if (isOtpVerified && !user) {
         const otpUser = localStorage.getItem('otpUser');
-        console.log('📦 [OTP Restoration] OTP user in localStorage:', otpUser ? 'found' : 'not found');
         
         if (otpUser) {
           try {
             const parsedUser = JSON.parse(otpUser);
-            console.log('👤 [OTP Restoration] Parsed OTP user:', parsedUser);
             
-            console.log('🔍 [OTP Restoration] Running status check...');
             // Check user status before restoring
             const isActive = await checkUserStatus(parsedUser);
-            console.log('📊 [OTP Restoration] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
             
             if (!isActive) {
-              console.log('❌ [OTP Restoration] Access denied - clearing OTP user data');
-              localStorage.removeItem('otpUser');
-              setIsOtpVerified(false);
-              localStorage.removeItem('isOtpVerified');
+              // Set user state so modal can show
+              setUser(parsedUser);
+              // Modal close handler will clear localStorage
               return;
             }
             
-            console.log('✅ [OTP Restoration] Access granted - restoring user');
             setUser(parsedUser);
-            console.log('OTP user restored:', parsedUser);
             handleSaveUserCache(parsedUser);
           } catch (error) {
-            console.error('❌ [OTP Restoration] Failed to restore OTP user:', error);
+            console.error('Failed to restore OTP user:', error);
             localStorage.removeItem('otpUser');
             setIsOtpVerified(false);
           }
@@ -532,6 +505,17 @@ function WellnessBuddyApp() {
     
     restoreOtpUser();
   }, [isOtpVerified, user, checkUserStatus]);
+
+  // Periodic user status check (every 60 seconds)
+  useEffect(() => {
+    if (!user) return;
+
+    const statusCheckInterval = setInterval(async () => {
+      await checkUserStatus(user);
+    }, 60000); // Check every 60 seconds
+
+    return () => clearInterval(statusCheckInterval);
+  }, [user, checkUserStatus]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -596,13 +580,12 @@ function WellnessBuddyApp() {
       return;
     }
 
-    // Debug: Log file details
-    console.log('📁 File selected:', {
-      name: file.name,
-      size: file.size,
-      type: file.type,
-      sizeInMB: (file.size / 1024 / 1024).toFixed(2)
-    });
+    // Re-check user status in real-time before analysis
+    const isActive = await checkUserStatus(user);
+    if (!isActive) {
+      setError('Your account is inactive. Please contact support to reactivate.');
+      return;
+    }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
@@ -725,7 +708,6 @@ function WellnessBuddyApp() {
     const popup = successPopups.find((p) => p.id === popupId);
     if (!popup || !popup.analysisId) return;
 
-    setDeleteLoading(true);
     try {
       await deleteNutritionAnalysis({ id: popup.analysisId });
       setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
@@ -736,10 +718,8 @@ function WellnessBuddyApp() {
         setSelectedImage(null);
       }
     } catch (err) {
-      console.error('❌ Failed to delete analysis:', err);
+      console.error('Failed to delete analysis:', err);
       setSaveError('Failed to delete: ' + (err.message || 'Unknown error'));
-    } finally {
-      setDeleteLoading(false);
     }
   };
 
@@ -906,37 +886,35 @@ function WellnessBuddyApp() {
   };
 
   const handleOtpVerified = async () => {
-    console.log('✅ [OTP Verified] OTP verification successful');
-    
     // Get the OTP user from localStorage
     const otpUser = localStorage.getItem('otpUser');
-    console.log('📦 [OTP Verified] OTP user in localStorage:', otpUser ? 'found' : 'not found');
     
     if (otpUser) {
       try {
         const parsedUser = JSON.parse(otpUser);
-        console.log('👤 [OTP Verified] Parsed user:', parsedUser);
         
-        console.log('🔍 [OTP Verified] Running status check...');
         // Check user status before allowing access
         const isActive = await checkUserStatus(parsedUser);
-        console.log('📊 [OTP Verified] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
         
         if (!isActive) {
-          console.log('❌ [OTP Verified] Access denied - clearing OTP user');
-          localStorage.removeItem('otpUser');
+          // Set user state so modal can show user email
+          setUser(parsedUser);
+          // Set OTP verified to false to prevent login completion
+          setIsOtpVerified(false);
+          // Don't set isOtpVerified to true - keep at login screen with modal
           return;
         }
         
-        console.log('✅ [OTP Verified] Access granted');
+        setIsOtpVerified(true);
+        localStorage.setItem('isOtpVerified', 'true');
       } catch (error) {
-        console.error('❌ [OTP Verified] Failed to check OTP user status:', error);
+        console.error('Failed to check OTP user status:', error);
       }
+    } else {
+      // No OTP user found, proceed with verification
+      setIsOtpVerified(true);
+      localStorage.setItem('isOtpVerified', 'true');
     }
-    
-    console.log('✅ [OTP Verified] Setting isOtpVerified to true');
-    setIsOtpVerified(true);
-    localStorage.setItem('isOtpVerified', 'true');
   };
 
   // Loading state
@@ -947,24 +925,52 @@ function WellnessBuddyApp() {
   // Authentication flow
   if (!user && !isOtpVerified) {
     return (
-      <Login
-        onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-        loading={loading}
-        error={error}
-        onOtpVerified={handleOtpVerified}
-      />
+      <>
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+        />
+        {showInactiveModal && (
+          <InactiveUserModal
+            userEmail={user?.email}
+            onClose={handleInactiveModalClose}
+          />
+        )}
+        {showUserNotFoundModal && (
+          <UserNotFoundModal
+            userEmail={user?.email}
+            onClose={handleUserNotFoundModalClose}
+          />
+        )}
+      </>
     );
   }
   const isGoogleUserCheck = user && isGoogleUser(user);
   if (!isOtpVerified && !isGoogleUserCheck) {
     return (
-      <Login
-        onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
-        loading={loading}
-        error={error}
-        onOtpVerified={handleOtpVerified}
-        forceOtpVerification={true}
-      />
+      <>
+        <Login
+          onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+          loading={loading}
+          error={error}
+          onOtpVerified={handleOtpVerified}
+          forceOtpVerification={true}
+        />
+        {showInactiveModal && (
+          <InactiveUserModal
+            userEmail={user?.email}
+            onClose={handleInactiveModalClose}
+          />
+        )}
+        {showUserNotFoundModal && (
+          <UserNotFoundModal
+            userEmail={user?.email}
+            onClose={handleUserNotFoundModalClose}
+          />
+        )}
+      </>
     );
   }
 
@@ -1112,10 +1118,20 @@ function WellnessBuddyApp() {
       </div>
 
       {/* Inactive User Modal */}
-      {showInactiveModal && <InactiveUserModal onClose={handleInactiveModalClose} />}
+      {showInactiveModal && (
+        <InactiveUserModal 
+          userEmail={user?.email || user?.Email || 'your account'}
+          onClose={handleInactiveModalClose} 
+        />
+      )}
       
       {/* User Not Found Modal */}
-      {showUserNotFoundModal && <UserNotFoundModal onClose={handleUserNotFoundModalClose} />}
+      {showUserNotFoundModal && (
+        <UserNotFoundModal 
+          userEmail={user?.email || user?.Email || 'your account'}
+          onClose={handleUserNotFoundModalClose} 
+        />
+      )}
     </div>
   );
 }

@@ -65,6 +65,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setEmailLoading(true);
     setErrorMessage('');
     setSuccessMessage('');
+    setOtpVerified(false); // Reset verified state at start
     try {
       const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {
         method: 'POST',
@@ -79,16 +80,24 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
         // ✅ Save user info to localStorage (or state via prop)
         localStorage.setItem('otpUser', JSON.stringify(data.user));
 
-        setTimeout(() => {
+        setTimeout(async () => {
           setSuccessMessage('');
-          onOtpVerified();
+          await onOtpVerified();
+          
+          // Reset verified state after callback in case user is inactive
+          // This allows them to try again if needed
+          setTimeout(() => {
+            setOtpVerified(false);
+          }, 2000);
         }, 1500);
       } else {
         setErrorMessage(data.message);
+        setOtpVerified(false);
       }
     } catch (error) {
       console.error('Verify OTP error:', error);
       setErrorMessage('Failed to verify OTP. Please try again.');
+      setOtpVerified(false);
     } finally {
       setEmailLoading(false);
     }
