@@ -72,20 +72,28 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.2.1',
+  VERSION: '1.2.3',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 4,
+  VERSION_CODE: 6,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Google Sign-In Fix',
+  RELEASE_NAME: 'Google Sign-In Fix for Play Store',
   
   // Build date
-  BUILD_DATE: '2025-10-29',
+  BUILD_DATE: '2025-10-31',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.2.3 (Code 6) - 2025-10-31
+ *   🔐 Fixed Google Sign-In for Play Store releases (App Signing Key)
+ *   ✅ Added Play Store App Signing SHA-1 to Firebase
+ *   🔧 Updated google-services.json with new OAuth clients
+ *   🎯 Resolved "User not authenticated" error in signed builds
+ *   👤 Added user status check feature with inactive/non-existent user modals
+ *   📧 Enhanced email support with pre-filled templates
  * 
  * Version 1.2.1 (Code 4) - 2025-10-29
  *   🔐 Fixed Google Sign-In for signed release builds

@@ -65,6 +65,19 @@ class GeminiService {
     this.timeout = 30000; // 30 second timeout
     this.maxRetries = 2;
     
+    // Session tracking for aggregate metrics
+    this.sessionMetrics = {
+      totalRequests: 0,
+      totalTokens: 0,
+      totalPromptTokens: 0,
+      totalCompletionTokens: 0,
+      totalCost: 0,
+      totalProcessingTime: 0,
+      requestsByType: {},
+      errors: 0,
+      startTime: new Date().toISOString()
+    };
+    
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
@@ -86,6 +99,36 @@ class GeminiService {
       dailyLimit: 1500,
       description: 'Google Gemini AI for food image analysis (Optimized)'
     };
+  }
+
+  getSessionMetrics() {
+    const sessionDuration = Date.now() - new Date(this.sessionMetrics.startTime).getTime();
+    const avgTokensPerRequest = this.sessionMetrics.totalRequests > 0 
+      ? Math.round(this.sessionMetrics.totalTokens / this.sessionMetrics.totalRequests) 
+      : 0;
+    const avgCostPerRequest = this.sessionMetrics.totalRequests > 0
+      ? this.sessionMetrics.totalCost / this.sessionMetrics.totalRequests
+      : 0;
+
+    return {
+      ...this.sessionMetrics,
+      sessionDuration: sessionDuration,
+      sessionDurationFormatted: `${Math.round(sessionDuration / 1000)}s`,
+      avgTokensPerRequest: avgTokensPerRequest,
+      avgCostPerRequest: avgCostPerRequest,
+      errorRate: this.sessionMetrics.totalRequests > 0 
+        ? ((this.sessionMetrics.errors / this.sessionMetrics.totalRequests) * 100).toFixed(2) + '%'
+        : '0%'
+    };
+  }
+
+  logError(error, requestType) {
+    this.sessionMetrics.errors++;
+    console.error(`❌ Error [${requestType}]:`, {
+      'Error Message': error.message,
+      'Total Errors': this.sessionMetrics.errors,
+      'Error Rate': `${((this.sessionMetrics.errors / Math.max(this.sessionMetrics.totalRequests, 1)) * 100).toFixed(2)}%`
+    });
   }
 
   // Optimized image preprocessing
@@ -211,12 +254,16 @@ Return valid JSON only, no markdown.`;
       const nutritionData = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
+      // Log token usage
+      this.logTokenUsage(response, 'image_analysis', processingTime);
+      
       console.log(`✅ Analysis completed in ${processingTime}ms`);
       
       return this.transformOptimizedResponse(nutritionData, 'image');
 
     } catch (error) {
       const processingTime = Date.now() - startTime;
+      this.logError(error, 'image_analysis');
       console.error(`❌ Analysis failed after ${processingTime}ms:`, error);
       throw new Error(`Analysis failed: ${error.message}`);
     }
@@ -261,12 +308,16 @@ Use USDA values. Return valid JSON only, no markdown.`;
       const nutritionData = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
+      // Log token usage
+      this.logTokenUsage(response, 'text_analysis', processingTime);
+      
       console.log(`✅ Text analysis completed in ${processingTime}ms`);
       
       return this.transformOptimizedResponse(nutritionData, 'text');
 
     } catch (error) {
       const processingTime = Date.now() - startTime;
+      this.logError(error, 'text_analysis');
       console.error(`❌ Text analysis failed after ${processingTime}ms:`, error);
       throw new Error(`Analysis failed: ${error.message}`);
     }
@@ -324,6 +375,106 @@ Use USDA values. Return valid JSON only, no markdown.`;
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  logTokenUsage(response, requestType, processingTime) {
+    try {
+      // Extract usage metadata from Gemini API response
+      const usageMetadata = response.usageMetadata || {};
+      
+      // Extract all available response data
+      const candidates = response.candidates || [];
+      const firstCandidate = candidates[0] || {};
+      
+      const tokenData = {
+        // Token metrics
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        completionTokens: usageMetadata.candidatesTokenCount || 0,
+        totalTokens: usageMetadata.totalTokenCount || 0,
+        
+        // Request metadata
+        requestType: requestType,
+        timestamp: new Date().toISOString(),
+        processingTime: processingTime,
+        
+        // Response quality metrics
+        finishReason: firstCandidate.finishReason || 'unknown',
+        safetyRatings: firstCandidate.safetyRatings || [],
+        
+        // Model info
+        modelUsed: 'gemini-2.0-flash',
+        
+        // Additional metadata
+        candidateCount: candidates.length,
+        responseLength: response.text ? response.text().length : 0
+      };
+
+      // Calculate cost estimate (for gemini-2.0-flash)
+      const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
+      const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
+      const totalCost = inputCost + outputCost;
+
+      // Update session metrics
+      this.sessionMetrics.totalRequests++;
+      this.sessionMetrics.totalTokens += tokenData.totalTokens;
+      this.sessionMetrics.totalPromptTokens += tokenData.promptTokens;
+      this.sessionMetrics.totalCompletionTokens += tokenData.completionTokens;
+      this.sessionMetrics.totalCost += totalCost;
+      this.sessionMetrics.totalProcessingTime += processingTime;
+      
+      if (!this.sessionMetrics.requestsByType[requestType]) {
+        this.sessionMetrics.requestsByType[requestType] = 0;
+      }
+      this.sessionMetrics.requestsByType[requestType]++;
+
+      // Log to console with nice formatting
+      console.log(`📊 Token Usage [${requestType}]:`, {
+        '🔤 Prompt Tokens': tokenData.promptTokens,
+        '💬 Response Tokens': tokenData.completionTokens,
+        '📈 Total Tokens': tokenData.totalTokens,
+        '⏱️ Processing Time': `${processingTime}ms`,
+        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
+      });
+
+      // Log response quality
+      console.log(`🔍 Response Quality [${requestType}]:`, {
+        '✅ Finish Reason': tokenData.finishReason,
+        '🛡️ Safety Ratings': tokenData.safetyRatings.length > 0 ? 'Passed' : 'N/A',
+        '📝 Response Length': `${tokenData.responseLength} chars`,
+        '🎯 Candidates': tokenData.candidateCount
+      });
+
+      // Log safety ratings detail
+      if (tokenData.safetyRatings.length > 0) {
+        console.log('🛡️ Safety Details:', tokenData.safetyRatings);
+      }
+
+      // Log session summary
+      console.log(`📈 Session Summary:`, {
+        'Total Requests': this.sessionMetrics.totalRequests,
+        'Total Tokens': this.sessionMetrics.totalTokens,
+        'Total Cost': `$${this.sessionMetrics.totalCost.toFixed(6)}`,
+        'Avg Processing Time': `${Math.round(this.sessionMetrics.totalProcessingTime / this.sessionMetrics.totalRequests)}ms`,
+        'Requests by Type': this.sessionMetrics.requestsByType
+      });
+
+      // Log structured data for Cloud Logging compatibility
+      const structuredLog = {
+        ...tokenData,
+        costEstimate: {
+          inputCost: inputCost,
+          outputCost: outputCost,
+          totalCost: totalCost,
+          currency: 'USD'
+        },
+        session: this.sessionMetrics
+      };
+      
+      console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
+
+    } catch (error) {
+      console.warn('⚠️ Could not extract token usage:', error.message);
+    }
   }
 
   transformOptimizedResponse(data, type) {

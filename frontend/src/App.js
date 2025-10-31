@@ -1,5 +1,5 @@
 // src/App.js
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useIonRouter } from '@ionic/react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
@@ -13,6 +13,8 @@ import CameraTest from './components/CameraTest';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
 import NutritionDashboard from './components/NutritionDashboard';
+import InactiveUserModal from './components/InactiveUserModal';
+import UserNotFoundModal from './components/UserNotFoundModal';
 import { geminiService } from './services/geminiService';
 import { cameraService } from './services/cameraService';
 import {
@@ -49,6 +51,8 @@ function WellnessBuddyApp() {
   const [isOtpVerified, setIsOtpVerified] = useState(
     localStorage.getItem('isOtpVerified') === 'true'
   );
+  const [showInactiveModal, setShowInactiveModal] = useState(false);
+  const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const fileInputRef = useRef(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
@@ -263,6 +267,90 @@ function WellnessBuddyApp() {
     }
   };
 
+  // Check user status (Active/Inactive) using lookup-user-id API
+  const checkUserStatus = useCallback(async (user) => {
+    console.log('🔍 [checkUserStatus] Starting status check for user:', user);
+    
+    if (!user) {
+      console.log('⚠️ [checkUserStatus] No user provided, skipping check');
+      return true; // If no user, skip check
+    }
+    
+    try {
+      const userEmail = user.email || user.Email;
+      
+      console.log('📧 [checkUserStatus] User email:', userEmail);
+      
+      if (!userEmail) {
+        console.warn('⚠️ [checkUserStatus] No email found for status check');
+        return true;
+      }
+
+      console.log('📡 [checkUserStatus] Calling lookup-user-id API with email:', userEmail);
+
+      const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: userEmail })
+      });
+
+      console.log('📥 [checkUserStatus] API response status:', response.status);
+
+      const data = await response.json();
+      
+      console.log('📋 [checkUserStatus] API response data:', data);
+      
+      // User not found in database
+      if (!data.success || data.userNotFound) {
+        console.warn('❌ [checkUserStatus] User not found in database');
+        console.warn('🔴 [checkUserStatus] Showing UserNotFoundModal');
+        setShowUserNotFoundModal(true);
+        return false;
+      }
+      
+      // User found but inactive
+      if (data.success && !data.isActive) {
+        console.warn('⚠️ [checkUserStatus] User is INACTIVE');
+        console.warn('🔴 [checkUserStatus] User Status:', data.status);
+        console.warn('🔴 [checkUserStatus] isActive:', data.isActive);
+        console.warn('🔴 [checkUserStatus] Showing InactiveUserModal');
+        setShowInactiveModal(true);
+        return false;
+      }
+      
+      // User is active
+      console.log('✅ [checkUserStatus] User is ACTIVE - allowing access');
+      console.log('✅ [checkUserStatus] User Status:', data.status);
+      console.log('✅ [checkUserStatus] isActive:', data.isActive);
+      return true;
+    } catch (error) {
+      console.error('❌ [checkUserStatus] Error occurred:', error);
+      console.error('❌ [checkUserStatus] Error details:', {
+        message: error.message,
+        stack: error.stack
+      });
+      // On error, allow user to continue (fail-open)
+      console.warn('⚠️ [checkUserStatus] Failing open - allowing access due to error');
+      return true;
+    }
+  }, [apiBaseUrl]);
+
+  const handleInactiveModalClose = async () => {
+    console.log('🔴 [handleInactiveModalClose] Closing InactiveUserModal');
+    console.log('🚪 [handleInactiveModalClose] Signing out user');
+    setShowInactiveModal(false);
+    // Sign out the user
+    await handleSignOut();
+  };
+
+  const handleUserNotFoundModalClose = async () => {
+    console.log('🟠 [handleUserNotFoundModalClose] Closing UserNotFoundModal');
+    console.log('🚪 [handleUserNotFoundModalClose] Signing out user');
+    setShowUserNotFoundModal(false);
+    // Sign out the user
+    await handleSignOut();
+  };
+
   const handleSaveUserCache = async (user) => {
     console.log('handleSaveUserCache is initiated');
     if (user && Capacitor.isNativePlatform()) {
@@ -347,7 +435,31 @@ function WellnessBuddyApp() {
 
   // Auth state listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChange((user) => {
+    const unsubscribe = onAuthStateChange(async (user) => {
+      console.log('🔐 [Auth State Change] User state changed:', user ? 'User signed in' : 'User signed out');
+      
+      if (user) {
+        console.log('👤 [Auth State Change] User details:', {
+          email: user.email,
+          displayName: user.displayName,
+          uid: user.uid
+        });
+        
+        console.log('🔍 [Auth State Change] Running status check...');
+        // Check user status before allowing access
+        const isActive = await checkUserStatus(user);
+        console.log('📊 [Auth State Change] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
+        
+        if (!isActive) {
+          console.log('❌ [Auth State Change] Access denied - clearing user state');
+          setUser(null);
+          setAuthLoading(false);
+          return;
+        }
+        
+        console.log('✅ [Auth State Change] Access granted - setting user state');
+      }
+      
       setUser(user);
       setAuthLoading(false);
       console.log('On profile creation task, make sure to set from DB here');
@@ -356,7 +468,7 @@ function WellnessBuddyApp() {
       }
     });
     return () => unsubscribe();
-  }, []);
+  }, [checkUserStatus]);
 
   // Camera setup for authenticated users
   useEffect(() => {
@@ -379,21 +491,47 @@ function WellnessBuddyApp() {
 
   // Handle OTP user restoration
   useEffect(() => {
-    if (isOtpVerified && !user) {
-      const otpUser = localStorage.getItem('otpUser');
-      if (otpUser) {
-        try {
-          setUser(JSON.parse(otpUser));
-          console.log('OTP user restored:', JSON.parse(otpUser));
-          handleSaveUserCache(JSON.parse(otpUser));
-        } catch (error) {
-          console.error('❌ Failed to restore OTP user:', error);
-          localStorage.removeItem('otpUser');
-          setIsOtpVerified(false);
+    const restoreOtpUser = async () => {
+      console.log('🔄 [OTP Restoration] Checking if OTP user needs restoration...');
+      console.log('🔄 [OTP Restoration] isOtpVerified:', isOtpVerified, 'user:', user ? 'exists' : 'null');
+      
+      if (isOtpVerified && !user) {
+        const otpUser = localStorage.getItem('otpUser');
+        console.log('📦 [OTP Restoration] OTP user in localStorage:', otpUser ? 'found' : 'not found');
+        
+        if (otpUser) {
+          try {
+            const parsedUser = JSON.parse(otpUser);
+            console.log('👤 [OTP Restoration] Parsed OTP user:', parsedUser);
+            
+            console.log('🔍 [OTP Restoration] Running status check...');
+            // Check user status before restoring
+            const isActive = await checkUserStatus(parsedUser);
+            console.log('📊 [OTP Restoration] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
+            
+            if (!isActive) {
+              console.log('❌ [OTP Restoration] Access denied - clearing OTP user data');
+              localStorage.removeItem('otpUser');
+              setIsOtpVerified(false);
+              localStorage.removeItem('isOtpVerified');
+              return;
+            }
+            
+            console.log('✅ [OTP Restoration] Access granted - restoring user');
+            setUser(parsedUser);
+            console.log('OTP user restored:', parsedUser);
+            handleSaveUserCache(parsedUser);
+          } catch (error) {
+            console.error('❌ [OTP Restoration] Failed to restore OTP user:', error);
+            localStorage.removeItem('otpUser');
+            setIsOtpVerified(false);
+          }
         }
       }
-    }
-  }, [isOtpVerified, user]);
+    };
+    
+    restoreOtpUser();
+  }, [isOtpVerified, user, checkUserStatus]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -767,7 +905,36 @@ function WellnessBuddyApp() {
     }
   };
 
-  const handleOtpVerified = () => {
+  const handleOtpVerified = async () => {
+    console.log('✅ [OTP Verified] OTP verification successful');
+    
+    // Get the OTP user from localStorage
+    const otpUser = localStorage.getItem('otpUser');
+    console.log('📦 [OTP Verified] OTP user in localStorage:', otpUser ? 'found' : 'not found');
+    
+    if (otpUser) {
+      try {
+        const parsedUser = JSON.parse(otpUser);
+        console.log('👤 [OTP Verified] Parsed user:', parsedUser);
+        
+        console.log('🔍 [OTP Verified] Running status check...');
+        // Check user status before allowing access
+        const isActive = await checkUserStatus(parsedUser);
+        console.log('📊 [OTP Verified] Status check result:', isActive ? 'ACTIVE' : 'INACTIVE/NOT FOUND');
+        
+        if (!isActive) {
+          console.log('❌ [OTP Verified] Access denied - clearing OTP user');
+          localStorage.removeItem('otpUser');
+          return;
+        }
+        
+        console.log('✅ [OTP Verified] Access granted');
+      } catch (error) {
+        console.error('❌ [OTP Verified] Failed to check OTP user status:', error);
+      }
+    }
+    
+    console.log('✅ [OTP Verified] Setting isOtpVerified to true');
     setIsOtpVerified(true);
     localStorage.setItem('isOtpVerified', 'true');
   };
@@ -943,6 +1110,12 @@ function WellnessBuddyApp() {
         <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
         {showCameraTest && <CameraTest onClose={() => setShowCameraTest(false)} />}
       </div>
+
+      {/* Inactive User Modal */}
+      {showInactiveModal && <InactiveUserModal onClose={handleInactiveModalClose} />}
+      
+      {/* User Not Found Modal */}
+      {showUserNotFoundModal && <UserNotFoundModal onClose={handleUserNotFoundModalClose} />}
     </div>
   );
 }
