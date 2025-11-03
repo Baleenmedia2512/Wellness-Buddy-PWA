@@ -197,7 +197,12 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             <>
               {/* Enhanced Google button - Primary */}
               <button
-                onClick={onSignIn}
+                onClick={() => {
+                  // Set flag BEFORE calling onSignIn to prevent race condition
+                  sessionStorage.setItem('freshGoogleSignIn', 'true');
+                  console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
+                  onSignIn();
+                }}
                 disabled={loading}
                 className="w-full flex items-center justify-center px-6 py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-4"
               >

@@ -72,20 +72,29 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.2.3',
+  VERSION: '1.2.4',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 6,
+  VERSION_CODE: 7,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Google Sign-In Fix for Play Store',
+  RELEASE_NAME: 'Race Condition Fix & Duplicate Username Handling',
   
   // Build date
-  BUILD_DATE: '2025-10-31',
+  BUILD_DATE: '2025-11-03',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.2.4 (Code 7) - 2025-11-03
+ *   🔧 Fixed race condition causing "Account Not Found" modal for new Google users
+ *   ✅ Set freshGoogleSignIn flag before popup opens (in Login component)
+ *   🔐 Enhanced checkUserStatus to skip check during fresh sign-in
+ *   🛡️ Handle duplicate username error with unique timestamp suffix
+ *   📊 Added comprehensive logging for debugging sign-in flow
+ *   ⚡ Graceful error handling with fail-open policy for backend issues
+ *   🎯 Verified OTP login flow remains unaffected and safe
  * 
  * Version 1.2.3 (Code 6) - 2025-10-31
  *   🔐 Fixed Google Sign-In for Play Store releases (App Signing Key)

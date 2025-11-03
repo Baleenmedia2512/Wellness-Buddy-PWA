@@ -174,6 +174,13 @@ function WellnessBuddyApp() {
       return true; // If no user, skip check
     }
     
+    // Skip status check if this is a fresh Google sign-in that's being saved
+    const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
+    if (isFreshSignIn) {
+      console.log('⏭️ [checkUserStatus] Skipping check for fresh sign-in');
+      return true; // Skip check, allow access - sign-in handler will check after save
+    }
+    
     try {
       const userEmail = user.email || user.Email;
       
@@ -181,6 +188,8 @@ function WellnessBuddyApp() {
         return true;
       }
 
+      console.log('🔍 [checkUserStatus] Checking status for:', userEmail);
+      
       const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -188,6 +197,8 @@ function WellnessBuddyApp() {
       });
 
       const data = await response.json();
+      
+      console.log('📋 [checkUserStatus] Response:', data);
       
       // User not found in database
       if (!data.success || data.userNotFound) {
@@ -810,8 +821,12 @@ function WellnessBuddyApp() {
       setLoading(true);
       setError(null);
       
-      // Mark this as a fresh sign-in to prevent race condition
-      sessionStorage.setItem('freshGoogleSignIn', 'true');
+      // Flag should already be set by Login component
+      // But set it here too for redirect flow safety
+      if (!sessionStorage.getItem('freshGoogleSignIn')) {
+        sessionStorage.setItem('freshGoogleSignIn', 'true');
+        console.log('🔐 [handleSignIn] Set freshGoogleSignIn flag (backup)');
+      }
       
       // Safety timeout to clear flag if something goes wrong (10 seconds)
       const safetyTimeout = setTimeout(() => {
@@ -875,8 +890,8 @@ function WellnessBuddyApp() {
       setLoading(true);
       setError(null);
       
-      // Mark this as a fresh sign-in to prevent race condition
-      sessionStorage.setItem('freshGoogleSignIn', 'true');
+      // Flag is already set by Login component before this function is called
+      console.log('🔐 [handlePopupSignIn] Starting (flag should already be set)');
       
       // Safety timeout to clear flag if something goes wrong (10 seconds)
       const safetyTimeout = setTimeout(() => {
@@ -884,14 +899,20 @@ function WellnessBuddyApp() {
         sessionStorage.removeItem('freshGoogleSignIn');
       }, 10000);
       
+      console.log('🔐 [handlePopupSignIn] Calling signInWithGooglePopup...');
       const user = await signInWithGooglePopup();
+      console.log('🔐 [handlePopupSignIn] signInWithGooglePopup returned:', user?.email);
+      
       if (user) {
         try {
           // Save user to backend first
+          console.log('🔐 [handlePopupSignIn] Saving user to backend...');
           await saveUserToBackend(user);
+          console.log('🔐 [handlePopupSignIn] User saved, now checking status...');
           
           // Now check user status after ensuring DB record exists
           const isActive = await checkUserStatus(user);
+          console.log('🔐 [handlePopupSignIn] Status check result:', isActive);
           
           if (isActive) {
             setUser(user);
@@ -907,6 +928,7 @@ function WellnessBuddyApp() {
         }
         
         // Clear the fresh sign-in flag and safety timeout
+        console.log('🔐 [handlePopupSignIn] Clearing freshGoogleSignIn flag');
         clearTimeout(safetyTimeout);
         sessionStorage.removeItem('freshGoogleSignIn');
       }
