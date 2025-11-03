@@ -432,15 +432,24 @@ function WellnessBuddyApp() {
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
       if (user) {
-        // Check user status before allowing access
-        const isActive = await checkUserStatus(user);
+        // Skip status check if this is a fresh Google sign-in that's being saved
+        // The handleSignIn/handlePopupSignIn functions will handle status check after save
+        const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
         
-        if (!isActive) {
-          // Don't clear user state immediately - let modal show first
-          // Modal close handler will sign out and clear state
-          setUser(user); // Keep user state so modal can show user email
-          setAuthLoading(false);
-          return;
+        if (!isFreshSignIn) {
+          // Check user status before allowing access (for existing sessions)
+          const isActive = await checkUserStatus(user);
+          
+          if (!isActive) {
+            // Don't clear user state immediately - let modal show first
+            // Modal close handler will sign out and clear state
+            setUser(user); // Keep user state so modal can show user email
+            setAuthLoading(false);
+            return;
+          }
+        } else {
+          // Clear the fresh sign-in flag
+          sessionStorage.removeItem('freshGoogleSignIn');
         }
       }
       
@@ -793,15 +802,34 @@ function WellnessBuddyApp() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Mark this as a fresh sign-in to prevent race condition
+      sessionStorage.setItem('freshGoogleSignIn', 'true');
+      
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
+        // Save user to backend first
         await saveUserToBackend(user);
-        setUser(user);
+        
+        // Now check user status after ensuring DB record exists
+        const isActive = await checkUserStatus(user);
+        
+        if (isActive) {
+          setUser(user);
+        } else {
+          // User was saved but is inactive or not found - modal will show
+          setUser(user); // Keep user state so modal can show user email
+        }
+        
+        // Clear the fresh sign-in flag
+        sessionStorage.removeItem('freshGoogleSignIn');
       } else {
         console.log('🔄 Redirect initiated, waiting for result...');
       }
     } catch (error) {
       console.error('❌ Sign in error:', error);
+      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
+      
       if (error.code === 'auth/popup-blocked') {
         setError('Popup was blocked. Trying redirect method...');
         setTimeout(() => {
@@ -824,13 +852,31 @@ function WellnessBuddyApp() {
     try {
       setLoading(true);
       setError(null);
+      
+      // Mark this as a fresh sign-in to prevent race condition
+      sessionStorage.setItem('freshGoogleSignIn', 'true');
+      
       const user = await signInWithGooglePopup();
       if (user) {
+        // Save user to backend first
         await saveUserToBackend(user);
-        setUser(user);
+        
+        // Now check user status after ensuring DB record exists
+        const isActive = await checkUserStatus(user);
+        
+        if (isActive) {
+          setUser(user);
+        } else {
+          // User was saved but is inactive or not found - modal will show
+          setUser(user); // Keep user state so modal can show user email
+        }
+        
+        // Clear the fresh sign-in flag
+        sessionStorage.removeItem('freshGoogleSignIn');
       }
     } catch (error) {
       console.error('❌ Popup sign-in error:', error);
+      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
       setError(getAuthErrorMessage(error));
     } finally {
       setLoading(false);
@@ -854,7 +900,9 @@ function WellnessBuddyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      await fetch(`${apiBaseUrl}/api/save-google-user`, {
+      console.log('💾 [saveUserToBackend] Saving user to database:', user.email);
+      
+      const response = await fetch(`${apiBaseUrl}/api/save-google-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -864,8 +912,23 @@ function WellnessBuddyApp() {
           uid: user.uid
         })
       });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to save user: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        console.log('✅ [saveUserToBackend] User saved successfully');
+      } else {
+        console.warn('⚠️ [saveUserToBackend] Save completed with warning:', data);
+      }
+      
+      return data;
     } catch (error) {
-      console.error('❌ Failed to save user to backend:', error);
+      console.error('❌ [saveUserToBackend] Failed to save user to backend:', error);
+      throw error; // Re-throw so caller can handle
     }
   };
 
