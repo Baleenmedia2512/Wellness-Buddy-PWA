@@ -268,6 +268,13 @@ function WellnessBuddyApp() {
     const maybeShowBgNutritionPopup = async () => {
       if (!user) return;
       
+      // Skip status check for fresh sign-ins (being handled by sign-in flow)
+      const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
+      if (isFreshSignIn) {
+        console.log('🔐 [BgNutrition] Fresh sign-in detected, skipping status check');
+        return;
+      }
+      
       // Re-check user status in real-time
       const isActive = await checkUserStatus(user);
       if (!isActive) return;
@@ -448,8 +455,8 @@ function WellnessBuddyApp() {
             return;
           }
         } else {
-          // Clear the fresh sign-in flag
-          sessionStorage.removeItem('freshGoogleSignIn');
+          // Don't clear the flag here - let the sign-in handler clear it after save completes
+          console.log('🔐 [Auth State] Fresh sign-in detected, skipping status check');
         }
       }
       
@@ -806,6 +813,12 @@ function WellnessBuddyApp() {
       // Mark this as a fresh sign-in to prevent race condition
       sessionStorage.setItem('freshGoogleSignIn', 'true');
       
+      // Safety timeout to clear flag if something goes wrong (10 seconds)
+      const safetyTimeout = setTimeout(() => {
+        console.log('⚠️ [handleSignIn] Safety timeout - clearing fresh sign-in flag');
+        sessionStorage.removeItem('freshGoogleSignIn');
+      }, 10000);
+      
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
         try {
@@ -828,10 +841,12 @@ function WellnessBuddyApp() {
           setUser(user); // Allow access despite backend failure
         }
         
-        // Clear the fresh sign-in flag
+        // Clear the fresh sign-in flag and safety timeout
+        clearTimeout(safetyTimeout);
         sessionStorage.removeItem('freshGoogleSignIn');
       } else {
         console.log('🔄 Redirect initiated, waiting for result...');
+        // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
       console.error('❌ Sign in error:', error);
@@ -863,6 +878,12 @@ function WellnessBuddyApp() {
       // Mark this as a fresh sign-in to prevent race condition
       sessionStorage.setItem('freshGoogleSignIn', 'true');
       
+      // Safety timeout to clear flag if something goes wrong (10 seconds)
+      const safetyTimeout = setTimeout(() => {
+        console.log('⚠️ [handlePopupSignIn] Safety timeout - clearing fresh sign-in flag');
+        sessionStorage.removeItem('freshGoogleSignIn');
+      }, 10000);
+      
       const user = await signInWithGooglePopup();
       if (user) {
         try {
@@ -885,7 +906,8 @@ function WellnessBuddyApp() {
           setUser(user); // Allow access despite backend failure
         }
         
-        // Clear the fresh sign-in flag
+        // Clear the fresh sign-in flag and safety timeout
+        clearTimeout(safetyTimeout);
         sessionStorage.removeItem('freshGoogleSignIn');
       }
     } catch (error) {
