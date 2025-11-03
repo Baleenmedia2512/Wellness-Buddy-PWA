@@ -808,17 +808,24 @@ function WellnessBuddyApp() {
       
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
-        // Save user to backend first
-        await saveUserToBackend(user);
-        
-        // Now check user status after ensuring DB record exists
-        const isActive = await checkUserStatus(user);
-        
-        if (isActive) {
-          setUser(user);
-        } else {
-          // User was saved but is inactive or not found - modal will show
-          setUser(user); // Keep user state so modal can show user email
+        try {
+          // Save user to backend first
+          await saveUserToBackend(user);
+          
+          // Now check user status after ensuring DB record exists
+          const isActive = await checkUserStatus(user);
+          
+          if (isActive) {
+            setUser(user);
+          } else {
+            // User was saved but is inactive or not found - modal will show
+            setUser(user); // Keep user state so modal can show user email
+          }
+        } catch (saveError) {
+          // If save fails, still allow user to proceed (fail-open for backend issues)
+          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
+          setError('Warning: Could not verify account status. You can still use the app.');
+          setUser(user); // Allow access despite backend failure
         }
         
         // Clear the fresh sign-in flag
@@ -858,17 +865,24 @@ function WellnessBuddyApp() {
       
       const user = await signInWithGooglePopup();
       if (user) {
-        // Save user to backend first
-        await saveUserToBackend(user);
-        
-        // Now check user status after ensuring DB record exists
-        const isActive = await checkUserStatus(user);
-        
-        if (isActive) {
-          setUser(user);
-        } else {
-          // User was saved but is inactive or not found - modal will show
-          setUser(user); // Keep user state so modal can show user email
+        try {
+          // Save user to backend first
+          await saveUserToBackend(user);
+          
+          // Now check user status after ensuring DB record exists
+          const isActive = await checkUserStatus(user);
+          
+          if (isActive) {
+            setUser(user);
+          } else {
+            // User was saved but is inactive or not found - modal will show
+            setUser(user); // Keep user state so modal can show user email
+          }
+        } catch (saveError) {
+          // If save fails, still allow user to proceed (fail-open for backend issues)
+          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
+          setError('Warning: Could not verify account status. You can still use the app.');
+          setUser(user); // Allow access despite backend failure
         }
         
         // Clear the fresh sign-in flag
