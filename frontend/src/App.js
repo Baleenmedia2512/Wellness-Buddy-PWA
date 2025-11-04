@@ -860,35 +860,35 @@ function WellnessBuddyApp() {
           console.log('🔐 [handleSignIn] User saved, cleared safety timeout');
           
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
-          // This must be checked BEFORE any other operations
-          console.log('🔐 [handleSignIn] Checking signOutInProgress:', signOutInProgress.current);
           if (signOutInProgress.current) {
             console.log('⚠️ [handleSignIn] Sign-out in progress, aborting all sign-in operations');
             sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
-          console.log('🔐 [handleSignIn] Sign-out not in progress, continuing...');
+          
+          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
+          // This ensures checkUserStatus will run (not skip) for user validation
+          sessionStorage.removeItem('freshGoogleSignIn');
+          console.log('🔐 [handleSignIn] Cleared fresh sign-in flag, proceeding with validation');
           
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
             await handleSaveUserCache(user);
             
-            // Check again after handleSaveUserCache
-            console.log('🔐 [handleSignIn] After GalleryMonitor, checking signOutInProgress:', signOutInProgress.current);
+            // Check again if sign-out was triggered
             if (signOutInProgress.current) {
               console.log('⚠️ [handleSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
-              sessionStorage.removeItem('freshGoogleSignIn');
               return;
             }
           }
           
           // Now check user status after ensuring DB record exists
+          // Flag is cleared, so checkUserStatus will actually run the check
           const isActive = await checkUserStatus(user);
           
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
             console.log('⚠️ [handleSignIn] Sign-out in progress after status check, aborting');
-            sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
           
@@ -904,10 +904,10 @@ function WellnessBuddyApp() {
           setError('Warning: Could not verify account status. You can still use the app.');
           setUser(user); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
+          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
         }
         
-        // Clear the fresh sign-in flag
-        sessionStorage.removeItem('freshGoogleSignIn');
+        // Flag is already cleared above - no need to clear again
       } else {
         console.log('🔄 Redirect initiated, waiting for result...');
         // Don't clear timeout yet for redirect flow
@@ -957,42 +957,43 @@ function WellnessBuddyApp() {
           // Save user to backend first
           console.log('🔐 [handlePopupSignIn] Saving user to backend...');
           await saveUserToBackend(user);
-          console.log('🔐 [handlePopupSignIn] User saved, now checking status...');
+          console.log('🔐 [handlePopupSignIn] User saved successfully');
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
           console.log('🔐 [handlePopupSignIn] Cleared safety timeout');
           
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
-          console.log('🔐 [handlePopupSignIn] Checking signOutInProgress:', signOutInProgress.current);
           if (signOutInProgress.current) {
             console.log('⚠️ [handlePopupSignIn] Sign-out in progress, aborting all sign-in operations');
             sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
-          console.log('🔐 [handlePopupSignIn] Sign-out not in progress, continuing...');
+          
+          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
+          // This ensures checkUserStatus will run (not skip) for user validation
+          sessionStorage.removeItem('freshGoogleSignIn');
+          console.log('🔐 [handlePopupSignIn] Cleared fresh sign-in flag, proceeding with validation');
           
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
             await handleSaveUserCache(user);
             
-            // Check again after handleSaveUserCache
-            console.log('🔐 [handlePopupSignIn] After GalleryMonitor, checking signOutInProgress:', signOutInProgress.current);
+            // Check again if sign-out was triggered
             if (signOutInProgress.current) {
               console.log('⚠️ [handlePopupSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
-              sessionStorage.removeItem('freshGoogleSignIn');
               return;
             }
           }
           
           // Now check user status after ensuring DB record exists
+          // Flag is cleared, so checkUserStatus will actually run the check
           const isActive = await checkUserStatus(user);
           console.log('🔐 [handlePopupSignIn] Status check result:', isActive);
           
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
             console.log('⚠️ [handlePopupSignIn] Sign-out in progress after status check, aborting');
-            sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
           
@@ -1008,11 +1009,10 @@ function WellnessBuddyApp() {
           setError('Warning: Could not verify account status. You can still use the app.');
           setUser(user); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
+          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
         }
         
-        // Clear the fresh sign-in flag
-        console.log('🔐 [handlePopupSignIn] Clearing freshGoogleSignIn flag');
-        sessionStorage.removeItem('freshGoogleSignIn');
+        // Flag is already cleared above - no need to clear again
       }
     } catch (error) {
       console.error('❌ Popup sign-in error:', error);
