@@ -3,13 +3,47 @@ const config = {
   appName: 'Wellness Buddy',
   webDir: 'build',
   bundledWebRuntime: false,
+  
+  // ✅ ANDROID PERFORMANCE: Optimize for fast image loading
+  android: {
+    allowMixedContent: true,
+    captureInput: true,
+    webContentsDebuggingEnabled: false,
+    backgroundColor: '#ffffff',
+    loggingBehavior: 'none'
+  },
+  
+  // ✅ Use HTTPS scheme for hardware acceleration
+  server: {
+    androidScheme: 'https',
+    hostname: 'localhost',
+    allowNavigation: ['*']
+  },
+  
   plugins: {
     GoogleAuth: {
       scopes: ['profile', 'email'],
       serverClientId: '610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com',
       forceCodeForRefreshToken: true
     },
-    GalleryMonitor: {}
+    GalleryMonitor: {},
+    
+    // ✅ Optimize splash screen for faster startup
+    SplashScreen: {
+      launchShowDuration: 0,
+      launchAutoHide: true,
+      launchFadeOutDuration: 200,
+      backgroundColor: '#ffffff',
+      androidScaleType: 'CENTER_CROP',
+      showSpinner: false
+    },
+    
+    // ✅ Native keyboard handling for better performance
+    Keyboard: {
+      resize: 'native',
+      style: 'light',
+      resizeOnFullScreen: true
+    }
   }
 };
 

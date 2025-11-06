@@ -1,7 +1,8 @@
 //src\components\NutritionCard.js
 import React from 'react';
 
-const NutritionCard = ({ data }) => {
+// ✅ ANDROID OPTIMIZATION: Memoize component to prevent unnecessary re-renders
+const NutritionCard = React.memo(({ data }) => {
   if (!data) return null;
 
   const { nutrition, category, servingInfo, itemCount, detailedItems, portionAnalysis } = data;
@@ -290,6 +291,9 @@ const NutritionCard = ({ data }) => {
       </div>
     </div>
   );
-};
+});
+
+// Add display name for debugging
+NutritionCard.displayName = 'NutritionCard';
 
 export default NutritionCard;

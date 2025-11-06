@@ -1,22 +1,26 @@
 // src/App.js
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useIonRouter } from '@ionic/react';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
+import { PushNotifications } from '@capacitor/push-notifications';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import SuccessSavePopup from './components/SuccessSavePopup';
-import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
-import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
-import { getUserId } from './services/getUserId';
-import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import TestImageGuide from './components/TestImageGuide';
 import CameraTest from './components/CameraTest';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
-import NutritionDashboard from './components/NutritionDashboard';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
+import Header from './components/Header';
+import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
+import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
+import { getUserId } from './services/getUserId';
+import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
 import { cameraService } from './services/cameraService';
+import GalleryMonitor from './services/galleryMonitor';
 import {
   signInWithGoogle,
   signInWithGooglePopup,
@@ -25,14 +29,11 @@ import {
   onAuthStateChange,
   isGoogleUser,
   isMobileDevice,
-  isNativePlatform,
   cleanup
 } from './services/firebase';
-import Header from './components/Header';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import GalleryMonitor from './services/galleryMonitor';
-import { PushNotifications } from '@capacitor/push-notifications';
+
+// ✅ ANDROID OPTIMIZATION: Lazy load heavy components
+const NutritionDashboard = lazy(() => import('./components/NutritionDashboard'));
 
 function WellnessBuddyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -347,13 +348,10 @@ function WellnessBuddyApp() {
   }, [user, checkUserStatus]);
 
   const handleSaveUserCache = async (user) => {
-    console.log('handleSaveUserCache is initiated');
     if (user && Capacitor.isNativePlatform()) {
-      console.log('1st condition met');
       try {
         const dbUserId = await getUserId(user);
         if (dbUserId && user.email) {
-          console.log('Setting GalleryMonitor current user:', dbUserId, user.email);
           GalleryMonitor.setCurrentUser(String(dbUserId), user.email);
         }
       } catch (err) {
@@ -458,9 +456,8 @@ function WellnessBuddyApp() {
     if (user) {
       const checkCamera = async () => {
         try {
-          const info = await cameraService.getCameraInfo();
-          const message = await cameraService.getCameraStatusMessage();
-          console.log('📷 Camera info:', info, message);
+          await cameraService.getCameraInfo();
+          await cameraService.getCameraStatusMessage();
         } catch (error) {
           console.warn('⚠️ Camera check failed:', error);
         }
@@ -544,33 +541,54 @@ function WellnessBuddyApp() {
     }
   }, [saveError]);
 
-  // Helper function to compress images
-  const compressImage = (base64, quality = 0.7) => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
-      
-      img.onload = () => {
-        // Calculate new dimensions (max 1920px width)
-        let { width, height } = img;
-        const maxWidth = 1920;
+  // ✅ ANDROID PERFORMANCE: Optimized image compression with async processing
+  const compressImage = (base64, quality = 0.7, maxWidth = 1920) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { 
+          alpha: false,  // Disable alpha for JPEG (faster)
+          willReadFrequently: false 
+        });
+        const img = new Image();
         
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
+        img.onload = () => {
+          try {
+            // Calculate new dimensions
+            let { width, height } = img;
+            
+            if (width > maxWidth) {
+              height = Math.floor((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Use faster rendering
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to JPEG with specified quality
+            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            
+            // Clean up
+            canvas.width = 0;
+            canvas.height = 0;
+            img.src = '';
+            
+            resolve(compressedBase64);
+          } catch (err) {
+            reject(err);
+          }
+        };
         
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Draw and compress
-        ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
-      };
-      
-      img.src = base64;
+        img.onerror = (err) => reject(new Error('Failed to load image for compression'));
+        img.src = base64;
+      } catch (err) {
+        reject(err);
+      }
     });
   };
 
@@ -598,27 +616,51 @@ function WellnessBuddyApp() {
     setNutritionData(null);
     setSaveError(null);
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      let imageBase64 = e.target.result;
+    // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
+    try {
+      setLoading(true); // Show loading immediately
       
-      // Compress large images for better upload success
-      if (imageBase64.length > 2 * 1024 * 1024) { // 2MB base64 limit
-        try {
-          imageBase64 = await compressImage(imageBase64, 0.7); // 70% quality
-          console.log('🗜️ Image compressed from', 
-            (e.target.result.length / 1024 / 1024).toFixed(2), 'MB to', 
-            (imageBase64.length / 1024 / 1024).toFixed(2), 'MB'
-          );
-        } catch (compressError) {
-          console.warn('⚠️ Image compression failed, using original:', compressError);
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      // ✅ ANDROID PERFORMANCE: Intelligent compression based on platform and size
+      const isAndroid = Capacitor.isNativePlatform();
+      const imageSizeMB = imageBase64.length / (1024 * 1024);
+      
+      let processedImage = imageBase64;
+      let compressionApplied = false;
+      
+      // Aggressive compression for Android or large images
+      if (isAndroid) {
+        // Android: Always compress for speed
+        if (imageSizeMB > 0.5) { // > 500KB
+          const maxWidth = 1280; // Optimal for Android
+          const quality = imageSizeMB > 2 ? 0.75 : 0.85; // More aggressive for larger images
+          processedImage = await compressImage(imageBase64, quality, maxWidth);
+          compressionApplied = true;
+        }
+      } else {
+        // Web: Compress only if needed
+        if (imageSizeMB > 2) { // > 2MB
+          processedImage = await compressImage(imageBase64, 0.8, 1920);
+          compressionApplied = true;
         }
       }
       
-      setImagePreview(imageBase64);
+      if (compressionApplied && process.env.NODE_ENV !== 'production') {
+        const newSizeMB = processedImage.length / (1024 * 1024);
+        console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
+      }
+      
+      // Set preview immediately for better UX
+      setImagePreview(processedImage);
 
+      // ✅ ANDROID PERFORMANCE: Start analysis in parallel with preview rendering
       try {
-        setLoading(true);
         const result = await geminiService.analyzeImageForNutrition(file);
         setNutritionData(result);
 
@@ -626,43 +668,35 @@ function WellnessBuddyApp() {
         setSaveLoading(true);
         try {
           const userIdentifier = user.email || user.id || user.uid || 'anonymous';
-          
-          // Debug: Log environment info
-          console.log('💾 Attempting to save analysis:', {
-            apiBaseUrl: apiBaseUrl,
-            userIdentifier: userIdentifier,
-            imageSize: imageBase64 ? (imageBase64.length / 1024 / 1024).toFixed(2) + ' MB' : 'N/A',
-            analysisResultSize: JSON.stringify(result).length,
-            isProduction: process.env.NODE_ENV === 'production'
-          });
 
           const saveRes = await saveNutritionAnalysis({
             userId: userIdentifier,
             imagePath: file.name,
-            imageBase64,
+            imageBase64: processedImage, // Use compressed image
             analysisResult: result,
             deviceInfo: window.navigator.userAgent
           });
 
-          console.log('✅ Save successful:', saveRes);
+          if (process.env.NODE_ENV !== 'production') {
+            console.log('✅ Save successful:', saveRes);
+          }
 
-          const newPopup = {
-            id: Date.now().toString(),
-            analysisId: saveRes.id,
-            nutritionData: result,
-            imagePreview: imageBase64,
-            timestamp: new Date()
-          };
-          setSuccessPopups((prev) => [...prev, newPopup]);
+          // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
+          // Users can view saved data from Dashboard/Insights button
+          // Only show popup on web for backward compatibility
+          if (!Capacitor.isNativePlatform()) {
+            const newPopup = {
+              id: Date.now().toString(),
+              analysisId: saveRes.id,
+              nutritionData: result,
+              imagePreview: processedImage,
+              timestamp: new Date()
+            };
+            setSuccessPopups((prev) => [...prev, newPopup]);
+          }
         } catch (err) {
-          // Debug: Log detailed error info
-          console.error('❌ Save failed:', {
-            error: err,
-            message: err.message,
-            stack: err.stack,
-            apiBaseUrl: apiBaseUrl,
-            userIdentifier: user.email || user.id || user.uid || 'anonymous'
-          });
+          // Handle save errors
+          console.error('❌ Save failed:', err.message);
           
           const friendlySaveError = getFriendlyErrorMessage(err);
           setSaveError(friendlySaveError);
@@ -673,12 +707,13 @@ function WellnessBuddyApp() {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
         console.error('❌ Gemini analysis error:', err);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setError('Failed to process image: ' + err.message);
+      console.error('❌ Image processing error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Success popup handlers
@@ -984,15 +1019,17 @@ function WellnessBuddyApp() {
     }
   };
 
-  // Full page dashboard
+  // Full page dashboard with lazy loading
   if (showNutritionDashboard) {
     return (
-      <NutritionDashboard
-        user={user}
-        onBack={showMainPage}
-        apiBaseUrl={apiBaseUrl}
-        onMealDelete={handleDashboardMealDelete}
-      />
+      <Suspense fallback={<LoadingSpinner context="normal" />}>
+        <NutritionDashboard
+          user={user}
+          onBack={showMainPage}
+          apiBaseUrl={apiBaseUrl}
+          onMealDelete={handleDashboardMealDelete}
+        />
+      </Suspense>
     );
     }
 
