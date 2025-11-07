@@ -27,6 +27,7 @@ const config = {
       forceCodeForRefreshToken: true
     },
     GalleryMonitor: {},
+    CameraMonitor: {},
     
     // ✅ Optimize splash screen for faster startup
     SplashScreen: {
