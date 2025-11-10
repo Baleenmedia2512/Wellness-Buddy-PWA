@@ -14,6 +14,8 @@ import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
+import WeightCapture from './components/WeightCapture';
+import WeightInsights from './components/WeightInsights';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
 import { getUserId } from './services/getUserId';
@@ -46,6 +48,12 @@ function WellnessBuddyApp() {
   const [showCameraTest, setShowCameraTest] = useState(false);
   const [showNutritionDashboard, setShowNutritionDashboard] = useState(
     localStorage.getItem('currentPage') === 'nutrition-dashboard'
+  );
+  const [showWeightTracking, setShowWeightTracking] = useState(
+    localStorage.getItem('currentPage') === 'weight-tracking'
+  );
+  const [showWeightInsights, setShowWeightInsights] = useState(
+    localStorage.getItem('currentPage') === 'weight-insights'
   );
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -151,17 +159,16 @@ function WellnessBuddyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showNutritionDashboard) {
-        setShowNutritionDashboard(false);
-        localStorage.setItem('currentPage', 'main');
+      if (showNutritionDashboard || showWeightTracking || showWeightInsights) {
+        showMainPage();
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showNutritionDashboard);
+    initializeBackButton(goBack, showToast, !showNutritionDashboard && !showWeightTracking && !showWeightInsights);
     return () => cleanupBackButton();
-  }, [ionRouter, showNutritionDashboard]);
+  }, [ionRouter, showNutritionDashboard, showWeightTracking, showWeightInsights]);
 
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
@@ -229,11 +236,43 @@ function WellnessBuddyApp() {
       }
     }
     setShowNutritionDashboard(true);
+    setShowWeightTracking(false);
+    setShowWeightInsights(false);
     localStorage.setItem('currentPage', 'nutrition-dashboard');
+  }, [user, checkUserStatus]);
+
+  const showWeightTrackingPage = useCallback(async () => {
+    if (user) {
+      const isActive = await checkUserStatus(user);
+      if (!isActive) {
+        setError('Your account is inactive. Please contact support to reactivate.');
+        return;
+      }
+    }
+    setShowWeightTracking(true);
+    setShowNutritionDashboard(false);
+    setShowWeightInsights(false);
+    localStorage.setItem('currentPage', 'weight-tracking');
+  }, [user, checkUserStatus]);
+
+  const showWeightInsightsPage = useCallback(async () => {
+    if (user) {
+      const isActive = await checkUserStatus(user);
+      if (!isActive) {
+        setError('Your account is inactive. Please contact support to reactivate.');
+        return;
+      }
+    }
+    setShowWeightInsights(true);
+    setShowWeightTracking(false);
+    setShowNutritionDashboard(false);
+    localStorage.setItem('currentPage', 'weight-insights');
   }, [user, checkUserStatus]);
 
   const showMainPage = () => {
     setShowNutritionDashboard(false);
+    setShowWeightTracking(false);
+    setShowWeightInsights(false);
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -1031,7 +1070,64 @@ function WellnessBuddyApp() {
         />
       </Suspense>
     );
-    }
+  }
+
+  // Weight Tracking page
+  if (showWeightTracking) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100">
+        <Header
+          user={user}
+          onTestCamera={() => setShowCameraTest(true)}
+          onShowBackgroundHistory={showNutritionDashboardPage}
+          onShowWeightTracking={showWeightTrackingPage}
+          onSignOut={handleSignOut}
+        />
+        <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+          <button
+            onClick={showMainPage}
+            className="flex items-center space-x-2 text-green-600 hover:text-green-700 font-medium mb-4"
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            <span>Back to Home</span>
+          </button>
+          
+          <WeightCapture
+            user={user}
+            apiBaseUrl={apiBaseUrl}
+            onWeightSaved={() => {
+              // Optionally switch to insights after saving
+              showWeightInsightsPage();
+            }}
+          />
+
+          <div className="text-center">
+            <button
+              onClick={showWeightInsightsPage}
+              className="text-green-600 hover:text-green-700 font-medium underline"
+            >
+              View Weight History & Insights
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Weight Insights page
+  if (showWeightInsights) {
+    return (
+      <WeightInsights
+        user={user}
+        apiBaseUrl={apiBaseUrl}
+        onBack={() => {
+          showWeightTrackingPage();
+        }}
+      />
+    );
+  }
 
   // Main app interface
   return (
@@ -1040,6 +1136,7 @@ function WellnessBuddyApp() {
         user={user}
         onTestCamera={() => setShowCameraTest(true)}
         onShowBackgroundHistory={showNutritionDashboardPage}
+        onShowWeightTracking={showWeightTrackingPage}
         onSignOut={handleSignOut}
       />
 
