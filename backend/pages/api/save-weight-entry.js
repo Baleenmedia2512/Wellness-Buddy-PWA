@@ -1,68 +1,80 @@
 import mysql from 'mysql2/promise';
 
-// Configure API body parser for large image uploads
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-};
-
+/**
+ * API Endpoint: Save Weight Entry
+ * POST /api/save-weight-entry
+ * 
+ * Saves a weight measurement with optional photo and OCR data
+ */
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     return res.status(200).end();
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
-  }
-
-  // Check if request body is too large or malformed
-  if (!req.body) {
-    return res.status(400).json({ 
-      message: 'Request body is missing or too large. Maximum size is 10MB.' 
-    });
-  }
-
-  const { 
-    userId, 
-    weightValue, 
-    unit = 'kg',
-    imagePath, 
-    imageBase64, 
-    confidenceScore,
-    notes 
-  } = req.body;
-
-  // Validate required fields
-  if (!userId || !weightValue) {
-    return res.status(400).json({ 
-      message: 'Missing required fields: userId, weightValue' 
-    });
-  }
-
-  // Validate weight value
-  const weight = parseFloat(weightValue);
-  if (isNaN(weight) || weight <= 0 || weight > 500) {
-    return res.status(400).json({ 
-      message: 'Invalid weight value. Must be between 0 and 500.' 
-    });
-  }
-
-  // Validate unit
-  if (unit !== 'kg' && unit !== 'lbs') {
-    return res.status(400).json({ 
-      message: 'Invalid unit. Must be "kg" or "lbs".' 
+    return res.status(405).json({ 
+      success: false, 
+      message: 'Method not allowed' 
     });
   }
 
   try {
-    // Database connection
+    const {
+      userId,
+      weightValue,
+      weightUnit = 'kg',
+      imageBase64,
+      imagePath,
+      ocrConfidence,
+      ocrRawText,
+      deviceInfo,
+      notes
+    } = req.body;
+
+    // Validation
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User ID is required'
+      });
+    }
+
+    if (!weightValue || isNaN(weightValue)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Valid weight value is required'
+      });
+    }
+
+    // Validate weight range
+    const weight = parseFloat(weightValue);
+    if (weightUnit === 'kg' && (weight < 20 || weight > 300)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Weight must be between 20-300 kg'
+      });
+    }
+
+    if (weightUnit === 'lbs' && (weight < 44 || weight > 660)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Weight must be between 44-660 lbs'
+      });
+    }
+
+    console.log('💾 Saving weight entry:', {
+      userId,
+      weightValue,
+      weightUnit,
+      ocrConfidence,
+      hasImage: !!imageBase64
+    });
+
+    // Connect to database
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
@@ -70,44 +82,44 @@ export default async function handler(req, res) {
       database: process.env.DB_NAME
     });
 
-    // Insert weight entry into database
-    const insertQuery = `
-      INSERT INTO weight_tracking (
-        UserID, WeightValue, Unit, ImagePath, ImageBase64, 
-        ConfidenceScore, Notes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    // If ImageBase64 is empty string, store as null
-    const imageBase64ToSave = (imageBase64 && imageBase64.trim() !== '') ? imageBase64 : null;
-
-    const [result] = await connection.execute(insertQuery, [
-      userId,
-      weight,
-      unit,
-      imagePath || null,
-      imageBase64ToSave,
-      confidenceScore || null,
-      notes || null
-    ]);
+    // Insert weight entry
+    const [result] = await connection.execute(
+      `INSERT INTO weight_entries_table 
+        (UserID, WeightValue, WeightUnit, ImagePath, ImageBase64, 
+         OCRConfidence, OCRRawText, DeviceInfo, Notes, CreatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        userId,
+        weight,
+        weightUnit,
+        imagePath || null,
+        imageBase64 || null,
+        ocrConfidence || null,
+        ocrRawText || null,
+        deviceInfo || null,
+        notes || null
+      ]
+    );
 
     await connection.end();
 
+    console.log('✅ Weight entry saved successfully:', result.insertId);
+
     res.status(200).json({
       success: true,
-      id: result.insertId,
       message: 'Weight entry saved successfully',
+      entryId: result.insertId,
       data: {
+        id: result.insertId,
         userId,
         weightValue: weight,
-        unit,
-        confidenceScore,
-        timestamp: new Date().toISOString()
+        weightUnit,
+        createdAt: new Date().toISOString()
       }
     });
 
   } catch (error) {
-    console.error('❌ Database save error:', error);
+    console.error('❌ Error saving weight entry:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to save weight entry',

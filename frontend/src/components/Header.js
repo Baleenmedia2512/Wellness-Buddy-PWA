@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
-import { LogOut, User, History, Scale } from 'lucide-react';
+import { LogOut, Camera, User, History } from 'lucide-react';
 import { getVersionString } from '../config/version';
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowWeightTracking }) => {
+const Header = ({ user, onTestCamera, onSignOut, onShowBackgroundHistory }) => {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const toggleMenu = () => setMenuOpen(!menuOpen);
@@ -83,15 +83,15 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowWeightTracking
                   
                   <button
                     onClick={() => {
-                      onShowWeightTracking();
+                      onTestCamera();
                       closeMenu();
                     }}
                     className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-gray-50 text-left transition-colors"
                   >
-                    <Scale className="h-5 w-5 text-purple-600 mt-1 flex-shrink-0" />
+                    <Camera className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800">Weight Tracking</p>
-                      <p className="text-xs text-gray-500">Track your weight with OCR</p>
+                      <p className="text-sm font-medium text-gray-800">Test Camera</p>
+                      <p className="text-xs text-gray-500">Check your device camera</p>
                     </div>
                   </button>
                   
