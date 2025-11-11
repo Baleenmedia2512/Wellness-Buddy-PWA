@@ -1,0 +1,6 @@
+# Gradle Properties Example
+# Copy this file to gradle.properties and add your actual API key
+# DO NOT commit gradle.properties to Git!
+
+# Gemini API Key (required for build)
+GEMINI_API_KEY=YOUR_GEMINI_API_KEY_HERE

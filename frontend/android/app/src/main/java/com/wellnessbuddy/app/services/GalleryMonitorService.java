@@ -1,5 +1,6 @@
 package com.wellnessbuddy.app.services;
 import com.wellnessbuddy.app.R;
+import com.wellnessbuddy.app.BuildConfig;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -23,8 +24,6 @@ import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
 import com.wellnessbuddy.app.MainActivity;
-import androidx.security.crypto.EncryptedSharedPreferences;
-import androidx.security.crypto.MasterKey;
 import android.content.SharedPreferences;
 
 import java.io.File;
@@ -59,10 +58,6 @@ public class GalleryMonitorService extends Service {
     private GeminiApiClient geminiApiClient;
     private DatabaseSyncClient databaseSyncClient;
     private RetryQueue retryQueue;
-    
-    // Secure Gemini API key storage
-    private static final String SECURE_PREFS_NAME = "secure_prefs";
-    private static final String GEMINI_API_KEY_PREF = "gemini_api_key";
     
     // Database API configuration
     // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
@@ -106,24 +101,16 @@ public class GalleryMonitorService extends Service {
             Log.d(TAG, connected ? "✅ Database connection successful" : "❌ Database connection failed");
         });
         
-        // Initialize secure key storage
+        // Initialize Gemini API client with BuildConfig key (injected at build time)
         try {
-            MasterKey masterKey = new MasterKey.Builder(this)
-                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                    .build();
-            SharedPreferences securePrefs = EncryptedSharedPreferences.create(
-                    this,
-                    SECURE_PREFS_NAME,
-                    masterKey,
-                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-            );
-            // If key not set, set it once (replace with your actual key)
-            if (!securePrefs.contains(GEMINI_API_KEY_PREF)) {
-                securePrefs.edit().putString(GEMINI_API_KEY_PREF, "AIzaSyAdlp8IINd-djyhXbz6FYBTnv0NZN0jFUA").apply();
+            String apiKey = BuildConfig.GEMINI_API_KEY;
+            if (apiKey == null || apiKey.isEmpty()) {
+                Log.e(TAG, "❌ GEMINI_API_KEY not configured! Set it in gradle.properties");
+                throw new IllegalStateException("GEMINI_API_KEY is required but not configured");
             }
-            String apiKey = securePrefs.getString(GEMINI_API_KEY_PREF, null);
+            
             geminiApiClient = new GeminiApiClient(apiKey);
+            Log.d(TAG, "✅ Gemini API client initialized successfully");
             
             // Initialize retry queue
             retryQueue = new RetryQueue(this, databaseSyncClient);
@@ -135,8 +122,8 @@ public class GalleryMonitorService extends Service {
             }, 30, 30, TimeUnit.MINUTES);
             
         } catch (Exception e) {
-            Log.e(TAG, "Error initializing secure Gemini API key storage", e);
-            geminiApiClient = new GeminiApiClient(""); // fallback, will fail
+            Log.e(TAG, "❌ Error initializing Gemini API client", e);
+            throw new RuntimeException("Failed to initialize Gemini API client", e);
         }
 
         // ✅ Register ContentObserver to detect image changes
