@@ -8,9 +8,13 @@ android {
         applicationId "com.wellnessbuddy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.2.4"
+        versionCode 8
+        versionName "1.2.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        
+        // Inject Gemini API key from environment variable or gradle.properties
+        def geminiKey = project.hasProperty('GEMINI_API_KEY') ? GEMINI_API_KEY : System.getenv('GEMINI_API_KEY') ?: ""
+        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiKey}\""
         
         // NDK configuration for 16KB alignment
         ndk {

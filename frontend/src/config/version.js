@@ -72,20 +72,29 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.2.4',
+  VERSION: '1.2.5',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 7,
+  VERSION_CODE: 8,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Race Condition Fix & Duplicate Username Handling',
+  RELEASE_NAME: 'Security: Build-time API Key Injection',
   
   // Build date
-  BUILD_DATE: '2025-11-03',
+  BUILD_DATE: '2025-11-11',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.2.5 (Code 8) - 2025-11-11
+ *   🔒 Implemented build-time API key injection for enhanced security
+ *   🛡️ Removed hardcoded Gemini API keys from source code
+ *   🔧 Updated GalleryMonitorService to use BuildConfig.GEMINI_API_KEY
+ *   📝 Added gradle.properties for local API key configuration
+ *   🚫 Untracked sensitive files (.env.production, gradle.properties) from Git
+ *   📚 Created GEMINI_API_KEY_SETUP.md security documentation
+ *   ✅ Build-time injection prevents future key exposure in Git
  * 
  * Version 1.2.4 (Code 7) - 2025-11-03
  *   🔧 Fixed race condition causing "Account Not Found" modal for new Google users
