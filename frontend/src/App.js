@@ -13,8 +13,6 @@ import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
-import WeightCapture from './components/WeightCapture';
-import WeightInsights from './components/WeightInsights';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
 import { getUserId } from './services/getUserId';
@@ -33,7 +31,7 @@ import {
 } from './services/firebase';
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
-const NutritionDashboard = lazy(() => import('./components/NutritionDashboard'));
+const Dashboard = lazy(() => import('./components/Dashboard'));
 
 function WellnessBuddyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -43,13 +41,10 @@ function WellnessBuddyApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
-  const [showNutritionDashboard, setShowNutritionDashboard] = useState(
-    localStorage.getItem('currentPage') === 'nutrition-dashboard'
-  );
-  const [showWeightTracking, setShowWeightTracking] = useState(
-    localStorage.getItem('currentPage') === 'weight-tracking'
-  );
-  const [showWeightInsights, setShowWeightInsights] = useState(
+  const [showDashboard, setShowDashboard] = useState(
+    localStorage.getItem('currentPage') === 'dashboard' || 
+    localStorage.getItem('currentPage') === 'nutrition-dashboard' ||
+    localStorage.getItem('currentPage') === 'weight-tracking' ||
     localStorage.getItem('currentPage') === 'weight-insights'
   );
   const [user, setUser] = useState(null);
@@ -156,16 +151,16 @@ function WellnessBuddyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showNutritionDashboard || showWeightTracking || showWeightInsights) {
+      if (showDashboard) {
         showMainPage();
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showNutritionDashboard && !showWeightTracking && !showWeightInsights);
+    initializeBackButton(goBack, showToast, !showDashboard);
     return () => cleanupBackButton();
-  }, [ionRouter, showNutritionDashboard, showWeightTracking, showWeightInsights]);
+  }, [ionRouter, showDashboard]);
 
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
@@ -250,7 +245,7 @@ function WellnessBuddyApp() {
   }, [apiBaseUrl]);
 
   // Helper functions for navigation with localStorage persistence
-  const showNutritionDashboardPage = useCallback(async () => {
+  const showDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
       const isActive = await checkUserStatus(user);
@@ -259,44 +254,12 @@ function WellnessBuddyApp() {
         return;
       }
     }
-    setShowNutritionDashboard(true);
-    setShowWeightTracking(false);
-    setShowWeightInsights(false);
-    localStorage.setItem('currentPage', 'nutrition-dashboard');
-  }, [user, checkUserStatus]);
-
-  const showWeightTrackingPage = useCallback(async () => {
-    if (user) {
-      const isActive = await checkUserStatus(user);
-      if (!isActive) {
-        setError('Your account is inactive. Please contact support to reactivate.');
-        return;
-      }
-    }
-    setShowWeightTracking(true);
-    setShowNutritionDashboard(false);
-    setShowWeightInsights(false);
-    localStorage.setItem('currentPage', 'weight-tracking');
-  }, [user, checkUserStatus]);
-
-  const showWeightInsightsPage = useCallback(async () => {
-    if (user) {
-      const isActive = await checkUserStatus(user);
-      if (!isActive) {
-        setError('Your account is inactive. Please contact support to reactivate.');
-        return;
-      }
-    }
-    setShowWeightInsights(true);
-    setShowWeightTracking(false);
-    setShowNutritionDashboard(false);
-    localStorage.setItem('currentPage', 'weight-insights');
+    setShowDashboard(true);
+    localStorage.setItem('currentPage', 'dashboard');
   }, [user, checkUserStatus]);
 
   const showMainPage = () => {
-    setShowNutritionDashboard(false);
-    setShowWeightTracking(false);
-    setShowWeightInsights(false);
+    setShowDashboard(false);
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -457,7 +420,7 @@ function WellnessBuddyApp() {
         const { GalleryMonitorPlugin } = await import('./plugins/galleryMonitorPlugin');
         const listener = await GalleryMonitorPlugin.addListener('notificationClicked', (data) => {
           if (data && data.action === 'openBackgroundHistory') {
-            showNutritionDashboardPage();
+            showDashboardPage();
           }
         });
 
@@ -476,7 +439,7 @@ function WellnessBuddyApp() {
       App.removeAllListeners();
       if (cleanupFn) cleanupFn();
     };
-  }, [showNutritionDashboardPage]);
+  }, [showDashboardPage]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -1279,11 +1242,11 @@ function WellnessBuddyApp() {
     }
   };
 
-  // Full page dashboard with lazy loading
-  if (showNutritionDashboard) {
+  // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
+  if (showDashboard) {
     return (
       <Suspense fallback={<LoadingSpinner context="normal" />}>
-        <NutritionDashboard
+        <Dashboard
           user={user}
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
@@ -1293,87 +1256,16 @@ function WellnessBuddyApp() {
     );
   }
 
-  // Weight Tracking page
-  if (showWeightTracking) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100">
-        <Header
-          user={user}
-         
-          onShowBackgroundHistory={showNutritionDashboardPage}
-          onShowWeightTracking={showWeightTrackingPage}
-          onSignOut={handleSignOut}
-        />
-        <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-          <button
-            onClick={showMainPage}
-            className="flex items-center space-x-2 text-green-600 hover:text-green-700 font-medium mb-4"
-          >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-            </svg>
-            <span>Back to Home</span>
-          </button>
-          
-          <WeightCapture
-            user={user}
-            apiBaseUrl={apiBaseUrl}
-            onWeightSaved={() => {
-              // Optionally switch to insights after saving
-              showWeightInsightsPage();
-            }}
-          />
-
-          <div className="text-center">
-            <button
-              onClick={showWeightInsightsPage}
-              className="text-green-600 hover:text-green-700 font-medium underline"
-            >
-              View Weight History & Insights
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Weight Insights page
-  if (showWeightInsights) {
-    return (
-      <WeightInsights
-        user={user}
-        apiBaseUrl={apiBaseUrl}
-        onBack={() => {
-          showWeightTrackingPage();
-        }}
-      />
-    );
-  }
-
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
       <Header
         user={user}
-        onShowBackgroundHistory={showNutritionDashboardPage}
-        onShowWeightTracking={showWeightTrackingPage}
+        onShowBackgroundHistory={showDashboardPage}
         onSignOut={handleSignOut}
       />
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        <div className="fixed bottom-6 right-6 z-40">
-          <button
-            onClick={showNutritionDashboardPage}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm"
-            title="View Nutrition Dashboard"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <span className="text-sm font-medium">Insights</span>
-          </button>
-        </div>
-
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
