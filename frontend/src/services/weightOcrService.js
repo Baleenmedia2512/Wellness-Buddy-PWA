@@ -1,56 +1,54 @@
-// Weight OCR Service for Wellness Buddy
-// Uses Tesseract.js to extract weight values from weighing scale photos
-
+// src/services/weightOcrService.js
 import Tesseract from 'tesseract.js';
 
 class WeightOcrService {
   constructor() {
     this.worker = null;
+    this.isInitialized = false;
   }
 
   /**
-   * Initialize Tesseract worker (call once at app start)
+   * Initialize Tesseract worker
    */
   async initialize() {
-    if (this.worker) return;
-    
+    if (this.isInitialized && this.worker) {
+      return;
+    }
+
     try {
-      console.log('🔍 Initializing Tesseract OCR worker...');
+      console.log('🔧 Initializing Tesseract OCR...');
       this.worker = await Tesseract.createWorker('eng', 1, {
-        logger: m => {
+        logger: (m) => {
           if (m.status === 'recognizing text') {
             console.log(`OCR Progress: ${Math.round(m.progress * 100)}%`);
           }
         }
       });
-      console.log('✅ Tesseract OCR worker ready');
+      this.isInitialized = true;
+      console.log('✅ Tesseract OCR initialized');
     } catch (error) {
-      console.error('❌ Failed to initialize OCR:', error);
-      throw error;
+      console.error('❌ Failed to initialize Tesseract:', error);
+      throw new Error('Failed to initialize OCR service');
     }
   }
 
   /**
-   * Extract weight value from weighing scale image
-   * @param {string|File|Blob} image - Image source (base64, URL, or File)
-   * @returns {Promise<Object>} { success, weight, unit, confidence, rawText, error }
+   * Extract weight value from image using OCR
+   * @param {string|File} image - Image data URL or File object
+   * @returns {Promise<{success: boolean, weightValue: number|null, unit: string, confidence: number, rawText: string, error?: string}>}
    */
-  async extractWeight(image) {
+  async extractWeightFromImage(image) {
     try {
       // Initialize worker if not already done
-      if (!this.worker) {
-        await this.initialize();
-      }
+      await this.initialize();
 
-      console.log('🔍 Starting OCR weight extraction...');
-      
+      console.log('📸 Starting OCR on weighing scale image...');
+
       // Perform OCR
       const { data } = await this.worker.recognize(image);
       const rawText = data.text;
-      const confidence = data.confidence;
       
-      console.log('📄 Raw OCR text:', rawText);
-      console.log('📊 OCR confidence:', confidence);
+      console.log('📝 Raw OCR text:', rawText);
 
       // Parse weight from text
       const weightData = this.parseWeightFromText(rawText);
@@ -58,29 +56,28 @@ class WeightOcrService {
       if (!weightData.success) {
         return {
           success: false,
-          weight: null,
-          unit: null,
-          confidence: confidence,
-          rawText: rawText,
-          error: 'Unable to detect weight value in image'
+          weightValue: null,
+          unit: 'kg',
+          confidence: 0,
+          rawText,
+          error: weightData.error || 'Unable to detect weight value'
         };
       }
 
       return {
         success: true,
-        weight: weightData.weight,
+        weightValue: weightData.value,
         unit: weightData.unit,
-        confidence: confidence,
-        rawText: rawText,
-        error: null
+        confidence: data.confidence / 100, // Convert to 0-1 scale
+        rawText
       };
 
     } catch (error) {
       console.error('❌ OCR extraction failed:', error);
       return {
         success: false,
-        weight: null,
-        unit: null,
+        weightValue: null,
+        unit: 'kg',
         confidence: 0,
         rawText: '',
         error: error.message || 'OCR processing failed'
@@ -89,35 +86,53 @@ class WeightOcrService {
   }
 
   /**
-   * Parse weight value from OCR text using multiple patterns
+   * Parse weight value from OCR text
+   * Looks for patterns like: "72.5", "72.5kg", "72.5 kg", "160 lbs", etc.
    * @param {string} text - Raw OCR text
-   * @returns {Object} { success, weight, unit }
+   * @returns {{success: boolean, value: number|null, unit: string, error?: string}}
    */
   parseWeightFromText(text) {
-    if (!text) {
-      return { success: false, weight: null, unit: null };
+    if (!text || typeof text !== 'string') {
+      return { success: false, value: null, unit: 'kg', error: 'No text provided' };
     }
 
-    // Clean the text (remove extra spaces, normalize)
-    const cleanText = text.replace(/\s+/g, ' ').trim();
-    console.log('🧹 Cleaned text:', cleanText);
+    // Clean up text: remove extra whitespace, newlines
+    const cleanText = text.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
 
-    // Pattern 1: Direct weight with units (e.g., "72.5 kg", "160 lbs", "72.5kg")
-    const patterns = [
-      /(\d+\.?\d*)\s*(kg|kilogram|kilograms)/i,
-      /(\d+\.?\d*)\s*(lb|lbs|pound|pounds)/i,
-      /(\d+\.?\d*)\s*kg/i,
-      /(\d+\.?\d*)\s*lb/i,
-      // Pattern for numbers that look like weight (20-300 range typically)
-      /\b(\d{2,3}\.?\d{0,2})\b/
+    // Common OCR mistakes mapping
+    const ocrCorrections = {
+      'O': '0',
+      'o': '0',
+      'l': '1',
+      'I': '1',
+      'S': '5',
+      'B': '8',
+      'Z': '2'
+    };
+
+    // Pattern to match weight values
+    // Matches: 72.5, 72,5, 160.2, 72.5kg, 72.5 kg, 160 lbs, etc.
+    const weightPatterns = [
+      // Pattern 1: Number with optional decimal (dot or comma) + optional unit
+      /(\d+[.,]?\d*)\s*(kg|kgs|kilogram|kilograms|lb|lbs|pound|pounds)?/gi,
+      
+      // Pattern 2: Isolated numbers (fallback)
+      /(\d{2,3}[.,]\d{1,2})/g,
+      
+      // Pattern 3: Just integers between 30-300 (reasonable weight range)
+      /\b(\d{2,3})\b/g
     ];
 
-    for (const pattern of patterns) {
-      const match = cleanText.match(pattern);
-      if (match) {
-        const value = parseFloat(match[1]);
+    let bestMatch = null;
+    let bestConfidence = 0;
+
+    for (const pattern of weightPatterns) {
+      const matches = cleanText.matchAll(pattern);
+      
+      for (const match of matches) {
+        let valueStr = match[1];
         let unit = match[2] ? match[2].toLowerCase() : 'kg';
-        
+
         // Normalize unit
         if (unit.includes('lb') || unit.includes('pound')) {
           unit = 'lbs';
@@ -125,87 +140,121 @@ class WeightOcrService {
           unit = 'kg';
         }
 
-        // Validate weight range (reasonable human weight)
-        if (this.isValidWeight(value, unit)) {
-          console.log(`✅ Weight detected: ${value} ${unit}`);
-          return {
-            success: true,
-            weight: value,
-            unit: unit
-          };
+        // Convert comma to dot for decimal separator
+        valueStr = valueStr.replace(',', '.');
+
+        // Apply OCR corrections for common mistakes
+        let correctedValue = valueStr;
+        for (const [wrong, correct] of Object.entries(ocrCorrections)) {
+          correctedValue = correctedValue.replace(new RegExp(wrong, 'g'), correct);
+        }
+
+        const value = parseFloat(correctedValue);
+
+        // Validate weight range (reasonable human weight: 20kg - 300kg or 44lbs - 660lbs)
+        const minWeight = unit === 'kg' ? 20 : 44;
+        const maxWeight = unit === 'kg' ? 300 : 660;
+
+        if (!isNaN(value) && value >= minWeight && value <= maxWeight) {
+          // Calculate confidence based on various factors
+          let confidence = 0.5; // Base confidence
+
+          // Higher confidence if unit is explicitly mentioned
+          if (match[2]) confidence += 0.2;
+
+          // Higher confidence if value has decimal point
+          if (valueStr.includes('.')) confidence += 0.15;
+
+          // Higher confidence if in common weight range (50-120kg or 110-265lbs)
+          const commonMin = unit === 'kg' ? 50 : 110;
+          const commonMax = unit === 'kg' ? 120 : 265;
+          if (value >= commonMin && value <= commonMax) confidence += 0.15;
+
+          if (confidence > bestConfidence) {
+            bestMatch = { value, unit };
+            bestConfidence = confidence;
+          }
         }
       }
     }
 
-    // Try to find any decimal number that could be weight
-    const numbers = cleanText.match(/\d+\.?\d*/g);
-    if (numbers && numbers.length > 0) {
-      for (const num of numbers) {
-        const value = parseFloat(num);
-        // Assume kg if in typical human weight range
-        if (value >= 30 && value <= 200) {
-          console.log(`✅ Weight detected (assumed kg): ${value} kg`);
-          return {
-            success: true,
-            weight: value,
-            unit: 'kg'
-          };
-        }
-      }
+    if (bestMatch) {
+      // Round to 1 decimal place
+      bestMatch.value = Math.round(bestMatch.value * 10) / 10;
+      
+      console.log('✅ Weight detected:', bestMatch.value, bestMatch.unit, 'Confidence:', bestConfidence);
+      return { success: true, ...bestMatch };
     }
 
-    console.log('❌ No valid weight found in text');
-    return { success: false, weight: null, unit: null };
+    return { 
+      success: false, 
+      value: null, 
+      unit: 'kg', 
+      error: 'No valid weight value detected in image' 
+    };
   }
 
   /**
-   * Validate if weight value is in reasonable human range
-   * @param {number} value - Weight value
-   * @param {string} unit - Unit (kg or lbs)
-   * @returns {boolean}
+   * Validate weight value
+   * @param {number} weight - Weight value to validate
+   * @param {string} unit - Weight unit (kg or lbs)
+   * @returns {{valid: boolean, error?: string}}
    */
-  isValidWeight(value, unit) {
-    if (unit === 'kg') {
-      // Typical human weight range: 20-300 kg
-      return value >= 20 && value <= 300;
-    } else if (unit === 'lbs') {
-      // Typical human weight range: 44-660 lbs
-      return value >= 44 && value <= 660;
+  validateWeight(weight, unit = 'kg') {
+    if (typeof weight !== 'number' || isNaN(weight)) {
+      return { valid: false, error: 'Weight must be a valid number' };
     }
-    return false;
+
+    if (weight <= 0) {
+      return { valid: false, error: 'Weight must be greater than 0' };
+    }
+
+    const minWeight = unit === 'kg' ? 20 : 44;
+    const maxWeight = unit === 'kg' ? 300 : 660;
+
+    if (weight < minWeight || weight > maxWeight) {
+      return { 
+        valid: false, 
+        error: `Weight must be between ${minWeight} and ${maxWeight} ${unit}` 
+      };
+    }
+
+    return { valid: true };
   }
 
   /**
    * Convert weight between units
-   * @param {number} value - Weight value
-   * @param {string} fromUnit - Source unit
-   * @param {string} toUnit - Target unit
-   * @returns {number}
+   * @param {number} weight - Weight value
+   * @param {string} fromUnit - Source unit (kg or lbs)
+   * @param {string} toUnit - Target unit (kg or lbs)
+   * @returns {number} Converted weight value
    */
-  convertWeight(value, fromUnit, toUnit) {
-    if (fromUnit === toUnit) return value;
-    
+  convertWeight(weight, fromUnit, toUnit) {
+    if (fromUnit === toUnit) return weight;
+
     if (fromUnit === 'kg' && toUnit === 'lbs') {
-      return value * 2.20462;
-    } else if (fromUnit === 'lbs' && toUnit === 'kg') {
-      return value / 2.20462;
+      return Math.round(weight * 2.20462 * 10) / 10;
     }
-    
-    return value;
+
+    if (fromUnit === 'lbs' && toUnit === 'kg') {
+      return Math.round(weight * 0.453592 * 10) / 10;
+    }
+
+    return weight;
   }
 
   /**
-   * Cleanup and terminate worker
+   * Cleanup resources
    */
   async terminate() {
     if (this.worker) {
       await this.worker.terminate();
       this.worker = null;
-      console.log('🛑 OCR worker terminated');
+      this.isInitialized = false;
+      console.log('🔚 Tesseract OCR terminated');
     }
   }
 }
 
 // Export singleton instance
-const weightOcrService = new WeightOcrService();
-export default weightOcrService;
+export const weightOcrService = new WeightOcrService();

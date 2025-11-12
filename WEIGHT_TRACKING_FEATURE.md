@@ -1,698 +1,633 @@
-# Weight Scale OCR Feature - Implementation Summary
+# Weight Tracking Feature - Complete Implementation Guide
 
-## 🎯 Feature Overview
+## 📋 Overview
 
-Successfully implemented a comprehensive **Weight Tracking with OCR** feature for the Wellness Buddy app that allows users to:
+The **Weight Tracking Feature** allows users to track their weight by taking photos of their weighing scale. The system uses **OCR (Optical Character Recognition)** powered by Tesseract.js to automatically extract weight values from the images.
 
-1. **Capture weighing scale photos** using the in-app camera (no gallery upload)
-2. **Automatically extract weight values** using OCR (Tesseract.js)
-3. **Validate and save** weight measurements to the database
-4. **View weight history** with photos and trends in the Insights section
-5. **Track progress** over time with statistics and visualizations
-
-### Key Characteristics
-- ✅ **Camera-only capture** (no gallery selection)
-- ✅ **OCR-powered weight detection** with confidence scoring
-- ✅ **Manual override** when OCR fails
-- ✅ **Photo storage** for future review
-- ✅ **Weight trend analysis** (gain/loss tracking)
-- ✅ **User-friendly error handling**
-- ✅ **Async database operations** for responsiveness
-- ✅ **Integrated with Insights dashboard**
+### Key Features
+- ✅ **Camera-only photo capture** (no gallery uploads)
+- ✅ **Automatic OCR weight extraction** from scale images
+- ✅ **Manual weight entry fallback** if OCR fails
+- ✅ **Weight validation** (20-300 kg or 44-660 lbs)
+- ✅ **Complete weight history** with statistics
+- ✅ **Weight trend tracking** (gains, losses, averages)
+- ✅ **Image storage** for future reference
+- ✅ **Soft delete** capability with undo option
 
 ---
 
-## 📝 Implementation Details
+## 🗂️ File Structure
 
-### 1. Database Schema
+### Backend Files
 
-**File**: `sql/weight_tracking_schema.sql`
-
-**Table**: `weight_entries_table`
-
-**Columns**:
-- `ID` - Primary key (auto-increment)
-- `UserID` - Foreign key to team_table
-- `WeightValue` - Decimal (5,2) for kg/lbs values
-- `WeightUnit` - VARCHAR(10) for 'kg' or 'lbs'
-- `ImagePath` - Optional local path
-- `ImageBase64` - LONGTEXT for base64 encoded photo
-- `OCRConfidence` - OCR confidence score (0-100)
-- `OCRRawText` - Raw OCR text output
-- `DeviceInfo` - Device information
-- `Notes` - Optional user notes
-- `CreatedAt` - Timestamp
-- `UpdatedAt` - Timestamp
-- `IsDeleted` - Soft delete flag
-
-**Indexes**:
-- `idx_user_date` on (UserID, CreatedAt)
-- `idx_created` on (CreatedAt)
-
----
-
-### 2. OCR Service
-
-**File**: `frontend/src/services/weightOcrService.js`
-
-**Key Features**:
-- Uses **Tesseract.js** OCR engine
-- Singleton pattern for worker management
-- Multiple weight detection patterns
-- Unit detection (kg/lbs)
-- Weight range validation (20-300 kg, 44-660 lbs)
-- Progress reporting during OCR processing
-
-**Main Methods**:
-```javascript
-// Initialize OCR worker
-await weightOcrService.initialize()
-
-// Extract weight from image
-const result = await weightOcrService.extractWeight(imageSource)
-// Returns: { success, weight, unit, confidence, rawText, error }
-
-// Parse weight from text
-parseWeightFromText(text)
-
-// Validate weight range
-isValidWeight(value, unit)
-
-// Convert between units
-convertWeight(value, fromUnit, toUnit)
-
-// Cleanup
-await weightOcrService.terminate()
+```
+backend/pages/api/
+├── save-weight-entry.js       # API to save weight entries
+├── get-weight-history.js      # API to fetch weight history
+└── delete-weight-entry.js     # API to delete weight entries (soft delete)
 ```
 
-**Detection Patterns**:
-1. Direct weight with units: `72.5 kg`, `160 lbs`
-2. Weight with spaces: `72.5 kg`
-3. Compact format: `72.5kg`
-4. Numeric detection in valid range (30-200 kg assumed)
+### Frontend Files
+
+```
+frontend/src/
+├── components/
+│   ├── WeightCapture.js       # Photo capture + OCR processing
+│   ├── WeightInsights.js      # Weight history & statistics display
+│   └── Header.js              # Updated with Weight Tracking button
+├── services/
+│   └── weightOcrService.js    # Tesseract.js OCR service
+└── App.js                     # Main app with routing
+```
+
+### Database Schema
+
+```
+sql/
+└── weight_tracking_schema.sql  # Database table schema
+```
 
 ---
 
-### 3. Backend API Endpoints
+## 🗄️ Database Schema
 
-#### A. Save Weight Entry
-**Endpoint**: `POST /api/save-weight-entry`
+### Table: `weight_tracking`
 
-**File**: `backend/pages/api/save-weight-entry.js`
+```sql
+CREATE TABLE IF NOT EXISTS weight_tracking (
+  ID INT AUTO_INCREMENT PRIMARY KEY,
+  UserID VARCHAR(255) NOT NULL,
+  WeightValue DECIMAL(5,2) NOT NULL,
+  Unit VARCHAR(10) DEFAULT 'kg',
+  ImagePath VARCHAR(500) DEFAULT NULL,
+  ImageBase64 LONGTEXT DEFAULT NULL,
+  ConfidenceScore DECIMAL(3,2) DEFAULT NULL,
+  CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  IsDeleted TINYINT(1) DEFAULT 0,
+  Notes TEXT DEFAULT NULL,
+  INDEX idx_user_id (UserID),
+  INDEX idx_created_at (CreatedAt),
+  INDEX idx_is_deleted (IsDeleted)
+);
+```
 
-**Request Body**:
+### To Create the Table:
+
+```bash
+# Connect to MySQL
+mysql -u root -p
+
+# Use your database
+USE wellness_buddy;
+
+# Run the schema file
+SOURCE c:/xampp/htdocs/Wellness-Buddy-PWA-1/sql/weight_tracking_schema.sql;
+```
+
+---
+
+## 🔌 Backend API Endpoints
+
+### 1. Save Weight Entry
+
+**Endpoint:** `POST /api/save-weight-entry`
+
+**Request Body:**
 ```json
 {
-  "userId": "123",
+  "userId": "user@example.com",
   "weightValue": 72.5,
-  "weightUnit": "kg",
+  "unit": "kg",
+  "imagePath": "weight_1699999999.jpg",
   "imageBase64": "data:image/jpeg;base64,...",
-  "ocrConfidence": 87.5,
-  "ocrRawText": "72.5 kg",
-  "deviceInfo": "Mozilla/5.0...",
+  "confidenceScore": 0.85,
   "notes": "Morning weight"
 }
 ```
 
-**Response**:
+**Response:**
 ```json
 {
   "success": true,
+  "id": 123,
   "message": "Weight entry saved successfully",
-  "entryId": 45,
   "data": {
-    "id": 45,
-    "userId": "123",
+    "userId": "user@example.com",
     "weightValue": 72.5,
-    "weightUnit": "kg",
-    "createdAt": "2025-11-11T10:30:00.000Z"
+    "unit": "kg",
+    "confidenceScore": 0.85,
+    "timestamp": "2025-11-10T10:30:00.000Z"
   }
 }
 ```
 
-**Validation**:
-- User ID required
-- Weight value must be numeric
-- Weight must be in valid range (20-300 kg or 44-660 lbs)
-- Unit must be 'kg' or 'lbs'
+### 2. Get Weight History
 
----
+**Endpoint:** `POST /api/get-weight-history`
 
-#### B. Get Weight History
-**Endpoint**: `GET /api/get-weight-history`
+**Request Body:**
+```json
+{
+  "userId": "user@example.com",
+  "limit": 50,
+  "offset": 0
+}
+```
 
-**File**: `backend/pages/api/get-weight-history.js`
-
-**Query Parameters**:
-- `userId` (required) - User ID
-- `limit` (optional, default: 30) - Number of entries
-- `offset` (optional, default: 0) - Pagination offset
-- `startDate` (optional) - Filter by start date
-- `endDate` (optional) - Filter by end date
-
-**Response**:
+**Response:**
 ```json
 {
   "success": true,
-  "message": "Weight history retrieved successfully",
   "data": [
     {
-      "ID": 45,
-      "UserID": 123,
+      "ID": 123,
       "WeightValue": 72.5,
-      "WeightUnit": "kg",
+      "Unit": "kg",
+      "ImagePath": "weight_1699999999.jpg",
       "ImageBase64": "data:image/jpeg;base64,...",
-      "OCRConfidence": 87.5,
-      "OCRRawText": "72.5 kg",
-      "CreatedAt": "2025-11-11T10:30:00.000Z",
-      "Notes": "Morning weight"
+      "ConfidenceScore": 0.85,
+      "Notes": null,
+      "CreatedAt": "2025-11-10T10:30:00.000Z"
     }
   ],
   "stats": {
-    "currentWeight": 72.5,
-    "currentUnit": "kg",
-    "oldestWeight": 75.0,
-    "weightChange": -2.5,
-    "changeDirection": "loss",
-    "averageWeight": "73.50",
-    "minWeight": 72.0,
-    "maxWeight": 75.5,
-    "totalEntries": 12
+    "totalEntries": 15,
+    "latestWeight": {
+      "value": 72.5,
+      "unit": "kg",
+      "date": "2025-11-10T10:30:00.000Z"
+    },
+    "previousWeight": {
+      "value": 73.0,
+      "unit": "kg",
+      "date": "2025-11-09T10:30:00.000Z"
+    },
+    "weightChange": -0.5,
+    "averageWeight": 72.8,
+    "minWeight": 71.0,
+    "maxWeight": 75.0
   },
   "pagination": {
-    "total": 12,
-    "limit": 30,
+    "total": 15,
+    "limit": 50,
     "offset": 0,
     "hasMore": false
   }
 }
 ```
 
----
+### 3. Delete Weight Entry
 
-#### C. Delete Weight Entry
-**Endpoint**: `DELETE /api/delete-weight-entry`
+**Endpoint:** `POST /api/delete-weight-entry`
 
-**File**: `backend/pages/api/delete-weight-entry.js`
-
-**Request Body**:
+**Request Body:**
 ```json
 {
-  "id": 45,
-  "userId": "123"
+  "userId": "user@example.com",
+  "entryId": 123
 }
 ```
 
-**Response**:
+**Response:**
 ```json
 {
   "success": true,
   "message": "Weight entry deleted successfully",
-  "entryId": 45
+  "deletedId": 123
 }
 ```
 
 ---
 
-### 4. Frontend Components
+## 🎯 OCR Service (weightOcrService.js)
 
-#### A. WeightScaleCapture Component
-**File**: `frontend/src/components/WeightScaleCapture.js`
+### Key Methods
 
-**Features**:
-- Camera-only capture (no gallery)
-- Automatic OCR processing after capture
-- Manual weight entry fallback
-- Weight unit selector (kg/lbs)
-- Optional notes field
-- Real-time validation
-- Error handling with retry options
-- Loading states
+#### `extractWeightFromImage(image)`
+Extracts weight value from weighing scale image using OCR.
 
-**Props**:
+**Parameters:**
+- `image` (string|File): Image data URL or File object
+
+**Returns:**
 ```javascript
-<WeightScaleCapture
+{
+  success: true,
+  weightValue: 72.5,
+  unit: "kg",
+  confidence: 0.85,
+  rawText: "72.5 kg"
+}
+```
+
+#### `parseWeightFromText(text)`
+Parses weight value from OCR text.
+
+**Patterns Detected:**
+- `72.5 kg`
+- `160 lbs`
+- `72,5` (comma as decimal separator)
+- `160.2`
+
+**OCR Error Corrections:**
+- `O` → `0`
+- `l` → `1`
+- `I` → `1`
+- `S` → `5`
+- `B` → `8`
+
+#### `validateWeight(weight, unit)`
+Validates weight value is within acceptable range.
+
+**Valid Ranges:**
+- kg: 20 - 300 kg
+- lbs: 44 - 660 lbs
+
+#### `convertWeight(weight, fromUnit, toUnit)`
+Converts weight between kg and lbs.
+
+---
+
+## 🎨 User Interface Components
+
+### WeightCapture Component
+
+**Features:**
+- Camera button to capture weighing scale photo
+- Automatic OCR processing with progress indicator
+- Manual weight entry if OCR fails
+- Unit selection (kg/lbs)
+- Weight validation
+- Save/Retake buttons
+
+**Props:**
+```javascript
+<WeightCapture 
   user={user}
-  apiBaseUrl={apiBaseUrl}
-  onWeightSaved={(newEntry) => {}}
-  onClose={() => {}}
+  apiBaseUrl="http://localhost:3000"
+  onWeightSaved={(data) => console.log('Saved:', data)}
 />
 ```
 
-**User Flow**:
-1. User taps "Take Photo"
-2. Camera opens (using CameraService)
-3. User captures weighing scale photo
-4. OCR automatically processes image
-5. If successful: Weight pre-filled
-6. If failed: Manual entry shown with error message
-7. User can adjust weight/unit/notes
-8. User taps "Save Weight"
-9. Entry saved to database
-10. Modal closes and parent refreshes
+### WeightInsights Component
 
----
+**Features:**
+- Statistics cards (latest weight, change, average)
+- Weight history list with timeline
+- Image preview for each entry
+- Delete functionality with confirmation
+- Weight trend visualization placeholder
 
-#### B. WeightHistory Component
-**File**: `frontend/src/components/WeightHistory.js`
-
-**Features**:
-- Weight entry list with photos
-- Statistics cards (current weight, change, total entries)
-- Trend visualization (gain/loss icons)
-- Photo preview modal
-- Delete entries
-- Add new weight button
-- Empty state
-- Loading state
-- Error handling
-
-**Props**:
+**Props:**
 ```javascript
-<WeightHistory
+<WeightInsights 
   user={user}
-  apiBaseUrl={apiBaseUrl}
-  onBack={() => {}}
+  apiBaseUrl="http://localhost:3000"
+  onBack={() => console.log('Back pressed')}
 />
 ```
 
-**Statistics Displayed**:
-- **Current Weight**: Latest measurement
-- **Change**: Total change from oldest to newest
-- **Total Entries**: Count of all measurements
+---
 
-**UI Elements**:
-- Header with back button and "Add Weight" button
-- Stats cards grid
-- Weight entry cards with:
-  - Photo thumbnail (clickable for full view)
-  - Weight value and unit
-  - Timestamp
-  - OCR confidence badge
-  - User notes
-  - Delete button
+## 🚀 Usage Flow
+
+### User Workflow
+
+1. **User clicks "Weight Tracking" in Header menu**
+   - Opens WeightCapture page
+
+2. **User takes photo of weighing scale**
+   - Camera opens (camera only, no gallery)
+   - User captures clear photo of scale display
+
+3. **OCR Processing**
+   - Tesseract.js extracts text from image
+   - System parses weight value (e.g., "72.5 kg")
+   - Shows confidence score
+
+4. **Review & Edit (if needed)**
+   - User can manually edit weight value
+   - Change unit (kg ↔ lbs)
+   - Add optional notes
+
+5. **Save to Database**
+   - Weight entry saved with image
+   - Success message displayed
+   - Redirects to Insights page
+
+6. **View History**
+   - See all past weight entries
+   - View statistics and trends
+   - Click entry to see original image
+   - Delete entries if needed
 
 ---
 
-### 5. Integration with Dashboard
+## 📱 Navigation
 
-**File**: `frontend/src/components/NutritionDashboard.js`
+### Header Menu Options
 
-**Changes Made**:
-1. Added `WeightHistory` import
-2. Added `showWeightHistory` state
-3. Added Scale icon to header
-4. Added conditional rendering for Weight History
-5. Weight tracking button in dashboard header
-
-**Button Location**: Top-right of Nutrition Dashboard header (next to calendar icon)
-
-**Navigation Flow**:
 ```
-Main App → Insights Dashboard → Weight Tracking
-                ↓                        ↓
-         [Scale Icon] ←→ [Back Button]
+┌─────────────────────────────┐
+│  User Avatar (Click)        │
+├─────────────────────────────┤
+│ 📊 Nutrition Dashboard      │
+│ ⚖️  Weight Tracking         │  ← NEW
+│ 📸 Test Camera              │
+│ 🚪 Sign Out                 │
+└─────────────────────────────┘
+```
+
+### Page Navigation
+
+```
+Main App
+  ├── Nutrition Dashboard
+  ├── Weight Tracking          ← NEW
+  │   └── Weight Insights      ← NEW
+  └── Camera Test
 ```
 
 ---
 
-## 🎨 UI/UX Design
+## ⚠️ Error Handling
 
-### Color Scheme
-- **Primary**: Blue-Teal gradient (`from-blue-500 to-teal-600`)
-- **Success**: Green (`green-600`)
-- **Warning**: Yellow (`yellow-600`)
-- **Error**: Red (`red-600`)
-- **Neutral**: Gray shades
+### OCR Failures
 
-### Components Styling
-- **Rounded corners**: `rounded-xl`, `rounded-2xl`
-- **Shadows**: `shadow-lg`, `shadow-2xl`
-- **Transitions**: `transition-all duration-200`
-- **Hover effects**: Scale, color changes
-- **Responsive**: Mobile-first design
+**Error Message:**
+```
+"Unable to detect weight. Please retake the photo."
+```
 
-### User Feedback
-- ✅ **Success**: Green check icon with confirmation message
-- ⚠️ **Warning**: Yellow alert icon for OCR failures
-- ❌ **Error**: Red alert icon for validation errors
-- 🔄 **Loading**: Animated spinner with status text
-- 📊 **Progress**: OCR progress percentage
+**Fallback:**
+- Manual weight entry field appears
+- User can type weight directly
+- Validation still applies
+
+### Validation Errors
+
+**Weight out of range:**
+```
+"Weight must be between 20 and 300 kg"
+```
+
+**Invalid format:**
+```
+"Please enter a valid weight value"
+```
+
+### Network Errors
+
+**Save failure:**
+```
+"Failed to save weight. Please try again."
+```
+
+**Load failure:**
+```
+"Failed to load weight history"
+```
 
 ---
 
-## 🔐 Security & Validation
+## 🔧 Configuration
 
-### Input Validation
-- User ID required and validated
-- Weight value must be numeric
-- Weight range validated by unit
-- Unit must be 'kg' or 'lbs'
-- SQL injection prevention (parameterized queries)
+### Environment Variables
 
-### Data Privacy
+Ensure your `.env` file has:
+
+```env
+REACT_APP_API_BASE_URL=http://localhost:3000
+```
+
+### Database Connection
+
+Backend APIs use these environment variables:
+
+```env
+DB_HOST=localhost
+DB_USER=root
+DB_PASS=your_password
+DB_NAME=wellness_buddy
+```
+
+---
+
+## 🧪 Testing
+
+### Manual Testing Checklist
+
+- [ ] Take photo of weighing scale
+- [ ] Verify OCR extracts correct weight
+- [ ] Test manual entry fallback
+- [ ] Test unit conversion (kg ↔ lbs)
+- [ ] Save weight entry
+- [ ] View weight history
+- [ ] Check statistics calculation
+- [ ] Test image preview
+- [ ] Delete weight entry
+- [ ] Test back navigation
+- [ ] Test with poor image quality
+- [ ] Test with different scale types
+
+### Test Cases
+
+#### 1. Perfect OCR Scenario
+```
+Input: Clear scale photo showing "72.5 kg"
+Expected: Weight extracted as 72.5 kg with high confidence
+```
+
+#### 2. OCR Failure Scenario
+```
+Input: Blurry or unclear image
+Expected: Error message + manual entry field appears
+```
+
+#### 3. Weight Validation
+```
+Input: Manual entry of "500 kg"
+Expected: Error "Weight must be between 20 and 300 kg"
+```
+
+#### 4. History Display
+```
+Input: View insights after 3 entries
+Expected: 
+- Latest weight shown
+- Weight change calculated
+- Average displayed
+```
+
+---
+
+## 📊 Performance Considerations
+
+### OCR Processing Time
+- Average: 2-5 seconds per image
+- Depends on image size and device performance
+
+### Image Storage
 - Images stored as base64 in database
-- User data isolated by UserID
-- Soft delete preserves data integrity
-- Foreign key constraints enforce relationships
-
-### Error Handling
-- Try-catch blocks on all async operations
-- User-friendly error messages
-- Fallback to manual entry on OCR failure
-- Network error handling
-- Database connection error handling
-
----
-
-## ⚡ Performance Optimizations
-
-### OCR Processing
-- Singleton worker pattern (reuses Tesseract instance)
-- Progress reporting for user feedback
-- Async processing (non-blocking UI)
-- Worker cleanup on component unmount
+- Compression recommended for production
+- Consider using separate image storage (S3, CDN) for scale
 
 ### Database Queries
-- Indexed columns for fast lookups
-- Pagination support for large datasets
-- Efficient date range filtering
-- Soft delete (no actual row deletion)
-
-### Image Handling
-- Base64 encoding for storage
-- Lazy loading of images
-- Thumbnail generation (CSS scaling)
-- Image preview modal (full size on demand)
-
-### Network Requests
-- Async/await pattern
-- Error retry mechanism
-- Connection pooling (mysql2)
-- CORS handling
+- Indexed on `UserID` and `CreatedAt`
+- Pagination implemented (50 entries per page)
+- Soft delete for data recovery
 
 ---
 
-## 🧪 Testing Guide
-
-### 1. Database Setup
-```sql
--- Run the schema creation
-SOURCE sql/weight_tracking_schema.sql;
-
--- Verify table creation
-DESCRIBE weight_entries_table;
-
--- Test insert
-INSERT INTO weight_entries_table 
-  (UserID, WeightValue, WeightUnit, CreatedAt) 
-VALUES (123, 72.5, 'kg', NOW());
-
--- Test query
-SELECT * FROM weight_entries_table WHERE UserID = 123;
-```
-
-### 2. Backend API Testing
-
-**Test Save Weight Entry**:
-```bash
-curl -X POST http://localhost:3000/api/save-weight-entry \
-  -H "Content-Type: application/json" \
-  -d '{
-    "userId": "123",
-    "weightValue": 72.5,
-    "weightUnit": "kg",
-    "ocrConfidence": 87.5,
-    "ocrRawText": "72.5 kg"
-  }'
-```
-
-**Test Get Weight History**:
-```bash
-curl http://localhost:3000/api/get-weight-history?userId=123&limit=10
-```
-
-**Test Delete Weight Entry**:
-```bash
-curl -X DELETE http://localhost:3000/api/delete-weight-entry \
-  -H "Content-Type: application/json" \
-  -d '{"id": 45, "userId": "123"}'
-```
-
-### 3. Frontend Testing
-
-**Manual Test Steps**:
-1. Login to Wellness Buddy app
-2. Navigate to Insights (Dashboard)
-3. Click Scale icon in top-right
-4. Click "Add Weight" button
-5. Click "Take Photo"
-6. Grant camera permissions
-7. Take photo of weighing scale
-8. Verify OCR detection
-9. Adjust weight if needed
-10. Add optional notes
-11. Click "Save Weight"
-12. Verify entry appears in list
-13. Click photo thumbnail to preview
-14. Test delete entry
-15. Verify stats update correctly
-
-**OCR Test Cases**:
-- Test with clear digital scale display
-- Test with analog scale
-- Test with poor lighting
-- Test with blurry image
-- Test with non-scale images
-- Test manual entry fallback
-
-**Edge Cases**:
-- Empty weight history
-- Single entry
-- Many entries (pagination)
-- Network errors
-- Camera permissions denied
-- OCR initialization failure
-
----
-
-## 📊 Feature Metrics
-
-### Success Criteria
-✅ Camera opens correctly (95%+ success rate)
-✅ OCR detects weight (70%+ accuracy expected)
-✅ Manual entry always available (100% fallback)
-✅ Database save success (99%+ on good connection)
-✅ Weight history loads (100% with data)
-✅ Photos display correctly (100%)
-✅ Stats calculate correctly (100%)
-
-### Performance Targets
-- OCR processing: < 5 seconds
-- API response time: < 1 second
-- Image upload: < 3 seconds
-- History load: < 2 seconds
-- UI responsiveness: 60 FPS
-
----
-
-## 🚀 Deployment Checklist
-
-### Database
-- [ ] Run `weight_tracking_schema.sql` on production database
-- [ ] Verify table exists and has correct columns
-- [ ] Check foreign key constraints
-- [ ] Test indexes performance
-
-### Backend
-- [ ] Deploy updated API endpoints
-- [ ] Verify environment variables (DB credentials)
-- [ ] Test CORS configuration
-- [ ] Enable error logging
-
-### Frontend
-- [ ] Build production bundle (`npm run build`)
-- [ ] Sync with Capacitor (`npx cap sync android`)
-- [ ] Test camera permissions
-- [ ] Test OCR initialization
-- [ ] Verify API connectivity
-
-### Mobile App
-- [ ] Update app version
-- [ ] Test on real Android device
-- [ ] Test camera capture
-- [ ] Test photo storage
-- [ ] Test offline behavior
-- [ ] Generate signed APK/AAB
-
----
-
-## 🔮 Future Enhancements
+## 🎯 Future Enhancements
 
 ### Planned Features
-1. **Weight Goals**: Set target weight and track progress
-2. **Charts & Graphs**: Visual weight trend over time
-3. **BMI Calculator**: Calculate and track BMI
-4. **Export Data**: CSV/PDF export of weight history
-5. **Reminders**: Daily/weekly weight tracking reminders
-6. **Body Measurements**: Additional measurements (waist, chest, etc.)
-7. **Photo Comparison**: Before/after photo overlays
-8. **Weight Predictions**: ML-based weight trend predictions
+- [ ] Weight goal setting
+- [ ] BMI calculation
+- [ ] Weight chart visualization (line graph)
+- [ ] Export weight data (CSV, PDF)
+- [ ] Reminder notifications
+- [ ] Multi-user support (family members)
+- [ ] Integration with fitness apps
+- [ ] Dark mode support
 
 ### Technical Improvements
-1. **Improved OCR**: Fine-tune patterns for better detection
-2. **Image Preprocessing**: Enhance images before OCR
-3. **Offline Support**: Cache weight entries offline
-4. **Cloud Storage**: Optional cloud backup of photos
-5. **Multi-language OCR**: Support for non-English scales
-6. **Voice Input**: Voice command for weight entry
-
----
-
-## 📖 Code Architecture
-
-### Component Hierarchy
-```
-App.js
-  └── NutritionDashboard.js
-        └── WeightHistory.js
-              └── WeightScaleCapture.js
-```
-
-### Service Layer
-```
-services/
-  ├── weightOcrService.js (OCR processing)
-  ├── cameraService.js (Camera capture)
-  └── nutritionSaveService.js (Database operations)
-```
-
-### API Layer
-```
-backend/pages/api/
-  ├── save-weight-entry.js
-  ├── get-weight-history.js
-  └── delete-weight-entry.js
-```
-
-### Data Flow
-```
-User → Camera → Photo → OCR → Validation → Database → Display
-         ↓        ↓      ↓        ↓           ↓         ↓
-    Permission  Base64  Parse   Ranges    MariaDB   React UI
-```
+- [ ] Image compression before upload
+- [ ] Offline mode support
+- [ ] Real-time sync across devices
+- [ ] Advanced OCR models (Google Vision API)
+- [ ] Voice input for weight entry
 
 ---
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### Issue: OCR not detecting weight
 
-**1. OCR Not Detecting Weight**
-- **Cause**: Poor image quality, unclear text, unsupported format
-- **Solution**: Ensure good lighting, clear focus, use manual entry
-- **Retry**: OCR retry button available
+**Solution:**
+1. Ensure good lighting on scale display
+2. Keep camera steady and focused
+3. Avoid reflections or shadows
+4. Try manual entry as fallback
 
-**2. Camera Permission Denied**
-- **Cause**: User denied camera permission
-- **Solution**: Guide user to app settings to enable camera
-- **Fallback**: N/A (camera required for this feature)
+### Issue: Images not loading in history
 
-**3. Database Connection Error**
-- **Cause**: Database offline, wrong credentials, network issue
-- **Solution**: Check backend logs, verify DB connection
-- **Retry**: Automatic retry with exponential backoff
+**Solution:**
+1. Check database LONGTEXT field size limit
+2. Verify base64 encoding is correct
+3. Check CORS settings for image URLs
 
-**4. Image Upload Failed**
-- **Cause**: Large image size, network timeout
-- **Solution**: Compress image, check network connection
-- **Retry**: Manual retry button available
+### Issue: Weight not saving
 
-**5. Stats Not Updating**
-- **Cause**: Cache issue, API delay
-- **Solution**: Refresh page, check network tab
-- **Fix**: Fetch weight history after save
+**Solution:**
+1. Check network connectivity
+2. Verify database connection
+3. Check backend API logs
+4. Ensure user authentication is valid
 
 ---
 
-## 📞 Support & Maintenance
+## 📝 Code Examples
 
-### Logs to Monitor
-- OCR processing times and success rates
-- API response times
-- Database query performance
-- Error rates and types
-- User adoption metrics
+### Using OCR Service Directly
 
-### Regular Maintenance
-- Review OCR accuracy metrics
-- Optimize database queries
-- Update Tesseract.js library
-- Clean up old photos (if storage limited)
-- User feedback review
+```javascript
+import { weightOcrService } from './services/weightOcrService';
 
-### Contact
-- **Developer**: Wellness Buddy Team
-- **Repository**: Wellness-Buddy-PWA
-- **Documentation**: See WEIGHT_TRACKING_FEATURE.md
+// Extract weight from image
+const result = await weightOcrService.extractWeightFromImage(imageFile);
 
----
+if (result.success) {
+  console.log('Weight:', result.weightValue, result.unit);
+  console.log('Confidence:', result.confidence);
+} else {
+  console.error('OCR failed:', result.error);
+}
+```
 
-## ✨ Conclusion
+### Saving Weight Entry
 
-Successfully implemented a **production-ready, user-friendly Weight Tracking feature** with:
+```javascript
+const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: user.email,
+    weightValue: 72.5,
+    unit: 'kg',
+    imageBase64: imageData,
+    confidenceScore: 0.85
+  })
+});
 
-1. ✅ **Camera-only photo capture** for weighing scales
-2. ✅ **Automatic OCR weight extraction** with high accuracy
-3. ✅ **Robust validation** and error handling
-4. ✅ **Async database operations** for performance
-5. ✅ **Beautiful UI** integrated with Insights dashboard
-6. ✅ **Photo storage** for future reference
-7. ✅ **Weight trends** and statistics
-8. ✅ **Manual entry fallback** when OCR fails
+const data = await response.json();
+console.log('Saved:', data);
+```
 
-**Status**: ✅ **Ready for Production Deployment**
+### Fetching Weight History
 
-**Implementation Date**: November 11, 2025  
-**Version**: 1.0.0  
-**Platform**: Web & Android (via Capacitor)  
-**Dependencies**: Tesseract.js 6.0.1, Capacitor Camera Plugin  
-**Database**: MariaDB/MySQL compatible  
+```javascript
+const response = await fetch(`${apiBaseUrl}/api/get-weight-history`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    userId: user.email,
+    limit: 50,
+    offset: 0
+  })
+});
 
----
-
-## 📦 Files Created/Modified
-
-### New Files
-1. `sql/weight_tracking_schema.sql` - Database schema
-2. `frontend/src/services/weightOcrService.js` - OCR service
-3. `frontend/src/components/WeightScaleCapture.js` - Camera capture UI
-4. `frontend/src/components/WeightHistory.js` - History display
-5. `backend/pages/api/save-weight-entry.js` - Save API
-6. `backend/pages/api/get-weight-history.js` - Retrieve API
-7. `backend/pages/api/delete-weight-entry.js` - Delete API
-8. `WEIGHT_TRACKING_FEATURE.md` - This documentation
-
-### Modified Files
-1. `frontend/src/components/NutritionDashboard.js` - Added Weight Tracking button
-2. `frontend/package.json` - Already has Tesseract.js dependency
-
-### Dependencies Used
-- **Tesseract.js**: v6.0.1 (already installed)
-- **Capacitor Camera**: v7.0.1 (already installed)
-- **Lucide React**: For icons (already installed)
-- **mysql2**: v3.14.1 (already installed)
+const data = await response.json();
+console.log('History:', data.data);
+console.log('Stats:', data.stats);
+```
 
 ---
 
-**Next Steps**:
-1. Run database schema: `mysql -u root -p wellness_buddy < sql/weight_tracking_schema.sql`
-2. Start backend: `cd backend && npm run dev`
-3. Start frontend: `cd frontend && npm start`
-4. Test in browser at http://localhost:3001
-5. Build APK: `npm run build && npx cap sync android`
-6. Test on Android device
+## 🔒 Security Considerations
+
+### Data Privacy
+- Images stored securely in database
+- User authentication required for all operations
+- User can only access their own weight data
+
+### Input Validation
+- Weight values validated on both client and server
+- SQL injection prevention (parameterized queries)
+- XSS protection (sanitized inputs)
+
+### API Security
+- CORS enabled for trusted origins
+- Request size limits (10MB max)
+- Rate limiting recommended for production
 
 ---
 
-**Happy Weight Tracking! 🎯📊⚖️**
+## 📚 Dependencies
+
+### Frontend
+- `tesseract.js` v6.0.1 - OCR processing
+- `@capacitor/camera` v7.0.1 - Camera access
+- `react` v18.3.1
+- `lucide-react` - Icons
+
+### Backend
+- `mysql2` v3.14.1 - Database driver
+- `next` v15.3.5 - API routes
+
+---
+
+## 📞 Support
+
+For issues or questions:
+1. Check this documentation
+2. Review error logs
+3. Test with sample images
+4. Contact development team
+
+---
+
+**Version:** 1.0.0  
+**Last Updated:** November 10, 2025  
+**Author:** Wellness Buddy Development Team
