@@ -34,7 +34,6 @@ export default async function handler(req, res) {
     // ✅ Get weight history for user
     const historyQuery = `
       SELECT 
-        Id, 
         UserId, 
         Weight, 
         Bmi,

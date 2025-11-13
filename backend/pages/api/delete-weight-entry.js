@@ -32,7 +32,7 @@ export default async function handler(req, res) {
 
     // Soft delete the entry (set IsDeleted = 1)
     const deleteQuery = `
-      UPDATE weight_tracking 
+      UPDATE weight_records_table 
       SET IsDeleted = 1 
       WHERE ID = ? AND UserID = ?
     `;

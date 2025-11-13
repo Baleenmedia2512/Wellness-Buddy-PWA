@@ -190,7 +190,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       setError(null);
 
       const userId = user.email || user.id || user.uid;
-
+      debugger
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -203,7 +203,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      setWeightHistory(data.data || []);
+      alert(setWeightHistory(data.data || []));
       setStats(data.stats || null);
 
     } catch (err) {
@@ -309,15 +309,15 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
       const payload = {
         userId,
-        weightValue,
-        unit: selectedUnit,
-        imagePath: `weight_${Date.now()}.jpg`,
-        imageBase64: capturedImage,
-        confidenceScore: ocrResult?.confidence || 0,
-        notes: null
+        weight: weightValue,
+        bmi: null, // Optional: Can be calculated if height is available
+        bodyFat: null, // Optional: From scale if available
+        muscleMass: null, // Optional: From scale if available
+        bmr: null, // Optional: Can be calculated
+        weightImageBase64: capturedImage
       };
 
-      console.log('💾 Saving weight entry...', { userId, weightValue, unit: selectedUnit });
+      console.log('💾 Saving weight entry...', { userId, weight: weightValue });
 
       const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
         method: 'POST',
@@ -375,8 +375,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
    */
   const getWeightChange = () => {
     if (!weightHistory || weightHistory.length < 2) return null;
-    const latest = weightHistory[0].WeightValue;
-    const previous = weightHistory[1].WeightValue;
+    const latest = weightHistory[0].Weight;
+    const previous = weightHistory[1].Weight;
     return (latest - previous).toFixed(1);
   };
 
@@ -511,8 +511,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 {latestWeight ? (
                   <>
                     <p className="text-4xl font-bold mt-1">
-                      {latestWeight.WeightValue}
-                      <span className="text-lg font-normal ml-1">{latestWeight.Unit}</span>
+                      {latestWeight.Weight}
+                      <span className="text-lg font-normal ml-1">kg</span>
                     </p>
                     <p className="text-xs text-white/70 mt-1">{formatDate(latestWeight.CreatedAt)}</p>
                   </>
@@ -590,19 +590,19 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             (dailyEntries.length > 0 ? dailyEntries : weightHistory.slice(0, 10)).map((entry, index) => {
               const displayList = dailyEntries.length > 0 ? dailyEntries : weightHistory;
               const prevEntry = displayList[index + 1];
-              const change = prevEntry ? (entry.WeightValue - prevEntry.WeightValue).toFixed(1) : null;
+              const change = prevEntry ? (entry.Weight - prevEntry.Weight).toFixed(1) : null;
 
               return (
                 <div
-                  key={entry.ID}
+                  key={entry.Id}
                   className="bg-white rounded-xl p-4 shadow-sm border border-gray-100 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-3">
-                      {entry.ImageBase64 ? (
+                      {entry.WeightImageBase64 ? (
                         <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                           <img
-                            src={entry.ImageBase64.startsWith('data:image') ? entry.ImageBase64 : `data:image/jpeg;base64,${entry.ImageBase64}`}
+                            src={entry.WeightImageBase64.startsWith('data:image') ? entry.WeightImageBase64 : `data:image/jpeg;base64,${entry.WeightImageBase64}`}
                             alt="Scale"
                             className="w-full h-full object-cover"
                             onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -615,7 +615,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                       )}
                       <div>
                         <p className="text-lg font-bold text-gray-900">
-                          {entry.WeightValue} {entry.Unit}
+                          {entry.Weight} kg
                         </p>
                         <p className="text-xs text-gray-500">{formatDate(entry.CreatedAt)}</p>
                       </div>

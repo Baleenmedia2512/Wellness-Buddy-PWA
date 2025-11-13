@@ -18,6 +18,7 @@ import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionSe
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
+
 import GalleryMonitor from './services/galleryMonitor';
 import {
   signInWithGoogle,

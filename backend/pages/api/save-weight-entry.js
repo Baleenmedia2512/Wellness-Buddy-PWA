@@ -32,11 +32,7 @@ export default async function handler(req, res) {
   const { 
     userId, 
     weightValue, 
-    unit = 'kg',
-    imagePath, 
-    imageBase64, 
-    confidenceScore,
-    notes 
+    imageBase64ToSave: WeightImageBase64,
   } = req.body;
 
   // Validate required fields
@@ -72,23 +68,22 @@ export default async function handler(req, res) {
 
     // Insert weight entry into database
     const insertQuery = `
-      INSERT INTO weight_tracking (
-        UserID, WeightValue, Unit, ImagePath, ImageBase64, 
-        ConfidenceScore, Notes
+      INSERT INTO weight_records_table (
+        UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, 
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     // If ImageBase64 is empty string, store as null
-    const imageBase64ToSave = (imageBase64 && imageBase64.trim() !== '') ? imageBase64 : null;
+    const imageBase64ToSave = (WeightImageBase64 && WeightImageBase64.trim() !== '') ? WeightImageBase64 : null;
 
     const [result] = await connection.execute(insertQuery, [
       userId,
       weight,
-      unit,
-      imagePath || null,
+      null, // Bmi
+      null, // BodyFat
+      null, // MuscleMass
+      null, // Bmr  
       imageBase64ToSave,
-      confidenceScore || null,
-      notes || null
     ]);
 
     await connection.end();
@@ -100,8 +95,7 @@ export default async function handler(req, res) {
       data: {
         userId,
         weightValue: weight,
-        unit,
-        confidenceScore,
+        imageBase64: imageBase64ToSave``,
         timestamp: new Date().toISOString()
       }
     });
