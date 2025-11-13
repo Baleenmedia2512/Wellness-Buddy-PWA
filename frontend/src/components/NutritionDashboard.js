@@ -9,17 +9,20 @@ import {
   Beef,
   Wheat,
   Droplet,
-  RotateCcw
+  RotateCcw,
+  Scale
 } from 'lucide-react';
 import DatePickerCalendar from './DatePickerCalendar';
+import WeightHistory from './WeightHistory';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
-const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader }) => {
+const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [activeTab, setActiveTab] = useState('nutrition'); // 'nutrition' or 'weight'
   const [dailyStats, setDailyStats] = useState({
     totalCalories: 0,
     totalProtein: 0,
@@ -570,35 +573,78 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
         <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Header - Only show if not hidden */}
-      {!hideHeader && (
-        <>
-          <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-            <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
-              <div className="flex items-center justify-between p-4 md:p-6">
-                <button onClick={onBack} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-                  <ArrowLeft className="h-5 w-5 text-gray-700" />
-                </button>
+      {/* Header */}
+      <div className="sticky top-0 z-30 bg-white shadow-sm">
+        <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
+          <div className="flex items-center justify-between px-4 pt-4 pb-3">
+            <button onClick={onBack} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <ArrowLeft className="h-6 w-6 text-gray-700" />
+            </button>
 
-                <div className="text-center">
-                  <h1 className="text-lg md:text-xl font-semibold text-gray-900">Nutrition</h1>
-                  <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
-                </div>
-
-                <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-                  <Calendar className="h-5 w-5 text-gray-700" />
-                </button>
-              </div>
+            <div className="text-center flex-1">
+              <h1 className="text-xl font-bold text-gray-900">Insights</h1>
+              <p className="text-sm text-gray-600 mt-0.5">Today</p>
             </div>
-          </div>
-        </>
-      )}
 
+            <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+              <Calendar className="h-6 w-6 text-gray-700" />
+            </button>
+          </div>
+
+          {/* Tab Navigation */}
+          <div className="flex px-4 pb-0">
+            <button
+              onClick={() => setActiveTab('nutrition')}
+              className={`flex-1 py-3 text-sm font-semibold transition-all relative ${
+                activeTab === 'nutrition'
+                  ? 'text-teal-600'
+                  : 'text-gray-500'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>🍎</span>
+                <span>Nutrition</span>
+              </div>
+              {activeTab === 'nutrition' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-600 rounded-full"></div>
+              )}
+            </button>
+            <button
+              onClick={() => setActiveTab('weight')}
+              className={`flex-1 py-3 text-sm font-semibold transition-all relative ${
+                activeTab === 'weight'
+                  ? 'text-teal-600'
+                  : 'text-gray-500'
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <span>⚖️</span>
+                <span>Weight</span>
+              </div>
+              {activeTab === 'weight' && (
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-teal-600 rounded-full"></div>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Tab Content */}
+      {activeTab === 'weight' ? (
+        // Weight Tab
+        <WeightHistory
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          onBack={onBack}
+        />
+      ) : (
+        // Nutrition Tab
+        <>
       {/* Date selector */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
+      <div className="bg-white shadow-sm">
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {isMobileDevice() ? (
-            <div className="px-4 py-3">
+            <div className="px-3 py-4">
               <div className="overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
                 <style jsx>{`div::-webkit-scrollbar{display:none;}`}</style>
                 <div className="flex space-x-2 pb-1" style={{ minWidth: 'max-content' }}>
@@ -606,9 +652,9 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                     <React.Fragment key={index}>
                       {day.isNewMonth && index > 0 && (
                         <div className="flex items-center justify-center mx-1 relative">
-                          <div className="backdrop-blur-sm bg-white/30 rounded-lg px-1.5 py-1.5 shadow-sm border border-white/20">
+                          <div className="bg-gray-100 rounded-lg px-2 py-1.5 shadow-sm">
                             <div
-                              className="text-xs font-semibold text-gray-600"
+                              className="text-xs font-bold text-gray-500"
                               style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', fontSize: '9px', letterSpacing: '1px' }}
                             >
                               {day.monthName.toUpperCase()}
@@ -619,16 +665,16 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       <button
                         data-date-index={index}
                         onClick={() => setSelectedDate(day.date)}
-                        className={`flex-shrink-0 w-12 text-center py-2 px-1 rounded-lg transition-all duration-300 relative backdrop-blur-sm border
-                          ${day.isSelected ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg scale-105 border-emerald-300'
-                            : day.isToday ? 'bg-white/40 text-gray-800 border-white/30 shadow-md'
-                            : 'text-gray-600 hover:bg-white/30 bg-white/20 border-white/20' }`}
+                        className={`flex-shrink-0 w-14 text-center py-2.5 px-2 rounded-xl transition-all duration-200 ${
+                          day.isSelected 
+                            ? 'bg-teal-500 text-white shadow-md scale-105' 
+                            : day.isToday 
+                              ? 'bg-teal-50 text-teal-700 border border-teal-200' 
+                              : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
+                        }`}
                       >
-                        <div className="text-xs font-medium mb-0.5">{day.dayName}</div>
-                        <div className="text-sm font-semibold">{day.dayNumber}</div>
-                        {day.isToday && (
-                          <div className={`w-1 h-1 rounded-full mx-auto mt-0.5 ${day.isSelected ? 'bg-white' : 'bg-emerald-500'}`} />
-                        )}
+                        <div className="text-xs font-medium mb-1">{day.dayName}</div>
+                        <div className="text-base font-bold">{day.dayNumber}</div>
                       </button>
                     </React.Fragment>
                   ))}
@@ -868,53 +914,53 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
           </div>
         ) : (
           <>
-            {/* Overview card ... (unchanged content) */}
-            <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
-              <div className="w-full max-w-md mx-auto bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 p-4 md:p-5">
+            {/* Overview card */}
+            <div className="px-4 mt-4 mb-4">
+              <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-100 p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-xs md:text-sm text-gray-500">Calories Eaten</p>
-                    <p className="text-xl md:text-2xl font-bold text-gray-900">
+                    <p className="text-sm text-gray-600 mb-1">Calories Eaten</p>
+                    <p className="text-3xl font-bold text-gray-900">
                       {dailyStats.totalCalories || 0}
-                      <span className="text-xs md:text-sm font-normal text-gray-500"> / 2100 kcal</span>
+                      <span className="text-sm font-normal text-gray-500 ml-1">/ 2100 kcal</span>
                     </p>
                   </div>
-                  <div className="flex items-center space-x-1.5 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    <span className="text-xs md:text-sm font-medium text-emerald-700">On Track</span>
+                  <div className="flex items-center space-x-1.5 bg-teal-50 px-3 py-1.5 rounded-full">
+                    <TrendingUp className="w-4 h-4 text-teal-600" />
+                    <span className="text-sm font-semibold text-teal-700">On Track</span>
                   </div>
                 </div>
 
-                <div className="w-full bg-gray-200/70 rounded-full h-2 mb-4 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-2.5 mb-5 overflow-hidden">
                   <div
-                    className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-500 h-2 rounded-full transition-all duration-500 ease-out"
+                    className="bg-gradient-to-r from-teal-400 to-teal-500 h-2.5 rounded-full transition-all duration-500 ease-out"
                     style={{ width: `${Math.min(100, ((dailyStats.totalCalories || 0) / 2100) * 100)}%` }}
                   />
                 </div>
 
-                <div className="flex justify-between items-center gap-2">
-                  <div className="flex-1 p-2 rounded-lg bg-blue-50 flex flex-col items-center">
-                    <Beef className="w-4 h-4 text-blue-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-blue-600">Protein</p>
-                    <p className="text-sm font-bold text-gray-900">{Math.round(dailyStats.totalProtein) || 0}g</p>
+                <div className="grid grid-cols-4 gap-2">
+                  <div className="flex flex-col items-center p-2.5 rounded-xl bg-purple-50">
+                    <Beef className="w-5 h-5 text-purple-600 mb-1" />
+                    <p className="text-xs font-semibold text-purple-600 mb-0.5">Protein</p>
+                    <p className="text-base font-bold text-gray-900">{Math.round(dailyStats.totalProtein) || 0}g</p>
                     <p className="text-[10px] text-gray-500">of 131g</p>
                   </div>
-                  <div className="flex-1 p-2 rounded-lg bg-orange-50 flex flex-col items-center">
-                    <Wheat className="w-4 h-4 text-orange-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-orange-600">Carbs</p>
-                    <p className="text-sm font-bold text-gray-900">{Math.round(dailyStats.totalCarbs) || 0}g</p>
+                  <div className="flex flex-col items-center p-2.5 rounded-xl bg-orange-50">
+                    <Wheat className="w-5 h-5 text-orange-600 mb-1" />
+                    <p className="text-xs font-semibold text-orange-600 mb-0.5">Carbs</p>
+                    <p className="text-base font-bold text-gray-900">{Math.round(dailyStats.totalCarbs) || 0}g</p>
                     <p className="text-[10px] text-gray-500">of 263g</p>
                   </div>
-                  <div className="flex-1 p-2 rounded-lg bg-yellow-50 flex flex-col items-center">
-                    <Droplet className="w-4 h-4 text-yellow-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-yellow-600">Fat</p>
-                    <p className="text-sm font-bold text-gray-900">{Math.round(dailyStats.totalFat) || 0}g</p>
+                  <div className="flex flex-col items-center p-2.5 rounded-xl bg-yellow-50">
+                    <Droplet className="w-5 h-5 text-yellow-600 mb-1" />
+                    <p className="text-xs font-semibold text-yellow-600 mb-0.5">Fat</p>
+                    <p className="text-base font-bold text-gray-900">{Math.round(dailyStats.totalFat) || 0}g</p>
                     <p className="text-[10px] text-gray-500">of 70g</p>
                   </div>
-                  <div className="flex-1 p-2 rounded-lg bg-green-50 flex flex-col items-center">
-                    <Leaf className="w-4 h-4 text-green-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-green-600">Fiber</p>
-                    <p className="text-sm font-bold text-gray-900">{Math.round(dailyStats.totalFiber) || 0}g</p>
+                  <div className="flex flex-col items-center p-2.5 rounded-xl bg-green-50">
+                    <Leaf className="w-5 h-5 text-green-600 mb-1" />
+                    <p className="text-xs font-semibold text-green-600 mb-0.5">Fiber</p>
+                    <p className="text-base font-bold text-gray-900">{Math.round(dailyStats.totalFiber) || 0}g</p>
                     <p className="text-[10px] text-gray-500">of 30g</p>
                   </div>
                 </div>
@@ -922,7 +968,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
             </div>
 
             {/* Meals */}
-<div className="px-4 md:px-6 space-y-4">
+<div className="px-4 space-y-4">
   {(() => {
     // NEW: decide empty vs list based on *actual* items and placeholders
     const hasUndoPlaceholders = analyses.some(a => a.isUndoPlaceholder);
@@ -930,10 +976,10 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
     if (!hasRealMeals && !hasUndoPlaceholders) {
       return (
-        <div className="text-center py-16 px-6 backdrop-blur-xl bg-white/30 rounded-2xl shadow-lg border border-white/40">
+        <div className="text-center py-16 px-6 bg-white rounded-2xl shadow-sm border border-gray-100">
           <div className="text-6xl mb-4">🥗</div>
-          <h3 className="text-xl font-semibold text-gray-800 mb-2">No Meals Logged</h3>
-          <p className="text-gray-600 max-w-xs mx-auto">
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">No Meals Logged</h3>
+          <p className="text-gray-500 max-w-xs mx-auto">
             Use the camera to snap a photo of your food and see your nutrition insights here.
           </p>
         </div>
@@ -955,13 +1001,13 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
           return (
             <div key={category}>
-              <div className="flex items-center justify-between mb-3 px-2">
+              <div className="flex items-center justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold text-gray-800">{categoryInfo.name}</h3>
-                  <p className="text-sm text-gray-500">{formatTimeRangeAMPM(categoryInfo.timeRange)}</p>
+                  <h3 className="text-base font-semibold text-gray-900">{categoryInfo.name}</h3>
+                  <p className="text-xs text-gray-500">{formatTimeRangeAMPM(categoryInfo.timeRange)}</p>
                 </div>
                 <div className="text-right">
-                  <p className="text-base font-semibold text-gray-800">{Math.round(categoryCalories)}</p>
+                  <p className="text-base font-bold text-gray-900">{Math.round(categoryCalories)}</p>
                   <p className="text-xs text-gray-500">kcal</p>
                 </div>
               </div>
@@ -1309,6 +1355,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
           </div>
         </div>
       )}
+        </>
+      )}
     </div>
   );
 };
@@ -1458,17 +1506,14 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
         onClick={() => {
           if (!dragging && Math.abs(dx) < 5 && !leaving) onClick(meal);
         }}
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-gray-200/80 rounded-xl select-none cursor-pointer overflow-hidden
+        className={`relative z-10 bg-white border border-gray-100 rounded-2xl select-none cursor-pointer overflow-hidden shadow-sm
           ${leaving ? 'pointer-events-none' : ''}`}
         style={{
           transform: `translateX(${dx}px) scale(${scale})`,
           transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1), box-shadow 180ms ease' : 'none',
           minHeight: 76,
           willChange: 'transform',
-          boxShadow: `
-            0 10px 30px -10px rgba(0,0,0,${progress * 0.15 + 0.05}),
-            inset 0 0 0 1px rgba(0,0,0,0.05)
-          `,
+          boxShadow: `0 2px 8px rgba(0,0,0,${progress * 0.12 + 0.03})`,
         }}
       >
         {/* Bottom progress bar (feedback while swiping) */}
@@ -1481,8 +1526,8 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
           }}
         />
 
-        <div className="p-4 flex items-center gap-4">
-          <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0">
+        <div className="p-4 flex items-center gap-3.5">
+          <div className="w-14 h-14 bg-gray-50 rounded-xl flex items-center justify-center overflow-hidden shrink-0">
             {meal.ImageBase64 && meal.ImageBase64.trim() !== '' ? (
               <img
                 src={meal.ImageBase64.startsWith('data:image') ? meal.ImageBase64 : `data:image/jpeg;base64,${meal.ImageBase64}`}
@@ -1503,13 +1548,13 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
           </div>
 
           <div className="flex-1 min-w-0">
-            <h4 className="font-semibold text-gray-900 truncate">{foodData.name}</h4>
+            <h4 className="font-semibold text-gray-900 text-base truncate">{foodData.name}</h4>
             <p className="text-sm text-gray-500">{mealTime}</p>
           </div>
 
           <div className="text-right">
             <p className="font-bold text-lg text-gray-900">{Math.round(calories)}</p>
-            <p className="text-[11px] text-gray-500 -mt-0.5 tracking-wide">kcal</p>
+            <p className="text-xs text-gray-500 -mt-0.5">kcal</p>
           </div>
         </div>
       </div>

@@ -8,6 +8,7 @@ import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import SuccessSavePopup from './components/SuccessSavePopup';
 import TestImageGuide from './components/TestImageGuide';
+import CameraTest from './components/CameraTest';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
@@ -18,6 +19,7 @@ import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionSe
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
+import { cameraService } from './services/cameraService';
 import GalleryMonitor from './services/galleryMonitor';
 import {
   signInWithGoogle,
@@ -31,7 +33,7 @@ import {
 } from './services/firebase';
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
-const Dashboard = lazy(() => import('./components/Dashboard'));
+const NutritionDashboard = lazy(() => import('./components/NutritionDashboard'));
 
 function WellnessBuddyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -41,11 +43,9 @@ function WellnessBuddyApp() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(
-    localStorage.getItem('currentPage') === 'dashboard' || 
-    localStorage.getItem('currentPage') === 'nutrition-dashboard' ||
-    localStorage.getItem('currentPage') === 'weight-tracking' ||
-    localStorage.getItem('currentPage') === 'weight-insights'
+  const [showCameraTest, setShowCameraTest] = useState(false);
+  const [showNutritionDashboard, setShowNutritionDashboard] = useState(
+    localStorage.getItem('currentPage') === 'nutrition-dashboard'
   );
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -151,28 +151,23 @@ function WellnessBuddyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showDashboard) {
-        showMainPage();
+      if (showNutritionDashboard) {
+        setShowNutritionDashboard(false);
+        localStorage.setItem('currentPage', 'main');
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showDashboard);
+    initializeBackButton(goBack, showToast, !showNutritionDashboard);
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard]);
+  }, [ionRouter, showNutritionDashboard]);
 
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  
-  // Add a ref to track if status check is in progress
-  const statusCheckInProgress = useRef(false);
-  
-  // Add a ref to track if sign-out is in progress
-  const signOutInProgress = useRef(false);
 
   // Check user status (Active/Inactive) using lookup-user-id API
   const checkUserStatus = useCallback(async (user) => {
@@ -180,30 +175,13 @@ function WellnessBuddyApp() {
       return true; // If no user, skip check
     }
     
-    // Skip status check if this is a fresh Google sign-in that's being saved
-    const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-    if (isFreshSignIn) {
-      console.log('⏭️ [checkUserStatus] Skipping check for fresh sign-in');
-      return true; // Skip check, allow access - sign-in handler will check after save
-    }
-    
-    // Prevent multiple simultaneous checks
-    if (statusCheckInProgress.current) {
-      console.log('⏭️ [checkUserStatus] Check already in progress, skipping duplicate call');
-      return true; // Skip if already checking
-    }
-    
     try {
-      statusCheckInProgress.current = true;
-      
       const userEmail = user.email || user.Email;
       
       if (!userEmail) {
         return true;
       }
 
-      console.log('🔍 [checkUserStatus] Checking status for:', userEmail);
-      
       const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -211,8 +189,6 @@ function WellnessBuddyApp() {
       });
 
       const data = await response.json();
-      
-      console.log('📋 [checkUserStatus] Response:', data);
       
       // User not found in database
       if (!data.success || data.userNotFound) {
@@ -239,13 +215,11 @@ function WellnessBuddyApp() {
       // On error, allow user to continue (fail-open)
       setIsUserActive(true);
       return true;
-    } finally {
-      statusCheckInProgress.current = false;
     }
   }, [apiBaseUrl]);
 
   // Helper functions for navigation with localStorage persistence
-  const showDashboardPage = useCallback(async () => {
+  const showNutritionDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
       const isActive = await checkUserStatus(user);
@@ -254,12 +228,12 @@ function WellnessBuddyApp() {
         return;
       }
     }
-    setShowDashboard(true);
-    localStorage.setItem('currentPage', 'dashboard');
+    setShowNutritionDashboard(true);
+    localStorage.setItem('currentPage', 'nutrition-dashboard');
   }, [user, checkUserStatus]);
 
   const showMainPage = () => {
-    setShowDashboard(false);
+    setShowNutritionDashboard(false);
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -294,13 +268,6 @@ function WellnessBuddyApp() {
   useEffect(() => {
     const maybeShowBgNutritionPopup = async () => {
       if (!user) return;
-      
-      // Skip status check for fresh sign-ins (being handled by sign-in flow)
-      const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-      if (isFreshSignIn) {
-        console.log('🔐 [BgNutrition] Fresh sign-in detected, skipping status check');
-        return;
-      }
       
       // Re-check user status in real-time
       const isActive = await checkUserStatus(user);
@@ -420,7 +387,7 @@ function WellnessBuddyApp() {
         const { GalleryMonitorPlugin } = await import('./plugins/galleryMonitorPlugin');
         const listener = await GalleryMonitorPlugin.addListener('notificationClicked', (data) => {
           if (data && data.action === 'openBackgroundHistory') {
-            showDashboardPage();
+            showNutritionDashboardPage();
           }
         });
 
@@ -439,7 +406,7 @@ function WellnessBuddyApp() {
       App.removeAllListeners();
       if (cleanupFn) cleanupFn();
     };
-  }, [showDashboardPage]);
+  }, [showNutritionDashboardPage]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -462,53 +429,41 @@ function WellnessBuddyApp() {
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
-      // If sign-out is in progress, ignore auth state changes
-      if (signOutInProgress.current) {
-        console.log('⚠️ [Auth State] Sign-out in progress, ignoring auth state change');
-        return;
-      }
-      
-      console.log(user ? '✅ Auth state: User authenticated' : '❌ Auth state: User not authenticated');
-      
       if (user) {
-        // Skip status check if this is a fresh Google sign-in that's being saved
-        // The handleSignIn/handlePopupSignIn functions will handle status check after save
-        const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
+        // Check user status before allowing access
+        const isActive = await checkUserStatus(user);
         
-        if (!isFreshSignIn) {
-          // Check user status before allowing access (for existing sessions)
-          const isActive = await checkUserStatus(user);
-          
-          if (!isActive) {
-            // Don't clear user state immediately - let modal show first
-            // Modal close handler will sign out and clear state
-            setUser(user); // Keep user state so modal can show user email
-            setAuthLoading(false);
-            return;
-          }
-        } else {
-          // Don't clear the flag here - let the sign-in handler clear it after save completes
-          console.log('🔐 [Auth State] Fresh sign-in detected, skipping status check');
+        if (!isActive) {
+          // Don't clear user state immediately - let modal show first
+          // Modal close handler will sign out and clear state
+          setUser(user); // Keep user state so modal can show user email
+          setAuthLoading(false);
+          return;
         }
       }
       
       setUser(user);
       setAuthLoading(false);
-      
-      // Skip handleSaveUserCache for fresh sign-ins - let sign-in handler do it after save
-      const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-      if (user && Capacitor.isNativePlatform() && !isFreshSignIn) {
+      if (user && Capacitor.isNativePlatform()) {
         handleSaveUserCache(user);
-      } else if (isFreshSignIn) {
-        console.log('🔐 [Auth State] Skipping handleSaveUserCache for fresh sign-in');
       }
     });
     return () => unsubscribe();
   }, [checkUserStatus]);
 
-  // Setup for authenticated users
+  // Camera setup for authenticated users
   useEffect(() => {
     if (user) {
+      const checkCamera = async () => {
+        try {
+          await cameraService.getCameraInfo();
+          await cameraService.getCameraStatusMessage();
+        } catch (error) {
+          console.warn('⚠️ Camera check failed:', error);
+        }
+      };
+
+      checkCamera();
       requestAllPermissions();
       handleSaveUserCache(user);
     }
@@ -873,87 +828,15 @@ function WellnessBuddyApp() {
     try {
       setLoading(true);
       setError(null);
-      
-      // Flag should already be set by Login component
-      // But set it here too for redirect flow safety
-      if (!sessionStorage.getItem('freshGoogleSignIn')) {
-        sessionStorage.setItem('freshGoogleSignIn', 'true');
-        console.log('🔐 [handleSignIn] Set freshGoogleSignIn flag (backup)');
-      }
-      
-      // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
-      const safetyTimeout = setTimeout(() => {
-        console.log('⚠️ [handleSignIn] Safety timeout - clearing fresh sign-in flag');
-        sessionStorage.removeItem('freshGoogleSignIn');
-      }, 30000);
-      
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
-        try {
-          // Save user to backend first
-          await saveUserToBackend(user);
-          
-          // Clear the safety timeout immediately after save completes
-          clearTimeout(safetyTimeout);
-          console.log('🔐 [handleSignIn] User saved, cleared safety timeout');
-          
-          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
-          if (signOutInProgress.current) {
-            console.log('⚠️ [handleSignIn] Sign-out in progress, aborting all sign-in operations');
-            sessionStorage.removeItem('freshGoogleSignIn');
-            return;
-          }
-          
-          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
-          // This ensures checkUserStatus will run (not skip) for user validation
-          sessionStorage.removeItem('freshGoogleSignIn');
-          console.log('🔐 [handleSignIn] Cleared fresh sign-in flag, proceeding with validation');
-          
-          // Now set up GalleryMonitor with the saved user
-          if (Capacitor.isNativePlatform()) {
-            await handleSaveUserCache(user);
-            
-            // Check again if sign-out was triggered
-            if (signOutInProgress.current) {
-              console.log('⚠️ [handleSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
-              return;
-            }
-          }
-          
-          // Now check user status after ensuring DB record exists
-          // Flag is cleared, so checkUserStatus will actually run the check
-          const isActive = await checkUserStatus(user);
-          
-          // Check again if sign-out was triggered during status check
-          if (signOutInProgress.current) {
-            console.log('⚠️ [handleSignIn] Sign-out in progress after status check, aborting');
-            return;
-          }
-          
-          if (isActive) {
-            setUser(user);
-          } else {
-            // User was saved but is inactive or not found - modal will show
-            setUser(user); // Keep user state so modal can show user email
-          }
-        } catch (saveError) {
-          // If save fails, still allow user to proceed (fail-open for backend issues)
-          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
-          setError('Warning: Could not verify account status. You can still use the app.');
-          setUser(user); // Allow access despite backend failure
-          clearTimeout(safetyTimeout); // Clear timeout even on error
-          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
-        }
-        
-        // Flag is already cleared above - no need to clear again
+        await saveUserToBackend(user);
+        setUser(user);
       } else {
         console.log('🔄 Redirect initiated, waiting for result...');
-        // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
       console.error('❌ Sign in error:', error);
-      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
-      
       if (error.code === 'auth/popup-blocked') {
         setError('Popup was blocked. Trying redirect method...');
         setTimeout(() => {
@@ -976,85 +859,13 @@ function WellnessBuddyApp() {
     try {
       setLoading(true);
       setError(null);
-      
-      // Flag is already set by Login component before this function is called
-      console.log('🔐 [handlePopupSignIn] Starting (flag should already be set)');
-      
-      // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
-      const safetyTimeout = setTimeout(() => {
-        console.log('⚠️ [handlePopupSignIn] Safety timeout - clearing fresh sign-in flag');
-        sessionStorage.removeItem('freshGoogleSignIn');
-      }, 30000);
-      
-      console.log('🔐 [handlePopupSignIn] Calling signInWithGooglePopup...');
       const user = await signInWithGooglePopup();
-      console.log('🔐 [handlePopupSignIn] signInWithGooglePopup returned:', user?.email);
-      
       if (user) {
-        try {
-          // Save user to backend first
-          console.log('🔐 [handlePopupSignIn] Saving user to backend...');
-          await saveUserToBackend(user);
-          console.log('🔐 [handlePopupSignIn] User saved successfully');
-          
-          // Clear the safety timeout immediately after save completes
-          clearTimeout(safetyTimeout);
-          console.log('🔐 [handlePopupSignIn] Cleared safety timeout');
-          
-          // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
-          if (signOutInProgress.current) {
-            console.log('⚠️ [handlePopupSignIn] Sign-out in progress, aborting all sign-in operations');
-            sessionStorage.removeItem('freshGoogleSignIn');
-            return;
-          }
-          
-          // ✅ CRITICAL: Clear the fresh sign-in flag NOW
-          // This ensures checkUserStatus will run (not skip) for user validation
-          sessionStorage.removeItem('freshGoogleSignIn');
-          console.log('🔐 [handlePopupSignIn] Cleared fresh sign-in flag, proceeding with validation');
-          
-          // Now set up GalleryMonitor with the saved user
-          if (Capacitor.isNativePlatform()) {
-            await handleSaveUserCache(user);
-            
-            // Check again if sign-out was triggered
-            if (signOutInProgress.current) {
-              console.log('⚠️ [handlePopupSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
-              return;
-            }
-          }
-          
-          // Now check user status after ensuring DB record exists
-          // Flag is cleared, so checkUserStatus will actually run the check
-          const isActive = await checkUserStatus(user);
-          console.log('🔐 [handlePopupSignIn] Status check result:', isActive);
-          
-          // Check again if sign-out was triggered during status check
-          if (signOutInProgress.current) {
-            console.log('⚠️ [handlePopupSignIn] Sign-out in progress after status check, aborting');
-            return;
-          }
-          
-          if (isActive) {
-            setUser(user);
-          } else {
-            // User was saved but is inactive or not found - modal will show
-            setUser(user); // Keep user state so modal can show user email
-          }
-        } catch (saveError) {
-          // If save fails, still allow user to proceed (fail-open for backend issues)
-          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
-          setError('Warning: Could not verify account status. You can still use the app.');
-          setUser(user); // Allow access despite backend failure
-          clearTimeout(safetyTimeout); // Clear timeout even on error
-          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
-        }
-        
-        // Flag is already cleared above - no need to clear again
+        await saveUserToBackend(user);
+        setUser(user);
       }
     } catch (error) {
       console.error('❌ Popup sign-in error:', error);
-      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
       setError(getAuthErrorMessage(error));
     } finally {
       setLoading(false);
@@ -1078,9 +889,7 @@ function WellnessBuddyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      console.log('💾 [saveUserToBackend] Saving user to database:', user.email);
-      
-      const response = await fetch(`${apiBaseUrl}/api/save-google-user`, {
+      await fetch(`${apiBaseUrl}/api/save-google-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -1090,44 +899,16 @@ function WellnessBuddyApp() {
           uid: user.uid
         })
       });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to save user: ${response.status}`);
-      }
-      
-      const data = await response.json();
-      
-      if (data.success) {
-        console.log('✅ [saveUserToBackend] User saved successfully');
-      } else {
-        console.warn('⚠️ [saveUserToBackend] Save completed with warning:', data);
-      }
-      
-      return data;
     } catch (error) {
-      console.error('❌ [saveUserToBackend] Failed to save user to backend:', error);
-      throw error; // Re-throw so caller can handle
+      console.error('❌ Failed to save user to backend:', error);
     }
   };
 
   const handleSignOut = async () => {
     try {
       setLoading(true);
-      
-      // Set sign-out in progress flag to prevent concurrent sign-in
-      signOutInProgress.current = true;
-      
-      // Clear the fresh sign-in flag immediately to prevent re-login issues
-      sessionStorage.removeItem('freshGoogleSignIn');
-      console.log('🔐 [handleSignOut] Cleared freshGoogleSignIn flag');
-      
       if (Capacitor.isNativePlatform()) {
-        try {
-          await GalleryMonitor.clearCurrentUser();
-        } catch (clearError) {
-          console.warn('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
-          // Continue with sign out even if this fails
-        }
+        await GalleryMonitor.clearCurrentUser();
       }
       await signOutUser();
       resetApp();
@@ -1136,10 +917,6 @@ function WellnessBuddyApp() {
       setError('Failed to sign out. Please try again.');
     } finally {
       setLoading(false);
-      // Reset the sign-out flag after a delay to allow cleanup
-      setTimeout(() => {
-        signOutInProgress.current = false;
-      }, 1000);
     }
   };
 
@@ -1242,11 +1019,11 @@ function WellnessBuddyApp() {
     }
   };
 
-  // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (showDashboard) {
+  // Full page dashboard with lazy loading
+  if (showNutritionDashboard) {
     return (
       <Suspense fallback={<LoadingSpinner context="normal" />}>
-        <Dashboard
+        <NutritionDashboard
           user={user}
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
@@ -1254,14 +1031,15 @@ function WellnessBuddyApp() {
         />
       </Suspense>
     );
-  }
+    }
 
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
       <Header
         user={user}
-        onShowBackgroundHistory={showDashboardPage}
+        onTestCamera={() => setShowCameraTest(true)}
+        onShowBackgroundHistory={showNutritionDashboardPage}
         onSignOut={handleSignOut}
       />
 
@@ -1360,6 +1138,7 @@ function WellnessBuddyApp() {
         </div>
 
         <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
+        {showCameraTest && <CameraTest onClose={() => setShowCameraTest(false)} />}
       </div>
 
       {/* Inactive User Modal */}
