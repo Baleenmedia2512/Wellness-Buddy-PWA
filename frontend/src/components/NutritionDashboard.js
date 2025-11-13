@@ -15,7 +15,7 @@ import DatePickerCalendar from './DatePickerCalendar';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
-const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader }) => {
+const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -570,29 +570,25 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
         <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Header - Only show if not hidden */}
-      {!hideHeader && (
-        <>
-          <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-            <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
-              <div className="flex items-center justify-between p-4 md:p-6">
-                <button onClick={onBack} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-                  <ArrowLeft className="h-5 w-5 text-gray-700" />
-                </button>
+      {/* Header */}
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+        <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
+          <div className="flex items-center justify-between p-4 md:p-6">
+            <button onClick={onBack} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
+            </button>
 
-                <div className="text-center">
-                  <h1 className="text-lg md:text-xl font-semibold text-gray-900">Nutrition</h1>
-                  <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
-                </div>
-
-                <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-                  <Calendar className="h-5 w-5 text-gray-700" />
-                </button>
-              </div>
+            <div className="text-center">
+              <h1 className="text-lg md:text-xl font-semibold text-gray-900">Nutrition</h1>
+              <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
             </div>
+
+            <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
+              <Calendar className="h-5 w-5 text-gray-700" />
+            </button>
           </div>
-        </>
-      )}
+        </div>
+      </div>
 
       {/* Date selector */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
