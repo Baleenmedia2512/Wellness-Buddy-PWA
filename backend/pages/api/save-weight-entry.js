@@ -31,7 +31,12 @@ export default async function handler(req, res) {
 
   const { 
     userId, 
-    weightValue, 
+    weightValue,
+    unit = 'kg', // Default to kg if not provided
+    bmi,
+    bodyFat,
+    muscleMass,
+    bmr,
     imageBase64ToSave: WeightImageBase64,
   } = req.body;
 
@@ -69,20 +74,26 @@ export default async function handler(req, res) {
     // Insert weight entry into database
     const insertQuery = `
       INSERT INTO weight_records_table (
-        UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, 
+        UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64
       ) VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
 
     // If ImageBase64 is empty string, store as null
     const imageBase64ToSave = (WeightImageBase64 && WeightImageBase64.trim() !== '') ? WeightImageBase64 : null;
 
+    // Parse optional metrics and convert to null if not provided or invalid
+    const bmiValue = bmi && !isNaN(parseFloat(bmi)) ? parseFloat(bmi) : null;
+    const bodyFatValue = bodyFat && !isNaN(parseFloat(bodyFat)) ? parseFloat(bodyFat) : null;
+    const muscleMassValue = muscleMass && !isNaN(parseFloat(muscleMass)) ? parseFloat(muscleMass) : null;
+    const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
+
     const [result] = await connection.execute(insertQuery, [
       userId,
       weight,
-      null, // Bmi
-      null, // BodyFat
-      null, // MuscleMass
-      null, // Bmr  
+      bmiValue,
+      bodyFatValue,
+      muscleMassValue,
+      bmrValue,
       imageBase64ToSave,
     ]);
 
@@ -95,7 +106,8 @@ export default async function handler(req, res) {
       data: {
         userId,
         weightValue: weight,
-        imageBase64: imageBase64ToSave``,
+        unit,
+        imageBase64: imageBase64ToSave,
         timestamp: new Date().toISOString()
       }
     });

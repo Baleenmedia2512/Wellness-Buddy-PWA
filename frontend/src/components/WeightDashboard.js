@@ -190,7 +190,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       setError(null);
 
       const userId = user.email || user.id || user.uid;
-      debugger
+      
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -203,7 +203,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      alert(setWeightHistory(data.data || []));
+      setWeightHistory(data.data || [])
       setStats(data.stats || null);
 
     } catch (err) {
@@ -275,7 +275,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       setProcessing(false);
     }
   };
-
+//  In future add some implementation here
   /**
    * Save weight entry
    */
@@ -305,19 +305,33 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         return;
       }
 
-      const userId = user.email || user.id || user.uid;
+      const userId = user?.email || user?.id || user?.uid;
+      
+      if (!userId) {
+        console.error('❌ User object:', user);
+        setError('User not authenticated. Please log in again.');
+        setIsSaving(false);
+        return;
+      }
+
+      // const payload = {
+      //   userId,
+      //   weight: weightValue,
+      //   bmi: null, // Optional: Can be calculated if height is available
+      //   bodyFat: null, // Optional: From scale if available
+      //   muscleMass: null, // Optional: From scale if available
+      //   bmr: null, // Optional: Can be calculated
+      //   weightImageBase64: capturedImage
+      // };
 
       const payload = {
         userId,
-        weight: weightValue,
-        bmi: null, // Optional: Can be calculated if height is available
-        bodyFat: null, // Optional: From scale if available
-        muscleMass: null, // Optional: From scale if available
-        bmr: null, // Optional: Can be calculated
-        weightImageBase64: capturedImage
+        weightValue, // Backend expects 'weightValue', not 'weight'
+        unit: selectedUnit, // Required by backend (kg or lbs)
+        imageBase64ToSave: capturedImage // Backend expects 'imageBase64ToSave', not 'weightImageBase64'
       };
 
-      console.log('💾 Saving weight entry...', { userId, weight: weightValue });
+      console.log('💾 Saving weight entry...', { userId, weightValue, unit: selectedUnit });
 
       const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
         method: 'POST',
