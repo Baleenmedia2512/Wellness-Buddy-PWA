@@ -60,7 +60,7 @@ const NutritionCard = React.memo(({ data }) => {
           </div>
 
           {/* Fat */}
-          <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 text-center">
+          <div className="bg-purple-50 border-2  border-emerald-300200 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-purple-600">
               {nutrition.fat}g
             </div>

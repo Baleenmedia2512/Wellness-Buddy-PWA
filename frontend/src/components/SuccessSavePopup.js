@@ -112,8 +112,18 @@ const SuccessSavePopup = ({
     return !!n && ((n.calories > 0) || (n.protein > 0) || (n.carbs > 0) || (n.fat > 0));
   };
 
+  const isValidWeightData = (data) => {
+    return data && data.weightValue > 0;
+  };
+
   const effectivePopups = useMemo(() => {
-    const valid = (p) => p && p.nutritionData && isValidNutritionData(p.nutritionData);
+    const valid = (p) => {
+      if (!p) return false;
+      // Weight entry validation
+      if (p.isWeight && p.weightData) return isValidWeightData(p.weightData);
+      // Nutrition entry validation
+      return p.nutritionData && isValidNutritionData(p.nutritionData);
+    };
     const list = popups ? popups.filter(valid)
       : (open && nutritionData && imagePreview && isValidNutritionData(nutritionData))
         ? [{ id: 'legacy', imagePreview, nutritionData }]
@@ -227,10 +237,51 @@ const SuccessSavePopup = ({
 
   // ---- Render helpers -------------------------------------------------------
 
+  const renderWeightDetails = (weightData) => {
+    return (
+      <div className="bg-white rounded-lg overflow-hidden mt-3">
+        <div className="py-3 border-b border-gray-100">
+          <h3 className="font-medium text-gray-900">Weight Details</h3>
+        </div>
+
+        <div className="grid grid-cols-2 gap-px bg-gray-100">
+          <div className="bg-white p-3 text-center">
+            <p className="text-xs text-purple-500 mb-1">Weight</p>
+            <p className="font-bold text-lg">{weightData.weightValue} {weightData.unit}</p>
+          </div>
+          {weightData.bmi && (
+            <div className="bg-white p-3 text-center">
+              <p className="text-xs text-blue-500 mb-1">BMI</p>
+              <p className="font-bold text-lg">{weightData.bmi}</p>
+            </div>
+          )}
+          {weightData.bodyFat && (
+            <div className="bg-white p-3 text-center">
+              <p className="text-xs text-orange-500 mb-1">Body Fat</p>
+              <p className="font-bold text-lg">{weightData.bodyFat}%</p>
+            </div>
+          )}
+          {weightData.muscleMass && (
+            <div className="bg-white p-3 text-center">
+              <p className="text-xs text-green-500 mb-1">Muscle Mass</p>
+              <p className="font-bold text-lg">{weightData.muscleMass} kg</p>
+            </div>
+          )}
+          {weightData.bmr && (
+            <div className="bg-white p-3 text-center">
+              <p className="text-xs text-red-500 mb-1">BMR</p>
+              <p className="font-bold text-lg">{weightData.bmr} cal</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   const renderNutritionDetails = (data) => {
     const { nutrition, detailedItems = [] } = data;
     return (
-      <div className="bg-white rounded-lg overflow-hidden">
+      <div className="bg-white rounded-lg overflow-hidden mt-3">
         <div className="py-3 border-b border-gray-100">
           <div className="flex justify-between items-start">
             <h3 className="font-medium text-gray-900">Nutrition Summary</h3>
@@ -432,9 +483,15 @@ const SuccessSavePopup = ({
   };
 
   const renderPopup = (popup, id, isSingle, index, total) => {
+    const isWeight = popup.isWeight;
+    const weightData = popup.weightData;
     const data  = isSingle ? nutritionData : popup.nutritionData;
     const image = isSingle ? imagePreview   : popup.imagePreview;
-    if (!data || !isValidNutritionData(data)) return null;
+    
+    // Validate based on entry type
+    if (isWeight && (!weightData || !isValidWeightData(weightData))) return null;
+    if (!isWeight && (!data || !isValidNutritionData(data))) return null;
+    
     const isExpanded = expandedId === id;
 
     // slide-out control for this card
@@ -481,9 +538,9 @@ const SuccessSavePopup = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span className="font-semibold text-gray-800 text-sm truncate">
-                    {data?.category?.name || 'Food'}
+                    {isWeight ? '⚖️ Weight Entry' : (data?.category?.name || 'Food')}
                   </span>
-                  <span className="px-1.5 py-0.5 rounded-md bg-green-50 text-xs text-green-600 font-medium whitespace-nowrap">
+                  <span className={`px-1.5 py-0.5 rounded-md text-xs font-medium whitespace-nowrap ${isWeight ? 'bg-purple-50 text-purple-600' : 'bg-green-50 text-green-600'}`}>
                     ✓ Saved
                   </span>
                   {total > 1 && index === total - 1 && !isStackExpanded && (
@@ -494,12 +551,20 @@ const SuccessSavePopup = ({
                 </div>
 
                 <div className="text-xs text-gray-500 mb-1.5">
-                  <div className="flex flex-wrap gap-x-1 gap-y-0.5">
-                    <span>{data?.nutrition?.calories || 0} kcal</span>
-                    <span>· {data?.nutrition?.protein || 0}g protein</span>
-                    <span>· {data?.nutrition?.carbs || 0}g carbs</span>
-                    <span>· {data?.nutrition?.fat || 0}g fat</span>
-                  </div>
+                  {isWeight ? (
+                    <div className="flex flex-wrap gap-x-1 gap-y-0.5">
+                      <span className="font-semibold text-purple-600">{weightData.weightValue} {weightData.unit}</span>
+                      {weightData.bmi && <span>· BMI: {weightData.bmi}</span>}
+                      {weightData.bodyFat && <span>· Body Fat: {weightData.bodyFat}%</span>}
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-x-1 gap-y-0.5">
+                      <span>{data?.nutrition?.calories || 0} kcal</span>
+                      <span>· {data?.nutrition?.protein || 0}g protein</span>
+                      <span>· {data?.nutrition?.carbs || 0}g carbs</span>
+                      <span>· {data?.nutrition?.fat || 0}g fat</span>
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -525,7 +590,7 @@ const SuccessSavePopup = ({
             </div>
 
             <div className={`transition-all duration-300 ease-in-out overflow-hidden ${isExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
-              {isExpanded && renderNutritionDetails(data)}
+              {isExpanded && (isWeight ? renderWeightDetails(weightData) : renderNutritionDetails(data))}
             </div>
           </div>
 

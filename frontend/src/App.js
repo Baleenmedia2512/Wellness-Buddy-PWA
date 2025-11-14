@@ -18,6 +18,9 @@ import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionSe
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
+import { imageTypeDetector } from './services/imageTypeDetector';
+import { weightDetectionService } from './services/weightDetectionService';
+import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -56,6 +59,10 @@ function WellnessBuddyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  const [showManualWeightModal, setShowManualWeightModal] = useState(false);
+  const [currentWeightImage, setCurrentWeightImage] = useState(null);
+  const [imageType, setImageType] = useState(null); // 'food' | 'weight'
+  const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const fileInputRef = useRef(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
@@ -638,6 +645,102 @@ function WellnessBuddyApp() {
     });
   };
 
+  /**
+   * Save weight entry to database
+   */
+  const saveWeightEntry = async (weightData, imageBase64) => {
+    try {
+      const userId = user?.email || user?.id || user?.uid;
+      
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+
+      const payload = {
+        userId,
+        weightValue: weightData.weightValue,
+        unit: weightData.unit,
+        bmi: weightData.bmi,
+        bodyFat: weightData.bodyFat,
+        muscleMass: weightData.muscleMass,
+        bmr: weightData.bmr,
+        imageBase64ToSave: imageBase64
+      };
+
+      console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
+
+      const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save weight entry');
+      }
+
+      console.log('✅ Weight entry saved successfully');
+      
+      // Show success popup (similar to nutrition save)
+      setError(null);
+      
+      // Create weight success popup
+      const weightPopup = {
+        id: `weight-${Date.now()}`,
+        analysisId: data.id || null,
+        isWeight: true, // Flag to identify weight entries
+        weightData: {
+          weightValue: weightData.weightValue,
+          unit: weightData.unit,
+          bmi: weightData.bmi,
+          bodyFat: weightData.bodyFat,
+          muscleMass: weightData.muscleMass,
+          bmr: weightData.bmr
+        },
+        imagePreview: imageBase64,
+        timestamp: new Date()
+      };
+      
+      setSuccessPopups((prev) => [...prev, weightPopup]);
+      
+      // Keep imagePreview and selectedImage visible (like food images)
+      // Don't reset them here
+      
+    } catch (err) {
+      console.error('❌ Save weight error:', err);
+      setError(err.message || 'Failed to save weight entry');
+    }
+  };
+
+  /**
+   * Handle manual weight entry from modal
+   */
+  const handleManualWeightSave = async (manualData) => {
+    try {
+      await saveWeightEntry(
+        {
+          weightValue: manualData.weightValue,
+          unit: manualData.unit,
+          bmi: null,
+          bodyFat: null,
+          muscleMass: null,
+          bmr: null
+        },
+        currentWeightImage
+      );
+      
+      setShowManualWeightModal(false);
+      setCurrentWeightImage(null);
+      setLoading(false);
+      
+    } catch (err) {
+      console.error('❌ Manual weight save error:', err);
+      throw err; // Re-throw to show error in modal
+    }
+  };
+
   const handleImageSelect = async (file) => {
     if (!user) {
       setError('Please sign in to analyze food images');
@@ -660,6 +763,8 @@ function WellnessBuddyApp() {
     setSelectedImage(file);
     setError(null);
     setNutritionData(null);
+    setWeightResult(null);
+    setImageType(null);
     setSaveError(null);
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
@@ -705,7 +810,39 @@ function WellnessBuddyApp() {
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
-      // ✅ ANDROID PERFORMANCE: Start analysis in parallel with preview rendering
+      // ✅ NEW: Detect if image is weight scale or food using Gemini AI
+      const detectedType = await imageTypeDetector.detectImageType(file);
+      
+      if (detectedType.type === 'weight' && detectedType.confidence > 0.6) {
+        // It's a weight scale - try to extract weight
+        console.log('🔍 Weight scale detected, extracting metrics...');
+        setImageType('weight');
+        
+        const detectedWeight = await weightDetectionService.extractWeightFromImage(file);
+        
+        if (detectedWeight.success && detectedWeight.weightValue) {
+          // Successfully detected weight - save to database AND show result
+          console.log('✅ Weight detected:', detectedWeight);
+          setWeightResult(detectedWeight); // Store for display below upload box
+          await saveWeightEntry(detectedWeight, processedImage);
+          // Don't clear imagePreview or return - let it show like food images
+        } else {
+          // Weight detection failed - show manual entry modal
+          console.log('⚠️ Weight detection failed, opening manual entry modal');
+          setCurrentWeightImage(processedImage);
+          setShowManualWeightModal(true);
+          setLoading(false);
+          return;
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // It's a food image
+      setImageType('food');
+
+      // ✅ ANDROID PERFORMANCE: Start food analysis in parallel with preview rendering
       try {
         const result = await geminiService.analyzeImageForNutrition(file);
         setNutritionData(result);
@@ -1291,7 +1428,59 @@ function WellnessBuddyApp() {
           </div>
         )}
 
-        {nutritionData && <NutritionCard data={nutritionData} />}
+        {imageType === 'food' && nutritionData && <NutritionCard data={nutritionData} />}
+        
+        {imageType === 'weight' && weightResult && (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 p-6">
+            <h2 className="text-xl font-bold text-purple-700 mb-4 flex items-center">
+              <span className="mr-2">⚖️</span>
+              Weight Analysis
+            </h2>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
+                <p className="text-sm text-purple-600 font-medium mb-1">Weight</p>
+                <p className="text-3xl font-bold text-purple-700">
+                  {weightResult.weightValue}
+                  <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
+                </p>
+              </div>
+              
+              <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
+                <p className="text-3xl font-bold text-blue-700">
+                  {weightResult.bmi || '--'}
+                </p>
+              </div>
+              
+              <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
+                <p className="text-3xl font-bold text-green-700">
+                  {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
+                </p>
+              </div>
+              
+              <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
+                <p className="text-3xl font-bold text-orange-700">
+                  {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
+                </p>
+              </div>
+              
+              <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
+                <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
+                <p className="text-3xl font-bold text-red-700">
+                  {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
+                </p>
+              </div>
+            </div>
+            
+            <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
+              <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
+              <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
+            </div>
+          </div>
+        )}
 
         {/* Success Save Popup: show both background and regular popups together */}
         <SuccessSavePopup
@@ -1378,6 +1567,18 @@ function WellnessBuddyApp() {
           onClose={handleUserNotFoundModalClose} 
         />
       )}
+
+      {/* Manual Weight Entry Modal */}
+      <ManualWeightEntryModal
+        isOpen={showManualWeightModal}
+        onClose={() => {
+          setShowManualWeightModal(false);
+          setCurrentWeightImage(null);
+          setLoading(false);
+        }}
+        onSave={handleManualWeightSave}
+        imagePreview={currentWeightImage}
+      />
     </div>
   );
 }

@@ -193,7 +193,7 @@ const WeightInsights = ({ user, apiBaseUrl, onBack }) => {
             </div>
 
             {/* Average Weight */}
-            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4 border-purple-500">
+            <div className="bg-white rounded-xl shadow-lg p-6 border-l-4  border-emerald-300500">
               <h3 className="text-sm font-medium text-gray-500 mb-2">Average Weight</h3>
               <p className="text-3xl font-bold text-purple-700">
                 {stats.averageWeight?.toFixed(1)} kg

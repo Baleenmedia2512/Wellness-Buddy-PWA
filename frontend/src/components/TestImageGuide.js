@@ -95,7 +95,7 @@ const TestImageGuide = ({ isVisible, onClose }) => {
             </ul>
           </div>
 
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
+          <div className="bg-purple-50 border  border-emerald-300200 rounded-lg p-3">
             <h3 className="font-semibold text-purple-700 mb-2">🔄 AI Features:</h3>
             <p className="text-sm text-purple-600">
               • Automatic food detection and classification<br />

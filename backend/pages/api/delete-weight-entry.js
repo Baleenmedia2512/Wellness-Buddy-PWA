@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     const deleteQuery = `
       UPDATE weight_records_table 
       SET IsDeleted = 1 
-      WHERE ID = ? AND UserID = ?
+      WHERE ID = ? AND UserId = ?
     `;
 
     const [result] = await connection.execute(deleteQuery, [entryId, userId]);
