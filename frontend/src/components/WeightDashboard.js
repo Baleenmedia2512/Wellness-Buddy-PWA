@@ -4,8 +4,6 @@ import {
   TrendingUp, 
   TrendingDown, 
   Scale,
-  ChevronLeft,
-  ChevronRight,
   RotateCcw
 } from 'lucide-react';
 // Camera removed - images are uploaded from main page
@@ -102,7 +100,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
  * Weight Dashboard - Unified component for weight tracking and insights
  * Matches the style and layout of NutritionDashboard
  */
-const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
+const WeightDashboard = ({ user, apiBaseUrl, hideHeader, selectedDate: propSelectedDate, setSelectedDate: propSetSelectedDate }) => {
   // Weight history states
   const [weightHistory, setWeightHistory] = useState([]);
   const [stats, setStats] = useState(null);
@@ -112,8 +110,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
   
-  // Date selection state
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Date selection state - use parent's selectedDate if provided, otherwise use local state
+  const [localSelectedDate, setLocalSelectedDate] = useState(new Date());
+  const selectedDate = propSelectedDate || localSelectedDate;
+  const setSelectedDate = propSetSelectedDate || setLocalSelectedDate;
 
   // Modal and delete states
   const [selectedEntry, setSelectedEntry] = useState(null);
@@ -122,17 +122,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
 
-  /**
-   * Date navigation helper
-   */
-  const navigateDate = (direction) => {
-    const newDate = new Date(selectedDate);
-    newDate.setDate(newDate.getDate() + direction);
-    const today = new Date();
-    if (newDate <= today) {
-      setSelectedDate(newDate);
-    }
-  };
+
 
   /**
    * Format date header
@@ -155,64 +145,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     }
   };
 
-  /**
-   * Generate horizontal calendar dates (desktop view)
-   */
-  const generateHorizontalCalendarDates = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = -3; i <= 3; i++) {
-      const date = new Date(selectedDate);
-      date.setDate(selectedDate.getDate() + i);
-      const prevDate = i > -3 ? new Date(selectedDate) : null;
-      if (prevDate) prevDate.setDate(selectedDate.getDate() + (i - 1));
-      const isNewMonth = i === -3 || (prevDate && date.getMonth() !== prevDate.getMonth());
-      dates.push({
-        date,
-        dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        dayNumber: date.getDate(),
-        monthName: date.toLocaleDateString('en-US', { month: 'short' }),
-        isToday: date.toDateString() === today.toDateString(),
-        isSelected: date.toDateString() === selectedDate.toDateString(),
-        isFuture: date > today,
-        isNewMonth
-      });
-    }
-    return dates;
-  };
 
-  /**
-   * Generate scrollable dates (mobile view)
-   */
-  const generateScrollableDates = () => {
-    const dates = [];
-    const today = new Date();
-    for (let i = -20; i <= 0; i++) {
-      const date = new Date(today);
-      date.setDate(today.getDate() + i);
-      const prevDate = i > -20 ? new Date(today) : null;
-      if (prevDate) prevDate.setDate(today.getDate() + (i - 1));
-      const isNewMonth = i === -20 || (prevDate && date.getMonth() !== prevDate.getMonth());
-      dates.push({
-        date,
-        dayName: date.toLocaleDateString('en-US', { weekday: 'short' }),
-        dayNumber: date.getDate(),
-        monthName: date.toLocaleDateString('en-US', { month: 'short' }),
-        isToday: date.toDateString() === today.toDateString(),
-        isSelected: date.toDateString() === selectedDate.toDateString(),
-        isFuture: false,
-        isNewMonth
-      });
-    }
-    return dates;
-  };
 
-  /**
-   * Check if device is mobile
-   */
-  const isMobileDevice = () =>
-    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
-    window.innerWidth <= 768;
+
+
+
 
   /**
    * Get time period from timestamp
@@ -256,34 +193,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, []);
 
   /**
-   * Re-fetch when date changes
+   * Note: Entries are filtered dynamically in renderOverview()
+   * No need for separate useEffect - filtering happens on each render
    */
-  useEffect(() => {
-    if (weightHistory.length > 0) {
-      // Filter entries for selected date (for display)
-      getEntriesForDate();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
 
-  /**
-   * Auto-scroll to selected date on mobile
-   */
-  useEffect(() => {
-    if (isMobileDevice()) {
-      setTimeout(() => {
-        const scrollableDates = generateScrollableDates();
-        const selectedIndex = scrollableDates.findIndex(
-          (d) => d.date.toDateString() === selectedDate.toDateString()
-        );
-        if (selectedIndex !== -1) {
-          const el = document.querySelector(`[data-date-index="${selectedIndex}"]`);
-          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
-        }
-      }, 100);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDate]);
+
 
   /**
    * Fetch weight history from backend
@@ -434,16 +348,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
-   * Get weight change indicator
-   */
-  const getWeightChange = () => {
-    if (!weightHistory || weightHistory.length < 2) return null;
-    const latest = weightHistory[0].Weight;
-    const previous = weightHistory[1].Weight;
-    return (latest - previous).toFixed(1);
-  };
-
-  /**
    * Render overview mode
    */
   const renderOverview = () => {
@@ -458,119 +362,60 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       );
     }
 
-    const weightChange = getWeightChange();
-    const latestWeight = weightHistory.length > 0 ? weightHistory[0] : null;
     const dailyEntries = getEntriesForDate();
+    
+    // Get latest weight for selected date (not always today)
+    const latestWeight = dailyEntries.length > 0 ? dailyEntries[0] : null;
+    
+    // Calculate weight change for selected date
+    const weightChange = (() => {
+      if (dailyEntries.length < 2) {
+        // If less than 2 entries on selected date, compare with previous day's last entry
+        const prevDayDate = new Date(selectedDate);
+        prevDayDate.setDate(prevDayDate.getDate() - 1);
+        const prevDayStr = prevDayDate.toISOString().split('T')[0];
+        
+        const prevDayEntries = weightHistory.filter(entry => {
+          const entryDate = new Date(entry.CreatedAt).toISOString().split('T')[0];
+          return entryDate === prevDayStr && !entry.isUndoPlaceholder;
+        });
+        
+        if (dailyEntries.length === 1 && prevDayEntries.length > 0) {
+          const currentWeight = parseFloat(dailyEntries[0].Weight);
+          const previousWeight = parseFloat(prevDayEntries[0].Weight);
+          return (currentWeight - previousWeight).toFixed(1);
+        }
+        return null;
+      }
+      
+      // If multiple entries on selected date, compare latest vs first
+      const latest = parseFloat(dailyEntries[0].Weight);
+      const previous = parseFloat(dailyEntries[dailyEntries.length - 1].Weight);
+      return (latest - previous).toFixed(1);
+    })();
+    
+    // Calculate dynamic stats for selected date only
+    const dailyStats = (() => {
+      const realEntries = dailyEntries.filter(e => !e.isUndoPlaceholder);
+      if (realEntries.length === 0) return null;
+      
+      const weights = realEntries.map(e => parseFloat(e.Weight));
+      return {
+        minWeight: Math.min(...weights),
+        maxWeight: Math.max(...weights),
+        count: realEntries.length
+      };
+    })();
 
     return (
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-6">
-        {/* Horizontal Calendar Date Selector */}
-        <div className="mb-4 bg-white/50 backdrop-blur-sm shadow-sm">
-          {isMobileDevice() ? (
-            <div className="px-4 py-3">
-              <div className="overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-                <style jsx>{`div::-webkit-scrollbar{display:none;}`}</style>
-                <div className="flex space-x-2 pb-1" style={{ minWidth: 'max-content' }}>
-                  {generateScrollableDates().map((day, index) => (
-                    <React.Fragment key={index}>
-                      {day.isNewMonth && index > 0 && (
-                        <div className="flex items-center justify-center mx-1 relative">
-                          <div className="backdrop-blur-sm bg-white/30 rounded-lg px-1.5 py-1.5 shadow-sm border border-white/20">
-                            <div
-                              className="text-xs font-semibold text-gray-600"
-                              style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', fontSize: '9px', letterSpacing: '1px' }}
-                            >
-                              {day.monthName.toUpperCase()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        data-date-index={index}
-                        onClick={() => setSelectedDate(day.date)}
-                        className={`flex-shrink-0 w-12 text-center py-2 px-1 rounded-lg transition-all duration-300 relative backdrop-blur-sm border
-                          ${day.isSelected ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg scale-105 border-emerald-300'
-                            : day.isToday ? 'bg-white/40 text-gray-800 border-white/30 shadow-md'
-                            : 'text-gray-600 hover:bg-white/30 bg-white/20 border-white/20' }`}
-                      >
-                        <div className="text-xs font-medium mb-0.5">{day.dayName}</div>
-                        <div className="text-sm font-semibold">{day.dayNumber}</div>
-                        {day.isToday && (
-                          <div className={`w-1 h-1 rounded-full mx-auto mt-0.5 ${day.isSelected ? 'bg-white' : 'bg-emerald-500'}`} />
-                        )}
-                      </button>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center px-4 py-3 md:px-6 md:py-2">
-              <button
-                onClick={() => navigateDate(-1)}
-                className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 mr-2 md:mr-3 backdrop-blur-sm border border-white/20"
-              >
-                <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </button>
-
-              <div className="flex-1 overflow-hidden">
-                <div className="flex items-center justify-center space-x-1 md:space-x-2">
-                  {generateHorizontalCalendarDates().map((day, index) => (
-                    <React.Fragment key={index}>
-                      {day.isNewMonth && index > 0 && (
-                        <div className="flex items-center justify-center mx-1 md:mx-2 relative h-full">
-                          <div className="backdrop-blur-sm bg-white/30 rounded-lg md:rounded-xl px-1.5 md:px-2 py-2 md:py-3 shadow-sm border border-white/20">
-                            <div
-                              className="text-xs font-bold text-gray-600 tracking-wider"
-                              style={{ writingMode: 'vertical-rl', textOrientation: 'mixed', letterSpacing: '2px' }}
-                            >
-                              {day.monthName.toUpperCase()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        onClick={() => !day.isFuture && setSelectedDate(day.date)}
-                        disabled={day.isFuture}
-                        className={`w-12 h-12 md:w-16 md:h-16 text-center rounded-lg md:rounded-2xl transition-all duration-300 relative backdrop-blur-sm border
-                          ${day.isSelected ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg scale-105 border-emerald-300'
-                            : day.isToday ? 'bg-white/40 text-gray-800 border-white/30 shadow-md'
-                            : day.isFuture ? 'text-gray-300 cursor-not-allowed bg-white/10 border-white/10'
-                            : 'text-gray-600 hover:bg-white/30 bg-white/20 border-white/20' }`}
-                      >
-                        <div className="text-xs font-medium mb-0.5 md:mb-1">{day.dayName}</div>
-                        <div className="text-sm md:text-lg font-semibold">{day.dayNumber}</div>
-                        {day.isToday && (
-                          <div className={`w-1 h-1 md:w-1.5 md:h-1.5 rounded-full mx-auto mt-0.5 md:mt-1 ${day.isSelected ? 'bg-white' : 'bg-emerald-500'}`} />
-                        )}
-                      </button>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-
-              <button
-                onClick={() => navigateDate(1)}
-                disabled={(() => {
-                  const nextDay = new Date(selectedDate);
-                  nextDay.setDate(selectedDate.getDate() + 1);
-                  return nextDay > new Date();
-                })()}
-                className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 ml-2 md:ml-3 disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm border border-white/20"
-              >
-                <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </button>
-            </div>
-          )}
-        </div>
-
         <div className="px-4 md:px-6">
           {/* Latest Weight Card */}
           <div className="mt-5 mb-4">
           <div className="w-full max-w-md mx-auto bg-gradient-to-br from-emerald-400 to-teal-600 rounded-2xl shadow-lg p-6 text-white">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <p className="text-sm text-white/80">Current Weight</p>
+                <p className="text-sm text-white/80">{formatDateHeader(selectedDate)}'s Weight</p>
                 {latestWeight ? (
                   <>
                     <p className="text-4xl font-bold mt-1">
@@ -605,28 +450,30 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             </div>
 
             {/* Stats Row */}
-            {stats && (
+            {dailyStats && (
               <div className="flex justify-between items-center pt-4 border-t border-white/20">
-                {/* <div className="text-center">
-                  <p className="text-xs text-white/70">Entries</p>
-                  <p className="text-lg font-bold">{weightHistory.filter(e => !e.isUndoPlaceholder).length}</p>
-                </div> */}
                 <div className="text-center">
                   <p className="text-xs text-white/70">Lowest</p>
                   <div className="flex items-center justify-center gap-1">
-                    {stats.minWeight && (
+                    {dailyStats.minWeight && (
                       <TrendingDown className="w-4 h-4 text-red-400" />
                     )}
-                    <p className="text-lg font-bold">{stats.minWeight ? stats.minWeight.toFixed(1) : '-'}</p>
+                    <p className="text-lg font-bold">
+                      {dailyStats.minWeight ? dailyStats.minWeight.toFixed(1) : '-'}
+                      {dailyStats.minWeight && <span className="text-sm font-normal ml-0.5">kg</span>}
+                    </p>
                   </div>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-white/70">Highest</p>
                   <div className="flex items-center justify-center gap-1">
-                    {stats.maxWeight && (
+                    {dailyStats.maxWeight && (
                       <TrendingUp className="w-4 h-4 text-green-400" />
                     )}
-                    <p className="text-lg font-bold">{stats.maxWeight ? stats.maxWeight.toFixed(1) : '-'}</p>
+                    <p className="text-lg font-bold">
+                      {dailyStats.maxWeight ? dailyStats.maxWeight.toFixed(1) : '-'}
+                      {dailyStats.maxWeight && <span className="text-sm font-normal ml-0.5">kg</span>}
+                    </p>
                   </div>
                 </div>
               </div>
@@ -639,7 +486,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         {/* Weight Entries Grouped by Time Period */}
         <div className="space-y-4">
           {(() => {
-            const entriesToShow = dailyEntries.length > 0 ? dailyEntries : weightHistory.slice(0, 10);
+            // Only show entries for the selected date, no fallback to recent entries
+            const entriesToShow = dailyEntries;
             const hasUndoPlaceholders = entriesToShow.some(e => e.isUndoPlaceholder);
             const hasRealEntries = entriesToShow.some(e => !e.isUndoPlaceholder);
 

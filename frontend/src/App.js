@@ -686,6 +686,7 @@ function WellnessBuddyApp() {
         body: JSON.stringify(payload)
       });
 
+
       const data = await response.json();
 
       if (!response.ok || !data.success) {
