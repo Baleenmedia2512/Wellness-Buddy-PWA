@@ -52,6 +52,11 @@ function WellnessBuddyApp() {
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const fileInputRef = useRef(null);
+  
+  // TEST: Food search functionality (TEMPORARY - Remove after Phase 2)
+  const [testSearchResults, setTestSearchResults] = useState(null);
+  const [testSearchLoading, setTestSearchLoading] = useState(false);
+  const [testSearchTime, setTestSearchTime] = useState(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -180,13 +185,11 @@ function WellnessBuddyApp() {
     // Skip status check if this is a fresh Google sign-in that's being saved
     const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
     if (isFreshSignIn) {
-      console.log('⏭️ [checkUserStatus] Skipping check for fresh sign-in');
       return true; // Skip check, allow access - sign-in handler will check after save
     }
     
     // Prevent multiple simultaneous checks
     if (statusCheckInProgress.current) {
-      console.log('⏭️ [checkUserStatus] Check already in progress, skipping duplicate call');
       return true; // Skip if already checking
     }
     
@@ -198,8 +201,6 @@ function WellnessBuddyApp() {
       if (!userEmail) {
         return true;
       }
-
-      console.log('🔍 [checkUserStatus] Checking status for:', userEmail);
       
       const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
         method: 'POST',
@@ -208,8 +209,6 @@ function WellnessBuddyApp() {
       });
 
       const data = await response.json();
-      
-      console.log('📋 [checkUserStatus] Response:', data);
       
       // User not found in database
       if (!data.success || data.userNotFound) {
@@ -260,6 +259,39 @@ function WellnessBuddyApp() {
     localStorage.setItem('currentPage', 'main');
   };
 
+  // TEST FUNCTION: Search for food (TEMPORARY - Remove after Phase 2)
+  const testSearchFood = async () => {
+    console.log('🧪 TEST: Starting food search...');
+    setTestSearchLoading(true);
+    setTestSearchResults(null);
+    setTestSearchTime(null);
+    
+    const startTime = performance.now();
+    
+    try {
+      const results = await geminiService.searchFood('mango lassi');
+      const endTime = performance.now();
+      const timeTaken = Math.round(endTime - startTime);
+      
+      console.log('🧪 TEST: Search successful!', results);
+      console.log(`⏱️ TEST: Time taken: ${timeTaken}ms`);
+      
+      setTestSearchResults(results);
+      setTestSearchTime(timeTaken);
+    } catch (error) {
+      const endTime = performance.now();
+      const timeTaken = Math.round(endTime - startTime);
+      
+      console.error('🧪 TEST: Search failed!', error);
+      console.log(`⏱️ TEST: Time taken (failed): ${timeTaken}ms`);
+      
+      setTestSearchResults({ error: error.message });
+      setTestSearchTime(timeTaken);
+    } finally {
+      setTestSearchLoading(false);
+    }
+  };
+
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
@@ -295,7 +327,6 @@ function WellnessBuddyApp() {
       // Skip status check for fresh sign-ins (being handled by sign-in flow)
       const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
       if (isFreshSignIn) {
-        console.log('🔐 [BgNutrition] Fresh sign-in detected, skipping status check');
         return;
       }
       
@@ -378,13 +409,10 @@ function WellnessBuddyApp() {
   }, [user, checkUserStatus]);
 
   const handleSaveUserCache = async (user) => {
-    console.log('handleSaveUserCache is initiated');
     if (user && Capacitor.isNativePlatform()) {
-      console.log('1st condition met');
       try {
         const dbUserId = await getUserId(user);
         if (dbUserId && user.email) {
-          console.log('Setting GalleryMonitor current user:', dbUserId, user.email);
           GalleryMonitor.setCurrentUser(String(dbUserId), user.email);
         }
       } catch (err) {
@@ -464,12 +492,9 @@ function WellnessBuddyApp() {
     const unsubscribe = onAuthStateChange(async (user) => {
       // If sign-out is in progress, ignore auth state changes
       if (signOutInProgress.current) {
-        console.log('⚠️ [Auth State] Sign-out in progress, ignoring auth state change');
         return;
       }
-      
-      console.log(user ? '✅ Auth state: User authenticated' : '❌ Auth state: User not authenticated');
-      
+
       if (user) {
         // Skip status check if this is a fresh Google sign-in that's being saved
         // The handleSignIn/handlePopupSignIn functions will handle status check after save
@@ -648,10 +673,6 @@ function WellnessBuddyApp() {
       if (imageBase64.length > 2 * 1024 * 1024) { // 2MB base64 limit
         try {
           imageBase64 = await compressImage(imageBase64, 0.7); // 70% quality
-          console.log('🗜️ Image compressed from', 
-            (e.target.result.length / 1024 / 1024).toFixed(2), 'MB to', 
-            (imageBase64.length / 1024 / 1024).toFixed(2), 'MB'
-          );
         } catch (compressError) {
           console.warn('⚠️ Image compression failed, using original:', compressError);
         }
@@ -664,53 +685,42 @@ function WellnessBuddyApp() {
         const result = await geminiService.analyzeImageForNutrition(file);
         setNutritionData(result);
 
-        // Auto-save to DB after analysis
-        setSaveLoading(true);
-        try {
-          const userIdentifier = user.email || user.id || user.uid || 'anonymous';
+        // Auto-save to DB disabled for now
+        // setSaveLoading(true);
+        // try {
+        //   const userIdentifier = user.email || user.id || user.uid || 'anonymous';
+
+        //   const saveRes = await saveNutritionAnalysis({
+        //     userId: userIdentifier,
+        //     imagePath: file.name,
+        //     imageBase64,
+        //     analysisResult: result,
+        //     deviceInfo: window.navigator.userAgent
+        //   });
+
+        //   const newPopup = {
+        //     id: Date.now().toString(),
+        //     analysisId: saveRes.id,
+        //     nutritionData: result,
+        //     imagePreview: imageBase64,
+        //     timestamp: new Date()
+        //   };
+        //   setSuccessPopups((prev) => [...prev, newPopup]);
+        // } catch (err) {
+        //   // Debug: Log detailed error info
+        //   console.error('❌ Save failed:', {
+        //     error: err,
+        //     message: err.message,
+        //     stack: err.stack,
+        //     apiBaseUrl: apiBaseUrl,
+        //     userIdentifier: user.email || user.id || user.uid || 'anonymous'
+        //   });
           
-          // Debug: Log environment info
-          console.log('💾 Attempting to save analysis:', {
-            apiBaseUrl: apiBaseUrl,
-            userIdentifier: userIdentifier,
-            imageSize: imageBase64 ? (imageBase64.length / 1024 / 1024).toFixed(2) + ' MB' : 'N/A',
-            analysisResultSize: JSON.stringify(result).length,
-            isProduction: process.env.NODE_ENV === 'production'
-          });
-
-          const saveRes = await saveNutritionAnalysis({
-            userId: userIdentifier,
-            imagePath: file.name,
-            imageBase64,
-            analysisResult: result,
-            deviceInfo: window.navigator.userAgent
-          });
-
-          console.log('✅ Save successful:', saveRes);
-
-          const newPopup = {
-            id: Date.now().toString(),
-            analysisId: saveRes.id,
-            nutritionData: result,
-            imagePreview: imageBase64,
-            timestamp: new Date()
-          };
-          setSuccessPopups((prev) => [...prev, newPopup]);
-        } catch (err) {
-          // Debug: Log detailed error info
-          console.error('❌ Save failed:', {
-            error: err,
-            message: err.message,
-            stack: err.stack,
-            apiBaseUrl: apiBaseUrl,
-            userIdentifier: user.email || user.id || user.uid || 'anonymous'
-          });
-          
-          const friendlySaveError = getFriendlyErrorMessage(err);
-          setSaveError(friendlySaveError);
-        } finally {
-          setSaveLoading(false);
-        }
+        //   const friendlySaveError = getFriendlyErrorMessage(err);
+        //   setSaveError(friendlySaveError);
+        // } finally {
+        //   setSaveLoading(false);
+        // }
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
@@ -840,12 +850,10 @@ function WellnessBuddyApp() {
       // But set it here too for redirect flow safety
       if (!sessionStorage.getItem('freshGoogleSignIn')) {
         sessionStorage.setItem('freshGoogleSignIn', 'true');
-        console.log('🔐 [handleSignIn] Set freshGoogleSignIn flag (backup)');
       }
       
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
       const safetyTimeout = setTimeout(() => {
-        console.log('⚠️ [handleSignIn] Safety timeout - clearing fresh sign-in flag');
         sessionStorage.removeItem('freshGoogleSignIn');
       }, 30000);
       
@@ -857,11 +865,9 @@ function WellnessBuddyApp() {
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
-          console.log('🔐 [handleSignIn] User saved, cleared safety timeout');
           
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
-            console.log('⚠️ [handleSignIn] Sign-out in progress, aborting all sign-in operations');
             sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
@@ -869,7 +875,6 @@ function WellnessBuddyApp() {
           // ✅ CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
           sessionStorage.removeItem('freshGoogleSignIn');
-          console.log('🔐 [handleSignIn] Cleared fresh sign-in flag, proceeding with validation');
           
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
@@ -877,7 +882,6 @@ function WellnessBuddyApp() {
             
             // Check again if sign-out was triggered
             if (signOutInProgress.current) {
-              console.log('⚠️ [handleSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
               return;
             }
           }
@@ -888,7 +892,6 @@ function WellnessBuddyApp() {
           
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
-            console.log('⚠️ [handleSignIn] Sign-out in progress after status check, aborting');
             return;
           }
           
@@ -940,32 +943,23 @@ function WellnessBuddyApp() {
       setError(null);
       
       // Flag is already set by Login component before this function is called
-      console.log('🔐 [handlePopupSignIn] Starting (flag should already be set)');
-      
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
       const safetyTimeout = setTimeout(() => {
-        console.log('⚠️ [handlePopupSignIn] Safety timeout - clearing fresh sign-in flag');
         sessionStorage.removeItem('freshGoogleSignIn');
       }, 30000);
       
-      console.log('🔐 [handlePopupSignIn] Calling signInWithGooglePopup...');
       const user = await signInWithGooglePopup();
-      console.log('🔐 [handlePopupSignIn] signInWithGooglePopup returned:', user?.email);
       
       if (user) {
         try {
           // Save user to backend first
-          console.log('🔐 [handlePopupSignIn] Saving user to backend...');
           await saveUserToBackend(user);
-          console.log('🔐 [handlePopupSignIn] User saved successfully');
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
-          console.log('🔐 [handlePopupSignIn] Cleared safety timeout');
           
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
-            console.log('⚠️ [handlePopupSignIn] Sign-out in progress, aborting all sign-in operations');
             sessionStorage.removeItem('freshGoogleSignIn');
             return;
           }
@@ -973,7 +967,6 @@ function WellnessBuddyApp() {
           // ✅ CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
           sessionStorage.removeItem('freshGoogleSignIn');
-          console.log('🔐 [handlePopupSignIn] Cleared fresh sign-in flag, proceeding with validation');
           
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
@@ -981,7 +974,6 @@ function WellnessBuddyApp() {
             
             // Check again if sign-out was triggered
             if (signOutInProgress.current) {
-              console.log('⚠️ [handlePopupSignIn] Sign-out triggered during GalleryMonitor setup, aborting');
               return;
             }
           }
@@ -989,11 +981,9 @@ function WellnessBuddyApp() {
           // Now check user status after ensuring DB record exists
           // Flag is cleared, so checkUserStatus will actually run the check
           const isActive = await checkUserStatus(user);
-          console.log('🔐 [handlePopupSignIn] Status check result:', isActive);
           
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
-            console.log('⚠️ [handlePopupSignIn] Sign-out in progress after status check, aborting');
             return;
           }
           
@@ -1040,7 +1030,6 @@ function WellnessBuddyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      console.log('💾 [saveUserToBackend] Saving user to database:', user.email);
       
       const response = await fetch(`${apiBaseUrl}/api/save-google-user`, {
         method: 'POST',
@@ -1081,7 +1070,6 @@ function WellnessBuddyApp() {
       
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem('freshGoogleSignIn');
-      console.log('🔐 [handleSignOut] Cleared freshGoogleSignIn flag');
       
       if (Capacitor.isNativePlatform()) {
         try {
@@ -1226,7 +1214,24 @@ function WellnessBuddyApp() {
       />
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        <div className="fixed bottom-6 right-6 z-40">
+        {/* TEST BUTTON - TEMPORARY (Remove after Phase 2) */}
+        <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-2">
+          <button
+            onClick={testSearchFood}
+            disabled={testSearchLoading}
+            className={`px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm ${
+              testSearchLoading 
+                ? 'bg-yellow-400 cursor-wait' 
+                : 'bg-blue-600 hover:bg-blue-700 text-white'
+            }`}
+            title="🧪 Test Food Search (Phase 1)"
+          >
+            <span className="text-xl">🧪</span>
+            <span className="text-sm font-medium">
+              {testSearchLoading ? 'Searching...' : 'Test Search'}
+            </span>
+          </button>
+          
           <button
             onClick={showNutritionDashboardPage}
             className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm"
@@ -1264,6 +1269,93 @@ function WellnessBuddyApp() {
         )}
 
         {nutritionData && <NutritionCard data={nutritionData} />}
+
+        {/* TEST RESULTS - TEMPORARY (Remove after Phase 2) */}
+        {testSearchResults && (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-blue-300 p-4">
+            <div className="flex justify-between items-center mb-3">
+              <h3 className="font-bold text-blue-700 flex items-center gap-2">
+                <span>🧪</span>
+                <span>Test Search Results</span>
+              </h3>
+              <button 
+                onClick={() => setTestSearchResults(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                ✕
+              </button>
+            </div>
+            
+            {testSearchResults.error ? (
+              <div className="bg-red-50 border border-red-200 rounded p-3 text-red-700">
+                <p className="font-semibold">Error:</p>
+                <p className="text-sm">{testSearchResults.error}</p>
+                {testSearchTime && (
+                  <p className="text-xs text-gray-500 mt-2">⏱️ Time: {testSearchTime}ms</p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <p className="text-sm text-gray-600">
+                    Found {testSearchResults.results?.length || 0} results for "mango lassi"
+                  </p>
+                  {testSearchTime && (
+                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
+                      ⏱️ {testSearchTime}ms
+                    </span>
+                  )}
+                </div>
+                
+                {testSearchResults.results?.map((food, idx) => (
+                  <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+                    <p className="font-semibold text-gray-900">{food.name}</p>
+                    <p className="text-xs text-gray-500 mb-2">{food.category}</p>
+                    
+                    <div className="text-sm space-y-1">
+                      <p className="text-gray-700">
+                        <strong>Default:</strong> {food.defaultServing?.description} 
+                        ({food.defaultServing?.nutrition?.calories} cal)
+                      </p>
+                      
+                      <p className="text-xs text-gray-600">
+                        Protein: {food.defaultServing?.nutrition?.protein}g • 
+                        Carbs: {food.defaultServing?.nutrition?.carbs}g • 
+                        Fat: {food.defaultServing?.nutrition?.fat}g
+                      </p>
+                      
+                      {food.servingOptions?.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-blue-600 cursor-pointer">
+                            + {food.servingOptions.length} more serving options
+                          </summary>
+                          <div className="mt-1 pl-3 space-y-1">
+                            {food.servingOptions.map((opt, oidx) => (
+                              <p key={oidx} className="text-xs text-gray-600">
+                                • {opt.description} ({opt.nutrition?.calories} cal)
+                              </p>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                
+                <div className="mt-3 pt-3 border-t border-gray-200">
+                  <p className="text-xs text-gray-500">
+                    ✅ Phase 1 test successful! Check browser console for detailed logs.
+                    {testSearchTime && (
+                      <span className="block mt-1">
+                        ⏱️ Total response time: {(testSearchTime / 1000).toFixed(2)}s
+                      </span>
+                    )}
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Success Save Popup: show both background and regular popups together */}
         <SuccessSavePopup

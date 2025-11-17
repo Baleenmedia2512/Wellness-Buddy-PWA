@@ -1,7 +1,67 @@
 //src\components\NutritionCard.js
-import React from 'react';
+import React, { useState } from 'react';
+import EditableFoodItem from './EditableFoodItem';
 
-const NutritionCard = ({ data }) => {
+const NutritionCard = ({ data, onDataUpdate }) => {
+  // Local state for editable food items (must be before early return)
+  const [localDetailedItems, setLocalDetailedItems] = useState(data?.detailedItems || []);
+  const [localNutrition, setLocalNutrition] = useState(data?.nutrition || {});
+
+  // Recalculate total nutrition from all food items
+  const recalculateTotals = (items) => {
+    const totals = items.reduce((acc, item) => ({
+      calories: acc.calories + (item.nutrition?.calories || item.calories || 0),
+      protein: acc.protein + (item.nutrition?.protein || item.protein || 0),
+      carbs: acc.carbs + (item.nutrition?.carbs || item.carbs || 0),
+      fat: acc.fat + (item.nutrition?.fat || item.fat || 0),
+      fiber: acc.fiber + (item.nutrition?.fiber || item.fiber || 0)
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
+    
+    // Round to 1 decimal
+    return {
+      calories: Math.round(totals.calories),
+      protein: Math.round(totals.protein * 10) / 10,
+      carbs: Math.round(totals.carbs * 10) / 10,
+      fat: Math.round(totals.fat * 10) / 10,
+      fiber: Math.round(totals.fiber * 10) / 10
+    };
+  };
+
+  // Handle food item update
+  const handleFoodUpdate = (index, updatedFood) => {
+    console.log('🔄 [NutritionCard] Updating food item at index:', index);
+    
+    const newItems = [...localDetailedItems];
+    newItems[index] = {
+      ...newItems[index],
+      ...updatedFood,
+      // Preserve original fields if not in updatedFood
+      calories: updatedFood.nutrition?.calories || updatedFood.calories,
+      protein: updatedFood.nutrition?.protein || updatedFood.protein,
+      carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
+      fat: updatedFood.nutrition?.fat || updatedFood.fat,
+      fiber: updatedFood.nutrition?.fiber || updatedFood.fiber
+    };
+    
+    setLocalDetailedItems(newItems);
+    
+    // Recalculate totals
+    const newTotals = recalculateTotals(newItems);
+    setLocalNutrition(newTotals);
+    
+    console.log('✅ [NutritionCard] Updated totals:', newTotals);
+    
+    // Notify parent if callback provided
+    if (onDataUpdate) {
+      onDataUpdate({
+        ...data,
+        detailedItems: newItems,
+        nutrition: newTotals
+      });
+    }
+  };
+
+  // Early return after hooks
   if (!data) return null;
 
   const { nutrition, category, servingInfo, itemCount, detailedItems, portionAnalysis } = data;
@@ -31,7 +91,7 @@ const NutritionCard = ({ data }) => {
           {/* Calories */}
           <div className="bg-red-50 border-2 border-red-200 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-red-600">
-              {nutrition.calories}
+              {localNutrition.calories}
             </div>
             <div className="text-sm font-medium text-red-700">
               Calories
@@ -41,7 +101,7 @@ const NutritionCard = ({ data }) => {
           {/* Carbs */}
           <div className="bg-yellow-50 border-2 border-yellow-200 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-yellow-600">
-              {nutrition.carbs}g
+              {localNutrition.carbs}g
             </div>
             <div className="text-sm font-medium text-yellow-700">
               Carbs
@@ -51,7 +111,7 @@ const NutritionCard = ({ data }) => {
           {/* Protein */}
           <div className="bg-blue-50 border-2 border-blue-200 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-blue-600">
-              {nutrition.protein}g
+              {localNutrition.protein}g
             </div>
             <div className="text-sm font-medium text-blue-700">
               Protein
@@ -61,7 +121,7 @@ const NutritionCard = ({ data }) => {
           {/* Fat */}
           <div className="bg-purple-50 border-2 border-purple-200 rounded-lg p-4 text-center">
             <div className="text-2xl font-bold text-purple-600">
-              {nutrition.fat}g
+              {localNutrition.fat}g
             </div>
             <div className="text-sm font-medium text-purple-700">
               Fat
@@ -71,7 +131,7 @@ const NutritionCard = ({ data }) => {
           {/* Fiber */}
           <div className="bg-green-50 border-2 border-green-200 rounded-lg p-4 text-center col-span-2 md:col-span-1">
             <div className="text-2xl font-bold text-green-600">
-              {nutrition.fiber}g
+              {localNutrition.fiber}g
             </div>
             <div className="text-sm font-medium text-green-700">
               Fiber
@@ -167,7 +227,7 @@ const NutritionCard = ({ data }) => {
         </div>
 
         {/* Food Breakdown */}
-        {detailedItems && detailedItems.length > 0 && (
+        {localDetailedItems && localDetailedItems.length > 0 && (
           <div className="mt-8 pt-6 border-t border-gray-200">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-800">Food Breakdown</h3>
@@ -178,66 +238,20 @@ const NutritionCard = ({ data }) => {
               )}
             </div>
             
-            <div className="space-y-4">
-              {detailedItems.map((item, index) => (
-                <div key={index} className="group hover:bg-gray-50 transition-colors duration-200 rounded-xl p-4 border border-gray-100">
-                  {/* Food Header */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex-1">
-                      <h4 className="font-medium text-gray-900 text-base">{item.name}</h4>
-                      <div className="flex flex-wrap gap-3 mt-1 text-sm text-gray-600">
-                        {item.portionDescription && item.portionDescription !== 'Unknown portion' && (
-                          <span className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                            {item.portionDescription}
-                          </span>
-                        )}
-                        {item.estimatedWeight && item.estimatedWeight !== 'Unknown' && (
-                          <span className="flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 bg-gray-400 rounded-full"></span>
-                            ~{item.estimatedWeight}g
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    {item.confidence && (
-                      <span className={`text-xs px-2 py-1 rounded-full font-medium shrink-0 ${
-                        item.confidence === 'high' ? 'bg-emerald-100 text-emerald-700' :
-                        item.confidence === 'medium' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {item.confidence}
-                      </span>
-                    )}
-                  </div>
-                  
-                  {/* Nutrition Grid */}
-                  <div className="grid grid-cols-5 gap-3">
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-red-600">{item.calories}</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wide">Calories</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-yellow-600">{item.carbs}g</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wide">Carbs</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-blue-600">{item.protein}g</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wide">Protein</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-purple-600">{item.fat}g</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wide">Fat</div>
-                    </div>
-                    <div className="text-center">
-                      <div className="text-lg font-semibold text-green-600">{item.fiber}g</div>
-                      <div className="text-xs text-gray-500 uppercase tracking-wide">Fiber</div>
-                    </div>
-                  </div>
-                </div>
+            <div className="space-y-3">
+              {localDetailedItems.map((item, index) => (
+                <EditableFoodItem
+                  key={index}
+                  foodItem={item}
+                  index={index}
+                  onUpdate={handleFoodUpdate}
+                />
               ))}
             </div>
           </div>
         )}
+
+        {/* Portion Analysis Section */}
 
         {/* Serving Info Details */}
         {servingInfo && servingInfo.weight && (

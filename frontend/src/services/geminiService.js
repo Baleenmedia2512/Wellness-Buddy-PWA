@@ -62,8 +62,12 @@ class GeminiService {
     this.model = null;
     
     // Add timeout and retry configuration
-    this.timeout = 30000; // 30 second timeout
+    this.timeout = 20000; // 20 second timeout (faster response)
     this.maxRetries = 2;
+    
+    // Search cache for faster repeated searches
+    this.searchCache = new Map();
+    this.cacheExpiry = 24 * 60 * 60 * 1000; // 24 hours
     
     // Session tracking for aggregate metrics
     this.sessionMetrics = {
@@ -83,10 +87,12 @@ class GeminiService {
       this.model = this.genAI.getGenerativeModel({ 
         model: "gemini-2.0-flash",
         generationConfig: {
-          temperature: 0.1, // Lower temperature for more consistent responses
+          temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
-          topP: 0.8,
-          maxOutputTokens: 2048, // Limit output to speed up response
+          topP: 0.95,
+          maxOutputTokens: 1500, // Increased to prevent truncation (was 800)
+          candidateCount: 1,
+          responseMimeType: 'application/json'
         }
       });
     }
@@ -323,6 +329,116 @@ Use USDA values. Return valid JSON only, no markdown.`;
     }
   }
 
+  /**
+   * Get cached search results if available and not expired
+   * @param {string} query - The search query
+   * @returns {Object|null} Cached results or null
+   */
+  getCachedSearch(query) {
+    if (!query || typeof query !== 'string') return null;
+    
+    const cacheKey = query.toLowerCase().trim();
+    const cached = this.searchCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
+      return cached.data;
+    }
+    
+    // Remove expired cache entry
+    if (cached) {
+      this.searchCache.delete(cacheKey);
+    }
+    
+    return null;
+  }
+
+  /**
+   * Search for food items using Gemini AI
+   * Returns multiple food variations with serving options
+   * @param {string} foodQuery - The food name to search for
+   * @returns {Promise<Object>} Search results with nutrition data
+   */
+  async searchFood(foodQuery) {
+    const startTime = Date.now();
+    console.log('🔍 GeminiService: Starting food search for:', foodQuery);
+    
+    if (!this.model) {
+      throw new Error('Gemini API key is not configured');
+    }
+
+    if (!foodQuery || foodQuery.trim().length < 2) {
+      console.warn('❌ Search query too short:', foodQuery);
+      throw new Error('Search query must be at least 2 characters');
+    }
+
+    // Check cache first
+    const cacheKey = foodQuery.toLowerCase().trim();
+    const cached = this.searchCache.get(cacheKey);
+    
+    if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
+      const cacheTime = Date.now() - startTime;
+      console.log(`💾 Using cached result (${cacheTime}ms)`);
+      console.log(`✅ Food search completed in ${cacheTime}ms (CACHED)`);
+      return cached.data;
+    }
+
+    try {
+      const prompt = `"${foodQuery}" 2 variations JSON:
+[{"name":"str","category":"str","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]`;
+
+      console.log('📤 Sending search request to Gemini...');
+
+      const result = await this.makeApiCallWithRetry(
+        () => this.model.generateContent(prompt),
+        this.maxRetries
+      );
+
+      const response = await result.response;
+      const text = response.text();
+
+      console.log('📥 Received response from Gemini, parsing...');
+
+      const searchResults = this.parseJsonResponse(text);
+      const processingTime = Date.now() - startTime;
+      
+      // Log token usage
+      this.logTokenUsage(response, 'food_search', processingTime);
+      
+      console.log(`✅ Food search completed in ${processingTime}ms`);
+      console.log(`📊 Found ${searchResults.results?.length || 0} results for "${foodQuery}"`);
+      
+      // Validate results structure
+      if (!searchResults.results || !Array.isArray(searchResults.results)) {
+        console.error('❌ Invalid search results structure:', searchResults);
+        throw new Error('Invalid search results format');
+      }
+
+      // Log first result for debugging
+      if (searchResults.results.length > 0) {
+        console.log('🔎 First result:', {
+          name: searchResults.results[0].name,
+          category: searchResults.results[0].category,
+          defaultCalories: searchResults.results[0].defaultServing?.nutrition?.calories
+        });
+      }
+
+      // Cache the results for future use
+      this.searchCache.set(cacheKey, {
+        data: searchResults,
+        timestamp: Date.now()
+      });
+      console.log(`💾 Cached results for "${cacheKey}" (expires in 24h)`);
+
+      return searchResults;
+
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logError(error, 'food_search');
+      console.error(`❌ Food search failed after ${processingTime}ms:`, error);
+      throw new Error(`Food search failed: ${error.message}`);
+    }
+  }
+
   // Utility methods
   async makeApiCallWithRetry(apiCall, maxRetries) {
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
@@ -357,10 +473,56 @@ Use USDA values. Return valid JSON only, no markdown.`;
   parseJsonResponse(text) {
     try {
       // Clean the response text
-      const cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
-      return JSON.parse(cleanText);
+      let cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
+      
+      // Try to parse the JSON
+      let parsed;
+      try {
+        parsed = JSON.parse(cleanText);
+      } catch (firstError) {
+        // If parsing fails, it might be truncated - try to fix common issues
+        console.warn('⚠️ Initial JSON parse failed, attempting fixes...');
+        
+        // Check if it's an incomplete array - try to close it
+        if (cleanText.includes('[') && !cleanText.endsWith(']')) {
+          console.warn('⚠️ Detected incomplete array, attempting to close');
+          // Count opening and closing brackets to determine how many to add
+          const openBrackets = (cleanText.match(/\[/g) || []).length;
+          const closeBrackets = (cleanText.match(/\]/g) || []).length;
+          const openBraces = (cleanText.match(/\{/g) || []).length;
+          const closeBraces = (cleanText.match(/\}/g) || []).length;
+          
+          // Add missing closing characters
+          for (let i = 0; i < openBraces - closeBraces; i++) cleanText += '}';
+          for (let i = 0; i < openBrackets - closeBrackets; i++) cleanText += ']';
+          
+          console.log('🔧 Attempted fix, trying parse again...');
+          parsed = JSON.parse(cleanText);
+        } else {
+          throw firstError;
+        }
+      }
+      
+      // Handle both formats: {results: [...]} or directly [...]
+      if (Array.isArray(parsed)) {
+        console.log('✅ Parsed array format, wrapping in results object');
+        return { results: parsed };
+      }
+      
+      // If already has results property, return as-is
+      if (parsed.results) {
+        console.log('✅ Parsed object with results property');
+        return parsed;
+      }
+      
+      // Unknown format
+      console.warn('⚠️ Unexpected JSON structure, returning as-is:', parsed);
+      return parsed;
     } catch (parseError) {
-      console.error('Failed to parse response:', text);
+      console.error('❌ Failed to parse response. Length:', text.length);
+      console.error('❌ First 500 chars:', text.substring(0, 500));
+      console.error('❌ Last 500 chars:', text.substring(text.length - 500));
+      console.error('❌ Parse error:', parseError.message);
       throw new Error('Invalid JSON response from API');
     }
   }
