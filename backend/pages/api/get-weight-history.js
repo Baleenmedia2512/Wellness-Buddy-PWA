@@ -25,13 +25,13 @@ export default async function handler(req, res) {
   try {
     // Database connection
     const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
+      host: process.env.DB_HOST ,
       user: process.env.DB_USER,
       password: process.env.DB_PASS,
       database: process.env.DB_NAME,
     });
 
-    // ✅ Get weight history for user
+    // ✅ Get weight history for user (exclude deleted entries)
     const historyQuery = `
       SELECT 
         ID,
@@ -44,7 +44,7 @@ export default async function handler(req, res) {
         WeightImageBase64,
         CreatedAt 
       FROM weight_records_table
-      WHERE UserId = ?
+      WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
       ORDER BY CreatedAt DESC
       LIMIT ? OFFSET ?
     `;
@@ -55,11 +55,11 @@ export default async function handler(req, res) {
       parseInt(offset),
     ]);
 
-    // ✅ Get total count
+    // ✅ Get total count (exclude deleted entries)
     const countQuery = `
       SELECT COUNT(*) as total 
       FROM weight_records_table
-      WHERE UserId = ?
+      WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
     `;
     const [countRows] = await connection.execute(countQuery, [userId]);
     const totalCount = countRows[0].total;
