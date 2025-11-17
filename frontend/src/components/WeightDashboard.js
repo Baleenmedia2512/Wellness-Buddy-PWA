@@ -360,7 +360,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
     try {
       const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
-        method: 'POST',
+        method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           userId: user.email || user.id || user.uid,
@@ -392,7 +392,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         delete next[placeholder.ID];
         return next;
       });
-      alert(err.message || 'Failed to delete. Please try again.');
+      console.log(err.message || 'Failed to delete. Please try again.');
     }
   };
 
