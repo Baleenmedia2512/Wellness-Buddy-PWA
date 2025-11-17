@@ -21,6 +21,7 @@ import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
 import { weightDetectionService } from './services/weightDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
+import { API_BASE_URL } from './config/api';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -38,7 +39,7 @@ import {
 const Dashboard = lazy(() => import('./components/Dashboard'));
 
 function WellnessBuddyApp() {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = API_BASE_URL;
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -211,12 +212,22 @@ function WellnessBuddyApp() {
       }
 
       console.log('🔍 [checkUserStatus] Checking status for:', userEmail);
+      console.log('🌐 [checkUserStatus] API URL:', apiBaseUrl);
+      
+      if (!apiBaseUrl) {
+        console.error('❌ [checkUserStatus] API Base URL is not defined!');
+        throw new Error('API Base URL is not configured');
+      }
       
       const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userEmail })
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       const data = await response.json();
       

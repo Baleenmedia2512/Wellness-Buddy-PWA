@@ -1,3 +1,5 @@
+import { API_BASE_URL } from '../config/api';
+
 /**
  * Transform analysis result to match background service format
  * Background service format: { foods: [...], total: {...}, confidence: "..." }
@@ -74,7 +76,7 @@ function transformToBackgroundServiceFormat(analysisResult) {
  * Returns: { success, userId, ... }
  */
 export async function lookupUserId(email) {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = API_BASE_URL;
   try {
     const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
@@ -98,7 +100,7 @@ export async function lookupUserId(email) {
  * Returns: { success, id, ... }
  */
 export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo }) {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = API_BASE_URL;
   
   try {
     // Always lookup the real UserID from team_table
@@ -175,7 +177,7 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
  * Note: This function works with analysis IDs, not UserIDs, so no lookup needed
  */
 export async function deleteNutritionAnalysis({ id }) {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = API_BASE_URL;
   try {
     const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
       method: 'DELETE',

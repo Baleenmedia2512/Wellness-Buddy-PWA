@@ -1,5 +1,6 @@
 // src/services/weightDetectionService.js
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GEMINI_API_KEY } from '../config/api';
 
 /**
  * Weight Detection Service using Google Gemini AI
@@ -7,7 +8,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
  */
 class WeightDetectionService {
   constructor() {
-    this.apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+    this.apiKey = GEMINI_API_KEY;
     this.genAI = null;
     this.model = null;
     this.timeout = 30000; // 30 second timeout

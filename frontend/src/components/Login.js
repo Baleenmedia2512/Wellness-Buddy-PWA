@@ -2,9 +2,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import TermsAndConditions from './TermsAndConditions';
 import PrivacyPolicy from './PrivacyPolicy';
+import { API_BASE_URL } from '../config/api';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = API_BASE_URL;
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState(new Array(6).fill(''));
