@@ -122,8 +122,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader, selectedDate: propSelec
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
 
-
-
   /**
    * Format date header
    */
@@ -144,12 +142,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader, selectedDate: propSelec
       });
     }
   };
-
-
-
-
-
-
 
   /**
    * Get time period from timestamp
@@ -196,8 +188,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader, selectedDate: propSelec
    * Note: Entries are filtered dynamically in renderOverview()
    * No need for separate useEffect - filtering happens on each render
    */
-
-
 
   /**
    * Fetch weight history from backend
