@@ -17,7 +17,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
     return date.toLocaleDateString('en-US', {
       weekday: 'long',
       year: 'numeric',
-      month: 'long',
+      month: 'short',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
@@ -63,16 +63,17 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                 </h2>
                 <p className="text-xs text-white/70 mt-0.5">
                   Logged at {new Date(data.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                  <p className="text-xs text-gray-400">{formatDate(data.CreatedAt)}</p>
                 </p>
               </div>
-              <div className="text-right">
+              {/* <div className="text-right">
                 <span className="text-3xl font-bold text-white">{data.Weight}</span>
                 <span className="text-xs text-white/70 ml-1">kg</span>
-              </div>
+              </div> */}
             </div>
 
             {/* Metrics Pills */}
-            <div className="flex flex-wrap gap-2 pt-1">
+            {/* <div className="flex flex-wrap gap-2 pt-1">
               <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
                 <span className="text-xl mr-1.5">📊</span>
                 <span className="text-xs font-medium text-white">{data.Bmi ? parseFloat(data.Bmi).toFixed(1) : '--'}</span>
@@ -89,7 +90,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                 <span className="text-xl mr-1.5">🔥</span>
                 <span className="text-xs font-medium text-white">{data.Bmr || '--'}</span>
               </div>
-            </div>
+            </div> */}
           </div>
 
           {/* Close Button */}
@@ -116,7 +117,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
               <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
                 <div>
                   <p className="font-medium text-gray-900 text-sm">Weight</p>
-                  <p className="text-xs text-gray-500">{formatDate(data.CreatedAt)}</p>
+                  {/* <p className="text-xs text-gray-500">{formatDate(data.CreatedAt)}</p> */}
                 </div>
                 <div className="text-right">
                   <p className="font-medium text-gray-900 text-sm">{data.Weight}</p>
@@ -125,7 +126,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
               </div>
 
               {/* BMI */}
-              <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
+              {/* <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
                 <div>
                   <p className="font-medium text-gray-900 text-sm">BMI</p>
                   <p className="text-xs text-gray-500">Body Mass Index</p>
@@ -134,10 +135,10 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                   <p className="font-medium text-gray-900 text-sm">{data.Bmi ? parseFloat(data.Bmi).toFixed(1) : '--'}</p>
                   <p className="text-xs text-gray-500">index</p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Body Fat */}
-              <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
+              {/* <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
                 <div>
                   <p className="font-medium text-gray-900 text-sm">Body Fat</p>
                   <p className="text-xs text-gray-500">Fat percentage</p>
@@ -146,10 +147,10 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                   <p className="font-medium text-gray-900 text-sm">{data.BodyFat ? parseFloat(data.BodyFat).toFixed(1) : '--'}</p>
                   <p className="text-xs text-gray-500">%</p>
                 </div>
-              </div>
+              </div> */}
 
               {/* Muscle Mass */}
-              <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
+              {/* <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
                 <div>
                   <p className="font-medium text-gray-900 text-sm">Muscle Mass</p>
                   <p className="text-xs text-gray-500">Skeletal muscle</p>
@@ -158,10 +159,10 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                   <p className="font-medium text-gray-900 text-sm">{data.MuscleMass ? parseFloat(data.MuscleMass).toFixed(1) : '--'}</p>
                   <p className="text-xs text-gray-500">kg</p>
                 </div>
-              </div>
+              </div> */}
 
               {/* BMR */}
-              <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
+              {/* <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
                 <div>
                   <p className="font-medium text-gray-900 text-sm">BMR</p>
                   <p className="text-xs text-gray-500">Basal Metabolic Rate</p>
@@ -170,7 +171,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                   <p className="font-medium text-gray-900 text-sm">{data.Bmr || '--'}</p>
                   <p className="text-xs text-gray-500">kcal</p>
                 </div>
-              </div>
+              </div> */}
             </div>
           </div>
         </div>

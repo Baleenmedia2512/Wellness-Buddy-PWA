@@ -11,7 +11,6 @@ import {
   Droplet,
   RotateCcw
 } from 'lucide-react';
-import DatePickerCalendar from './DatePickerCalendar';
 
 const UNDO_SECONDS = 10; // cooldown duration
 

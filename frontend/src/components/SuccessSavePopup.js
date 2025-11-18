@@ -247,7 +247,7 @@ const SuccessSavePopup = ({
 
         <div className="grid grid-cols-2 gap-px bg-gray-100">
           <div className="bg-white p-3 text-center">
-            <p className="text-xs text-purple-500 mb-1">Weight</p>
+            <p className="text-xs text-green-500 mb-1">Weight</p>
             <p className="font-bold text-lg">{weightData.weightValue} {weightData.unit}</p>
           </div>
           {weightData.bmi && (
@@ -554,7 +554,7 @@ const SuccessSavePopup = ({
                 <div className="text-xs text-gray-500 mb-1.5">
                   {isWeight ? (
                     <div className="flex flex-wrap gap-x-1 gap-y-0.5">
-                      <span className="font-semibold text-purple-600">{weightData.weightValue} {weightData.unit}</span>
+                      <span className="font-semibold text-gray-600">{weightData.weightValue} {weightData.unit}</span>
                       {weightData.bmi && <span>· BMI: {weightData.bmi}</span>}
                       {weightData.bodyFat && <span>· Body Fat: {weightData.bodyFat}%</span>}
                     </div>

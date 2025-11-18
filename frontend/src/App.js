@@ -65,6 +65,10 @@ function WellnessBuddyApp() {
   const [imageType, setImageType] = useState(null); // 'food' | 'weight'
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const fileInputRef = useRef(null);
+  
+  // 🔒 Duplicate prevention: Track recently processed images
+  const recentlyProcessedImages = useRef(new Set());
+  const processingInProgress = useRef(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -759,16 +763,44 @@ function WellnessBuddyApp() {
       return;
     }
 
+    // 🔒 DUPLICATE PREVENTION: Check if already processing
+    if (processingInProgress.current) {
+      console.log('⚠️ Image processing already in progress, ignoring duplicate request');
+      return;
+    }
+
+    // 🔒 Generate a unique identifier for this image based on name, size, and lastModified
+    const imageId = `${file.name}_${file.size}_${file.lastModified}`;
+    
+    // Check if this exact image was processed in the last 10 seconds
+    if (recentlyProcessedImages.current.has(imageId)) {
+      console.log('⚠️ This image was already processed recently, skipping duplicate');
+      setError('⚠️ This image was already uploaded. Please wait a moment before trying again.');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+
+    // Mark as processing
+    processingInProgress.current = true;
+    recentlyProcessedImages.current.add(imageId);
+    
+    // Auto-cleanup after 10 seconds
+    setTimeout(() => {
+      recentlyProcessedImages.current.delete(imageId);
+    }, 10000);
+
     // Re-check user status in real-time before analysis
     const isActive = await checkUserStatus(user);
     if (!isActive) {
       setError('Your account is inactive. Please contact support to reactivate.');
+      processingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError('📸 Image file is too large. Please choose a smaller image (max 10MB).');
+      processingInProgress.current = false;
       return;
     }
 
@@ -844,10 +876,12 @@ function WellnessBuddyApp() {
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
+          processingInProgress.current = false; // 🔒 Release lock on modal open
           return;
         }
         
         setLoading(false);
+        processingInProgress.current = false; // 🔒 Release lock after weight processing
         return;
       }
       
@@ -908,6 +942,7 @@ function WellnessBuddyApp() {
       console.error('❌ Image processing error:', err);
     } finally {
       setLoading(false);
+      processingInProgress.current = false; // 🔒 Release the processing lock
     }
   };
 
@@ -1443,8 +1478,8 @@ function WellnessBuddyApp() {
         {imageType === 'food' && nutritionData && <NutritionCard data={nutritionData} />}
         
         {imageType === 'weight' && weightResult && (
-          <div className="bg-white rounded-xl shadow-lg border-2 border-purple-200 p-6">
-            <h2 className="text-xl font-bold text-purple-700 mb-4 flex items-center">
+          <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+              <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
               <span className="mr-2">⚖️</span>
               Weight Analysis
             </h2>
@@ -1458,39 +1493,39 @@ function WellnessBuddyApp() {
                 </p>
               </div>
               
-              <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+              {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
                 <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
                 <p className="text-3xl font-bold text-blue-700">
                   {weightResult.bmi || '--'}
                 </p>
-              </div>
+              </div> */}
               
-              <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+              {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
                 <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
                 <p className="text-3xl font-bold text-green-700">
                   {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
                 </p>
-              </div>
+              </div> */}
               
-              <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
+              {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
                 <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
                 <p className="text-3xl font-bold text-orange-700">
                   {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
                 </p>
-              </div>
+              </div> */}
               
-              <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
+              {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
                 <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
                 <p className="text-3xl font-bold text-red-700">
                   {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
                 </p>
-              </div>
+              </div> */}
             </div>
             
-            <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
+            {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
               <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
               <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
-            </div>
+            </div> */}
           </div>
         )}
 

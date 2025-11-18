@@ -164,6 +164,12 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
       throw new Error('Server returned an unexpected response format');
     }
     
+    // 🔒 Check if this was a duplicate entry
+    if (data.isDuplicate) {
+      console.log('ℹ️ Duplicate entry prevented:', data.message);
+      // Still return success but with isDuplicate flag
+    }
+    
     if (!res.ok) throw new Error(data.message || 'Failed to save analysis');
     return data;
   } catch (err) {
