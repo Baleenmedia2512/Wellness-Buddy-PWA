@@ -1484,14 +1484,17 @@ function WellnessBuddyApp() {
               Weight Analysis
             </h2>
             
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100">
-                <p className="text-sm text-purple-600 font-medium mb-1">Weight</p>
-                <p className="text-3xl font-bold text-purple-700">
-                  {weightResult.weightValue}
-                  <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
-                </p>
-              </div>
+            {/* <div className="grid grid-cols-2 gap-4"> */}
+            <div className="">
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
+  <p className="text-sm text-purple-600 font-medium mb-1">Weight</p>
+
+  <p className="text-3xl font-bold text-purple-700">
+    {weightResult.weightValue}
+    <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
+  </p>
+
+</div>
               
               {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
                 <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>

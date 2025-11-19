@@ -245,7 +245,8 @@ const SuccessSavePopup = ({
           <h3 className="font-medium text-gray-900">Weight Details</h3>
         </div>
 
-        <div className="grid grid-cols-2 gap-px bg-gray-100">
+        {/* <div className="grid grid-cols-2 gap-px bg-gray-100"> */}
+        <div className=" bg-gray-100">
           <div className="bg-white p-3 text-center">
             <p className="text-xs text-green-500 mb-1">Weight</p>
             <p className="font-bold text-lg">{weightData.weightValue} {weightData.unit}</p>
