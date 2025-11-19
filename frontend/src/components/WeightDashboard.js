@@ -1,5 +1,5 @@
 // src/components/WeightDashboard.js
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
 import { 
   Scale,
   RotateCcw,
@@ -7,9 +7,11 @@ import {
   TrendingUp,
   TrendingDown
 } from 'lucide-react';
-// Camera removed - images are uploaded from main page
-import WeightCard from './WeightCard';
-import WeightCardModal from './WeightCardModal';
+import { getUserId } from '../services/getUserId';
+
+// ✅ LAZY LOADING: Load heavy components only when needed
+const WeightCard = lazy(() => import('./WeightCard'));
+const WeightCardModal = lazy(() => import('./WeightCardModal'));
 
 const UNDO_SECONDS = 10; // undo countdown duration
 
@@ -144,14 +146,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
-   * Get current month name
-   */
-  const getCurrentMonth = () => {
-    const now = new Date();
-    return now.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
-  };
-
-  /**
    * Calculate month statistics
    */
   const getMonthStats = (entries) => {
@@ -198,11 +192,19 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       setLoading(true);
       setError(null);
 
-      const userId = user.email || user.id || user.uid;
+      // Get the actual database UserId from team_table (same as save function)
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
       
        const params = new URLSearchParams({
         userId,
-        limit: '10',
+        limit: '30',
         offset: '0'
       });
       
@@ -308,11 +310,17 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
     // Now perform the actual backend deletion
     try {
+      // Get the actual database UserId from team_table
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
       const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
-          userId: user.email || user.id || user.uid,
+          userId,
           entryId: originalEntry.ID
         })
       });
@@ -379,28 +387,28 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             <div className="mb-6">
               {/*  bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 ||  bg-gradient-to-br from-emerald-400 to-teal-600 rounded-2xl */}
               <div className="w-full max-w-md mx-auto 
-                bg-gradient-to-br from-purple-50 to-white 
+                bg-gradient-to-br  to-white 
                 backdrop-blur-xl rounded-2xl 
-                border border-purple-100 shadow-lg p-6 text-black">
+                border 100 shadow-lg p-6 text-black">
 
   {/* Month and Entries */}
-  <div className="flex items-center justify-between mb-5">
+  {/* <div className="flex items-center justify-between mb-5">
     <div className="flex items-center gap-2">
       <Calendar className="w-4 h-4 text-purple-600" />
-      <span className="text-sm font-semibold text-purple-700">
+      <span className="text-sm font-semibold text-purple-600">
         {monthlyGroups.length > 0 ? monthlyGroups[0].monthName : getCurrentMonth()}
       </span>
     </div>
     <span className="text-sm text-gray-600">
       {currentMonthStats.count} {currentMonthStats.count === 1 ? 'entry' : 'entries'}
     </span>
-  </div>
+  </div> */}
 
   {/* Current Weight */}
   <div className="flex items-center justify-between mb-5">
     <div className="flex-1">
       <p className="text-sm text-gray-500">Current Weight</p>
-      <p className="text-4xl font-bold mt-1 text-purple-700">
+      <p className="text-4xl font-bold mt-1 text-black">
         {latestWeight.Weight}
         <span className="text-lg font-normal ml-1 text-gray-600">kg</span>
       </p>
@@ -415,8 +423,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       </p>
     </div>
 
-    <div className="p-3 bg-purple-100 rounded-xl shadow-inner">
-      <Scale className="w-10 h-10 text-purple-700" />
+    <div className="p-3 bg-white rounded-xl shadow-md">
+      <Scale className="w-10 h-10 text-green-700" />
     </div>
   </div>
 
@@ -424,7 +432,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   <div className="grid grid-cols-3 gap-3 mt-4">
 
     {/* Lowest */}
-    <div className="bg-white rounded-xl p-3 text-center shadow-md border border-purple-100">
+    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
       <p className="text-xs text-gray-600 mb-1">Lowest</p>
       <p className="text-xl font-bold text-gray-900">{currentMonthStats.minWeight}</p>
       <p className="text-xs text-gray-500">kg</p>
@@ -432,7 +440,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     </div>
 
     {/* Highest */}
-    <div className="bg-white rounded-xl p-3 text-center shadow-md border border-purple-100">
+    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
       <p className="text-xs text-gray-600 mb-1">Highest</p>
       <p className="text-xl font-bold text-gray-900">{currentMonthStats.maxWeight}</p>
       <p className="text-xs text-gray-500">kg</p>
@@ -440,7 +448,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     </div>
 
     {/* Average */}
-    <div className="bg-white rounded-xl p-3 text-center shadow-md border border-purple-100">
+    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
       <p className="text-xs text-gray-600 mb-1">Average</p>
       <p className="text-xl font-bold text-gray-900">{currentMonthStats.avgWeight}</p>
       <p className="text-xs text-gray-500">kg</p>
@@ -486,6 +494,18 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     </div>
                   </div> */}
 
+{/* Month and Entries */}
+  <div className="flex items-center justify-between mb-5">
+    <div className="flex items-center gap-2">
+      <Calendar className="w-4 h-4 text-gray-600" />
+      <span className="text-sm font-semibold text-gray-600">
+        {monthGroup.monthName}
+      </span>
+    </div>
+    {/* <span className="text-sm text-gray-600">
+      {currentMonthStats.count} {currentMonthStats.count === 1 ? 'entry' : 'entries'}
+    </span> */}
+  </div>
                   {/* Month Entries */}
                   <div className="space-y-3">
                     {/* First pass: collect placeholders to display */}
@@ -541,14 +561,26 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             });
                           
                           return (
-                            <WeightCard
-                              key={entry.ID}
-                              data={entry}
-                              previousWeight={prevEntry ? prevEntry.Weight : null}
-                              onDelete={handleDeleteEntry}
-                              onView={handleViewEntry}
-                              index={index}
-                            />
+                            <Suspense key={entry.ID} fallback={
+                              <div className="bg-white rounded-xl p-4 animate-pulse" style={{ height: 84 }}>
+                                <div className="flex items-center gap-4">
+                                  <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+                                  <div className="flex-1 space-y-2">
+                                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                                  </div>
+                                  <div className="h-6 bg-gray-200 rounded w-12"></div>
+                                </div>
+                              </div>
+                            }>
+                              <WeightCard
+                                data={entry}
+                                previousWeight={prevEntry ? prevEntry.Weight : null}
+                                onDelete={handleDeleteEntry}
+                                onView={handleViewEntry}
+                                index={index}
+                              />
+                            </Suspense>
                           );
                         });
                     })()}
@@ -579,6 +611,48 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         
         {/* Weight Card Modal */}
         {showModal && selectedEntry && (
+          <Suspense fallback={
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl p-6 shadow-xl">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-300 border-t-emerald-600"></div>
+              </div>
+            </div>
+          }>
+            <WeightCardModal
+              data={selectedEntry}
+              onClose={() => {
+                setShowModal(false);
+                setSelectedEntry(null);
+              }}
+              onDelete={handleDeleteEntry}
+              onEdit={() => {
+                // TODO: Implement edit functionality
+                console.log('Edit not implemented yet');
+              }}
+              previousWeight={(() => {
+                const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
+                return index > 0 ? weightHistory[index + 1].Weight : null;
+              })()}
+            />
+          </Suspense>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <>
+      {viewMode === 'overview' && renderOverview()}
+      
+      {/* Weight Card Modal */}
+      {showModal && selectedEntry && (
+        <Suspense fallback={
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-2xl p-6 shadow-xl">
+              <div className="animate-spin rounded-full h-12 w-12 border-4 border-emerald-300 border-t-emerald-600"></div>
+            </div>
+          </div>
+        }>
           <WeightCardModal
             data={selectedEntry}
             onClose={() => {
@@ -595,33 +669,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               return index > 0 ? weightHistory[index + 1].Weight : null;
             })()}
           />
-        )}
-      </div>
-    );
-  }
-
-  return (
-    <>
-      {viewMode === 'overview' && renderOverview()}
-      
-      {/* Weight Card Modal */}
-      {showModal && selectedEntry && (
-        <WeightCardModal
-          data={selectedEntry}
-          onClose={() => {
-            setShowModal(false);
-            setSelectedEntry(null);
-          }}
-          onDelete={handleDeleteEntry}
-          onEdit={() => {
-            // TODO: Implement edit functionality
-            console.log('Edit not implemented yet');
-          }}
-          previousWeight={(() => {
-            const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
-            return index > 0 ? weightHistory[index + 1].Weight : null;
-          })()}
-        />
+        </Suspense>
       )}
     </>
   );

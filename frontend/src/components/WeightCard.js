@@ -191,7 +191,7 @@ const WeightCard = React.memo(({
         onClick={() => {
           if (!dragging && Math.abs(dx) < 5 && !leaving) onView(data);
         }}
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-emerald-200/80 rounded-xl select-none cursor-pointer overflow-hidden
+        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-white rounded-xl select-none cursor-pointer overflow-hidden
           ${leaving ? 'pointer-events-none' : ''}`}
         style={{
           transform: `translateX(${dx}px) scale(${scale})`,
@@ -199,8 +199,8 @@ const WeightCard = React.memo(({
           minHeight: 76,
           willChange: 'transform',
           boxShadow: `
-            0 10px 30px -10px rgba(0,0,0,${progress * 0.15 + 0.05}),
-            inset 0 0 0 1px rgba(0,0,0,0.05)
+            0 2px 8px -2px rgba(0,0,0,${progress * 0.1 + 0.06}),
+            inset 0 0 0 1px rgba(255,255,255,0.2)
           `,
         }}
       >
@@ -216,7 +216,7 @@ const WeightCard = React.memo(({
 
         <div className="p-4 flex items-center gap-4">
           {/* Thumbnail */}
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border-2 border-emerald-200">
+          <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border-2 border-white/60">
             {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' ? (
               <img
                 src={data.WeightImageBase64.startsWith('data:image') ? data.WeightImageBase64 : `data:image/jpeg;base64,${data.WeightImageBase64}`}

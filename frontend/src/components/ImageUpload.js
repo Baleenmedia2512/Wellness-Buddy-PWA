@@ -140,7 +140,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
         <div className="text-center">
           <div className="border-2 border-dashed border-green-300 rounded-lg p-8 hover:border-green-400 transition-colors duration-200">
             <div className="text-6xl mb-4">🍎</div>
-            <h3 className="text-lg font-semibold text-green-700 mb-2">Upload Food Photo</h3>
+            <h3 className="text-lg font-semibold text-green-700 mb-2">Upload Food Or Weight Photo</h3>
             <p className="text-gray-600 mb-4 text-sm">Take a photo with camera or select from gallery</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -9,15 +9,6 @@ export const config = {
   },
 };
 
-/**
- * API Handler: Save Nutrition Analysis
- * 
- * DUPLICATE PREVENTION:
- * - Checks for duplicate entries within a 5-second window
- * - Compares image base64 prefix (first 1000 chars) for exact matches
- * - Returns success with isDuplicate flag if duplicate detected
- * - Prevents same image from being saved multiple times simultaneously
- */
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -47,52 +38,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 🔒 DUPLICATE PREVENTION: Check if same image was recently saved (within 5 seconds)
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
-
-    // Check for duplicate based on userId and recent timestamp (within 5 seconds)
-    const [recentEntries] = await connection.execute(
-      `SELECT ID, CreatedAt, ImageBase64, TotalCalories 
-       FROM food_nutrition_data_table 
-       WHERE UserID = ? 
-       AND CreatedAt >= DATE_SUB(NOW(), INTERVAL 5 SECOND)
-       AND IsDeleted = 0
-       ORDER BY CreatedAt DESC
-       LIMIT 5`,
-      [userId]
-    );
-
-    // If there are recent entries, check if this is a duplicate
-    if (recentEntries.length > 0 && ImageBase64) {
-      for (const entry of recentEntries) {
-        // Simple duplicate check: compare image base64 (first 1000 chars for performance)
-        if (entry.ImageBase64) {
-          const existingImagePrefix = entry.ImageBase64.substring(0, 1000);
-          const newImagePrefix = ImageBase64.substring(0, 1000);
-          
-          if (existingImagePrefix === newImagePrefix) {
-            console.log('⚠️ Duplicate image detected (same image within 5 seconds), skipping save');
-            await connection.end();
-            return res.status(200).json({
-              success: true,
-              id: entry.ID,
-              isDuplicate: true,
-              message: 'This image was already saved recently',
-              data: {
-                userId,
-                timestamp: new Date().toISOString()
-              }
-            });
-          }
-        }
-      }
-    }
-
     // Parse analysis result to extract nutrition values
     let totalCalories = null, totalProtein = null, totalCarbs = null, totalFat = null, totalFiber = null;
     let confidenceScore = null;
@@ -154,7 +99,14 @@ export default async function handler(req, res) {
       console.warn('Could not parse nutrition data:', parseError);
     }
 
-    // Connection already created above for duplicate check
+    // Database connection
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME
+    });
+
 
     // Insert into the new table structure, now including ImageBase64
     const insertQuery = `

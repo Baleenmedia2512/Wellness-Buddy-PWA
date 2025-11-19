@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { executeWithRetry, getConnection } from '../../lib/db';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -28,7 +29,10 @@ export default async function handler(req, res) {
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
       password: process.env.DB_PASS,
-      database: process.env.DB_NAME
+      database: process.env.DB_NAME,
+      connectTimeout: 20000, // 20 seconds timeout for remote DB
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000
     });
 
     console.log('📊 [lookup-user-id] Database connection established');

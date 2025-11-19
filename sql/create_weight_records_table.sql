@@ -3,7 +3,7 @@
 
 CREATE TABLE IF NOT EXISTS weight_records_table (
   ID INT AUTO_INCREMENT PRIMARY KEY,
-  UserId VARCHAR(255) NOT NULL COMMENT 'User email or unique identifier',
+  UserId BIGINT NOT NULL COMMENT 'unique identifier',
   Weight DECIMAL(5,2) NOT NULL COMMENT 'Weight in kg (e.g., 72.50)',
   Bmi DECIMAL(4,2) DEFAULT NULL COMMENT 'Body Mass Index',
   BodyFat DECIMAL(4,2) DEFAULT NULL COMMENT 'Body Fat Percentage',

@@ -9,16 +9,6 @@ export const config = {
   },
 };
 
-/**
- * API Handler: Save Weight Entry
- * 
- * DUPLICATE PREVENTION:
- * - Checks for duplicate entries within a 5-second window
- * - Compares weight values (within 0.5 kg/lbs difference)
- * - Compares image base64 prefix (first 1000 chars) if images present
- * - Returns success with isDuplicate flag if duplicate detected
- * - Prevents same weight measurement from being saved multiple times
- */
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
@@ -80,68 +70,6 @@ export default async function handler(req, res) {
       password: process.env.DB_PASS,
       database: process.env.DB_NAME
     });
-
-    // 🔒 DUPLICATE PREVENTION: Check if same weight was recently saved (within 5 seconds)
-    const [recentEntries] = await connection.execute(
-      `SELECT ID, CreatedAt, WeightImageBase64, Weight 
-       FROM weight_records_table 
-       WHERE UserId = ? 
-       AND CreatedAt >= DATE_SUB(NOW(), INTERVAL 5 SECOND)
-       AND IsDeleted = 0
-       ORDER BY CreatedAt DESC
-       LIMIT 5`,
-      [userId]
-    );
-
-    // If there are recent entries, check if this is a duplicate
-    if (recentEntries.length > 0) {
-      for (const entry of recentEntries) {
-        // Check if weight values are very close (within 0.5 kg/lbs)
-        const weightDiff = Math.abs(parseFloat(entry.Weight) - weight);
-        
-        // If weight is nearly identical within 5 seconds, likely a duplicate
-        if (weightDiff < 0.5) {
-          // Also check image similarity if both have images
-          if (entry.WeightImageBase64 && imageBase64ToSave) {
-            const existingImagePrefix = entry.WeightImageBase64.substring(0, 1000);
-            const newImagePrefix = imageBase64ToSave.substring(0, 1000);
-            
-            if (existingImagePrefix === newImagePrefix) {
-              console.log('⚠️ Duplicate weight entry detected (same weight and image within 5 seconds), skipping save');
-              await connection.end();
-              return res.status(200).json({
-                success: true,
-                id: entry.ID,
-                isDuplicate: true,
-                message: 'This weight entry was already saved recently',
-                data: {
-                  userId,
-                  weightValue: weight,
-                  unit,
-                  timestamp: new Date().toISOString()
-                }
-              });
-            }
-          } else if (!entry.WeightImageBase64 && !imageBase64ToSave) {
-            // Both have no images, just weight values are close - likely duplicate
-            console.log('⚠️ Duplicate weight entry detected (same weight within 5 seconds), skipping save');
-            await connection.end();
-            return res.status(200).json({
-              success: true,
-              id: entry.ID,
-              isDuplicate: true,
-              message: 'This weight entry was already saved recently',
-              data: {
-                userId,
-                weightValue: weight,
-                unit,
-                timestamp: new Date().toISOString()
-              }
-            });
-          }
-        }
-      }
-    }
 
     // Insert weight entry into database
     const insertQuery = `

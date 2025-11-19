@@ -65,10 +65,6 @@ function WellnessBuddyApp() {
   const [imageType, setImageType] = useState(null); // 'food' | 'weight'
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const fileInputRef = useRef(null);
-  
-  // 🔒 Duplicate prevention: Track recently processed images
-  const recentlyProcessedImages = useRef(new Set());
-  const processingInProgress = useRef(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -255,6 +251,7 @@ function WellnessBuddyApp() {
       setShowInactiveModal(false);
       setShowUserNotFoundModal(false);
       setIsUserActive(true);
+      
       
       return true;
     } catch (error) {
@@ -470,6 +467,12 @@ function WellnessBuddyApp() {
       try {
         const resultUser = await handleRedirectResult();
         if (resultUser) {
+          // Get the database UserId for the user
+          const dbUserId = await getUserId(resultUser);
+          if (dbUserId) {
+            resultUser.id = dbUserId;
+            console.log('✅ [Redirect] Attached database UserId to user object:', resultUser.id);
+          }
           setUser(resultUser);
           setAuthLoading(false);
         }
@@ -665,10 +668,14 @@ function WellnessBuddyApp() {
    */
   const saveWeightEntry = async (weightData, imageBase64) => {
     try {
-      const userId = user?.id ||user?.email || user?.uid;
+      // Get the actual database UserId from team_table
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
       
       if (!userId) {
-        throw new Error('User not authenticated');
+        throw new Error('User not authenticated or not found in database');
       }
 
       const payload = {
@@ -764,44 +771,16 @@ function WellnessBuddyApp() {
       return;
     }
 
-    // 🔒 DUPLICATE PREVENTION: Check if already processing
-    if (processingInProgress.current) {
-      console.log('⚠️ Image processing already in progress, ignoring duplicate request');
-      return;
-    }
-
-    // 🔒 Generate a unique identifier for this image based on name, size, and lastModified
-    const imageId = `${file.name}_${file.size}_${file.lastModified}`;
-    
-    // Check if this exact image was processed in the last 10 seconds
-    if (recentlyProcessedImages.current.has(imageId)) {
-      console.log('⚠️ This image was already processed recently, skipping duplicate');
-      setError('⚠️ This image was already uploaded. Please wait a moment before trying again.');
-      setTimeout(() => setError(null), 3000);
-      return;
-    }
-
-    // Mark as processing
-    processingInProgress.current = true;
-    recentlyProcessedImages.current.add(imageId);
-    
-    // Auto-cleanup after 10 seconds
-    setTimeout(() => {
-      recentlyProcessedImages.current.delete(imageId);
-    }, 10000);
-
     // Re-check user status in real-time before analysis
     const isActive = await checkUserStatus(user);
     if (!isActive) {
       setError('Your account is inactive. Please contact support to reactivate.');
-      processingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError('📸 Image file is too large. Please choose a smaller image (max 10MB).');
-      processingInProgress.current = false;
       return;
     }
 
@@ -877,12 +856,10 @@ function WellnessBuddyApp() {
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
-          processingInProgress.current = false; // 🔒 Release lock on modal open
           return;
         }
         
         setLoading(false);
-        processingInProgress.current = false; // 🔒 Release lock after weight processing
         return;
       }
       
@@ -943,7 +920,6 @@ function WellnessBuddyApp() {
       console.error('❌ Image processing error:', err);
     } finally {
       setLoading(false);
-      processingInProgress.current = false; // 🔒 Release the processing lock
     }
   };
 
@@ -1582,9 +1558,9 @@ function WellnessBuddyApp() {
             <div>
               <h4 className="font-medium text-green-600 mb-1">📸 Image Analysis:</h4>
               <ol className="text-sm text-gray-600 space-y-1 ml-4">
-                <li>1. Take a clear photo of your food</li>
-                <li>2. Make sure the food is well-lit and visible</li>
-                <li>3. View detailed nutrition breakdown for detected foods</li>
+                <li>1. Take a clear photo of your food or weight</li>
+                <li>2. Make sure the food or weight are well-lit and visible</li>
+                <li>3. View detailed nutrition breakdown for detected foods or weights</li>
               </ol>
             </div>
           </div>
@@ -1592,10 +1568,10 @@ function WellnessBuddyApp() {
           <div className="mt-3 pt-3 border-t border-gray-200">
             <h4 className="font-semibold text-green-700 mb-2">💡 Tips for better results:</h4>
             <ul className="text-xs text-gray-600 space-y-1">
-              <li>• Take photos in good lighting conditions</li>
-              <li>• Ensure food items are clearly visible</li>
-              <li>• Avoid cluttered backgrounds</li>
-              <li>• For text queries, be specific about preparation methods</li>
+              <li>• Take photos in good lighting conditions </li>
+              <li>• Ensure food items or weights are clearly visible</li>
+              <li>• Avoid cluttered backgrounds </li>
+              <li>• For text queries, be specific about preparation methods </li>
             </ul>
           </div>
         </div>
