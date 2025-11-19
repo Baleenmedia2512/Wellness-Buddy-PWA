@@ -665,7 +665,7 @@ function WellnessBuddyApp() {
    */
   const saveWeightEntry = async (weightData, imageBase64) => {
     try {
-      const userId = user?.email || user?.id || user?.uid;
+      const userId = user?.id ||user?.email || user?.uid;
       
       if (!userId) {
         throw new Error('User not authenticated');
@@ -689,6 +689,7 @@ function WellnessBuddyApp() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      
 
 
       const data = await response.json();
