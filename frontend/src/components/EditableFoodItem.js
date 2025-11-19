@@ -15,6 +15,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState(null);
   const [selectedFood, setSelectedFood] = useState(null);
   
   // Serving size state
@@ -51,29 +52,46 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
       return;
     }
     
+    // Clear previous errors when user types
+    setSearchError(null);
+    
     // Check cache first (synchronous, instant)
     const cached = geminiService.getCachedSearch(trimmed);
     if (cached) {
       console.log('✅ [EditableFoodItem] Using cached results for:', trimmed);
       setSearchResults(cached.results || []);
       setIsSearching(false);
+      setSearchError(null);
       return;
     }
     
     // Set loading state
     setIsSearching(true);
+    setSearchError(null);
     
     // Debounce the API call - only execute after 800ms of no typing
     searchTimeoutRef.current = setTimeout(async () => {
-      console.log('🔍 [EditableFoodItem] Prefetching search for:', trimmed);
+      console.log('🔍 [EditableFoodItem] Searching for:', trimmed);
       
       try {
         const results = await geminiService.searchFood(trimmed);
         setSearchResults(results.results || []);
-        console.log('✅ [EditableFoodItem] Prefetch complete, results cached');
+        setSearchError(null);
+        console.log('✅ [EditableFoodItem] Search complete, results cached');
       } catch (error) {
-        console.error('❌ [EditableFoodItem] Prefetch failed:', error);
+        console.error('❌ [EditableFoodItem] Search failed:', error);
+        
+        // Preserve existing results, show user-friendly error
         setSearchResults([]);
+        
+        // Determine error type and set appropriate message
+        if (error.message?.includes('429') || error.message?.includes('Resource exhausted')) {
+          setSearchError('Search limit reached. Please try again in a moment.');
+        } else if (error.message?.includes('network') || error.message?.includes('fetch')) {
+          setSearchError('Network error. Please check your connection.');
+        } else {
+          setSearchError('Search failed. You can still edit the current food.');
+        }
       } finally {
         setIsSearching(false);
         searchTimeoutRef.current = null;
@@ -216,6 +234,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     setSearchQuery(value);
     setSelectedFood(null);
     setServingOptions([]);
+    setSearchError(null); // Clear errors when typing
     
     // Trigger debounced search
     debouncedSearch(value);
@@ -369,6 +388,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
+    setSearchError(null);
     setSelectedFood(null);
     setServingOptions([]);
     setCustomGrams(foodItem.serving?.grams || foodItem.grams || '');
@@ -538,6 +558,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
               onClick={() => {
                 setSearchQuery('');
                 setSearchResults([]);
+                setSearchError(null);
               }}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-0.5"
             >
@@ -547,11 +568,20 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
         </div>
         
         {/* Search Results Count */}
-        {searchResults.length > 0 && !isSearching && searchQuery !== foodItem.name && (
+        {searchResults.length > 0 && !isSearching && !searchError && searchQuery !== foodItem.name && (
           <div className="mt-1.5 px-1">
             <div className="inline-flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
               <Search className="w-3 h-3" />
               <span>{searchResults.length} alternative{searchResults.length > 1 ? 's' : ''} found</span>
+            </div>
+          </div>
+        )}
+        
+        {/* Search Error Message */}
+        {searchError && !isSearching && (
+          <div className="mt-1.5 px-1">
+            <div className="inline-flex items-center gap-1.5 text-xs text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+              <span>{searchError}</span>
             </div>
           </div>
         )}
