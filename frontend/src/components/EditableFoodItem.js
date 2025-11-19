@@ -89,6 +89,42 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     };
   }, []);
 
+  // Generate dynamic serving options based on detected quantity
+  const generateServingOptions = (baseServing, per100g, itemName, portionDesc) => {
+    const options = [];
+    
+    // Extract quantity from portion description (e.g., "2 idlis", "3 chapatis", "1 dosa")
+    const quantityMatch = portionDesc.match(/(\d+)\s*([a-zA-Z]+)/);
+    const detectedQuantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
+    const itemUnit = quantityMatch ? quantityMatch[2] : itemName.toLowerCase();
+    
+    // Generate options from 1x to 2x the detected quantity
+    const maxMultiplier = detectedQuantity * 2;
+    
+    for (let qty = 1; qty <= maxMultiplier; qty++) {
+      const multiplier = qty / detectedQuantity;
+      const gramsForQty = Math.round(baseServing.grams * multiplier);
+      const nutritionMultiplier = gramsForQty / 100;
+      
+      options.push({
+        description: qty === detectedQuantity 
+          ? `${qty} ${itemUnit} (original)` 
+          : `${qty} ${itemUnit}`,
+        grams: gramsForQty,
+        nutrition: {
+          calories: Math.round(per100g.calories * nutritionMultiplier),
+          protein: Math.round(per100g.protein * nutritionMultiplier * 10) / 10,
+          carbs: Math.round(per100g.carbs * nutritionMultiplier * 10) / 10,
+          fat: Math.round(per100g.fat * nutritionMultiplier * 10) / 10,
+          fiber: Math.round((per100g.fiber || 0) * nutritionMultiplier * 10) / 10
+        },
+        isOriginal: qty === detectedQuantity
+      });
+    }
+    
+    return options;
+  };
+
   // Calculate nutrition based on grams and per100g values
   const calculateNutrition = (per100g, grams) => {
     if (!per100g || !grams) return null;
@@ -165,17 +201,31 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setCustomGrams(value);
       
-      // Check if grams match any serving option
-      const matchingServing = servingOptions.find(
-        opt => Math.abs(opt.grams - parseFloat(value)) < 1
-      );
+      const gramsValue = parseFloat(value);
       
-      if (matchingServing) {
-        console.log('[EditableFoodItem] Grams matched serving:', matchingServing.description);
-        setCurrentServing(matchingServing);
-      } else {
-        // Custom grams - clear serving selection
-        setCurrentServing(null);
+      if (!isNaN(gramsValue) && servingOptions.length > 0) {
+        // Find the maximum grams in serving options
+        const maxServing = servingOptions.reduce((max, opt) => 
+          opt.grams > max.grams ? opt : max
+        , servingOptions[0]);
+        
+        // Check if grams match any serving option (within 1g tolerance)
+        const matchingServing = servingOptions.find(
+          opt => Math.abs(opt.grams - gramsValue) < 1
+        );
+        
+        if (matchingServing) {
+          console.log('[EditableFoodItem] Grams matched serving:', matchingServing.description);
+          setCurrentServing(matchingServing);
+        } else if (gramsValue >= maxServing.grams) {
+          // If typed grams exceeds max serving, auto-select max serving
+          console.log('[EditableFoodItem] Grams exceeds max, selecting:', maxServing.description);
+          setCurrentServing(maxServing);
+          setCustomGrams(maxServing.grams.toString());
+        } else {
+          // Custom grams within range - clear serving selection
+          setCurrentServing(null);
+        }
       }
     }
   };
@@ -266,35 +316,52 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
       fiber: Math.round(currentFiber * 100 / currentGrams * 10) / 10
     };
     
+    const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`;
+    
+    // Create base serving
+    const baseServing = {
+      description: portionDesc,
+      grams: currentGrams,
+      nutrition: {
+        calories: currentCalories,
+        protein: currentProtein,
+        carbs: currentCarbs,
+        fat: currentFat,
+        fiber: currentFiber
+      }
+    };
+    
+    // Generate dynamic serving options based on detected quantity
+    const dynamicOptions = generateServingOptions(
+      baseServing, 
+      per100gValues, 
+      foodItem.name,
+      portionDesc
+    );
+    
     // Create a mock selected food from current item for editing
     const mockFood = {
       name: foodItem.name,
       category: foodItem.category || 'Food',
       per100g: per100gValues,
-      defaultServing: {
-        description: foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`,
-        grams: currentGrams,
-        nutrition: {
-          calories: currentCalories,
-          protein: currentProtein,
-          carbs: currentCarbs,
-          fat: currentFat,
-          fiber: currentFiber
-        }
-      },
-      servingOptions: []
+      defaultServing: baseServing,
+      servingOptions: dynamicOptions.slice(1) // Exclude first option as it's the default
     };
     
     console.log('[EditableFoodItem] Mock food created:', { 
       name: mockFood.name, 
       currentGrams, 
       per100g: mockFood.per100g,
+      servingOptionsCount: dynamicOptions.length,
       currentNutrition: { currentCalories, currentProtein, currentCarbs, currentFat }
     });
     
     setSelectedFood(mockFood);
-    setServingOptions([mockFood.defaultServing]);
-    setCurrentServing(mockFood.defaultServing);
+    setServingOptions(dynamicOptions); // Use all dynamic options including the original
+    
+    // Find and set the original serving as current
+    const originalServing = dynamicOptions.find(opt => opt.isOriginal) || dynamicOptions[0];
+    setCurrentServing(originalServing);
     
     originalFoodRef.current = { ...foodItem };
   };
