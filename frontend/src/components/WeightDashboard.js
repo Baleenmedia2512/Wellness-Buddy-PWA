@@ -200,16 +200,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
       const userId = user.email || user.id || user.uid;
       
-      // Use GET request with query parameters (Vercel-friendly)
-      const params = new URLSearchParams({
-        userId,
-        limit: '10',
-        offset: '0'
-      });
-      
-      const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+      const response = await fetch(`${apiBaseUrl}/api/get-weight-history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, limit: 10, offset: 0 })
       });
 
       const data = await response.json();
