@@ -19,6 +19,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   
   // Serving size state
   const [currentServing, setCurrentServing] = useState(null);
+  const [currentServingIndex, setCurrentServingIndex] = useState(0);
   const [customGrams, setCustomGrams] = useState('');
   const [servingOptions, setServingOptions] = useState([]);
   
@@ -93,33 +94,102 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   const generateServingOptions = (baseServing, per100g, itemName, portionDesc) => {
     const options = [];
     
-    // Extract quantity from portion description (e.g., "2 idlis", "3 chapatis", "1 dosa")
-    const quantityMatch = portionDesc.match(/(\d+)\s*([a-zA-Z]+)/);
-    const detectedQuantity = quantityMatch ? parseInt(quantityMatch[1]) : 1;
-    const itemUnit = quantityMatch ? quantityMatch[2] : itemName.toLowerCase();
+    // Extract quantity from portion description - handles fractions, whole numbers, and numbers-only
+    // Examples: "2 idlis", "1/2 cup", "1 1/2 bowls", "3 chapatis", "3"
+    let detectedQuantity = 1;
+    let itemUnit = itemName.toLowerCase();
     
-    // Generate options from 1x to 2x the detected quantity
+    // Try to match fraction pattern (e.g., "1/2 cup", "1 1/2 bowls")
+    const fractionMatch = portionDesc.match(/(\d+)?\s*(\d+)\/(\d+)\s*([a-zA-Z]+)/);
+    if (fractionMatch) {
+      const whole = fractionMatch[1] ? parseInt(fractionMatch[1]) : 0;
+      const numerator = parseInt(fractionMatch[2]);
+      const denominator = parseInt(fractionMatch[3]);
+      detectedQuantity = whole + (numerator / denominator);
+      itemUnit = fractionMatch[4];
+    } else {
+      // Try to match whole number with unit (e.g., "2 idlis", "3 chapatis")
+      const wholeMatch = portionDesc.match(/(\d+)\s*([a-zA-Z]+)/);
+      if (wholeMatch) {
+        detectedQuantity = parseInt(wholeMatch[1]);
+        itemUnit = wholeMatch[2];
+      } else {
+        // Try to match number-only (e.g., "3")
+        const numberOnlyMatch = portionDesc.match(/^\d+$/);
+        if (numberOnlyMatch) {
+          detectedQuantity = parseInt(portionDesc);
+          // itemUnit already set to itemName.toLowerCase()
+        }
+      }
+    }
+    
+    // For fractions, generate options in fraction increments
+    // For whole numbers, generate integer increments
+    const isFraction = detectedQuantity < 1 || detectedQuantity % 1 !== 0;
     const maxMultiplier = detectedQuantity * 2;
     
-    for (let qty = 1; qty <= maxMultiplier; qty++) {
-      const multiplier = qty / detectedQuantity;
-      const gramsForQty = Math.round(baseServing.grams * multiplier);
-      const nutritionMultiplier = gramsForQty / 100;
-      
-      options.push({
-        description: qty === detectedQuantity 
-          ? `${qty} ${itemUnit} (original)` 
-          : `${qty} ${itemUnit}`,
-        grams: gramsForQty,
-        nutrition: {
-          calories: Math.round(per100g.calories * nutritionMultiplier),
-          protein: Math.round(per100g.protein * nutritionMultiplier * 10) / 10,
-          carbs: Math.round(per100g.carbs * nutritionMultiplier * 10) / 10,
-          fat: Math.round(per100g.fat * nutritionMultiplier * 10) / 10,
-          fiber: Math.round((per100g.fiber || 0) * nutritionMultiplier * 10) / 10
-        },
-        isOriginal: qty === detectedQuantity
-      });
+    if (isFraction) {
+      // Generate fractional options (e.g., 1/2, 1, 1 1/2, 2)
+      const increment = detectedQuantity; // Use the fraction as increment
+      for (let qty = increment; qty <= maxMultiplier; qty += increment) {
+        const multiplier = qty / detectedQuantity;
+        const gramsForQty = Math.round(baseServing.grams * multiplier);
+        const nutritionMultiplier = gramsForQty / 100;
+        
+        // Format fraction display
+        let qtyDisplay;
+        if (qty < 1) {
+          // Pure fraction like 1/2
+          const denom = Math.round(1 / qty);
+          qtyDisplay = `1/${denom}`;
+        } else if (qty % 1 === 0) {
+          // Whole number
+          qtyDisplay = qty.toString();
+        } else {
+          // Mixed fraction like 1 1/2
+          const whole = Math.floor(qty);
+          const frac = qty - whole;
+          const denom = Math.round(1 / frac);
+          qtyDisplay = `${whole} 1/${denom}`;
+        }
+        
+        options.push({
+          description: Math.abs(qty - detectedQuantity) < 0.01
+            ? `${qtyDisplay} ${itemUnit} (original)` 
+            : `${qtyDisplay} ${itemUnit}`,
+          grams: gramsForQty,
+          nutrition: {
+            calories: Math.round(per100g.calories * nutritionMultiplier),
+            protein: Math.ceil(per100g.protein * nutritionMultiplier),
+            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
+            fat: Math.ceil(per100g.fat * nutritionMultiplier),
+            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
+          },
+          isOriginal: Math.abs(qty - detectedQuantity) < 0.01
+        });
+      }
+    } else {
+      // Generate whole number options (e.g., 1, 2, 3, 4)
+      for (let qty = 1; qty <= maxMultiplier; qty++) {
+        const multiplier = qty / detectedQuantity;
+        const gramsForQty = Math.round(baseServing.grams * multiplier);
+        const nutritionMultiplier = gramsForQty / 100;
+        
+        options.push({
+          description: qty === detectedQuantity 
+            ? `${qty} ${itemUnit} (original)` 
+            : `${qty} ${itemUnit}`,
+          grams: gramsForQty,
+          nutrition: {
+            calories: Math.round(per100g.calories * nutritionMultiplier),
+            protein: Math.ceil(per100g.protein * nutritionMultiplier),
+            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
+            fat: Math.ceil(per100g.fat * nutritionMultiplier),
+            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
+          },
+          isOriginal: qty === detectedQuantity
+        });
+      }
     }
     
     return options;
@@ -133,10 +203,10 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     
     return {
       calories: Math.round(per100g.calories * multiplier),
-      protein: Math.round(per100g.protein * multiplier * 10) / 10,
-      carbs: Math.round(per100g.carbs * multiplier * 10) / 10,
-      fat: Math.round(per100g.fat * multiplier * 10) / 10,
-      fiber: Math.round((per100g.fiber || 0) * multiplier * 10) / 10
+      protein: Math.ceil(per100g.protein * multiplier),
+      carbs: Math.ceil(per100g.carbs * multiplier),
+      fat: Math.ceil(per100g.fat * multiplier),
+      fiber: Math.ceil((per100g.fiber || 0) * multiplier)
     };
   };
 
@@ -178,6 +248,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     
     // Set default serving
     setCurrentServing(options[0]);
+    setCurrentServingIndex(0);
     setCustomGrams(options[0].grams.toString());
   };
 
@@ -189,6 +260,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     if (selected) {
       console.log('[EditableFoodItem] Serving changed:', selected.description);
       setCurrentServing(selected);
+      setCurrentServingIndex(selectedIndex);
       setCustomGrams(selected.grams.toString());
     }
   };
@@ -205,26 +277,39 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
       
       if (!isNaN(gramsValue) && servingOptions.length > 0) {
         // Find the maximum grams in serving options
-        const maxServing = servingOptions.reduce((max, opt) => 
-          opt.grams > max.grams ? opt : max
-        , servingOptions[0]);
+        const maxServingIndex = servingOptions.reduce((maxIdx, opt, idx) => 
+          opt.grams > servingOptions[maxIdx].grams ? idx : maxIdx
+        , 0);
+        const maxServing = servingOptions[maxServingIndex];
         
-        // Check if grams match any serving option (within 1g tolerance)
-        const matchingServing = servingOptions.find(
+        // Check if grams exactly match any serving option (within 1g tolerance)
+        const exactMatchIndex = servingOptions.findIndex(
           opt => Math.abs(opt.grams - gramsValue) < 1
         );
         
-        if (matchingServing) {
-          console.log('[EditableFoodItem] Grams matched serving:', matchingServing.description);
-          setCurrentServing(matchingServing);
+        if (exactMatchIndex !== -1) {
+          // Exact match found
+          console.log('[EditableFoodItem] Grams matched serving:', servingOptions[exactMatchIndex].description);
+          setCurrentServing(servingOptions[exactMatchIndex]);
+          setCurrentServingIndex(exactMatchIndex);
         } else if (gramsValue >= maxServing.grams) {
-          // If typed grams exceeds max serving, auto-select max serving
+          // If typed grams exceeds max serving, auto-select max serving and cap the weight
           console.log('[EditableFoodItem] Grams exceeds max, selecting:', maxServing.description);
           setCurrentServing(maxServing);
+          setCurrentServingIndex(maxServingIndex);
           setCustomGrams(maxServing.grams.toString());
         } else {
-          // Custom grams within range - clear serving selection
-          setCurrentServing(null);
+          // Find closest serving option for display, but keep custom grams for calculation
+          const closestIndex = servingOptions.reduce((closestIdx, opt, idx) => {
+            const currentDiff = Math.abs(servingOptions[closestIdx].grams - gramsValue);
+            const newDiff = Math.abs(opt.grams - gramsValue);
+            return newDiff < currentDiff ? idx : closestIdx;
+          }, 0);
+          
+          console.log('[EditableFoodItem] Custom grams, showing closest serving:', servingOptions[closestIndex].description);
+          setCurrentServing(servingOptions[closestIndex]);
+          setCurrentServingIndex(closestIndex);
+          // Keep the custom typed value for calculations
         }
       }
     }
@@ -310,11 +395,12 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     // Calculate per100g values or use existing
     const per100gValues = foodItem.per100g || {
       calories: Math.round(currentCalories * 100 / currentGrams),
-      protein: Math.round(currentProtein * 100 / currentGrams * 10) / 10,
-      carbs: Math.round(currentCarbs * 100 / currentGrams * 10) / 10,
-      fat: Math.round(currentFat * 100 / currentGrams * 10) / 10,
-      fiber: Math.round(currentFiber * 100 / currentGrams * 10) / 10
+      protein: Math.ceil(currentProtein * 100 / currentGrams),
+      carbs: Math.ceil(currentCarbs * 100 / currentGrams),
+      fat: Math.ceil(currentFat * 100 / currentGrams),
+      fiber: Math.ceil(currentFiber * 100 / currentGrams)
     };
+
     
     const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`;
     
@@ -360,8 +446,12 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
     setServingOptions(dynamicOptions); // Use all dynamic options including the original
     
     // Find and set the original serving as current
-    const originalServing = dynamicOptions.find(opt => opt.isOriginal) || dynamicOptions[0];
+    const originalIndex = dynamicOptions.findIndex(opt => opt.isOriginal);
+    const originalServing = originalIndex !== -1 ? dynamicOptions[originalIndex] : dynamicOptions[0];
+    const originalIndexFinal = originalIndex !== -1 ? originalIndex : 0;
+    
     setCurrentServing(originalServing);
+    setCurrentServingIndex(originalIndexFinal);
     
     originalFoodRef.current = { ...foodItem };
   };
@@ -369,15 +459,22 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   // Display mode
   if (!isEditing) {
     const displayGrams = foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight || '';
-    const servingDesc = foodItem.serving?.description || foodItem.portionDescription || '';
+    let servingDesc = foodItem.serving?.description || foodItem.portionDescription || '';
+    
+    // If servingDesc is just a number, construct a proper description
+    if (servingDesc && /^\d+$/.test(servingDesc.trim())) {
+      // Just a number like "3", add the food name or "pieces"
+      const itemName = foodItem.name.toLowerCase();
+      servingDesc = `${servingDesc} ${itemName}`;
+    }
     
     return (
       <div className="flex items-start sm:items-center justify-between py-2.5 px-3 gap-3 hover:bg-blue-50/50 rounded-lg transition-colors border-b border-gray-100 last:border-0">
         <div className="flex-1 min-w-0">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 mb-1">
-            <span className="font-medium text-gray-900 text-sm truncate">{foodItem.name}</span>
+          <div className="flex items-baseline gap-2 mb-1 flex-wrap">
+            <span className="font-medium text-gray-900 text-sm">{foodItem.name}</span>
             {servingDesc && (
-              <span className="text-xs text-blue-600 shrink-0">
+              <span className="text-xs text-gray-600 whitespace-nowrap">
                 {servingDesc}
               </span>
             )}
@@ -449,39 +546,50 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
           )}
         </div>
         
-        {/* Search Status */}
-        {isSearching && (
-          <div className="text-xs text-blue-600 flex items-center gap-1.5 mt-1.5">
-            <Search className="w-3.5 h-3.5 animate-pulse" />
-            <span>Searching...</span>
-          </div>
-        )}
-        
+        {/* Search Results Count */}
         {searchResults.length > 0 && !isSearching && searchQuery !== foodItem.name && (
-          <div className="text-xs text-green-600 mt-1.5 flex items-center gap-1.5">
-            <Search className="w-3.5 h-3.5" />
-            <span>{searchResults.length} alternatives found</span>
+          <div className="mt-1.5 px-1">
+            <div className="inline-flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2 py-0.5 rounded-full border border-green-200">
+              <Search className="w-3 h-3" />
+              <span>{searchResults.length} alternative{searchResults.length > 1 ? 's' : ''} found</span>
+            </div>
           </div>
         )}
       </div>
 
+      {/* Skeleton Loading for Search */}
+      {isSearching && (
+        <div className="space-y-2 border border-gray-200 rounded-lg bg-white p-3 animate-pulse">
+          {[1, 2].map((i) => (
+            <div key={i} className="space-y-2">
+              <div className="h-4 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-3/4 animate-shimmer bg-[length:200%_100%]"></div>
+              <div className="flex items-center gap-2">
+                <div className="h-5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-16 animate-shimmer bg-[length:200%_100%]"></div>
+                <div className="h-5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-12 animate-shimmer bg-[length:200%_100%]"></div>
+                <div className="h-5 bg-gradient-to-r from-gray-200 via-gray-100 to-gray-200 rounded w-24 animate-shimmer bg-[length:200%_100%]"></div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Search Results Dropdown */}
-      {searchResults.length > 0 && searchQuery !== foodItem.name && (
+      {searchResults.length > 0 && !isSearching && searchQuery !== foodItem.name && (
         <div className="max-h-48 overflow-y-auto border border-gray-300 rounded-lg bg-white shadow-sm">
           {searchResults.map((food, idx) => (
             <button
               key={idx}
               onClick={() => handleFoodSelect(food)}
-              className="w-full text-left px-3 py-2 hover:bg-blue-50 transition-colors border-b last:border-b-0 text-sm"
+              className="w-full text-left px-3 py-2.5 hover:bg-blue-50 active:bg-blue-100 transition-all duration-150 border-b last:border-b-0 text-sm group"
             >
-              <div className="font-medium text-gray-900 mb-0.5">{food.name}</div>
+              <div className="font-medium text-gray-900 mb-1 group-hover:text-blue-700 transition-colors">{food.name}</div>
               <div className="flex items-center gap-2 text-xs text-gray-600">
-                <span className="bg-gray-100 px-1.5 py-0.5 rounded">{food.category}</span>
-                <span className="text-red-600 flex items-center gap-1">
+                <span className="bg-gray-100 group-hover:bg-blue-100 px-2 py-0.5 rounded transition-colors">{food.category}</span>
+                <span className="text-red-600 flex items-center gap-1 font-medium">
                   <Flame className="w-3 h-3" />
                   {food.defaultServing.nutrition.calories}
                 </span>
-                <span>/ {food.defaultServing.description}</span>
+                <span className="text-gray-500">/ {food.defaultServing.description}</span>
               </div>
             </button>
           ))}
@@ -498,7 +606,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
               <span>Serving Size</span>
             </label>
             <select
-              value={currentServing ? servingOptions.indexOf(currentServing) : ''}
+              value={currentServingIndex >= 0 ? currentServingIndex : ''}
               onChange={handleServingChange}
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
             >
