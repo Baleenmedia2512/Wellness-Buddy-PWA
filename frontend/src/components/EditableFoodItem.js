@@ -7,7 +7,7 @@ import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet } 
  * Editable food item component for nutrition breakdown
  * Allows users to search and replace food items with accurate serving sizes
  */
-const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
+const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
   // Display/Edit mode toggle
   const [isEditing, setIsEditing] = useState(false);
   
@@ -28,6 +28,13 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
   const searchTimeoutRef = useRef(null);
+
+  // Notify parent when editing state changes
+  useEffect(() => {
+    if (onEditingChange) {
+      onEditingChange(index, isEditing);
+    }
+  }, [isEditing, index, onEditingChange]);
 
   // Initialize with current food item data
   useEffect(() => {

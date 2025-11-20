@@ -12,6 +12,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import DatePickerCalendar from './DatePickerCalendar';
+import EditableFoodItem from './EditableFoodItem';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -33,12 +34,162 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
 
+  // Editable food items state
+  const [localDetailedItems, setLocalDetailedItems] = useState([]);
+  const [localNutrition, setLocalNutrition] = useState({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editingStates, setEditingStates] = useState({});
+
   // delete button state
   const [deletingId, setDeletingId] = useState(null);
 
   // undo placeholders: key -> { originalMeal, expiresAt }
   const [undoState, setUndoState] = useState({});
   const [undoing, setUndoing] = useState(false);
+
+  // Initialize local editable data when meal changes
+  useEffect(() => {
+    if (selectedMeal) {
+      const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+      setLocalDetailedItems(foodData.detailedItems || []);
+      setLocalNutrition(foodData.nutrition || {});
+      setIsEditing(false);
+      setEditingStates({});
+    }
+  }, [selectedMeal]);
+
+  // Check if any item is being edited
+  useEffect(() => {
+    const anyEditing = Object.values(editingStates).some(state => state === true);
+    setIsEditing(anyEditing);
+  }, [editingStates]);
+
+  // Handle editing state change from EditableFoodItem
+  const handleEditingChange = useCallback((index, isItemEditing) => {
+    setEditingStates(prev => ({
+      ...prev,
+      [index]: isItemEditing
+    }));
+  }, []);
+
+  // Recalculate total nutrition from all food items
+  const recalculateTotals = (items) => {
+    const totals = items.reduce((acc, item) => ({
+      calories: acc.calories + (item.nutrition?.calories || item.calories || 0),
+      protein: acc.protein + (item.nutrition?.protein || item.protein || 0),
+      carbs: acc.carbs + (item.nutrition?.carbs || item.carbs || 0),
+      fat: acc.fat + (item.nutrition?.fat || item.fat || 0),
+      fiber: acc.fiber + (item.nutrition?.fiber || item.fiber || 0)
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
+    
+    return {
+      calories: Math.round(totals.calories),
+      protein: Math.round(totals.protein * 10) / 10,
+      carbs: Math.round(totals.carbs * 10) / 10,
+      fat: Math.round(totals.fat * 10) / 10,
+      fiber: Math.round(totals.fiber * 10) / 10
+    };
+  };
+
+  // Handle food item update
+  const handleFoodUpdate = (index, updatedFood) => {
+    const newItems = [...localDetailedItems];
+    newItems[index] = updatedFood;
+    setLocalDetailedItems(newItems);
+    
+    const newTotals = recalculateTotals(newItems);
+    setLocalNutrition(newTotals);
+  };
+
+  // Save updated meal to database
+  const handleSaveMealUpdates = async () => {
+    if (!selectedMeal?.ID) return;
+    
+    setIsSaving(true);
+    try {
+      // Prepare updated analysis data
+      const updatedAnalysisData = {
+        foods: localDetailedItems.map(item => ({
+          name: item.name,
+          portion: item.serving?.description || item.portionDescription || item.portion || '1 serving',
+          weight_g: item.serving?.grams || item.grams || item.weight_g || 100,
+          nutrition: {
+            calories: Math.round(item.nutrition?.calories || item.calories || 0),
+            protein: Math.round(item.nutrition?.protein || item.protein || 0),
+            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
+            fat: Math.round(item.nutrition?.fat || item.fat || 0),
+            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0)
+          }
+        })),
+        total: {
+          calories: Math.round(localNutrition.calories || 0),
+          protein: Math.round(localNutrition.protein || 0),
+          carbs: Math.round(localNutrition.carbs || 0),
+          fat: Math.round(localNutrition.fat || 0),
+          fiber: Math.round(localNutrition.fiber || 0)
+        },
+        confidence: 'high'
+      };
+
+      // Update in database
+      const response = await fetch(`${apiBaseUrl}/api/update-nutrition-analysis`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: selectedMeal.ID,
+          analysisData: updatedAnalysisData,
+          totalCalories: Math.round(localNutrition.calories || 0),
+          totalProtein: Math.round(localNutrition.protein || 0),
+          totalCarbs: Math.round(localNutrition.carbs || 0),
+          totalFat: Math.round(localNutrition.fat || 0),
+          totalFiber: Math.round(localNutrition.fiber || 0)
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to update meal');
+      }
+
+      // Update local analyses state
+      setAnalyses(prev => prev.map(meal => 
+        meal.ID === selectedMeal.ID
+          ? {
+              ...meal,
+              AnalysisData: JSON.stringify(updatedAnalysisData),
+              TotalCalories: Math.round(localNutrition.calories || 0),
+              TotalProtein: Math.round(localNutrition.protein || 0),
+              TotalCarbs: Math.round(localNutrition.carbs || 0),
+              TotalFat: Math.round(localNutrition.fat || 0),
+              TotalFiber: Math.round(localNutrition.fiber || 0)
+            }
+          : meal
+      ));
+
+      // Update selectedMeal
+      setSelectedMeal(prev => ({
+        ...prev,
+        AnalysisData: JSON.stringify(updatedAnalysisData),
+        TotalCalories: Math.round(localNutrition.calories || 0),
+        TotalProtein: Math.round(localNutrition.protein || 0),
+        TotalCarbs: Math.round(localNutrition.carbs || 0),
+        TotalFat: Math.round(localNutrition.fat || 0),
+        TotalFiber: Math.round(localNutrition.fiber || 0)
+      }));
+
+      // Reload stats to reflect changes
+      await fetchDayAnalyses(selectedDate);
+
+      setIsEditing(false);
+    } catch (error) {
+      console.error('❌ Error updating meal:', error);
+      alert(error.message || 'Failed to update meal. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   /* ---------------- Helpers ---------------- */
 
@@ -1035,14 +1186,15 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                 minute: '2-digit'
               });
 
-              const calories = foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
-              const protein = foodData.nutrition.protein || selectedMeal.TotalProtein || 0;
-              const carbs = foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
-              const fat = foodData.nutrition.fat || selectedMeal.TotalFat || 0;
-              const fiber = foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
+              // Use local nutrition if available (updated via editing), otherwise use original data
+              const calories = localNutrition.calories || foodData.nutrition.calories || selectedMeal.TotalCalories || 0;
+              const protein = localNutrition.protein || foodData.nutrition.protein || selectedMeal.TotalProtein || 0;
+              const carbs = localNutrition.carbs || foodData.nutrition.carbs || selectedMeal.TotalCarbs || 0;
+              const fat = localNutrition.fat || foodData.nutrition.fat || selectedMeal.TotalFat || 0;
+              const fiber = localNutrition.fiber || foodData.nutrition.fiber || selectedMeal.TotalFiber || 0;
 
               return (
-                <div className="relative max-h-[80vh] flex flex-col">
+                <div className="relative flex flex-col" style={{ maxHeight: isEditing ? '90vh' : '80vh' }}>
                   {/* Image header */}
                   <div className="relative">
                     {selectedMeal.ImageBase64 && selectedMeal.ImageBase64.trim() !== '' ? (
@@ -1124,9 +1276,9 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                     </button>
                   </div>
 
-                  {/* Details list (unchanged) */}
-                  <div className="p-4 overflow-y-auto">
-                    {foodData.detailedItems?.length > 0 && (
+                  {/* Food Items - Editable */}
+                  <div className="p-4 overflow-y-auto" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
+                    {localDetailedItems?.length > 0 && (
                       <div className="space-y-3">
                         <h3 className="font-semibold text-gray-900 text-sm flex items-center">
                           <svg
@@ -1145,30 +1297,53 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                           Food Items
                         </h3>
                         <div className="space-y-2">
-                          {foodData.detailedItems.map((item, index) => (
-                            <div
+                          {localDetailedItems.map((item, index) => (
+                            <EditableFoodItem
                               key={index}
-                              className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200"
-                            >
-                              <div>
-                                <p className="font-medium text-gray-900 text-sm inline">{item.name}</p>
-                                <p className="text-xs text-gray-500 inline ml-2">{item.portion || 'N/A'}</p>
-                                {item.nutrition && (
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    <span className="text-gray-900">Protein</span> {Math.round(item.nutrition.protein || 0)}g ·{' '}
-                                    <span className="text-gray-900">Carbs</span> {Math.round(item.nutrition.carbs || 0)}g ·{' '}
-                                    <span className="text-gray-900">Fiber</span> {Math.round(item.nutrition.fiber || 0)}g ·{' '}
-                                    <span className="text-gray-900">Fat</span> {Math.round(item.nutrition.fat || 0)}g
-                                  </p>
-                                )}
-                              </div>
-                              <div className="text-right">
-                                <p className="font-medium text-gray-900 text-sm">{Math.round(item.nutrition?.calories || 0)}</p>
-                                <p className="text-xs text-gray-500">kcal</p>
-                              </div>
-                            </div>
+                              foodItem={item}
+                              index={index}
+                              onUpdate={handleFoodUpdate}
+                              onEditingChange={handleEditingChange}
+                            />
                           ))}
                         </div>
+                      </div>
+                    )}
+
+                    {/* Save/Cancel buttons when editing */}
+                    {isEditing && (
+                      <div className="mt-4 flex gap-2">
+                        <button
+                          onClick={() => {
+                            // Reset to original data
+                            const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+                            setLocalDetailedItems(foodData.detailedItems || []);
+                            setLocalNutrition(foodData.nutrition || {});
+                            setIsEditing(false);
+                          }}
+                          disabled={isSaving}
+                          className="flex-1 bg-gray-100 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={handleSaveMealUpdates}
+                          disabled={isSaving}
+                          className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
+                            isSaving
+                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                              : 'bg-green-500 text-white hover:bg-green-600'
+                          }`}
+                        >
+                          {isSaving ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              <span>Saving...</span>
+                            </>
+                          ) : (
+                            <span>Save Changes</span>
+                          )}
+                        </button>
                       </div>
                     )}
                   </div>
