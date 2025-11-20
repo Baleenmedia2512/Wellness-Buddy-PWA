@@ -1,5 +1,5 @@
 // src/components/WeightDashboard.js
-import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { 
   Scale,
   RotateCcw,
@@ -8,6 +8,7 @@ import {
   TrendingDown
 } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
+import './LazyLoadStyles.css';
 
 // ✅ LAZY LOADING: Load heavy components only when needed
 const WeightCard = lazy(() => import('./WeightCard'));
@@ -102,6 +103,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
 /**
  * Weight Dashboard - Unified component for weight tracking and insights
  * Monthly view with month-wise categorization
+ * ✅ OPTIMIZED: Infinite scroll with IntersectionObserver
  */
 const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Weight history states
@@ -109,6 +111,12 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [_stats, setStats] = useState(null); // eslint-disable-line no-unused-vars
   const [loading, setLoading] = useState(true);
   const [_error, setError] = useState(null); // eslint-disable-line no-unused-vars
+
+  // ✅ INFINITE SCROLL: Pagination states
+  const [currentPage, setCurrentPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const ITEMS_PER_PAGE = 15; // Optimized page size
 
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
@@ -120,14 +128,22 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
 
+  // ✅ INTERSECTION OBSERVER: Sentinel ref for infinite scroll
+  const sentinelRef = useRef(null);
+
   /**
    * Group weight entries by month
    */
   const groupEntriesByMonth = () => {
     const grouped = {};
     weightHistory.forEach(entry => {
-      if (entry.isUndoPlaceholder) return;
+      // Skip invalid entries
+      if (!entry || entry.isUndoPlaceholder || !entry.CreatedAt || !entry.Weight) return;
+      
       const date = new Date(entry.CreatedAt);
+      // Check if date is valid
+      if (isNaN(date.getTime())) return;
+      
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
       
@@ -149,17 +165,21 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
    * Calculate month statistics
    */
   const getMonthStats = (entries) => {
-    if (entries.length === 0) return null;
+    if (!entries || entries.length === 0) return null;
     
-    const weights = entries.map(e => parseFloat(e.Weight));
+    // Filter out invalid entries
+    const validEntries = entries.filter(e => e && e.Weight && !isNaN(parseFloat(e.Weight)));
+    if (validEntries.length === 0) return null;
+    
+    const weights = validEntries.map(e => parseFloat(e.Weight));
     const totalWeight = weights.reduce((sum, w) => sum + w, 0);
     const avgWeight = (totalWeight / weights.length).toFixed(1);
     const minWeight = Math.min(...weights).toFixed(1);
     const maxWeight = Math.max(...weights).toFixed(1);
     
     // Calculate weight change (first entry vs last entry)
-    const firstEntry = entries[entries.length - 1];
-    const lastEntry = entries[0];
+    const firstEntry = validEntries[validEntries.length - 1];
+    const lastEntry = validEntries[0];
     const weightChange = (parseFloat(lastEntry.Weight) - parseFloat(firstEntry.Weight)).toFixed(1);
     
     return {
@@ -167,32 +187,63 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       minWeight,
       maxWeight,
       weightChange,
-      count: entries.length
+      count: validEntries.length
     };
   };
 
   /**
-   * Fetch weight history on mount
+   * ✅ OPTIMIZED: Initial fetch on mount
    */
   useEffect(() => {
-    fetchWeightHistory();
+    fetchWeightHistory(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
-   * Note: Entries are filtered dynamically in renderOverview()
-   * No need for separate useEffect - filtering happens on each render
+   * ✅ INTERSECTION OBSERVER: Setup infinite scroll
    */
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMore || loadingMore || loading) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loadingMore) {
+          fetchWeightHistory(false);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px', // Load before user reaches bottom
+        threshold: 0.1
+      }
+    );
+
+    observer.observe(sentinelRef.current);
+
+    // ✅ CLEANUP: Prevent memory leaks
+    return () => {
+      if (sentinelRef.current) {
+        observer.unobserve(sentinelRef.current);
+      }
+      observer.disconnect();
+    };
+  }, [hasMore, loadingMore, loading, currentPage]);
 
   /**
-   * Fetch weight history from backend
+   * ✅ OPTIMIZED: Fetch weight history with pagination
+   * @param {boolean} isInitialLoad - True for first load, false for infinite scroll
    */
-  const fetchWeightHistory = async () => {
+  const fetchWeightHistory = async (isInitialLoad = false) => {
     try {
-      setLoading(true);
+      if (isInitialLoad) {
+        setLoading(true);
+        setCurrentPage(0);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
 
-      // Get the actual database UserId from team_table (same as save function)
+      // Get the actual database UserId from team_table
       let userId = user?.id;
       if (!userId) {
         userId = await getUserId(user);
@@ -202,10 +253,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error('User not authenticated or not found in database');
       }
       
-       const params = new URLSearchParams({
+      const offset = isInitialLoad ? 0 : (currentPage + 1) * ITEMS_PER_PAGE;
+      const params = new URLSearchParams({
         userId,
-        limit: '30',
-        offset: '0'
+        limit: String(ITEMS_PER_PAGE),
+        offset: String(offset)
       });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
@@ -219,14 +271,23 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      setWeightHistory(data.data || [])
+      // ✅ OPTIMIZED: Append new data for infinite scroll
+      if (isInitialLoad) {
+        setWeightHistory(data.data || []);
+      } else {
+        setWeightHistory(prev => [...prev, ...(data.data || [])]);
+        setCurrentPage(prev => prev + 1);
+      }
+      
       setStats(data.stats || null);
+      setHasMore(data.pagination?.hasMore ?? false);
 
     } catch (err) {
       console.error('❌ Fetch weight history error:', err);
       setError(err.message || 'Failed to load weight history');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -511,10 +572,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     {/* First pass: collect placeholders to display */}
                     {(() => {
                       // Include placeholders in the sorted entries
-                      const allEntries = [
-                        ...monthGroup.entries,
-                        ...Object.keys(undoState).map(pid => {
-                          const entry = undoState[pid].originalEntry;
+                      const placeholdersForMonth = Object.keys(undoState)
+                        .map(pid => {
+                          const undoEntry = undoState[pid];
+                          if (!undoEntry || !undoEntry.originalEntry) return null;
+                          
+                          const entry = undoEntry.originalEntry;
+                          if (!entry || !entry.CreatedAt) return null;
+                          
                           // Check if this placeholder belongs to current month
                           const date = new Date(entry.CreatedAt);
                           const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
@@ -528,16 +593,22 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             };
                           }
                           return null;
-                        }).filter(Boolean)
+                        })
+                        .filter(Boolean);
+                      
+                      const allEntries = [
+                        ...monthGroup.entries,
+                        ...placeholdersForMonth
                       ];
 
                       return allEntries
+                        .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight) // Filter out any invalid entries
                         .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
                         .map((entry, index) => {
                           // Show undo row if this is a placeholder
                           if (entry.isUndoPlaceholder) {
                             const undoEntry = undoState[entry.ID];
-                            if (!undoEntry) return null;
+                            if (!undoEntry || !undoEntry.originalEntry) return null;
                             return (
                               <UndoRow
                                 key={entry.ID}
@@ -589,6 +660,31 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               );
             })
           )}
+
+          {/* ✅ INFINITE SCROLL: Loading sentinel */}
+          {hasMore && !loading && (
+            <div 
+              ref={sentinelRef} 
+              className="py-8 flex justify-center"
+              aria-label="Loading more entries"
+            >
+              {loadingMore && (
+                <div className="flex items-center gap-3 text-gray-600">
+                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-emerald-300 border-t-emerald-600"></div>
+                  <span className="text-sm font-medium">Loading more entries...</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ✅ END OF LIST: No more data indicator */}
+          {/* {!hasMore && weightHistory.length > 0 && (
+            <div className="py-6 text-center">
+              <p className="text-sm text-gray-500">
+                🎉 You've reached the beginning of your weight journey
+              </p>
+            </div>
+          )} */}
         </div>
         </div>
       </div>
@@ -631,7 +727,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               }}
               previousWeight={(() => {
                 const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
-                return index > 0 ? weightHistory[index + 1].Weight : null;
+                const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
+                return prevEntry && prevEntry.Weight ? prevEntry.Weight : null;
               })()}
             />
           </Suspense>
@@ -666,7 +763,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             }}
             previousWeight={(() => {
               const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
-              return index > 0 ? weightHistory[index + 1].Weight : null;
+              const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
+              return prevEntry && prevEntry.Weight ? prevEntry.Weight : null;
             })()}
           />
         </Suspense>

@@ -28,6 +28,23 @@ const WeightCard = React.memo(({
   const SWIPE_DELETE_THRESHOLD = 100;
   const SWIPE_MAX = 140;
 
+  // Define cancelRAF before useEffect that uses it
+  const cancelRAF = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
+  // Cleanup effect - must be called before any conditional returns
+  useEffect(() => () => cancelRAF(), [cancelRAF]);
+
+  // Validate data after hooks (hooks must be called unconditionally)
+  if (!data || !data.Weight || !data.CreatedAt) {
+    console.warn('WeightCard received invalid data:', data);
+    return null;
+  }
+
   // Calculate weight change
   const weightChange = previousWeight 
     ? (parseFloat(data.Weight) - parseFloat(previousWeight)).toFixed(1)
@@ -59,13 +76,6 @@ const WeightCard = React.memo(({
       hour: '2-digit',
       minute: '2-digit'
     });
-  };
-
-  const cancelRAF = () => {
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-    }
   };
 
   const onPointerDown = (e) => {
@@ -131,8 +141,6 @@ const WeightCard = React.memo(({
   const onPointerUp = (e) => finishInteraction(e);
   const onPointerCancel = (e) => finishInteraction(e);
   const onPointerLeave = (e) => finishInteraction(e);
-
-  useEffect(() => () => cancelRAF(), []);
 
   const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
   const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
@@ -222,6 +230,7 @@ const WeightCard = React.memo(({
                 src={data.WeightImageBase64.startsWith('data:image') ? data.WeightImageBase64 : `data:image/jpeg;base64,${data.WeightImageBase64}`}
                 alt="Scale"
                 className="w-full h-full object-cover"
+                loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
@@ -257,7 +266,7 @@ const WeightCard = React.memo(({
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         @keyframes slideInUp {
           from {
             opacity: 0;

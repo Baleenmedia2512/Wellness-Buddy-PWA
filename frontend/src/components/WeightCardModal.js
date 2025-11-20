@@ -61,10 +61,10 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                 <h2 className="text-xl font-bold text-white leading-tight">
                   {data.Weight} kg
                 </h2>
-                <p className="text-xs text-white/70 mt-0.5">
-                  Logged at {new Date(data.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                <div className="text-xs text-white/70 mt-0.5">
+                  <p>Logged at {new Date(data.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
                   <p className="text-xs text-gray-400">{formatDate(data.CreatedAt)}</p>
-                </p>
+                </div>
               </div>
               {/* <div className="text-right">
                 <span className="text-3xl font-bold text-white">{data.Weight}</span>
@@ -195,7 +195,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
       </div>
 
       {/* Slide up animation */}
-      <style jsx>{`
+      <style>{`
         @keyframes slideUp {
           from {
             opacity: 0;

@@ -20,7 +20,9 @@ import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutri
 import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
 import { weightDetectionService } from './services/weightDetectionService';
+import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
+import DuplicateFoodModal from './components/DuplicateFoodModal';
 import { API_BASE_URL } from './config/api';
 
 import GalleryMonitor from './services/galleryMonitor';
@@ -65,6 +67,16 @@ function WellnessBuddyApp() {
   const [imageType, setImageType] = useState(null); // 'food' | 'weight'
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const fileInputRef = useRef(null);
+  
+  // Duplicate food detection state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState(null);
+  const [pendingSaveData, setPendingSaveData] = useState(null);
+
+  // Duplicate weight detection state
+  const [showDuplicateWeightModal, setShowDuplicateWeightModal] = useState(false);
+  const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
+  const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -664,9 +676,9 @@ function WellnessBuddyApp() {
   };
 
   /**
-   * Save weight entry to database
+   * Perform actual weight save to database (called after duplicate check)
    */
-  const saveWeightEntry = async (weightData, imageBase64) => {
+  const performWeightSave = async (weightData, imageBase64) => {
     try {
       // Get the actual database UserId from team_table
       let userId = user?.id;
@@ -697,8 +709,6 @@ function WellnessBuddyApp() {
         body: JSON.stringify(payload)
       });
       
-
-
       const data = await response.json();
 
       if (!response.ok || !data.success) {
@@ -735,6 +745,56 @@ function WellnessBuddyApp() {
     } catch (err) {
       console.error('❌ Save weight error:', err);
       setError(err.message || 'Failed to save weight entry');
+      throw err;
+    }
+  };
+
+  /**
+   * Save weight entry to database with duplicate check
+   */
+  const saveWeightEntry = async (weightData, imageBase64) => {
+    try {
+      // Get the actual database UserId from team_table
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+
+      // Check for duplicate weight before saving (fail-safe: proceed if check fails)
+      try {
+        const duplicateCheck = await duplicateDetectionService.checkForDuplicateWeight({
+          userId: userId,
+          weightValue: weightData.weightValue,
+          unit: weightData.unit || 'kg'
+        });
+        
+        if (duplicateCheck.isDuplicate) {
+          // Found duplicate - show confirmation modal
+          console.log('⚠️ Duplicate weight detected:', duplicateCheck);
+          setDuplicateWeightInfo(duplicateCheck);
+          setPendingWeightSaveData({
+            weightData: weightData,
+            imageBase64: imageBase64
+          });
+          setShowDuplicateWeightModal(true);
+          return; // Stop here to wait for user confirmation
+        }
+      } catch (duplicateCheckErr) {
+        // If duplicate check fails, log it but continue with save (fail-open)
+        console.warn('⚠️ Duplicate check failed, proceeding with save:', duplicateCheckErr);
+      }
+      
+      // No duplicate or duplicate check failed - proceed with save
+      await performWeightSave(weightData, imageBase64);
+      
+    } catch (err) {
+      console.error('❌ Save weight error:', err);
+      setError(err.message || 'Failed to save weight entry');
+      throw err;
     }
   };
 
@@ -763,6 +823,127 @@ function WellnessBuddyApp() {
       console.error('❌ Manual weight save error:', err);
       throw err; // Re-throw to show error in modal
     }
+  };
+
+  // Helper function to perform nutrition save
+  const performNutritionSave = async (saveData) => {
+    try {
+      setSaveLoading(true);
+      
+      const saveRes = await saveNutritionAnalysis(saveData);
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('✅ Save successful:', saveRes);
+      }
+
+      // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
+      // Users can view saved data from Dashboard/Insights button
+      // Only show popup on web for backward compatibility
+      if (!Capacitor.isNativePlatform()) {
+        const newPopup = {
+          id: Date.now().toString(),
+          analysisId: saveRes.id,
+          nutritionData: saveData.analysisResult,
+          imagePreview: saveData.imageBase64,
+          timestamp: new Date()
+        };
+        setSuccessPopups((prev) => [...prev, newPopup]);
+      }
+    } catch (err) {
+      console.error('❌ Save failed:', err.message);
+      const friendlySaveError = getFriendlyErrorMessage(err);
+      setSaveError(friendlySaveError);
+      throw err;
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // Handle duplicate modal confirmation
+  const handleDuplicateConfirm = async () => {
+    // Edge case: Prevent double-click/double-tap
+    if (!showDuplicateModal) {
+      console.warn('Duplicate confirm called but modal already closed');
+      return;
+    }
+    
+    setShowDuplicateModal(false);
+    
+    // Edge case: No pending data (shouldn't happen but be safe)
+    if (!pendingSaveData) {
+      console.error('No pending save data found');
+      setSaveLoading(false);
+      return;
+    }
+    
+    // Edge case: Validate pending data structure
+    if (!pendingSaveData.userId || !pendingSaveData.analysisResult) {
+      console.error('Invalid pending save data:', pendingSaveData);
+      setSaveLoading(false);
+      setPendingSaveData(null);
+      setDuplicateInfo(null);
+      return;
+    }
+    
+    try {
+      await performNutritionSave(pendingSaveData);
+    } catch (err) {
+      // Error already handled in performNutritionSave
+      console.error('Error during duplicate confirm save:', err);
+    } finally {
+      // Edge case: Always cleanup state even if save fails
+      setPendingSaveData(null);
+      setDuplicateInfo(null);
+    }
+  };
+
+  // Handle duplicate modal cancellation
+  const handleDuplicateCancel = () => {
+    // Edge case: Prevent double-click/double-tap
+    if (!showDuplicateModal) {
+      console.warn('Duplicate cancel called but modal already closed');
+      return;
+    }
+    
+    setShowDuplicateModal(false);
+    setPendingSaveData(null);
+    setDuplicateInfo(null);
+    setSaveLoading(false);
+    
+    // Clear the analysis and image to allow new upload
+    // Edge case: Check if states exist before clearing
+    if (nutritionData) setNutritionData(null);
+    if (imagePreview) setImagePreview(null);
+    if (selectedImage) setSelectedImage(null);
+  };
+
+  // Handle duplicate weight modal confirmation
+  const handleDuplicateWeightConfirm = async () => {
+    setShowDuplicateWeightModal(false);
+    
+    if (pendingWeightSaveData) {
+      try {
+        await performWeightSave(pendingWeightSaveData.weightData, pendingWeightSaveData.imageBase64);
+      } catch (err) {
+        console.error('❌ Weight save error after duplicate confirmation:', err);
+      } finally {
+        setPendingWeightSaveData(null);
+        setDuplicateWeightInfo(null);
+      }
+    }
+  };
+
+  // Handle duplicate weight modal cancellation
+  const handleDuplicateWeightCancel = () => {
+    setShowDuplicateWeightModal(false);
+    setPendingWeightSaveData(null);
+    setDuplicateWeightInfo(null);
+    setLoading(false);
+    
+    // Clear the weight data and image to allow new upload
+    setWeightResult(null);
+    setImagePreview(null);
+    setSelectedImage(null);
   };
 
   const handleImageSelect = async (file) => {
@@ -871,35 +1052,104 @@ function WellnessBuddyApp() {
         const result = await geminiService.analyzeImageForNutrition(file);
         setNutritionData(result);
 
-        // Auto-save to DB after analysis
+        // Check for duplicate food before saving
         setSaveLoading(true);
         try {
-          const userIdentifier = user.email || user.id || user.uid || 'anonymous';
-
-          const saveRes = await saveNutritionAnalysis({
-            userId: userIdentifier,
-            imagePath: file.name,
-            imageBase64: processedImage, // Use compressed image
-            analysisResult: result,
-            deviceInfo: window.navigator.userAgent
-          });
-
-          if (process.env.NODE_ENV !== 'production') {
-            console.log('✅ Save successful:', saveRes);
+          // Edge case: User might be null or invalid
+          if (!user) {
+            console.error('No user available for duplicate check');
+            throw new Error('Please sign in to save nutrition data');
           }
-
-          // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
-          // Users can view saved data from Dashboard/Insights button
-          // Only show popup on web for backward compatibility
-          if (!Capacitor.isNativePlatform()) {
-            const newPopup = {
-              id: Date.now().toString(),
-              analysisId: saveRes.id,
-              nutritionData: result,
-              imagePreview: processedImage,
-              timestamp: new Date()
-            };
-            setSuccessPopups((prev) => [...prev, newPopup]);
+          
+          const userIdentifier = user.email || user.id || user.uid || 'anonymous';
+          
+          // Get actual userId for duplicate check
+          let actualUserId = user?.id;
+          if (!actualUserId) {
+            try {
+              actualUserId = await getUserId(user);
+            } catch (userIdError) {
+              console.error('Failed to get userId:', userIdError);
+              // Edge case: If userId lookup fails, proceed without duplicate check
+              await performNutritionSave({
+                userId: userIdentifier,
+                imagePath: file.name,
+                imageBase64: processedImage,
+                analysisResult: result,
+                deviceInfo: window.navigator.userAgent
+              });
+              return;
+            }
+          }
+          
+          // Edge case: userId still invalid after lookup
+          if (!actualUserId) {
+            console.warn('Could not determine userId, skipping duplicate check');
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          // Check for duplicates in current meal time slot
+          let duplicateCheck;
+          try {
+            duplicateCheck = await duplicateDetectionService.checkForDuplicateFood({
+              userId: actualUserId,
+              analysisResult: result
+            });
+          } catch (duplicateError) {
+            // Edge case: Duplicate check failed (network error, etc.)
+            console.error('Duplicate check failed, proceeding with save:', duplicateError);
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          // Edge case: Invalid duplicate check response
+          if (!duplicateCheck || typeof duplicateCheck !== 'object') {
+            console.warn('Invalid duplicate check response, proceeding with save');
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          if (duplicateCheck.isDuplicate) {
+            // Found duplicate - show confirmation modal
+            console.log('⚠️ Duplicate food detected:', duplicateCheck);
+            setDuplicateInfo(duplicateCheck);
+            setPendingSaveData({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            setShowDuplicateModal(true);
+            setSaveLoading(false);
+          } else {
+            // No duplicate - proceed with save
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
           }
         } catch (err) {
           // Handle save errors
@@ -907,7 +1157,6 @@ function WellnessBuddyApp() {
           
           const friendlySaveError = getFriendlyErrorMessage(err);
           setSaveError(friendlySaveError);
-        } finally {
           setSaveLoading(false);
         }
       } catch (err) {
@@ -1606,6 +1855,28 @@ function WellnessBuddyApp() {
         onSave={handleManualWeightSave}
         imagePreview={currentWeightImage}
       />
+
+      {/* Duplicate Food Modal */}
+      {showDuplicateModal && duplicateInfo && (
+        <DuplicateFoodModal
+          foodName={duplicateInfo.originalFoodName || duplicateInfo.duplicateFoodName}
+          mealType={duplicateInfo.mealType}
+          onConfirm={handleDuplicateConfirm}
+          onCancel={handleDuplicateCancel}
+        />
+      )}
+
+      {/* Duplicate Weight Modal */}
+      {showDuplicateWeightModal && duplicateWeightInfo && (
+        <DuplicateFoodModal
+          isWeight={true}
+          weightValue={duplicateWeightInfo.existingWeight}
+          unit={duplicateWeightInfo.unit}
+          timeDifference={duplicateWeightInfo.timeDifference}
+          onConfirm={handleDuplicateWeightConfirm}
+          onCancel={handleDuplicateWeightCancel}
+        />
+      )}
     </div>
   );
 }

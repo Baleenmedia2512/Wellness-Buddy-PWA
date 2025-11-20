@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft,
   TrendingUp,
@@ -11,6 +11,7 @@ import {
   Droplet,
   RotateCcw
 } from 'lucide-react';
+import './LazyLoadStyles.css';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -41,6 +42,13 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   // undo placeholders: key -> { originalMeal, expiresAt }
   const [undoState, setUndoState] = useState({});
   const [undoing, setUndoing] = useState(false);
+
+  // ✅ PAGINATION STATE
+  const [displayedMeals, setDisplayedMeals] = useState([]);
+  const [hasMoreMeals, setHasMoreMeals] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const MEALS_PER_PAGE = 10;
+  const sentinelRef = useRef(null);
 
   /* ---------------- Helpers ---------------- */
 
@@ -229,6 +237,45 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   useEffect(() => {
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
+
+  // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
+  useEffect(() => {
+    const initialMeals = analyses.slice(0, MEALS_PER_PAGE);
+    setDisplayedMeals(initialMeals);
+    setHasMoreMeals(analyses.length > MEALS_PER_PAGE);
+  }, [analyses]);
+
+  // ✅ INFINITE SCROLL: Load more meals when sentinel is visible
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMoreMeals || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreMeals && !loadingMore) {
+          setLoadingMore(true);
+          
+          setTimeout(() => {
+            const currentLength = displayedMeals.length;
+            const nextMeals = analyses.slice(0, currentLength + MEALS_PER_PAGE);
+            setDisplayedMeals(nextMeals);
+            setHasMoreMeals(nextMeals.length < analyses.length);
+            setLoadingMore(false);
+          }, 300);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1
+      }
+    );
+
+    observer.observe(sentinelRef.current);
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [displayedMeals, analyses, hasMoreMeals, loadingMore]);
 
   const formatDateHeader = (date) => {
     const today = new Date();
@@ -942,10 +989,18 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
       );
     }
 
+    // ✅ GROUP DISPLAYED MEALS (not all analyses)
+    const groupedDisplayedMeals = displayedMeals.reduce((acc, analysis) => {
+      const category = getMealCategory(analysis.CreatedAt);
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(analysis);
+      return acc;
+    }, {});
+
     return (
       <>
         {['breakfast', 'morning-snack', 'lunch', 'evening-snack', 'dinner', 'late-night'].map((category) => {
-          const meals = groupedMeals[category] || [];
+          const meals = groupedDisplayedMeals[category] || [];
           if (meals.length === 0) return null;
 
           const categoryInfo = getMealCategoryInfo(category);
@@ -1012,6 +1067,18 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
             </div>
           );
         })}
+
+        {/* ✅ INFINITE SCROLL SENTINEL */}
+        {hasMoreMeals && (
+          <div ref={sentinelRef} className="py-4 flex justify-center">
+            {loadingMore && (
+              <div className="flex items-center gap-2 text-emerald-600">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-300 border-t-emerald-600"></div>
+                <span className="text-sm font-medium">Loading more meals...</span>
+              </div>
+            )}
+          </div>
+        )}
       </>
     );
   })()}
@@ -1490,6 +1557,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 src={meal.ImageBase64.startsWith('data:image') ? meal.ImageBase64 : `data:image/jpeg;base64,${meal.ImageBase64}`}
                 alt={foodData.name}
                 className="w-full h-full object-cover"
+                loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : meal.ImagePath ? (
@@ -1497,6 +1565,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 src={meal.ImagePath}
                 alt={foodData.name}
                 className="w-full h-full object-cover"
+                loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
