@@ -245,11 +245,11 @@ const WeightCard = React.memo(({
                 {data.Weight}
                 <span className="text-sm font-normal text-gray-600 ml-1">kg</span>
               </h3>
-              {weightChange && (
+              {weightChange !== null && (
                 <span className={`text-xs font-medium ${
-                  parseFloat(weightChange) > 0 ? 'text-red-600' : 'text-green-600'
+                  parseFloat(weightChange) > 0 ? 'text-red-600' : parseFloat(weightChange) < 0 ? 'text-green-600' : 'text-gray-500'
                 }`}>
-                  {parseFloat(weightChange) > 0 ? '↑' : '↓'} {Math.abs(parseFloat(weightChange))} kg
+                  {parseFloat(weightChange) > 0 ? '↑' : parseFloat(weightChange) < 0 ? '↓' : '='} {Math.abs(parseFloat(weightChange))} kg
                 </span>
               )}
             </div>

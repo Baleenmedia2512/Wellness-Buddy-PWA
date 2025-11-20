@@ -1028,8 +1028,22 @@ function WellnessBuddyApp() {
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
           console.log('✅ Weight detected:', detectedWeight);
-          setWeightResult(detectedWeight); // Store for display below upload box
-          await saveWeightEntry(detectedWeight, processedImage);
+          
+          // Convert lbs to kg if needed
+          let weightToSave = { ...detectedWeight };
+          if (detectedWeight.unit === 'lbs') {
+            console.log(`🔄 Converting ${detectedWeight.weightValue} lbs to kg...`);
+            weightToSave.weightValue = weightDetectionService.convertWeight(
+              detectedWeight.weightValue, 
+              'lbs', 
+              'kg'
+            );
+            weightToSave.unit = 'kg';
+            console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
+          }
+          
+          setWeightResult(weightToSave); // Store for display below upload box
+          await saveWeightEntry(weightToSave, processedImage);
           // Don't clear imagePreview or return - let it show like food images
         } else {
           // Weight detection failed - show manual entry modal

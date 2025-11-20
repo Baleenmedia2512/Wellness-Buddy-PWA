@@ -5,7 +5,8 @@ import {
   RotateCcw,
   Calendar,
   TrendingUp,
-  TrendingDown
+  TrendingDown, 
+  Minus 
 } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
 import '../LazyLoadStyles.css';
@@ -116,7 +117,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [currentPage, setCurrentPage] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
-  const ITEMS_PER_PAGE = 15; // Optimized page size
+  const ITEMS_PER_PAGE = 10; // Optimized page size
 
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
@@ -302,8 +303,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
-   * Handle delete with optimistic placeholder (inline undo)
-   * Note: Actual backend deletion happens in handleUndoExpire callback
+   * Handle delete with immediate backend soft-delete (like nutrition tab)
+   * Allows undo via restore API within timer window
    */
   const handleDeleteEntry = async (entryToDelete) => {
     const placeholder = {
@@ -332,8 +333,47 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
     }));
 
-    // Backend deletion will happen in handleUndoExpire callback
-    console.log('⏳ Entry marked for deletion:', entryToDelete.ID);
+    // Immediately soft-delete in backend (like nutrition tab)
+    try {
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId,
+          entryId: entryToDelete.ID
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to delete entry');
+      }
+
+      console.log('✅ Entry soft-deleted immediately:', entryToDelete.ID);
+
+    } catch (err) {
+      console.error('❌ Delete error:', err);
+      // Rollback on backend failure
+      setWeightHistory(prev => {
+        const idx = prev.findIndex(e => e.ID === placeholder.ID);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next.splice(idx, 1, entryToDelete);
+        return next;
+      });
+      setUndoState(prev => {
+        const next = { ...prev };
+        delete next[placeholder.ID];
+        return next;
+      });
+      alert(err.message || 'Failed to delete. Please try again.');
+    }
   };
 
   /**
@@ -354,11 +394,60 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       return next;
     });
 
-    console.log('✅ Undo restore (no backend call needed):', originalEntry.ID);
+    // Call backend undo API to restore entry
+    try {
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      const response = await fetch(`${apiBaseUrl}/api/undo-deleted-weight-entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          id: originalEntry.ID,
+          userId
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to restore entry');
+      }
+
+      console.log('✅ Entry restored via API:', originalEntry.ID);
+
+    } catch (err) {
+      console.error('❌ Undo restore error:', err);
+      // Rollback on backend failure - put placeholder back
+      setWeightHistory(prev => {
+        const idx = prev.findIndex(e => e.ID === originalEntry.ID);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next.splice(idx, 1, { 
+          ID: pid, 
+          isUndoPlaceholder: true, 
+          CreatedAt: originalEntry.CreatedAt,
+          Weight: originalEntry.Weight
+        });
+        return next;
+      });
+      setUndoState(prev => ({
+        ...prev,
+        [pid]: {
+          originalEntry,
+          expiresAt: Date.now() + UNDO_SECONDS * 1000,
+          ttlSeconds: UNDO_SECONDS
+        }
+      }));
+      alert(err.message || 'Failed to restore. Please try again.');
+    }
   };
 
   /**
    * Handle undo expiration - called when timer runs out
+   * Just remove placeholder (backend already deleted)
    */
   const handleUndoExpire = async (pid, originalEntry) => {
     // Remove placeholder from UI
@@ -369,37 +458,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       return next;
     });
 
-    // Now perform the actual backend deletion
-    try {
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
-      
-      const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          userId,
-          entryId: originalEntry.ID
-        })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to delete entry');
-      }
-
-      console.log('✅ Entry permanently deleted:', originalEntry.ID);
-
-    } catch (err) {
-      console.error('❌ Delete error:', err);
-      // Restore entry on backend failure
-      setWeightHistory(prev => prev.concat(originalEntry));
-      alert(err.message || 'Failed to delete. Entry has been restored.');
-    }
+    console.log('⏱️ Undo timer expired, entry remains deleted:', originalEntry.ID);
   };
 
   // Weight saving removed - entries are added via main page image upload
@@ -519,7 +578,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       ) : parseFloat(latestWeight.Weight) > parseFloat(currentMonthStats.avgWeight) ? (
         <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
       ) : (
-        <div className="w-4 h-4 mx-auto mt-1 bg-blue-400 rounded-full" />
+        <Minus className="w-4 h-4 mx-auto mt-1 text-blue-400" />
       )}
     </div>
   </div>
@@ -623,13 +682,18 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           }
 
                           // Regular weight card
-                          const prevEntry = allEntries
-                            .filter(e => !e.isUndoPlaceholder)
-                            .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
-                            .find((e, i, arr) => {
-                              const currentIndex = arr.findIndex(x => x.ID === entry.ID);
-                              return i === currentIndex + 1;
-                            });
+                          // Use the complete weightHistory to find previous entry across all months
+                          const allHistorySorted = weightHistory
+                            .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
+                            .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
+                          
+                          // Find the current entry's index in the complete history
+                          const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
+                          
+                          // Get the previous entry (next in array since sorted newest first)
+                          const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
+                            ? allHistorySorted[currentIndex + 1]
+                            : null;
                           
                           return (
                             <Suspense key={entry.ID} fallback={
