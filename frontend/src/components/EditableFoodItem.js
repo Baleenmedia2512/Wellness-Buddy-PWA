@@ -497,39 +497,16 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
     }
     
     return (
-      <div className="flex items-start sm:items-center justify-between py-2.5 px-3 gap-3 hover:bg-blue-50/50 rounded-lg transition-colors border-b border-gray-100 last:border-0">
+      <div className="flex items-start sm:items-center justify-between py-2.5 px-3 gap-4 hover:bg-gray-50 rounded-lg transition-colors border-b border-gray-100 last:border-0">
         <div className="flex-1 min-w-0">
           <div className="flex items-baseline gap-2 mb-1 flex-wrap">
-            <span className="font-medium text-gray-900 text-sm">{foodItem.name}</span>
+            <span className="font-medium text-gray-900 text-base">{foodItem.name}</span>
             {servingDesc && (
-              <span className="text-xs text-gray-600 whitespace-nowrap">
-                {servingDesc}
-              </span>
+              <span className="text-sm text-gray-600">{servingDesc}</span>
             )}
           </div>
-          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-            {displayGrams && (
-              <span className="text-gray-500 flex items-center gap-1">
-                <Scale className="w-3 h-3" />
-                {displayGrams}g
-              </span>
-            )}
-            <span className="text-red-600 font-medium flex items-center gap-1">
-              <Flame className="w-3 h-3" />
-              {foodItem.nutrition?.calories || foodItem.calories || 0}
-            </span>
-            <span className="text-blue-600 flex items-center gap-1">
-              <Beef className="w-3 h-3" />
-              {foodItem.nutrition?.protein || foodItem.protein || 0}g
-            </span>
-            <span className="text-yellow-600 flex items-center gap-1">
-              <Wheat className="w-3 h-3" />
-              {foodItem.nutrition?.carbs || foodItem.carbs || 0}g
-            </span>
-            <span className="text-purple-600 flex items-center gap-1">
-              <Droplet className="w-3 h-3" />
-              {foodItem.nutrition?.fat || foodItem.fat || 0}g
-            </span>
+          <div className="text-xs text-gray-600">
+            <span className="font-bold text-orange-600 text-sm">{foodItem.nutrition?.calories || foodItem.calories || 0}</span> <span className="text-orange-600">kcal</span> · Protein {foodItem.nutrition?.protein || foodItem.protein || 0}g · Carbs {foodItem.nutrition?.carbs || foodItem.carbs || 0}g · Fiber {foodItem.nutrition?.fiber || foodItem.fiber || 0}g · Fat {foodItem.nutrition?.fat || foodItem.fat || 0}g
           </div>
         </div>
         <button
