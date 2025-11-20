@@ -179,10 +179,8 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
         <div className="p-4 pt-0">
           <button
             onClick={() => {
-              if (window.confirm('Are you sure you want to delete this weight entry?')) {
-                onDelete(data);
-                onClose();
-              }
+              onDelete(data);
+              onClose();
             }}
             className="w-full flex items-center justify-center gap-2 rounded-lg bg-red-500 text-white text-sm font-medium px-4 py-2 shadow-sm hover:bg-red-600 hover:shadow-md active:scale-95 transition-all duration-200"
           >

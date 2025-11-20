@@ -729,11 +729,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
           {hasMore && !loading && (
             <div 
               ref={sentinelRef} 
-              className="py-8 flex justify-center"
+              className="py-8 flex justify-center items-center"
               aria-label="Loading more entries"
             >
               {loadingMore && (
-                <div className="flex items-center gap-3 text-gray-600">
+                <div className="flex items-center justify-center gap-3 text-gray-600">
                   <div className="animate-spin rounded-full h-8 w-8 border-3 border-emerald-300 border-t-emerald-600"></div>
                   <span className="text-sm font-medium">Loading more entries...</span>
                 </div>
