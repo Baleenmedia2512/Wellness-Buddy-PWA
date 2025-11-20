@@ -134,12 +134,15 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
   /**
    * Group weight entries by month
+   * Note: Placeholders are handled separately in the render logic
    */
   const groupEntriesByMonth = () => {
     const grouped = {};
+    
+    // Process all entries including placeholders
     weightHistory.forEach(entry => {
-      // Skip invalid entries
-      if (!entry || entry.isUndoPlaceholder || !entry.CreatedAt || !entry.Weight) return;
+      // Skip invalid entries but allow placeholders
+      if (!entry || !entry.CreatedAt || !entry.Weight) return;
       
       const date = new Date(entry.CreatedAt);
       // Check if date is valid
@@ -155,6 +158,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
           date: date
         };
       }
+      
+      // Include both regular entries and placeholders
       grouped[monthKey].entries.push(entry);
     });
     
@@ -628,97 +633,64 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   </div>
                   {/* Month Entries */}
                   <div className="space-y-3">
-                    {/* First pass: collect placeholders to display */}
-                    {(() => {
-                      // Include placeholders in the sorted entries
-                      const placeholdersForMonth = Object.keys(undoState)
-                        .map(pid => {
-                          const undoEntry = undoState[pid];
+                    {monthGroup.entries
+                      .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight) // Filter out any invalid entries
+                      .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
+                      .map((entry, index) => {
+                        // Show undo row if this is a placeholder
+                        if (entry.isUndoPlaceholder) {
+                          const undoEntry = undoState[entry.ID];
                           if (!undoEntry || !undoEntry.originalEntry) return null;
-                          
-                          const entry = undoEntry.originalEntry;
-                          if (!entry || !entry.CreatedAt) return null;
-                          
-                          // Check if this placeholder belongs to current month
-                          const date = new Date(entry.CreatedAt);
-                          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-                          const currentMonthKey = `${monthGroup.date.getFullYear()}-${String(monthGroup.date.getMonth() + 1).padStart(2, '0')}`;
-                          if (monthKey === currentMonthKey) {
-                            return {
-                              ID: pid,
-                              isUndoPlaceholder: true,
-                              CreatedAt: entry.CreatedAt,
-                              Weight: entry.Weight
-                            };
-                          }
-                          return null;
-                        })
-                        .filter(Boolean);
-                      
-                      const allEntries = [
-                        ...monthGroup.entries,
-                        ...placeholdersForMonth
-                      ];
-
-                      return allEntries
-                        .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight) // Filter out any invalid entries
-                        .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
-                        .map((entry, index) => {
-                          // Show undo row if this is a placeholder
-                          if (entry.isUndoPlaceholder) {
-                            const undoEntry = undoState[entry.ID];
-                            if (!undoEntry || !undoEntry.originalEntry) return null;
-                            return (
-                              <UndoRow
-                                key={entry.ID}
-                                pid={entry.ID}
-                                originalEntry={undoEntry.originalEntry}
-                                expiresAt={undoEntry.expiresAt}
-                                ttlSeconds={undoEntry.ttlSeconds ?? UNDO_SECONDS}
-                                onRestore={handleUndoRestore}
-                                onExpire={() => handleUndoExpire(entry.ID, undoEntry.originalEntry)}
-                              />
-                            );
-                          }
-
-                          // Regular weight card
-                          // Use the complete weightHistory to find previous entry across all months
-                          const allHistorySorted = weightHistory
-                            .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
-                            .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
-                          
-                          // Find the current entry's index in the complete history
-                          const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
-                          
-                          // Get the previous entry (next in array since sorted newest first)
-                          const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
-                            ? allHistorySorted[currentIndex + 1]
-                            : null;
-                          
                           return (
-                            <Suspense key={entry.ID} fallback={
-                              <div className="bg-white rounded-xl p-4 animate-pulse" style={{ height: 84 }}>
-                                <div className="flex items-center gap-4">
-                                  <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
-                                  <div className="flex-1 space-y-2">
-                                    <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
-                                  </div>
-                                  <div className="h-6 bg-gray-200 rounded w-12"></div>
-                                </div>
-                              </div>
-                            }>
-                              <WeightCard
-                                data={entry}
-                                previousWeight={prevEntry ? prevEntry.Weight : null}
-                                onDelete={handleDeleteEntry}
-                                onView={handleViewEntry}
-                                index={index}
-                              />
-                            </Suspense>
+                            <UndoRow
+                              key={entry.ID}
+                              pid={entry.ID}
+                              originalEntry={undoEntry.originalEntry}
+                              expiresAt={undoEntry.expiresAt}
+                              ttlSeconds={undoEntry.ttlSeconds ?? UNDO_SECONDS}
+                              onRestore={handleUndoRestore}
+                              onExpire={() => handleUndoExpire(entry.ID, undoEntry.originalEntry)}
+                            />
                           );
-                        });
-                    })()}
+                        }
+
+                        // Regular weight card
+                        // Use the complete weightHistory to find previous entry across all months
+                        const allHistorySorted = weightHistory
+                          .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
+                          .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
+                        
+                        // Find the current entry's index in the complete history
+                        const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
+                        
+                        // Get the previous entry (next in array since sorted newest first)
+                        const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
+                          ? allHistorySorted[currentIndex + 1]
+                          : null;
+                        
+                        return (
+                          <Suspense key={entry.ID} fallback={
+                            <div className="bg-white rounded-xl p-4 animate-pulse" style={{ height: 84 }}>
+                              <div className="flex items-center gap-4">
+                                <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+                                <div className="flex-1 space-y-2">
+                                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                                </div>
+                                <div className="h-6 bg-gray-200 rounded w-12"></div>
+                              </div>
+                            </div>
+                          }>
+                            <WeightCard
+                              data={entry}
+                              previousWeight={prevEntry ? prevEntry.Weight : null}
+                              onDelete={handleDeleteEntry}
+                              onView={handleViewEntry}
+                              index={index}
+                            />
+                          </Suspense>
+                        );
+                      })}
                   </div>
                 </div>
               );

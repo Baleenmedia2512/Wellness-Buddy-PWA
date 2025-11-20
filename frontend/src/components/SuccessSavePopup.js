@@ -542,11 +542,11 @@ const SuccessSavePopup = ({
                   <span className="font-semibold text-gray-800 text-sm truncate">
                     {isWeight ? '⚖️ Weight Entry' : (data?.category?.name || 'Food')}
                   </span>
-                  <span className={`px-1.5 py-0.5 rounded-md text-xs font-medium whitespace-nowrap ${isWeight ? 'bg-purple-50 text-purple-600' : 'bg-green-50 text-green-600'}`}>
+                  <span className={`px-1.5 py-0.5  text-xs font-medium whitespace-nowrap ${isWeight ? ' text-green-600' : ' text-green-600'}`}>
                     ✓ Saved
                   </span>
                   {total > 1 && index === total - 1 && !isStackExpanded && (
-                    <span className="px-1.5 py-0.5 rounded-md bg-green-50 text-xs text-green-600 font-medium whitespace-nowrap">
+                    <span className="px-1.5 py-0.5  text-xs text-green-600 font-medium whitespace-nowrap">
                       +{Math.max(0, total - 1)} more
                     </span>
                   )}
