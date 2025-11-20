@@ -11,7 +11,7 @@ import {
   Droplet,
   RotateCcw
 } from 'lucide-react';
-import './LazyLoadStyles.css';
+import '../LazyLoadStyles.css';
 
 const UNDO_SECONDS = 10; // cooldown duration
 

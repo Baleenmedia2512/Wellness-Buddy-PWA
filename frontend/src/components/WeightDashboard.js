@@ -8,7 +8,7 @@ import {
   TrendingDown
 } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
-import './LazyLoadStyles.css';
+import '../LazyLoadStyles.css';
 
 // ✅ LAZY LOADING: Load heavy components only when needed
 const WeightCard = lazy(() => import('./WeightCard'));
