@@ -1268,7 +1268,17 @@ function WellnessBuddyApp() {
           </div>
         )}
 
-        {nutritionData && <NutritionCard data={nutritionData} />}
+        {nutritionData && <NutritionCard 
+          data={nutritionData} 
+          user={user} 
+          imagePreview={imagePreview} 
+          selectedImage={selectedImage}
+          onSaveSuccess={() => {
+            setNutritionData(null);
+            setImagePreview(null);
+            setSelectedImage(null);
+          }}
+        />}
 
         {/* TEST RESULTS - TEMPORARY (Remove after Phase 2) */}
         {testSearchResults && (

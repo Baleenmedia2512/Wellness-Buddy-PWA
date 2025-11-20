@@ -23,6 +23,7 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
   const [currentServingIndex, setCurrentServingIndex] = useState(0);
   const [customGrams, setCustomGrams] = useState('');
   const [servingOptions, setServingOptions] = useState([]);
+  const [isServingDropdownOpen, setIsServingDropdownOpen] = useState(false);
   
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
@@ -630,26 +631,73 @@ const EditableFoodItem = ({ foodItem, onUpdate, index }) => {
       <div className="space-y-2.5">
         {/* Serving Size Dropdown */}
         {selectedFood && servingOptions.length > 0 && (
-          <div>
+          <div className="relative">
             <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
               <span>Serving Size</span>
             </label>
-            <select
-              value={currentServingIndex >= 0 ? currentServingIndex : ''}
-              onChange={handleServingChange}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
+            
+            {/* Dropdown Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setIsServingDropdownOpen(!isServingDropdownOpen)}
+              className="w-full px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
             >
-              {servingOptions.map((option, idx) => (
-                <option key={idx} value={idx}>
-                  {option.description} ({option.grams}g) • {option.nutrition.calories} cal
-                </option>
-              ))}
-            </select>
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-gray-900 text-sm truncate">
+                  {currentServing?.description || 'Select serving size'}
+                </div>
+              </div>
+              <svg 
+                className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${
+                  isServingDropdownOpen ? 'rotate-180' : ''
+                }`} 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Options - Overlapping */}
+            {isServingDropdownOpen && (
+              <div className="absolute z-50 w-full mt-1 space-y-1 max-h-64 overflow-y-auto bg-white rounded-lg border-2 border-gray-300 shadow-lg p-2">
+                {servingOptions.map((option, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => {
+                      setCurrentServing(option);
+                      setCurrentServingIndex(idx);
+                      setCustomGrams(option.grams.toString());
+                      setIsServingDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2 rounded-lg transition-all text-left text-sm ${
+                      currentServingIndex === idx
+                        ? 'bg-blue-50 text-blue-900'
+                        : 'text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{option.description}</div>
+                        <div className="text-xs text-gray-500 mt-0.5">{option.nutrition.calories} cal</div>
+                      </div>
+                      {currentServingIndex === idx && (
+                        <svg className="w-5 h-5 text-blue-600 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                        </svg>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Custom Grams Input - Always visible */}
+        {/* Custom Grams Input - Always visible */}        {/* Custom Grams Input - Always visible */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-gray-500" />
