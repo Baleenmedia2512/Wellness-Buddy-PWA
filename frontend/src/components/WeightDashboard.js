@@ -59,7 +59,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
 
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-800 truncate">
-          <span className="font-medium">Removed</span> "{weightDisplay}"
+          <span className="font-medium">Removed weight:</span> {weightDisplay}
         </p>
         <p className="text-[11px] text-amber-700/80">Undo available for {remainingSecs}s</p>
       </div>
