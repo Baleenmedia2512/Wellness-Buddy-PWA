@@ -77,12 +77,6 @@
         android:foregroundServiceType="dataSync|mediaProcessing"
         android:exported="false" />
 
-       <!-- Camera Monitor Service - Detects new camera photos -->
-       <service
-        android:name=".services.CameraMonitorService"
-        android:foregroundServiceType="dataSync|mediaProcessing"
-        android:exported="false" />
-
        <!-- Food Detection Notification Receiver - Handles notification button clicks -->
        <receiver
         android:name=".services.FoodDetectionNotificationReceiver"

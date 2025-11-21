@@ -12,7 +12,7 @@ import android.webkit.WebSettings;
 
 import com.getcapacitor.BridgeActivity;
 import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
-import com.wellnessbuddy.app.plugins.CameraMonitorPlugin;
+// import com.wellnessbuddy.app.plugins.CameraMonitorPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -27,12 +27,12 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GalleryMonitorPlugin.class);
         
         // Register the CameraMonitorPlugin for real-time photo detection
-        registerPlugin(CameraMonitorPlugin.class);
+        // registerPlugin(CameraMonitorPlugin.class);
         
         super.onCreate(savedInstanceState);
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
-        android.util.Log.d("MainActivity", "✅ CameraMonitorPlugin registered in MainActivity");
+        // android.util.Log.d("MainActivity", "✅ CameraMonitorPlugin registered in MainActivity");
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
@@ -73,15 +73,7 @@ public class MainActivity extends BridgeActivity {
         } else {
             startService(serviceIntent);
         }
-        
-        // ✅ Start camera monitor service for real-time photo detection
-        Intent cameraServiceIntent = new Intent(this, com.wellnessbuddy.app.services.CameraMonitorService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(cameraServiceIntent);
-        } else {
-            startService(cameraServiceIntent);
-        }
-        android.util.Log.d("MainActivity", "✅ Camera monitor service started");
+        android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
         
         // ✅ Schedule periodic heartbeat to ensure service stays alive
         com.wellnessbuddy.app.services.BootCompletedReceiver.scheduleHeartbeat(this);

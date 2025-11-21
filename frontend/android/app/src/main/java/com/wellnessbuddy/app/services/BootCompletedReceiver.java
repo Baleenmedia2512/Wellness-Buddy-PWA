@@ -52,21 +52,6 @@ public class BootCompletedReceiver extends BroadcastReceiver {
                 Log.e(TAG, "❌ Failed to start GalleryMonitorService on boot", e);
             }
             
-            // Start the camera monitor service
-            Intent cameraServiceIntent = new Intent(context, CameraMonitorService.class);
-            cameraServiceIntent.setPackage(context.getPackageName());
-            
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(cameraServiceIntent);
-                } else {
-                    context.startService(cameraServiceIntent);
-                }
-                Log.d(TAG, "✅ CameraMonitorService started successfully");
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Failed to start CameraMonitorService on boot", e);
-            }
-            
             // Schedule periodic heartbeat to keep service alive
             scheduleHeartbeat(context);
         }
