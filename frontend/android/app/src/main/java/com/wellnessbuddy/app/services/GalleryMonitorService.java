@@ -60,9 +60,9 @@ public class GalleryMonitorService extends Service {
     private RetryQueue retryQueue;
     
     // Database API configuration
-    // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
-    // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
-    private static final String API_BASE_URL = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
+    // private static final String API_BASE_URL   = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
+    // private static final String API_BASE_URL   = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
+    private static final String API_BASE_URL   = "https://wellness-buddy-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
 
     @Override
     public void onCreate() {
@@ -93,7 +93,7 @@ public class GalleryMonitorService extends Service {
         registerReceiver(networkChangeReceiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
         
         // Initialize database sync client
-        databaseSyncClient = new DatabaseSyncClient(API_BASE_URL, this);
+        databaseSyncClient = new DatabaseSyncClient( process.env.REACT_APP_API_BASE_URL  , this);
         
         // Test database connection
         executorService.execute(() -> {

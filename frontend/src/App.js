@@ -23,7 +23,6 @@ import { weightDetectionService } from './services/weightDetectionService';
 import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
-import { API_BASE_URL } from './config/api';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -41,7 +40,7 @@ import {
 const Dashboard = lazy(() => import('./components/Dashboard'));
 
 function WellnessBuddyApp() {
-  const apiBaseUrl = API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);

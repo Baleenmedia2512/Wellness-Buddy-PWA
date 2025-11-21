@@ -1,5 +1,4 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { GEMINI_API_KEY } from '../config/api';
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -58,7 +57,7 @@ window.XMLHttpRequest = function() {
 
 class GeminiService {
   constructor() {
-    this.apiKey = GEMINI_API_KEY;
+    this.apiKey = process.env.REACT_APP_GEMINI_API_KEY;
     this.genAI = null;
     this.model = null;
     

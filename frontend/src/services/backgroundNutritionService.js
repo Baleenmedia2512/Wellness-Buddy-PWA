@@ -1,5 +1,4 @@
 // src/services/backgroundNutritionService.js
-import { API_BASE_URL } from '../config/api';
 
 /**
  * Fetches the most recent background-saved nutrition analysis for a user.
@@ -8,7 +7,7 @@ import { API_BASE_URL } from '../config/api';
  * @returns {Promise<object|null>} Most recent record or null
  */
 export async function fetchLatestBackgroundNutrition(userId) {
-  const apiBaseUrl = API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
   try {
     const res = await fetch(`${apiBaseUrl}/api/get-background-analysis?userId=${userId}&limit=1&offset=0`);
     if (!res.ok) throw new Error('Failed to fetch background nutrition');

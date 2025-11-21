@@ -6,7 +6,6 @@ import React, {
   useRef,
   useLayoutEffect,
 } from 'react';
-import { API_BASE_URL } from '../config/api';
 
 const UNDO_SECONDS = 10;
 
@@ -52,7 +51,7 @@ const SuccessSavePopup = ({
   nutritionData,        // legacy
   imagePreview          // legacy
 }) => {
-  const apiBaseUrl = API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
   const [expandedId, setExpandedId] = useState(null);
   const [isStackExpanded, setIsStackExpanded] = useState(false);
@@ -426,7 +425,7 @@ const SuccessSavePopup = ({
 
       try {
         if (popup.analysisId) {
-          const res = await fetch(`${API_BASE_URL}/api/undo-deleted-analysis`, {
+          const res = await fetch(`${apiBaseUrl}/api/undo-deleted-analysis`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ id: popup.analysisId })

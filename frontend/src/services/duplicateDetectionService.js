@@ -1,5 +1,4 @@
 // src/services/duplicateDetectionService.js
-import { API_BASE_URL } from '../config/api';
 
 /**
  * Get the meal category based on current time
@@ -207,11 +206,11 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     // Fetch today's nutrition data for the user
     const dateString = currentTime.toISOString().split('T')[0];
-    const apiBaseUrl = API_BASE_URL;
+    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
     
     // Edge case: API base URL not configured
     if (!apiBaseUrl) {
-      console.error('API_BASE_URL not configured');
+      // console.error('REACT_APP_API_BASE_URL not configured');
       return { isDuplicate: false };
     }
     
@@ -375,7 +374,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
 export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg' }) {
   try {
     const currentTime = new Date();
-    const apiBaseUrl = API_BASE_URL;
+    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
     
     console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
     

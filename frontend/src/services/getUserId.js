@@ -1,12 +1,11 @@
 // src/services/getUserId.js
-import { API_BASE_URL } from '../config/api';
 
 /**
  * Looks up the real UserID from the backend using email.
  * Returns the UserID from the DB, or null if not found.
  */
 export async function getUserId(user) {
-  const apiBaseUrl = API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
   if (!user) return null;
   const email = user.email || null;
   if (!email) return null;

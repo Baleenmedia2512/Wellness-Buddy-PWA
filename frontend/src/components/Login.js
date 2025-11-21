@@ -2,10 +2,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import TermsAndConditions from './TermsAndConditions';
 import PrivacyPolicy from './PrivacyPolicy';
-import { API_BASE_URL } from '../config/api';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
-  const apiBaseUrl = API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState(new Array(6).fill(''));
@@ -418,7 +417,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
       )}
       
       {/* Add animation styles */}
-      <style jsx>{`
+      <style>{`
         @keyframes blob {
           0% { transform: translate(0px, 0px) scale(1); }
           33% { transform: translate(30px, -50px) scale(1.1); }
