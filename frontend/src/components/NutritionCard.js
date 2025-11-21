@@ -1,5 +1,5 @@
 //src\components\NutritionCard.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useCallback } from 'react';
 import EditableFoodItem from './EditableFoodItem';
 import { Bookmark, Copy, Search, X, Check } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
@@ -14,23 +14,19 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
   const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
   const [isClosing, setIsClosing] = useState(false);
   const [editingStates, setEditingStates] = useState({});
-  const [editingIndex, setEditingIndex] = useState(null);
 
-  // Handle editing state change from EditableFoodItem
-  const handleEditingChange = (index, isItemEditing) => {
-    setEditingStates(prev => {
-      const newStates = {
-        ...prev,
-        [index]: isItemEditing
-      };
-      
-      // Update editing index based on new states
-      const editingIndexes = Object.keys(newStates).filter(key => newStates[key]);
-      setEditingIndex(editingIndexes.length > 0 ? parseInt(editingIndexes[0]) : null);
-      
-      return newStates;
-    });
-  };
+  // Handle editing state change from EditableFoodItem - wrapped in useCallback to prevent re-creation
+  const handleEditingChange = useCallback((index, isItemEditing) => {
+    setEditingStates(prev => ({
+      ...prev,
+      [index]: isItemEditing
+    }));
+  }, []);
+
+  // Derive editing index from editing states
+  const editingIndex = Object.keys(editingStates).find(key => editingStates[key]) 
+    ? parseInt(Object.keys(editingStates).find(key => editingStates[key])) 
+    : null;
 
   // Generate meal name from food items
   const generateMealName = () => {
@@ -85,15 +81,6 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
     setLocalNutrition(newTotals);
     
     console.log('✅ [NutritionCard] Updated totals:', newTotals);
-    
-    // Notify parent if callback provided
-    if (onDataUpdate) {
-      onDataUpdate({
-        ...data,
-        detailedItems: newItems,
-        nutrition: newTotals
-      });
-    }
   };
 
   // Handle modal close with animation
