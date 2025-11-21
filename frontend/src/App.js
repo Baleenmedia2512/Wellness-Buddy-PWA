@@ -209,7 +209,7 @@ function WellnessBuddyApp() {
     
     // Prevent multiple simultaneous checks
     if (statusCheckInProgress.current) {
-      console.log('⏭️ [checkUserStatus] Check already in progress, skipping duplicate call');
+      // console.log('⏭️ [checkUserStatus] Check already in progress, skipping duplicate call');
       return true; // Skip if already checking
     }
     
@@ -700,7 +700,7 @@ function WellnessBuddyApp() {
         imageBase64ToSave: imageBase64
       };
 
-      console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
+      // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
       const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
         method: 'POST',
@@ -773,7 +773,7 @@ function WellnessBuddyApp() {
         
         if (duplicateCheck.isDuplicate) {
           // Found duplicate - show confirmation modal
-          console.log('⚠️ Duplicate weight detected:', duplicateCheck);
+          // console.log('⚠️ Duplicate weight detected:', duplicateCheck);
           setDuplicateWeightInfo(duplicateCheck);
           setPendingWeightSaveData({
             weightData: weightData,
@@ -1008,7 +1008,7 @@ function WellnessBuddyApp() {
       
       if (compressionApplied && process.env.NODE_ENV !== 'production') {
         const newSizeMB = processedImage.length / (1024 * 1024);
-        console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
+        // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
       }
       
       // Set preview immediately for better UX

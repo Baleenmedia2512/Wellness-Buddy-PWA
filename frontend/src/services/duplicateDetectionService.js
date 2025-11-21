@@ -198,11 +198,11 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     // Edge case: No valid food names extracted
     if (!Array.isArray(newFoodNames) || newFoodNames.length === 0) {
-      console.log('No food names found in analysis result');
+      // console.log('No food names found in analysis result');
       return { isDuplicate: false };
     }
     
-    console.log('🔍 Checking for duplicates:', { newFoodNames, mealCategory, mealCategoryName });
+    // console.log('🔍 Checking for duplicates:', { newFoodNames, mealCategory, mealCategoryName });
     
     // Fetch today's nutrition data for the user
     const dateString = currentTime.toISOString().split('T')[0];
@@ -253,7 +253,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     // Edge case: API returned success=false or no data
     if (!data || !data.success || !Array.isArray(data.data)) {
-      console.log('No valid nutrition data returned');
+      // console.log('No valid nutrition data returned');
       return { isDuplicate: false };
     }
     
@@ -290,7 +290,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
       }
     });
     
-    console.log('📊 Meals in current slot:', mealsInCurrentSlot.length);
+    // console.log('📊 Meals in current slot:', mealsInCurrentSlot.length);
     
     // Edge case: No meals in current time slot
     if (mealsInCurrentSlot.length === 0) {
@@ -322,7 +322,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
           
           // Simple exact match (case-insensitive)
           if (newFoodName === existingFoodName) {
-            console.log('✅ Duplicate found:', { newFoodName, existingFoodName, mealCategoryName });
+            // console.log('✅  found:', { newFoodName, existingFoodName, mealCategoryName });
             
             // Edge case: Get original food name with proper casing for display
             let originalName = newFoodName;
@@ -376,7 +376,7 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     const currentTime = new Date();
     const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
     
-    console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
+    // console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
     
     // Fetch today's weight history for the user with timeout for Android compatibility
     const controller = new AbortController();
@@ -410,7 +410,7 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
       return entryDate >= todayStart;
     });
     
-    console.log('📊 Weight entries today:', todayEntries.length);
+    // console.log('📊 Weight entries today:', todayEntries.length);
     
     if (todayEntries.length === 0) {
       return { isDuplicate: false };
@@ -440,12 +440,12 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
           timeDifference = 'just now';
         }
         
-        console.log('✅ Duplicate weight found:', { 
-          newWeight, 
-          existingWeight, 
-          weightDiff, 
-          timeDifference 
-        });
+        // console.log('✅ Duplicate weight found:', { 
+        //   newWeight, 
+        //   existingWeight, 
+        //   weightDiff, 
+        //   timeDifference 
+        // });
         
         return {
           isDuplicate: true,

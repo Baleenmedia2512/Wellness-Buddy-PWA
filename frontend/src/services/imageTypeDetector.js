@@ -65,7 +65,7 @@ class ImageTypeDetector {
         console.log('✅ Detected FOOD IMAGE with Gemini AI');
       }
 
-      console.log(`📊 Image type: ${type.toUpperCase()} (confidence: ${(confidence * 100).toFixed(1)}%)`);
+      // console.log(`📊 Image type: ${type.toUpperCase()} (confidence: ${(confidence * 100).toFixed(1)}%)`);
 
       return {
         type,
@@ -129,7 +129,7 @@ class ImageTypeDetector {
     if (this.initialized) {
       await weightDetectionService.terminate();
       this.initialized = false;
-      console.log('🔚 Image Type Detector terminated');
+      // console.log('🔚 Image Type Detector terminated');
     }
   }
 }

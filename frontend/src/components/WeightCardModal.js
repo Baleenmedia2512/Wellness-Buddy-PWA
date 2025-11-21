@@ -10,7 +10,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
   if (!data) return null;
 
   /**
-   * Format date
+   * Format date (without time)
    */
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -18,9 +18,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
       weekday: 'long',
       year: 'numeric',
       month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+      day: 'numeric'
     });
   };
 

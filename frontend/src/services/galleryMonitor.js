@@ -199,7 +199,7 @@ export const GalleryMonitor = {
       // 3. Showing Android notifications
       // 4. Retry logic for failed operations
       
-      console.log('✅ Background service will handle analysis and database saving');
+      // console.log('✅ Background service will handle analysis and database saving');
       
     } catch (error) {
       console.error('Image processing failed:', error);

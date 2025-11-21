@@ -59,7 +59,7 @@ const wrappedPlugin = {
           }
 
           this._initialized = true;
-          console.log("✅ CameraMonitor plugin initialized successfully");
+          // console.log("✅ CameraMonitor plugin initialized successfully");
           resolve(true);
         } catch (error) {
           console.warn("Failed to initialize CameraMonitor:", error);
@@ -82,10 +82,10 @@ const wrappedPlugin = {
     try {
       await this.init();
       const result = await CameraMonitor.startMonitoring();
-      console.log("✅ Camera monitoring started:", result);
+      // console.log("✅ Camera monitoring started:", result);
       return result;
     } catch (error) {
-      console.error("Failed to start camera monitoring:", error);
+      // console.error("Failed to start camera monitoring:", error);
       throw error;
     }
   },

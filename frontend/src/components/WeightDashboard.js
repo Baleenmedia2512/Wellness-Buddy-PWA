@@ -48,6 +48,8 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
   }, [expiresAt, onExpire]);
 
   const remainingSecs = Math.ceil(Math.max(0, expiresAt - now) / 1000);
+  // const weightDisplay = originalEntry?.Weight ? `${originalEntry.Weight} kg` : 'Weight';
+  const weightDisplay = originalEntry?.Weight ? `${originalEntry.Weight} kg` : 'Weight';
 
   return (
     <div className="relative bg-white border border-amber-200/70 rounded-xl p-3 flex items-center gap-3 shadow-sm" style={{ height: 84 }}>
@@ -57,7 +59,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
 
       <div className="flex-1 min-w-0">
         <p className="text-sm text-gray-800 truncate">
-          <span className="font-medium">Removed</span> "{originalEntry.Weight} kg"
+          <span className="font-medium">Removed</span> "{weightDisplay}"
         </p>
         <p className="text-[11px] text-amber-700/80">Undo available for {remainingSecs}s</p>
       </div>
@@ -360,7 +362,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to delete entry');
       }
 
-      console.log('✅ Entry soft-deleted immediately:', entryToDelete.ID);
+      // console.log('✅ Entry soft-deleted immediately:', entryToDelete.ID);
 
     } catch (err) {
       console.error('❌ Delete error:', err);
@@ -421,7 +423,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to restore entry');
       }
 
-      console.log('✅ Entry restored via API:', originalEntry.ID);
+      // console.log('✅ Entry restored via API:', originalEntry.ID);
 
     } catch (err) {
       console.error('❌ Undo restore error:', err);
@@ -463,7 +465,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       return next;
     });
 
-    console.log('⏱️ Undo timer expired, entry remains deleted:', originalEntry.ID);
+    // console.log('⏱️ Undo timer expired, entry remains deleted:', originalEntry.ID);
   };
 
   // Weight saving removed - entries are added via main page image upload
@@ -759,7 +761,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               onDelete={handleDeleteEntry}
               onEdit={() => {
                 // TODO: Implement edit functionality
-                console.log('Edit not implemented yet');
+                // console.log('Edit not implemented yet');
               }}
               previousWeight={(() => {
                 const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
@@ -795,7 +797,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             onDelete={handleDeleteEntry}
             onEdit={() => {
               // TODO: Implement edit functionality
-              console.log('Edit not implemented yet');
+              // console.log('Edit not implemented yet');
             }}
             previousWeight={(() => {
               const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);

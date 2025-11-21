@@ -33,7 +33,7 @@ class WeightDetectionService {
    * @returns {Promise<{isWeightScale: boolean, confidence: number}>}
    */
   async detectImageType(imageFile) {
-    console.log('🔍 Detecting image type...');
+    // console.log('🔍 Detecting image type...');
 
     if (!this.model) {
       throw new Error('Gemini API key is not configured');
@@ -74,7 +74,7 @@ Examples:
       const text = response.text();
       const data = this.parseJsonResponse(text);
 
-      console.log('✅ Image type detection:', data);
+      // console.log('✅ Image type detection:', data);
 
       return {
         isWeightScale: data.isWeightScale || false,
@@ -100,7 +100,7 @@ Examples:
    */
   async extractWeightFromImage(imageFile) {
     const startTime = Date.now();
-    console.log('🔍 WeightDetectionService: Analyzing weight scale image with Gemini AI...');
+    // console.log('🔍 WeightDetectionService: Analyzing weight scale image with Gemini AI...');
 
     if (!this.model) {
       throw new Error('Gemini API key is not configured');
@@ -335,7 +335,7 @@ Examples:
    * Initialize service (optional)
    */
   async initialize() {
-    console.log('✅ WeightDetectionService initialized with Gemini AI');
+    // console.log('✅ WeightDetectionService initialized with Gemini AI');
     return Promise.resolve();
   }
 
@@ -343,7 +343,7 @@ Examples:
    * Cleanup resources (optional)
    */
   async terminate() {
-    console.log('🔚 WeightDetectionService terminated');
+    // console.log('🔚 WeightDetectionService terminated');
     return Promise.resolve();
   }
 }
