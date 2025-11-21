@@ -1,5 +1,5 @@
 // src/components/EditableFoodItem.js
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { geminiService } from '../services/geminiService';
 import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet } from 'lucide-react';
 
@@ -7,7 +7,7 @@ import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet } 
  * Editable food item component for nutrition breakdown
  * Allows users to search and replace food items with accurate serving sizes
  */
-const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
+const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChange, disabled, onSave, onCancel, hideButtons }, ref) => {
   // Display/Edit mode toggle
   const [isEditing, setIsEditing] = useState(false);
   
@@ -28,6 +28,13 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
   const searchTimeoutRef = useRef(null);
+
+  // Expose save and cancel methods to parent via ref
+  useImperativeHandle(ref, () => ({
+    save: handleSave,
+    cancel: handleCancel,
+    isEditing
+  }));
 
   // Notify parent when editing state changes
   useEffect(() => {
@@ -388,6 +395,11 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
     setSearchResults([]);
     setSelectedFood(null);
     setServingOptions([]);
+    
+    // Notify parent if callback provided
+    if (onSave) {
+      onSave(index);
+    }
   };
 
   // Cancel editing
@@ -400,6 +412,11 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
     setSelectedFood(null);
     setServingOptions([]);
     setCustomGrams(foodItem.serving?.grams || foodItem.grams || '');
+    
+    // Notify parent if callback provided
+    if (onCancel) {
+      onCancel(index);
+    }
   };
 
   // Enter edit mode
@@ -511,7 +528,12 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
         </div>
         <button
           onClick={handleEdit}
-          className="shrink-0 px-3 py-1.5 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors flex items-center gap-1.5 border border-blue-200"
+          disabled={disabled}
+          className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
+            disabled 
+              ? 'bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed'
+              : 'text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200'
+          }`}
         >
           <Edit2 className="w-3.5 h-3.5" />
           <span className="hidden sm:inline">Edit</span>
@@ -535,6 +557,12 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
             type="text"
             value={searchQuery}
             onChange={handleSearchInput}
+            onFocus={(e) => {
+              // Scroll input into view when keyboard appears on mobile
+              setTimeout(() => {
+                e.target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 300);
+            }}
             placeholder="Search to replace..."
             className="w-full pl-9 pr-8 py-2 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors bg-white"
           />
@@ -745,30 +773,34 @@ const EditableFoodItem = ({ foodItem, onUpdate, index, onEditingChange }) => {
         )}
       </div>
 
-      {/* Action Buttons */}
-      <div className="flex gap-2">
-        <button
-          onClick={handleSave}
-          disabled={!customGrams || parseFloat(customGrams) <= 0}
-          className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm ${
-            customGrams && parseFloat(customGrams) > 0
-              ? 'bg-green-600 hover:bg-green-700 text-white'
-              : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-          }`}
-        >
-          <Save className="w-4 h-4" />
-          <span>Save</span>
-        </button>
-        <button
-          onClick={handleCancel}
-          className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm"
-        >
-          <X className="w-4 h-4" />
-          <span>Cancel</span>
-        </button>
-      </div>
+      {/* Action Buttons - only show if not hidden by parent */}
+      {!hideButtons && (
+        <div className="flex gap-2">
+          <button
+            onClick={handleSave}
+            disabled={!customGrams || parseFloat(customGrams) <= 0}
+            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm ${
+              customGrams && parseFloat(customGrams) > 0
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
+            }`}
+          >
+            <Save className="w-4 h-4" />
+            <span>Save</span>
+          </button>
+          <button
+            onClick={handleCancel}
+            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm"
+          >
+            <X className="w-4 h-4" />
+            <span>Cancel</span>
+          </button>
+        </div>
+      )}
     </div>
   );
-};
+});
+
+EditableFoodItem.displayName = 'EditableFoodItem';
 
 export default EditableFoodItem;

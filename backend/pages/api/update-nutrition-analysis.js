@@ -1,6 +1,15 @@
-import db from '../../utils/db';
+import mysql from 'mysql2/promise';
 
 export default async function handler(req, res) {
+   // Handle CORS
+  if (req.method === 'OPTIONS') {
+    // Handle CORS - set headers for all requests
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    return res.status(200).end();
+  }
+
   if (req.method !== 'PUT') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
@@ -16,6 +25,14 @@ export default async function handler(req, res) {
       return res.status(400).json({ success: false, message: 'Invalid analysis data format' });
     }
 
+    // Database connection
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME
+    });
+
     // Update the meal in the database
     const query = `
       UPDATE food_nutrition_data_table
@@ -28,7 +45,7 @@ export default async function handler(req, res) {
       WHERE ID = ?
     `;
 
-    const [result] = await db.query(query, [
+    const [result] = await connection.execute(query, [
       JSON.stringify(analysisData),
       totalCalories || 0,
       totalProtein || 0,
@@ -37,6 +54,8 @@ export default async function handler(req, res) {
       totalFiber || 0,
       id
     ]);
+
+    await connection.end();
 
     if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'Meal not found' });

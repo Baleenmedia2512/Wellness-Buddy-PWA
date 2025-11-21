@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   ArrowLeft,
   TrendingUp,
@@ -39,7 +39,11 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   const [localNutrition, setLocalNutrition] = useState({});
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
   const [editingStates, setEditingStates] = useState({});
+  const [editingIndex, setEditingIndex] = useState(null);
+  const [resetKey, setResetKey] = useState(0);
+  const itemRefs = useRef({});
 
   // delete button state
   const [deletingId, setDeletingId] = useState(null);
@@ -52,7 +56,17 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   useEffect(() => {
     if (selectedMeal) {
       const foodData = parseAnalysisData(selectedMeal.AnalysisData);
-      setLocalDetailedItems(foodData.detailedItems || []);
+      // Transform database format to EditableFoodItem expected format
+      const transformedItems = (foodData.detailedItems || []).map(item => ({
+        ...item,
+        serving: {
+          description: item.portion,
+          grams: item.weight_g
+        },
+        portionDescription: item.portion,
+        grams: item.weight_g
+      }));
+      setLocalDetailedItems(transformedItems);
       setLocalNutrition(foodData.nutrition || {});
       setIsEditing(false);
       setEditingStates({});
@@ -63,6 +77,13 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   useEffect(() => {
     const anyEditing = Object.values(editingStates).some(state => state === true);
     setIsEditing(anyEditing);
+    // Track which item is being edited
+    if (anyEditing) {
+      const idx = Object.keys(editingStates).find(key => editingStates[key]);
+      setEditingIndex(idx !== undefined ? parseInt(idx) : null);
+    } else {
+      setEditingIndex(null);
+    }
   }, [editingStates]);
 
   // Handle editing state change from EditableFoodItem
@@ -72,6 +93,28 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
       [index]: isItemEditing
     }));
   }, []);
+
+  // Handle cancel editing
+  const handleCancelEditing = useCallback(() => {
+    // Reset to original data
+    const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+    const transformedItems = (foodData.detailedItems || []).map(item => ({
+      ...item,
+      serving: {
+        description: item.portion,
+        grams: item.weight_g
+      },
+      portionDescription: item.portion,
+      grams: item.weight_g
+    }));
+    setLocalDetailedItems(transformedItems);
+    setLocalNutrition(foodData.nutrition || {});
+    setIsEditing(false);
+    setEditingStates({});
+    setEditingIndex(null);
+    // Force remount of EditableFoodItem components
+    setResetKey(prev => prev + 1);
+  }, [selectedMeal]);
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
@@ -92,25 +135,22 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
     };
   };
 
-  // Handle food item update
-  const handleFoodUpdate = (index, updatedFood) => {
+  // Handle food item update and save to database
+  const handleFoodUpdate = async (index, updatedFood) => {
     const newItems = [...localDetailedItems];
     newItems[index] = updatedFood;
     setLocalDetailedItems(newItems);
     
     const newTotals = recalculateTotals(newItems);
     setLocalNutrition(newTotals);
-  };
 
-  // Save updated meal to database
-  const handleSaveMealUpdates = async () => {
+    // Save to database immediately
     if (!selectedMeal?.ID) return;
     
     setIsSaving(true);
     try {
-      // Prepare updated analysis data
       const updatedAnalysisData = {
-        foods: localDetailedItems.map(item => ({
+        foods: newItems.map(item => ({
           name: item.name,
           portion: item.serving?.description || item.portionDescription || item.portion || '1 serving',
           weight_g: item.serving?.grams || item.grams || item.weight_g || 100,
@@ -123,27 +163,26 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
           }
         })),
         total: {
-          calories: Math.round(localNutrition.calories || 0),
-          protein: Math.round(localNutrition.protein || 0),
-          carbs: Math.round(localNutrition.carbs || 0),
-          fat: Math.round(localNutrition.fat || 0),
-          fiber: Math.round(localNutrition.fiber || 0)
+          calories: Math.round(newTotals.calories || 0),
+          protein: Math.round(newTotals.protein || 0),
+          carbs: Math.round(newTotals.carbs || 0),
+          fat: Math.round(newTotals.fat || 0),
+          fiber: Math.round(newTotals.fiber || 0)
         },
         confidence: 'high'
       };
 
-      // Update in database
       const response = await fetch(`${apiBaseUrl}/api/update-nutrition-analysis`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: selectedMeal.ID,
           analysisData: updatedAnalysisData,
-          totalCalories: Math.round(localNutrition.calories || 0),
-          totalProtein: Math.round(localNutrition.protein || 0),
-          totalCarbs: Math.round(localNutrition.carbs || 0),
-          totalFat: Math.round(localNutrition.fat || 0),
-          totalFiber: Math.round(localNutrition.fiber || 0)
+          totalCalories: Math.round(newTotals.calories || 0),
+          totalProtein: Math.round(newTotals.protein || 0),
+          totalCarbs: Math.round(newTotals.carbs || 0),
+          totalFat: Math.round(newTotals.fat || 0),
+          totalFiber: Math.round(newTotals.fiber || 0)
         })
       });
 
@@ -153,17 +192,30 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
         throw new Error(result.message || 'Failed to update meal');
       }
 
+      console.log('💾 Meal updated successfully:', result);
+      
+      // Show success status
+      setSaveStatus('success');
+      
+      // Exit editing mode and auto-hide success after 2 seconds
+      setEditingStates({});
+      setEditingIndex(null);
+      
+      setTimeout(() => {
+        setSaveStatus(null);
+      }, 2000);
+
       // Update local analyses state
       setAnalyses(prev => prev.map(meal => 
         meal.ID === selectedMeal.ID
           ? {
               ...meal,
               AnalysisData: JSON.stringify(updatedAnalysisData),
-              TotalCalories: Math.round(localNutrition.calories || 0),
-              TotalProtein: Math.round(localNutrition.protein || 0),
-              TotalCarbs: Math.round(localNutrition.carbs || 0),
-              TotalFat: Math.round(localNutrition.fat || 0),
-              TotalFiber: Math.round(localNutrition.fiber || 0)
+              TotalCalories: Math.round(newTotals.calories || 0),
+              TotalProtein: Math.round(newTotals.protein || 0),
+              TotalCarbs: Math.round(newTotals.carbs || 0),
+              TotalFat: Math.round(newTotals.fat || 0),
+              TotalFiber: Math.round(newTotals.fiber || 0)
             }
           : meal
       ));
@@ -172,24 +224,46 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
       setSelectedMeal(prev => ({
         ...prev,
         AnalysisData: JSON.stringify(updatedAnalysisData),
-        TotalCalories: Math.round(localNutrition.calories || 0),
-        TotalProtein: Math.round(localNutrition.protein || 0),
-        TotalCarbs: Math.round(localNutrition.carbs || 0),
-        TotalFat: Math.round(localNutrition.fat || 0),
-        TotalFiber: Math.round(localNutrition.fiber || 0)
+        TotalCalories: Math.round(newTotals.calories || 0),
+        TotalProtein: Math.round(newTotals.protein || 0),
+        TotalCarbs: Math.round(newTotals.carbs || 0),
+        TotalFat: Math.round(newTotals.fat || 0),
+        TotalFiber: Math.round(newTotals.fiber || 0)
       }));
 
       // Reload stats to reflect changes
       await fetchDayAnalyses(selectedDate);
-
-      setIsEditing(false);
     } catch (error) {
       console.error('❌ Error updating meal:', error);
-      alert(error.message || 'Failed to update meal. Please try again.');
+      
+      // Show error status
+      setSaveStatus('error');
+      
+      // Revert changes on error
+      const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+      const transformedItems = (foodData.detailedItems || []).map(item => ({
+        ...item,
+        serving: {
+          description: item.portion,
+          grams: item.weight_g
+        },
+        portionDescription: item.portion,
+        grams: item.weight_g
+      }));
+      setLocalDetailedItems(transformedItems);
+      setLocalNutrition(foodData.nutrition || {});
+      
+      // Auto-reset error after 3 seconds
+      setTimeout(() => {
+        setSaveStatus(null);
+        setIsSaving(false);
+      }, 3000);
     } finally {
-      setIsSaving(false);
+      if (!error) setIsSaving(false);
     }
   };
+
+
 
   /* ---------------- Helpers ---------------- */
 
@@ -402,6 +476,11 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   };
 
   const handleCloseModal = () => {
+    // Prevent closing if currently saving or showing status
+    if (isSaving || saveStatus) {
+      return;
+    }
+    
     setIsClosingModal(true);
     setTimeout(() => {
       setSelectedMeal(null);
@@ -1170,14 +1249,62 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
       {selectedMeal && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-end justify-center p-4"
-          onClick={handleCloseModal}
+          onClick={isSaving || saveStatus ? undefined : handleCloseModal}
         >
           <div
-            className={`bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden transition-transform duration-300 ease-in-out ${
+            className={`bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden transition-all duration-500 ease-in-out ${
               isClosingModal ? 'animate-slideDown' : 'animate-slideUp'
-            }`}
+            } ${isEditing ? 'max-h-[90vh]' : 'max-h-[80vh]'} relative`}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Success/Error Status Overlay */}
+            {saveStatus && (
+              <div className="absolute inset-0 bg-white rounded-3xl flex items-center justify-center z-10 animate-fadeIn">
+                <div className="text-center p-8">
+                  {saveStatus === 'success' ? (
+                    <>
+                      <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                        <svg className="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h3 className="text-2xl font-bold text-gray-900 mb-2">Changes Saved!</h3>
+                      <p className="text-sm text-green-600 font-medium">Your meal has been updated successfully</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                        <svg className="w-10 h-10 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </div>
+                      <h3 className="text-2xl font-bold text-gray-900 mb-2">Update Failed</h3>
+                      <p className="text-sm text-gray-500 mb-4">Unable to save changes. Please try again.</p>
+                      <button
+                        onClick={() => setSaveStatus(null)}
+                        className="bg-red-500 text-white px-6 py-2 rounded-lg text-sm font-medium hover:bg-red-600 transition-colors"
+                      >
+                        Try Again
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Saving indicator overlay */}
+            {isSaving && !saveStatus && (
+              <div className="absolute inset-0 bg-white/95 rounded-3xl flex items-center justify-center z-10 animate-fadeIn">
+                <div className="text-center p-8">
+                  <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <div className="w-10 h-10 border-4 border-green-600 border-t-transparent rounded-full animate-spin"></div>
+                  </div>
+                  <h3 className="text-xl font-bold text-gray-900 mb-2">Saving Changes...</h3>
+                  <p className="text-sm text-gray-500">Updating your meal data</p>
+                </div>
+              </div>
+            )}
+
             {(() => {
               // Use white for '+ {others} more' in modal
               const foodData = parseAnalysisData(selectedMeal.AnalysisData, "text-white");
@@ -1205,7 +1332,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                             : `data:image/jpeg;base64,${selectedMeal.ImageBase64}`
                         }
                         alt={foodData.name}
-                        className="w-full h-72 object-cover"
+                        className={`w-full object-cover transition-all duration-500 ease-in-out ${isEditing ? 'h-48' : 'h-72'}`}
                         onError={(e) => {
                           e.target.src =
                             'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=880&q=80';
@@ -1215,14 +1342,14 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       <img
                         src={selectedMeal.ImagePath}
                         alt={foodData.name}
-                        className="w-full h-72 object-cover"
+                        className={`w-full object-cover transition-all duration-500 ease-in-out ${isEditing ? 'h-48' : 'h-72'}`}
                         onError={(e) => {
                           e.target.src =
                             'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=880&q=80';
                         }}
                       />
                     ) : (
-                      <div className="w-full h-72 bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
+                      <div className={`w-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center transition-all duration-500 ease-in-out ${isEditing ? 'h-48' : 'h-72'}`}>
                         <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path
                             strokeLinecap="round"
@@ -1234,19 +1361,19 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       </div>
                     )}
 
-                    <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 space-y-3">
+                    <div className={`absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent transition-all duration-500 ease-in-out ${isEditing ? 'p-3 space-y-1' : 'p-5 space-y-3'}`}>
                       <div className="flex justify-between items-start">
                         <div>
-                          <h2 className="text-xl font-bold text-white leading-tight">{foodData.name}</h2>
-                          <p className="text-xs text-white/70 mt-0.5">Logged at {mealTime}</p>
+                          <h2 className={`font-bold text-white leading-tight transition-all duration-500 ease-in-out ${isEditing ? 'text-lg' : 'text-xl'}`}>{foodData.name}</h2>
+                          <p className={`text-white/70 mt-0.5 transition-all duration-500 ease-in-out ${isEditing ? 'text-[10px]' : 'text-xs'}`}>Logged at {mealTime}</p>
                         </div>
                         <div className="text-right">
-                          <span className="text-3xl font-bold text-white">{Math.round(calories)}</span>
-                          <span className="text-xs text-white/70 ml-1">kcal</span>
+                          <span className={`font-bold text-white transition-all duration-500 ease-in-out ${isEditing ? 'text-2xl' : 'text-3xl'}`}>{Math.round(calories)}</span>
+                          <span className={`text-white/70 ml-1 transition-all duration-500 ease-in-out ${isEditing ? 'text-[10px]' : 'text-xs'}`}>kcal</span>
                         </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-1">
+                      <div className={`flex flex-wrap gap-2 pt-1 overflow-hidden transition-all duration-500 ease-in-out ${isEditing ? 'max-h-0 opacity-0' : 'max-h-20 opacity-100'}`}>
                         <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
                           <Beef className="w-4 h-4 text-white mr-1.5" />
                           <span className="text-xs font-medium text-white">{Math.round(protein)}g</span>
@@ -1268,7 +1395,10 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
                     <button
                       onClick={handleCloseModal}
-                      className="absolute top-4 right-4 w-9 h-9 bg-black/40 backdrop-blur-sm text-white rounded-full flex items-center justify-center hover:bg-black/60 transition-all duration-200 border border-white/20"
+                      disabled={isSaving || saveStatus}
+                      className={`absolute top-4 right-4 w-9 h-9 bg-black/40 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/20 ${
+                        isSaving || saveStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-black/60'
+                      }`}
                     >
                       <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1277,9 +1407,9 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                   </div>
 
                   {/* Food Items - Editable */}
-                  <div className="p-4 overflow-y-auto" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
+                  <div className="p-4 overflow-y-auto transition-all duration-500 ease-in-out" style={{ maxHeight: isEditing ? '60vh' : '40vh' }}>
                     {localDetailedItems?.length > 0 && (
-                      <div className="space-y-3">
+                      <div className={`space-y-3 transition-all duration-500 ease-in-out ${isEditing ? 'translate-y-0 opacity-100' : 'translate-y-0 opacity-100'}`}>
                         <h3 className="font-semibold text-gray-900 text-sm flex items-center">
                           <svg
                             className="w-5 h-5 text-gray-500 mr-1.5 inline-flex align-middle translate-y-[2px] translate-x-[2px]"
@@ -1296,68 +1426,82 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                           </svg>
                           Food Items
                         </h3>
-                        <div className="space-y-2">
+                        <div className={`space-y-2 transition-all duration-500 ease-in-out transform ${isEditing ? 'scale-100' : 'scale-100'}`}>
                           {localDetailedItems.map((item, index) => (
-                            <EditableFoodItem
-                              key={index}
-                              foodItem={item}
-                              index={index}
-                              onUpdate={handleFoodUpdate}
-                              onEditingChange={handleEditingChange}
-                            />
+                            <div 
+                              key={`${index}-${resetKey}`}
+                              className="transition-all duration-500 ease-in-out"
+                            >
+                              <EditableFoodItem
+                                ref={(el) => (itemRefs.current[index] = el)}
+                                foodItem={item}
+                                index={index}
+                                onUpdate={handleFoodUpdate}
+                                onEditingChange={handleEditingChange}
+                                disabled={isEditing && !editingStates[index]}
+                                hideButtons={true}
+                              />
+                            </div>
                           ))}
                         </div>
                       </div>
                     )}
-
-                    {/* Save/Cancel buttons when editing */}
-                    {isEditing && (
-                      <div className="mt-4 flex gap-2">
-                        <button
-                          onClick={() => {
-                            // Reset to original data
-                            const foodData = parseAnalysisData(selectedMeal.AnalysisData);
-                            setLocalDetailedItems(foodData.detailedItems || []);
-                            setLocalNutrition(foodData.nutrition || {});
-                            setIsEditing(false);
-                          }}
-                          disabled={isSaving}
-                          className="flex-1 bg-gray-100 text-gray-700 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          onClick={handleSaveMealUpdates}
-                          disabled={isSaving}
-                          className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-1.5 ${
-                            isSaving
-                              ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                              : 'bg-green-500 text-white hover:bg-green-600'
-                          }`}
-                        >
-                          {isSaving ? (
-                            <>
-                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>Saving...</span>
-                            </>
-                          ) : (
-                            <span>Save Changes</span>
-                          )}
-                        </button>
-                      </div>
-                    )}
                   </div>
 
-                  {/* Delete with in-button loading + create Undo placeholder (OPTIMISTIC) */}
-                  <div className="p-4 pt-0">
-                    <button
-                      disabled={deletingId === selectedMeal?.ID}
-                      className={`w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
-                        deletingId === selectedMeal?.ID
-                          ? 'bg-red-400 cursor-not-allowed'
-                          : 'bg-red-500 hover:bg-red-600 hover:shadow-md active:scale-95'
-                      }`}
-                      onClick={async () => {
+                  {/* Action buttons area */}
+                  {isEditing ? (
+                    // Save and Cancel buttons when editing
+                    <div className="p-4 pt-0 flex gap-2">
+                      <button
+                        onClick={handleCancelEditing}
+                        disabled={isSaving}
+                        className="flex-1 flex items-center justify-center gap-2 rounded-lg text-gray-700 text-sm font-medium px-4 py-2 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                        Cancel
+                      </button>
+                      <button
+                        disabled={isSaving}
+                        className={`flex-1 flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
+                          isSaving
+                            ? 'bg-green-400 cursor-not-allowed'
+                            : 'bg-green-500 hover:bg-green-600 hover:shadow-md active:scale-95'
+                        }`}
+                        onClick={() => {
+                          // Call save on the editing item
+                          if (editingIndex !== null && itemRefs.current[editingIndex]) {
+                            itemRefs.current[editingIndex].save();
+                          }
+                        }}
+                      >
+                        {isSaving ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Saving...</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                            Save
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  ) : (
+                    // Delete button when not editing
+                    <div className="p-4 pt-0">
+                      <button
+                        disabled={deletingId === selectedMeal?.ID}
+                        className={`w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
+                          deletingId === selectedMeal?.ID
+                            ? 'bg-red-400 cursor-not-allowed'
+                            : 'bg-red-500 hover:bg-red-600 hover:shadow-md active:scale-95'
+                        }`}
+                        onClick={async () => {
                         if (!selectedMeal?.ID) return;
 
                         // Capture the meal reference immediately (modal will close)
@@ -1473,6 +1617,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       )}
                     </button>
                   </div>
+                  )}
 
                 </div>
               );

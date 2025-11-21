@@ -1,5 +1,5 @@
 //src\components\NutritionCard.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import EditableFoodItem from './EditableFoodItem';
 import { Bookmark, Copy, Search, X, Check } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
@@ -13,6 +13,34 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
   const [isClosing, setIsClosing] = useState(false);
+  const [editingStates, setEditingStates] = useState({});
+  const [editingIndex, setEditingIndex] = useState(null);
+
+  // Handle editing state change from EditableFoodItem
+  const handleEditingChange = (index, isItemEditing) => {
+    setEditingStates(prev => {
+      const newStates = {
+        ...prev,
+        [index]: isItemEditing
+      };
+      
+      // Update editing index based on new states
+      const editingIndexes = Object.keys(newStates).filter(key => newStates[key]);
+      setEditingIndex(editingIndexes.length > 0 ? parseInt(editingIndexes[0]) : null);
+      
+      return newStates;
+    });
+  };
+
+  // Generate meal name from food items
+  const generateMealName = () => {
+    if (localDetailedItems.length === 0) return data?.category?.name || 'Meal';
+    if (localDetailedItems.length === 1) return localDetailedItems[0].name;
+    
+    const firstItem = localDetailedItems[0].name;
+    const remaining = localDetailedItems.length - 1;
+    return `${firstItem} + ${remaining} more`;
+  };
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
@@ -189,11 +217,11 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
         <div className="flex items-center justify-between gap-3">
           <div className="flex-1">
             <h2 className="text-xl font-bold">
-              {category.name}
+              {generateMealName()}
             </h2>
-            {itemCount && itemCount > 1 && (
+            {localDetailedItems.length > 1 && (
               <p className="text-green-100 text-sm mt-1">
-                {itemCount} food items analyzed
+                {localDetailedItems.length} food items analyzed
               </p>
             )}
             {servingInfo && (
@@ -374,6 +402,8 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
                   foodItem={item}
                   index={index}
                   onUpdate={handleFoodUpdate}
+                  onEditingChange={handleEditingChange}
+                  disabled={editingIndex !== null && editingIndex !== index}
                 />
               ))}
             </div>
@@ -391,45 +421,6 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
             )}
           </div>
         )}
-
-        {/* Action Buttons */}
-        <div className="mt-6 grid grid-cols-2 gap-3">
-          <button 
-            onClick={() => {
-              // Enhanced copy with portion information
-              let copyText = `${category.name}: ${nutrition.calories} calories, ${nutrition.carbs}g carbs, ${nutrition.protein}g protein, ${nutrition.fat}g fat, ${nutrition.fiber}g fiber`;
-              
-              if (portionAnalysis?.totalEstimatedWeight > 0) {
-                copyText += `\nTotal Weight: ~${Math.round(portionAnalysis.totalEstimatedWeight)}g`;
-              }
-              
-              if (detailedItems && detailedItems.length > 1) {
-                copyText += '\n\nBreakdown:';
-                detailedItems.forEach(item => {
-                  copyText += `\n• ${item.name}`;
-                  if (item.portionDescription && item.portionDescription !== 'Unknown portion') {
-                    copyText += ` (${item.portionDescription})`;
-                  }
-                  copyText += `: ${item.calories} cal`;
-                });
-              }
-              
-              navigator.clipboard?.writeText(copyText);
-            }}
-            className="bg-gray-100 text-gray-700 py-3 px-4 rounded-xl text-sm font-semibold hover:bg-gray-200 transition-all duration-200 flex items-center justify-center gap-2"
-          >
-            <Copy className="w-4 h-4" />
-            <span>Copy Info</span>
-          </button>
-          
-          <button 
-            onClick={() => window.location.reload()}
-            className="bg-blue-100 text-blue-700 py-3 px-4 rounded-xl text-sm font-semibold hover:bg-blue-200 transition-all duration-200 flex items-center justify-center gap-2"
-          >
-            <Search className="w-4 h-4" />
-            <span>New Search</span>
-          </button>
-        </div>
       </div>
 
       {/* Save Meal Modal */}
