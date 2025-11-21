@@ -93,7 +93,7 @@ public class GalleryMonitorService extends Service {
         registerReceiver(networkChangeReceiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
         
         // Initialize database sync client
-        databaseSyncClient = new DatabaseSyncClient( process.env.REACT_APP_API_BASE_URL  , this);
+        databaseSyncClient = new DatabaseSyncClient(API_BASE_URL  , this);
         
         // Test database connection
         executorService.execute(() -> {

@@ -412,7 +412,10 @@ const SuccessSavePopup = ({
     }, [expiresAt, ttlSeconds]);
 
     const remaining = Math.ceil(Math.max(0, expiresAt - now) / 1000);
-    const title = popup?.nutritionData?.category?.name || 'Food';
+    const isWeight = popup?.isWeight;
+    const title = isWeight 
+      ? `${popup?.weightData?.weightValue || ''} ${popup?.weightData?.unit || 'kg'}`.trim() || 'Weight'
+      : popup?.nutritionData?.category?.name || 'Food';
 
     const handleUndo = async () => {
       setInlineUndos(prev => { const n = { ...prev }; delete n[pid]; return n; });
@@ -454,7 +457,7 @@ const SuccessSavePopup = ({
             <div className="w-8 h-8 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">🗑️</div>
             <div className="flex-1 min-w-0">
               <p className="text-sm text-gray-800 truncate">
-                <span className="font-medium">Removed</span> “{title}”
+                <span className="font-medium">Remove {isWeight ? 'weight:' : ''}</span> {isWeight ? title : `"${title}"`}
               </p>
               <p className="text-[11px] text-amber-700/80">Undo available for {remaining}s</p>
             </div>
@@ -659,7 +662,7 @@ const SuccessSavePopup = ({
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                         d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                 </svg>
-                {deletingId === id ? 'Removing…' : 'Remove'}
+                {deletingId === id ? 'Removing…' : (isWeight ? 'Remove Weight' : 'Remove')}
               </button>
             </div>
           )}

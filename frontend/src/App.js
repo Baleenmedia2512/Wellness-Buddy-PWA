@@ -242,7 +242,7 @@ function WellnessBuddyApp() {
 
       const data = await response.json();
       
-      console.log('📋 [checkUserStatus] Response:', data);
+      // console.log('📋 [checkUserStatus] Response:', data);
       
       // User not found in database
       if (!data.success || data.userNotFound) {
@@ -832,7 +832,7 @@ function WellnessBuddyApp() {
       const saveRes = await saveNutritionAnalysis(saveData);
 
       if (process.env.NODE_ENV !== 'production') {
-        console.log('✅ Save successful:', saveRes);
+        // console.log('✅ Save successful:', saveRes);
       }
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently

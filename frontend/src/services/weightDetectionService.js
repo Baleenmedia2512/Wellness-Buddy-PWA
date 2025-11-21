@@ -173,7 +173,7 @@ Examples:
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
 
-      console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
+      // console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
 
       // Validate weight value
       if (!data.weight) {
