@@ -72,20 +72,24 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.2.5',
+  VERSION: '1.3.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 8,
+  VERSION_CODE: 9,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Security: Build-time API Key Injection',
+  RELEASE_NAME: 'New Features and Improvements',
   
   // Build date
-  BUILD_DATE: '2025-11-11',
+  BUILD_DATE: '2025-11-24',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.3.0 (Code 9) - 2025-11-24
+ *   ✨ New features and improvements
+ *   🔧 Minor enhancements
  * 
  * Version 1.2.5 (Code 8) - 2025-11-11
  *   🔒 Implemented build-time API key injection for enhanced security

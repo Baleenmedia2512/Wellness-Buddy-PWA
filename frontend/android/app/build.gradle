@@ -8,8 +8,8 @@ android {
         applicationId "com.wellnessbuddy.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 8
-        versionName "1.2.5"
+        versionCode 9
+        versionName "1.3.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         
         // Inject Gemini API key from environment variable or gradle.properties

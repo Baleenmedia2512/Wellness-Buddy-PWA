@@ -12,7 +12,6 @@ import android.webkit.WebSettings;
 
 import com.getcapacitor.BridgeActivity;
 import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
-// import com.wellnessbuddy.app.plugins.CameraMonitorPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -26,13 +25,9 @@ public class MainActivity extends BridgeActivity {
         // Register the GalleryMonitorPlugin BEFORE super.onCreate()
         registerPlugin(GalleryMonitorPlugin.class);
         
-        // Register the CameraMonitorPlugin for real-time photo detection
-        // registerPlugin(CameraMonitorPlugin.class);
-        
         super.onCreate(savedInstanceState);
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
-        // android.util.Log.d("MainActivity", "✅ CameraMonitorPlugin registered in MainActivity");
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
