@@ -1,10 +1,11 @@
 // src\components\ImageUpload.js
-import React, { forwardRef, useRef, useState, useEffect } from 'react';
+import React, { forwardRef, useRef, useState, useEffect, useImperativeHandle } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 
 const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const fallbackInputRef = useRef(null);
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -28,6 +29,15 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
   const triggerGallery = () => {
     galleryInputRef.current?.click();
   };
+
+  // Expose reset method to parent component
+  useImperativeHandle(ref, () => ({
+    resetInputs: () => {
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+      if (fallbackInputRef.current) fallbackInputRef.current.value = '';
+    }
+  }));
 
   // Taglines for loading overlay
   const taglines = [
@@ -61,7 +71,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
       {/* Gallery input */}
       <input ref={galleryInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
       {/* Fallback input */}
-      <input ref={ref} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
+      <input ref={fallbackInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
 
       {imagePreview ? (
         <div className="space-y-4">

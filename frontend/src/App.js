@@ -914,6 +914,11 @@ function WellnessBuddyApp() {
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
     if (selectedImage) setSelectedImage(null);
+    
+    // Reset ALL file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
   };
 
   // Handle duplicate weight modal confirmation
@@ -943,6 +948,11 @@ function WellnessBuddyApp() {
     setWeightResult(null);
     setImagePreview(null);
     setSelectedImage(null);
+    
+    // Reset ALL file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
   };
 
   const handleImageSelect = async (file) => {
