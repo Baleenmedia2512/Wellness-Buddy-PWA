@@ -1026,7 +1026,7 @@ function WellnessBuddyApp() {
         
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
-          console.log('✅ Weight detected:', detectedWeight);
+          // console.log('✅ Weight detected:', detectedWeight);
           
           // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
