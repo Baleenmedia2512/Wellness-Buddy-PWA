@@ -10,7 +10,7 @@ class WeightDetectionService {
     this.apiKey = process.env.REACT_APP_GEMINI_API_KEY;
     this.genAI = null;
     this.model = null;
-    this.timeout = 30000; // 30 second timeout
+    this.timeout = 60000; // 60 second timeout
     this.maxRetries = 2;
 
     if (this.apiKey) {
@@ -335,7 +335,7 @@ Examples:
    * Initialize service (optional)
    */
   async initialize() {
-    // console.log('✅ WeightDetectionService initialized with Gemini AI');
+    console.log('✅ WeightDetectionService initialized with Gemini AI');
     return Promise.resolve();
   }
 
@@ -343,7 +343,7 @@ Examples:
    * Cleanup resources (optional)
    */
   async terminate() {
-    // console.log('🔚 WeightDetectionService terminated');
+    console.log('🔚 WeightDetectionService terminated');
     return Promise.resolve();
   }
 }

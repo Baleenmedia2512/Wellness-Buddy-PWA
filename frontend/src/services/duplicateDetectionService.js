@@ -186,7 +186,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     // Edge case: Invalid date (system clock issues)
     if (isNaN(currentTime.getTime())) {
-      console.error('Invalid system time detected');
+      console.warn('Invalid system time detected');
       return { isDuplicate: false };
     }
     
@@ -210,29 +210,18 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     // Edge case: API base URL not configured
     if (!apiBaseUrl) {
-      // console.error('REACT_APP_API_BASE_URL not configured');
+      console.warn('REACT_APP_API_BASE_URL not configured');
       return { isDuplicate: false };
     }
     
     let response;
     try {
-      // Edge case: Network timeout - add timeout of 10 seconds
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 10000);
-      
       response = await fetch(
-        `${apiBaseUrl}/api/user-nutrition-stats?userId=${userId}&date=${dateString}&detailed=true`,
-        { signal: controller.signal }
+        `${apiBaseUrl}/api/user-nutrition-stats?userId=${userId}&date=${dateString}&detailed=true`
       );
-      
-      clearTimeout(timeoutId);
     } catch (fetchError) {
-      // Edge case: Network error, timeout, or offline
-      if (fetchError.name === 'AbortError') {
-        console.error('Duplicate check timed out');
-      } else {
-        console.error('Network error during duplicate check:', fetchError);
-      }
+      // Edge case: Network error or offline
+      console.error('Network error during duplicate check:', fetchError);
       return { isDuplicate: false }; // Fail-open on network errors
     }
     
@@ -373,31 +362,71 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
  */
 export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg' }) {
   try {
-    const currentTime = new Date();
-    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
-    
-    // console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
-    
-    // Fetch today's weight history for the user with timeout for Android compatibility
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout
-    
-    const response = await fetch(
-      `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=50&offset=0`,
-      { signal: controller.signal }
-    );
-    
-    clearTimeout(timeoutId);
-    
-    if (!response.ok) {
-      console.error('Failed to fetch weight history for duplicate check');
+    // Edge case: Missing or invalid userId
+    if (!userId || (typeof userId !== 'string' && typeof userId !== 'number')) {
+      console.warn('Invalid userId provided to weight duplicate check:', userId);
       return { isDuplicate: false };
     }
     
-    const data = await response.json();
+    // Edge case: Missing or invalid weight value
+    if (!weightValue || isNaN(parseFloat(weightValue))) {
+      console.warn('Invalid weight value provided to duplicate check:', weightValue);
+      return { isDuplicate: false };
+    }
     
-    if (!data.success || !data.data || data.data.length === 0) {
-      // No existing weight entries
+    const currentTime = new Date();
+    
+    // Edge case: Invalid date (system clock issues)
+    if (isNaN(currentTime.getTime())) {
+      console.error('Invalid system time detected');
+      return { isDuplicate: false };
+    }
+    
+    const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
+    
+    // Edge case: API base URL not configured
+    if (!apiBaseUrl) {
+      console.error('REACT_APP_API_BASE_URL not configured');
+      return { isDuplicate: false };
+    }
+    
+    // console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
+    
+    // Fetch today's weight history for the user
+    let response;
+    try {
+      response = await fetch(
+        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=50&offset=0`
+      );
+    } catch (fetchError) {
+      // Edge case: Network error or offline
+      console.error('Network error during weight duplicate check:', fetchError);
+      return { isDuplicate: false }; // Fail-open on network errors
+    }
+    
+    // Edge case: Non-OK HTTP response
+    if (!response.ok) {
+      console.error('Failed to fetch weight history for duplicate check, status:', response.status);
+      return { isDuplicate: false };
+    }
+    
+    let data;
+    try {
+      data = await response.json();
+    } catch (jsonError) {
+      // Edge case: Invalid JSON response
+      console.error('Invalid JSON response from weight history:', jsonError);
+      return { isDuplicate: false };
+    }
+    
+    // Edge case: API returned success=false or no data
+    if (!data || !data.success || !Array.isArray(data.data)) {
+      // console.log('No valid weight history data returned');
+      return { isDuplicate: false };
+    }
+    
+    // Edge case: Empty data array (no weight entries)
+    if (data.data.length === 0) {
       return { isDuplicate: false };
     }
     
@@ -406,12 +435,34 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     todayStart.setHours(0, 0, 0, 0);
     
     const todayEntries = data.data.filter(entry => {
-      const entryDate = new Date(entry.CreatedAt);
-      return entryDate >= todayStart;
+      // Edge case: Missing or invalid entry data
+      if (!entry || typeof entry !== 'object') return false;
+      
+      // Edge case: Missing CreatedAt timestamp
+      if (!entry.CreatedAt) {
+        console.warn('Weight entry missing CreatedAt timestamp:', entry);
+        return false;
+      }
+      
+      try {
+        const entryDate = new Date(entry.CreatedAt);
+        
+        // Edge case: Invalid date
+        if (isNaN(entryDate.getTime())) {
+          console.warn('Invalid weight entry timestamp:', entry.CreatedAt);
+          return false;
+        }
+        
+        return entryDate >= todayStart;
+      } catch (error) {
+        console.error('Error processing weight entry time:', error);
+        return false;
+      }
     });
     
     // console.log('📊 Weight entries today:', todayEntries.length);
     
+    // Edge case: No weight entries today
     if (todayEntries.length === 0) {
       return { isDuplicate: false };
     }
@@ -420,39 +471,70 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     const tolerance = 0.5;
     const newWeight = parseFloat(weightValue);
     
+    // Edge case: Invalid weight value after parsing
+    if (isNaN(newWeight)) {
+      console.warn('Invalid weight value after parsing:', weightValue);
+      return { isDuplicate: false };
+    }
+    
     for (const entry of todayEntries) {
+      // Edge case: Entry missing Weight field
+      if (!entry.Weight) {
+        console.warn('Weight entry missing Weight field:', entry);
+        continue;
+      }
+      
       const existingWeight = parseFloat(entry.Weight);
+      
+      // Edge case: Invalid existing weight
+      if (isNaN(existingWeight)) {
+        console.warn('Invalid existing weight value:', entry.Weight);
+        continue;
+      }
+      
       const weightDiff = Math.abs(newWeight - existingWeight);
       
       if (weightDiff <= tolerance) {
         // Found a duplicate or very similar weight
-        const entryTime = new Date(entry.CreatedAt);
-        const timeDiffMs = currentTime - entryTime;
-        const timeDiffHours = Math.floor(timeDiffMs / (1000 * 60 * 60));
-        const timeDiffMinutes = Math.floor((timeDiffMs % (1000 * 60 * 60)) / (1000 * 60));
-        
-        let timeDifference;
-        if (timeDiffHours > 0) {
-          timeDifference = `${timeDiffHours} hour${timeDiffHours > 1 ? 's' : ''} ago`;
-        } else if (timeDiffMinutes > 0) {
-          timeDifference = `${timeDiffMinutes} minute${timeDiffMinutes > 1 ? 's' : ''} ago`;
-        } else {
-          timeDifference = 'just now';
+        try {
+          const entryTime = new Date(entry.CreatedAt);
+          const timeDiffMs = currentTime - entryTime;
+          const timeDiffHours = Math.floor(timeDiffMs / (1000 * 60 * 60));
+          const timeDiffMinutes = Math.floor((timeDiffMs % (1000 * 60 * 60)) / (1000 * 60));
+          
+          let timeDifference;
+          if (timeDiffHours > 0) {
+            timeDifference = `${timeDiffHours} hour${timeDiffHours > 1 ? 's' : ''} ago`;
+          } else if (timeDiffMinutes > 0) {
+            timeDifference = `${timeDiffMinutes} minute${timeDiffMinutes > 1 ? 's' : ''} ago`;
+          } else {
+            timeDifference = 'just now';
+          }
+          
+          console.log('✅ Duplicate weight found:', { 
+            newWeight, 
+            existingWeight, 
+            weightDiff, 
+            timeDifference 
+          });
+          
+          return {
+            isDuplicate: true,
+            existingWeight: existingWeight,
+            timeDifference: timeDifference,
+            unit: unit
+          };
+        } catch (timeError) {
+          // Edge case: Error calculating time difference
+          console.error('Error calculating time difference:', timeError);
+          // Still return duplicate, just without time difference
+          return {
+            isDuplicate: true,
+            existingWeight: existingWeight,
+            timeDifference: 'recently',
+            unit: unit
+          };
         }
-        
-        // console.log('✅ Duplicate weight found:', { 
-        //   newWeight, 
-        //   existingWeight, 
-        //   weightDiff, 
-        //   timeDifference 
-        // });
-        
-        return {
-          isDuplicate: true,
-          existingWeight: existingWeight,
-          timeDifference: timeDifference,
-          unit: unit
-        };
       }
     }
     
