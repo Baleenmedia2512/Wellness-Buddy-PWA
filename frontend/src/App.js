@@ -1033,14 +1033,14 @@ function WellnessBuddyApp() {
         setImageType('weight');
 
 
-        const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
-        if (FORCE_MANUAL_ENTRY) {
-          console.log('🧪 TEST MODE: Forcing manual weight entry modal');
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
-          setLoading(false);
-          return;
-        }
+        // const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
+        // if (FORCE_MANUAL_ENTRY) {
+        //   console.log('🧪 TEST MODE: Forcing manual weight entry modal');
+        //   setCurrentWeightImage(processedImage);
+        //   setShowManualWeightModal(true);
+        //   setLoading(false);
+        //   return;
+        // }
         
         const detectedWeight = await weightDetectionService.extractWeightFromImage(file);
         
