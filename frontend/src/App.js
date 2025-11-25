@@ -52,11 +52,6 @@ function WellnessBuddyApp() {
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const fileInputRef = useRef(null);
-  
-  // TEST: Food search functionality (TEMPORARY - Remove after Phase 2)
-  const [testSearchResults, setTestSearchResults] = useState(null);
-  const [testSearchLoading, setTestSearchLoading] = useState(false);
-  const [testSearchTime, setTestSearchTime] = useState(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -257,39 +252,6 @@ function WellnessBuddyApp() {
   const showMainPage = () => {
     setShowNutritionDashboard(false);
     localStorage.setItem('currentPage', 'main');
-  };
-
-  // TEST FUNCTION: Search for food (TEMPORARY - Remove after Phase 2)
-  const testSearchFood = async () => {
-    console.log('🧪 TEST: Starting food search...');
-    setTestSearchLoading(true);
-    setTestSearchResults(null);
-    setTestSearchTime(null);
-    
-    const startTime = performance.now();
-    
-    try {
-      const results = await geminiService.searchFood('mango lassi');
-      const endTime = performance.now();
-      const timeTaken = Math.round(endTime - startTime);
-      
-      console.log('🧪 TEST: Search successful!', results);
-      console.log(`⏱️ TEST: Time taken: ${timeTaken}ms`);
-      
-      setTestSearchResults(results);
-      setTestSearchTime(timeTaken);
-    } catch (error) {
-      const endTime = performance.now();
-      const timeTaken = Math.round(endTime - startTime);
-      
-      console.error('🧪 TEST: Search failed!', error);
-      console.log(`⏱️ TEST: Time taken (failed): ${timeTaken}ms`);
-      
-      setTestSearchResults({ error: error.message });
-      setTestSearchTime(timeTaken);
-    } finally {
-      setTestSearchLoading(false);
-    }
   };
 
   const requestAllPermissions = async () => {
@@ -1214,36 +1176,6 @@ function WellnessBuddyApp() {
       />
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
-        {/* TEST BUTTON - TEMPORARY (Remove after Phase 2) */}
-        <div className="fixed bottom-6 right-6 z-40 flex flex-col gap-2">
-          <button
-            onClick={testSearchFood}
-            disabled={testSearchLoading}
-            className={`px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm ${
-              testSearchLoading 
-                ? 'bg-yellow-400 cursor-wait' 
-                : 'bg-blue-600 hover:bg-blue-700 text-white'
-            }`}
-            title="🧪 Test Food Search (Phase 1)"
-          >
-            <span className="text-xl">🧪</span>
-            <span className="text-sm font-medium">
-              {testSearchLoading ? 'Searching...' : 'Test Search'}
-            </span>
-          </button>
-          
-          <button
-            onClick={showNutritionDashboardPage}
-            className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 flex items-center space-x-2 backdrop-blur-sm"
-            title="View Nutrition Dashboard"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-            </svg>
-            <span className="text-sm font-medium">Insights</span>
-          </button>
-        </div>
-
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
@@ -1279,93 +1211,6 @@ function WellnessBuddyApp() {
             setSelectedImage(null);
           }}
         />}
-
-        {/* TEST RESULTS - TEMPORARY (Remove after Phase 2) */}
-        {testSearchResults && (
-          <div className="bg-white rounded-xl shadow-lg border-2 border-blue-300 p-4">
-            <div className="flex justify-between items-center mb-3">
-              <h3 className="font-bold text-blue-700 flex items-center gap-2">
-                <span>🧪</span>
-                <span>Test Search Results</span>
-              </h3>
-              <button 
-                onClick={() => setTestSearchResults(null)}
-                className="text-gray-400 hover:text-gray-600"
-              >
-                ✕
-              </button>
-            </div>
-            
-            {testSearchResults.error ? (
-              <div className="bg-red-50 border border-red-200 rounded p-3 text-red-700">
-                <p className="font-semibold">Error:</p>
-                <p className="text-sm">{testSearchResults.error}</p>
-                {testSearchTime && (
-                  <p className="text-xs text-gray-500 mt-2">⏱️ Time: {testSearchTime}ms</p>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <p className="text-sm text-gray-600">
-                    Found {testSearchResults.results?.length || 0} results for "mango lassi"
-                  </p>
-                  {testSearchTime && (
-                    <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-full font-medium">
-                      ⏱️ {testSearchTime}ms
-                    </span>
-                  )}
-                </div>
-                
-                {testSearchResults.results?.map((food, idx) => (
-                  <div key={idx} className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-                    <p className="font-semibold text-gray-900">{food.name}</p>
-                    <p className="text-xs text-gray-500 mb-2">{food.category}</p>
-                    
-                    <div className="text-sm space-y-1">
-                      <p className="text-gray-700">
-                        <strong>Default:</strong> {food.defaultServing?.description} 
-                        ({food.defaultServing?.nutrition?.calories} cal)
-                      </p>
-                      
-                      <p className="text-xs text-gray-600">
-                        Protein: {food.defaultServing?.nutrition?.protein}g • 
-                        Carbs: {food.defaultServing?.nutrition?.carbs}g • 
-                        Fat: {food.defaultServing?.nutrition?.fat}g
-                      </p>
-                      
-                      {food.servingOptions?.length > 0 && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-blue-600 cursor-pointer">
-                            + {food.servingOptions.length} more serving options
-                          </summary>
-                          <div className="mt-1 pl-3 space-y-1">
-                            {food.servingOptions.map((opt, oidx) => (
-                              <p key={oidx} className="text-xs text-gray-600">
-                                • {opt.description} ({opt.nutrition?.calories} cal)
-                              </p>
-                            ))}
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                
-                <div className="mt-3 pt-3 border-t border-gray-200">
-                  <p className="text-xs text-gray-500">
-                    ✅ Phase 1 test successful! Check browser console for detailed logs.
-                    {testSearchTime && (
-                      <span className="block mt-1">
-                        ⏱️ Total response time: {(testSearchTime / 1000).toFixed(2)}s
-                      </span>
-                    )}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Success Save Popup: show both background and regular popups together */}
         <SuccessSavePopup

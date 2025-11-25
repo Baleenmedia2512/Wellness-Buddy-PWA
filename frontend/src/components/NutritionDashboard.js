@@ -196,6 +196,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
       
       // Show success status
       setSaveStatus('success');
+      setIsSaving(false);
       
       // Exit editing mode and auto-hide success after 2 seconds
       setEditingStates({});
@@ -258,8 +259,6 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
         setSaveStatus(null);
         setIsSaving(false);
       }, 3000);
-    } finally {
-      if (!error) setIsSaving(false);
     }
   };
 
