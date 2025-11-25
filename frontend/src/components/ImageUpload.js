@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
-const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }, ref) => {
+const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const fallbackInputRef = useRef(null);
@@ -108,21 +108,59 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
     }
   }));
 
-  // Taglines for loading overlay
-  const taglines = [
-    "Scanning your meal...",
-    "Crunching the numbers...",
-    "Serving up nutrition facts...",
-    "Analyzing delicious details...",
-    "Counting every calorie...",
-    "Identifying ingredients...",
-    "Plating your nutrition insights...",
-    "Decoding your dish...",
-    "Looking deeper into your food...",
-    "Cooking up your results..."
-  ];
+  // Taglines for loading overlay based on state and image type
+  const getTaglines = () => {
+    if (loadingState === 'saving') {
+      if (imageType === 'weight') {
+        return [
+          "Saving your weight entry...",
+          "Recording your progress...",
+          "Updating your health journal...",
+          "Storing weight data...",
+          "Almost there..."
+        ];
+      }
+      return [
+        "Saving your meal...",
+        "Recording nutrition data...",
+        "Updating your food journal...",
+        "Storing your analysis...",
+        "Almost there..."
+      ];
+    }
+    
+    if (imageType === 'weight') {
+      return [
+        "Reading the scale...",
+        "Detecting weight value...",
+        "Analyzing display...",
+        "Extracting measurements...",
+        "Processing weight data..."
+      ];
+    }
+    
+    return [
+      "Scanning your meal...",
+      "Crunching the numbers...",
+      "Serving up nutrition facts...",
+      "Analyzing delicious details...",
+      "Counting every calorie...",
+      "Identifying ingredients...",
+      "Plating your nutrition insights...",
+      "Decoding your dish...",
+      "Looking deeper into your food...",
+      "Cooking up your results..."
+    ];
+  };
+
+  const taglines = getTaglines();
 
   const [currentTaglineIndex, setCurrentTaglineIndex] = useState(0);
+
+  // Reset tagline index when loading state or image type changes
+  useEffect(() => {
+    setCurrentTaglineIndex(0);
+  }, [loadingState, imageType]);
 
   useEffect(() => {
     if (loading) {
@@ -131,7 +169,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
       }, 2500);
       return () => clearInterval(interval);
     }
-  }, [loading]);
+  }, [loading, taglines.length, loadingState, imageType]);
 
   return (
     <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-6">
@@ -156,10 +194,21 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
 
                   <div className="absolute inset-0 flex items-center justify-center p-6">
                     <div className="text-center">
-                      <div className="relative w-12 h-12 mx-auto mb-6">
-                        <div className="absolute inset-0 rounded-full bg-white/20 backdrop-blur-sm"></div>
-                        <div className="absolute inset-0 rounded-full border-2 border-white/30"></div>
-                        <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                      {/* Icon based on loading state */}
+                      <div className="relative w-14 h-14 mx-auto mb-6">
+                        {loadingState === 'saving' ? (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-green-500/30 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-green-400/50"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-green-400 border-t-transparent animate-spin"></div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-white/20 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-white/30"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                          </>
+                        )}
                       </div>
 
                       {/* Animated Taglines */}

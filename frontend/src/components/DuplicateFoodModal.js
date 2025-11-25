@@ -75,15 +75,14 @@ const DuplicateFoodModal = ({ foodName, mealType, onConfirm, onCancel, isWeight,
             {isWeight ? (
               <p className="text-gray-800 text-center leading-relaxed">
                 This weight{' '}
-                <span className="font-semibold text-blue-900">({weightValue} {unit})</span> is already added in your weight list{' '}
-                <span className="font-semibold text-blue-900">{timeDifference}</span>.
+                <span className="font-semibold text-blue-900">({weightValue} {unit})</span> is already added in your weight list.
               </p>
             ) : (
               <p className="text-gray-800 text-center leading-relaxed">
                 <span className="font-semibold text-amber-900">"{foodName?.trim()}"</span> is already added in your{' '}
                 <span className="font-semibold text-amber-900">{mealType}</span> list.
               </p>
-            )}
+            )}  
           </div>
 
           <p className="text-gray-600 text-center text-sm">

@@ -280,11 +280,16 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      // ✅ OPTIMIZED: Append new data for infinite scroll
+      // ✅ OPTIMIZED: Append new data for infinite scroll (filter duplicates)
       if (isInitialLoad) {
         setWeightHistory(data.data || []);
       } else {
-        setWeightHistory(prev => [...prev, ...(data.data || [])]);
+        setWeightHistory(prev => {
+          const newEntries = data.data || [];
+          const existingIds = new Set(prev.map(e => e.ID));
+          const uniqueNewEntries = newEntries.filter(e => !existingIds.has(e.ID));
+          return [...prev, ...uniqueNewEntries];
+        });
         setCurrentPage(prev => prev + 1);
       }
       
@@ -673,14 +678,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         
                         return (
                           <Suspense key={entry.ID} fallback={
-                            <div className="bg-white rounded-xl p-4 animate-pulse" style={{ height: 84 }}>
-                              <div className="flex items-center gap-4">
-                                <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
-                                <div className="flex-1 space-y-2">
-                                  <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                                  <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                            <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 56 }}>
+                              <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
+                                <div className="w-9 h-9 xs:w-10 xs:h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg"></div>
+                                <div className="flex-1 space-y-1.5 sm:space-y-2">
+                                  <div className="h-2.5 xs:h-3 sm:h-4 bg-gray-200 rounded w-3/4"></div>
+                                  <div className="h-2 xs:h-2.5 sm:h-3 bg-gray-200 rounded w-1/2"></div>
                                 </div>
-                                <div className="h-6 bg-gray-200 rounded w-12"></div>
+                                <div className="h-4 xs:h-5 sm:h-6 bg-gray-200 rounded w-8 xs:w-10 sm:w-12"></div>
                               </div>
                             </div>
                           }>
@@ -704,13 +709,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
           {hasMore && !loading && (
             <div 
               ref={sentinelRef} 
-              className="py-8 flex justify-center items-center"
+              className="py-4 sm:py-6 md:py-8 flex justify-center items-center w-full"
               aria-label="Loading more entries"
             >
               {loadingMore && (
-                <div className="flex items-center justify-center gap-3 text-gray-600">
-                  <div className="animate-spin rounded-full h-8 w-8 border-3 border-emerald-300 border-t-emerald-600"></div>
-                  <span className="text-sm font-medium">Loading more entries...</span>
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 text-gray-600 w-full px-4">
+                  <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 border-2 border-emerald-300 border-t-emerald-600"></div>
+                  <span className="text-xs sm:text-sm font-medium text-center">Loading more entries...</span>
                 </div>
               )}
             </div>

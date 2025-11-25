@@ -157,7 +157,7 @@ const WeightCard = React.memo(({
       className="relative w-full"
       style={{ 
         touchAction: 'pan-y',
-        height: 84,
+        minHeight: 60,
         animation: `slideInUp 0.3s ease-out ${index * 0.05}s both`
       }}
     >
@@ -206,17 +206,14 @@ const WeightCard = React.memo(({
         onClick={() => {
           if (!dragging && Math.abs(dx) < 5 && !leaving) onView(data);
         }}
-        className={`relative z-10 bg-white/70 backdrop-blur-xl border border-white rounded-xl select-none cursor-pointer overflow-hidden
+        className={`relative z-10 bg-white border border-gray-100 rounded-2xl select-none cursor-pointer overflow-hidden
           ${leaving ? 'pointer-events-none' : ''}`}
         style={{
           transform: `translateX(${dx}px) scale(${scale})`,
           transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1), box-shadow 180ms ease' : 'none',
-          minHeight: 76,
+          minHeight: 72,
           willChange: 'transform',
-          boxShadow: `
-            0 2px 8px -2px rgba(0,0,0,${progress * 0.1 + 0.06}),
-            inset 0 0 0 1px rgba(255,255,255,0.2)
-          `,
+          boxShadow: `0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04)`,
         }}
       >
         {/* Bottom progress bar */}
@@ -229,9 +226,9 @@ const WeightCard = React.memo(({
           }}
         />
 
-        <div className="p-4 flex items-center gap-4">
+        <div className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
           {/* Thumbnail */}
-          <div className="w-12 h-12 bg-gradient-to-br from-emerald-100 to-teal-100 rounded-lg flex items-center justify-center overflow-hidden shrink-0 border-2 border-white/60">
+          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
             {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' ? (
               <img
                 src={data.WeightImageBase64.startsWith('data:image') ? data.WeightImageBase64 : `data:image/jpeg;base64,${data.WeightImageBase64}`}
@@ -241,34 +238,38 @@ const WeightCard = React.memo(({
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <Scale className="w-6 h-6 text-emerald-600" />
+              <Scale className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
             )}
           </div>
 
           {/* Content */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-baseline gap-2">
-              <h3 className="text-base font-bold text-gray-900">
-                {data.Weight}
-                <span className="text-sm font-normal text-gray-600 ml-1">kg</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
+                {parseFloat(data.Weight).toFixed(2)}
+                <span className="text-sm sm:text-base font-normal text-gray-500 ml-1">kg</span>
               </h3>
               {weightChange !== null && (
-                <span className={`text-xs font-medium ${
-                  parseFloat(weightChange) > 0 ? 'text-red-600' : parseFloat(weightChange) < 0 ? 'text-green-600' : 'text-gray-500'
+                <span className={`inline-flex items-center text-xs font-medium ${
+                  parseFloat(weightChange) > 0 
+                    ? 'text-red-500' 
+                    : parseFloat(weightChange) < 0 
+                      ? 'text-green-500' 
+                      : 'text-gray-500'
                 }`}>
-                  {parseFloat(weightChange) > 0 ? '↑' : parseFloat(weightChange) < 0 ? '↓' : '='} {Math.abs(parseFloat(weightChange))} kg
+                  {parseFloat(weightChange) > 0 ? '↑' : parseFloat(weightChange) < 0 ? '↓' : ''} {Math.abs(parseFloat(weightChange)).toFixed(1)} kg
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500 mt-0.5">{formatDate(data.CreatedAt)}</p>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1">{formatDate(data.CreatedAt)}</p>
           </div>
 
-          {/* Calories equivalent */}
-          <div className="text-right shrink-0">
-            <p className="text-lg font-bold text-emerald-600">
-              {data.Weight}
+          {/* Large Weight display on right */}
+          <div className="text-right shrink-0 pl-2">
+            <p className="text-xl sm:text-2xl font-bold text-emerald-600">
+              {parseFloat(data.Weight).toFixed(2)}
             </p>
-            <p className="text-xs text-gray-500">kg</p>
+            <p className="text-xs text-gray-400">kg</p>
           </div>
         </div>
       </div>

@@ -5,6 +5,14 @@ module.exports = {
     "./public/index.html"
   ],
   theme: {
+    screens: {
+      'xs': '375px',   // Small phones (iPhone SE, small Android)
+      'sm': '640px',   // Large phones / Small tablets
+      'md': '768px',   // Tablets
+      'lg': '1024px',  // Laptops
+      'xl': '1280px',  // Desktops
+      '2xl': '1536px', // Large screens
+    },
     extend: {
       colors: {
         green: {

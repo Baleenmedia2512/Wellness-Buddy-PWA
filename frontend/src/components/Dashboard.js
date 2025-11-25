@@ -81,7 +81,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
             >
               <AppleIcon 
                 className="h-4 w-4" 
-                strokeWidth={4}
+                strokeWidth={3}
                 style={{
                   stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
                   fill: 'none'

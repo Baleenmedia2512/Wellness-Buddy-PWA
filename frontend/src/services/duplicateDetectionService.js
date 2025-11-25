@@ -392,11 +392,12 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     
     // console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
     
-    // Fetch today's weight history for the user
+    // Fetch recent weight history for the user (only need last 10 for today's duplicate check)
+    // Don't include image base64 - not needed for duplicate check and significantly faster
     let response;
     try {
       response = await fetch(
-        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=50&offset=0`
+        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=10&offset=0&includeImage=false`
       );
     } catch (fetchError) {
       // Edge case: Network error or offline

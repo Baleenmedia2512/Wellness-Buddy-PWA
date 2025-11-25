@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { userId, limit = 50, offset = 0 } =
+  const { userId, limit = 50, offset = 0, includeImage = 'true' } =
     req.method === 'POST' ? req.body : req.query;
 
   if (!userId) {
@@ -32,22 +32,40 @@ export default async function handler(req, res) {
     });
 
     // ✅ Get weight history for user (exclude deleted entries)
-    const historyQuery = `
-      SELECT 
-        ID,
-        UserId, 
-        Weight, 
-        Bmi,
-        BodyFat,
-        MuscleMass,
-        Bmr,
-        WeightImageBase64,
-        CreatedAt 
-      FROM weight_records_table
-      WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-      ORDER BY CreatedAt DESC
-      LIMIT ? OFFSET ?
-    `;
+    // Optionally exclude WeightImageBase64 for faster queries (duplicate check doesn't need images)
+    const shouldIncludeImage = includeImage === 'true' || includeImage === true;
+    const historyQuery = shouldIncludeImage 
+      ? `
+        SELECT 
+          ID,
+          UserId, 
+          Weight, 
+          Bmi,
+          BodyFat,
+          MuscleMass,
+          Bmr,
+          WeightImageBase64,
+          CreatedAt 
+        FROM weight_records_table
+        WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
+        ORDER BY CreatedAt DESC
+        LIMIT ? OFFSET ?
+      `
+      : `
+        SELECT 
+          ID,
+          UserId, 
+          Weight, 
+          Bmi,
+          BodyFat,
+          MuscleMass,
+          Bmr,
+          CreatedAt 
+        FROM weight_records_table
+        WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
+        ORDER BY CreatedAt DESC
+        LIMIT ? OFFSET ?
+      `;
 
     const [rows] = await connection.execute(historyQuery, [
       userId,

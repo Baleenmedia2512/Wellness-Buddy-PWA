@@ -45,6 +45,7 @@ function WellnessBuddyApp() {
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingState, setLoadingState] = useState('analyzing'); // 'analyzing' | 'saving'
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
@@ -677,10 +678,10 @@ function WellnessBuddyApp() {
   /**
    * Perform actual weight save to database (called after duplicate check)
    */
-  const performWeightSave = async (weightData, imageBase64) => {
+  const performWeightSave = async (weightData, imageBase64, cachedUserId = null) => {
     try {
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
+      // Use cached userId if provided, otherwise get it
+      let userId = cachedUserId || user?.id;
       if (!userId) {
         userId = await getUserId(user);
       }
@@ -716,6 +717,10 @@ function WellnessBuddyApp() {
 
       console.log('✅ Weight entry saved successfully');
       
+      // Hide saving overlay
+      setSaveLoading(false);
+      setLoadingState('idle');
+      
       // Show success popup (similar to nutrition save)
       setError(null);
       
@@ -743,6 +748,8 @@ function WellnessBuddyApp() {
       
     } catch (err) {
       console.error('❌ Save weight error:', err);
+      setSaveLoading(false);
+      setLoadingState('idle');
       setError(err.message || 'Failed to save weight entry');
       throw err;
     }
@@ -772,12 +779,15 @@ function WellnessBuddyApp() {
         });
         
         if (duplicateCheck.isDuplicate) {
-          // Found duplicate - show confirmation modal
+          // Found duplicate - hide saving overlay and show confirmation modal
           // console.log('⚠️ Duplicate weight detected:', duplicateCheck);
+          setSaveLoading(false); // Hide saving overlay while showing duplicate modal
+          setLoadingState('idle');
           setDuplicateWeightInfo(duplicateCheck);
           setPendingWeightSaveData({
             weightData: weightData,
-            imageBase64: imageBase64
+            imageBase64: imageBase64,
+            userId: userId  // Cache userId for later use
           });
           setShowDuplicateWeightModal(true);
           return; // Stop here to wait for user confirmation
@@ -787,8 +797,8 @@ function WellnessBuddyApp() {
         console.warn('⚠️ Duplicate check failed, proceeding with save:', duplicateCheckErr);
       }
       
-      // No duplicate or duplicate check failed - proceed with save
-      await performWeightSave(weightData, imageBase64);
+      // No duplicate or duplicate check failed - proceed with save (pass cached userId)
+      await performWeightSave(weightData, imageBase64, userId);
       
     } catch (err) {
       console.error('❌ Save weight error:', err);
@@ -802,6 +812,11 @@ function WellnessBuddyApp() {
    */
   const handleManualWeightSave = async (manualData) => {
     try {
+      setShowManualWeightModal(false); // Close modal first
+      setLoadingState('saving');
+      setSaveLoading(true); // Show saving overlay
+      setImageType('weight'); // Ensure weight type is set
+      
       await saveWeightEntry(
         {
           weightValue: manualData.weightValue,
@@ -814,7 +829,6 @@ function WellnessBuddyApp() {
         currentWeightImage
       );
       
-      setShowManualWeightModal(false);
       setCurrentWeightImage(null);
       setLoading(false);
       
@@ -866,11 +880,10 @@ function WellnessBuddyApp() {
       return;
     }
     
-    setShowDuplicateModal(false);
-    
     // Edge case: No pending data (shouldn't happen but be safe)
     if (!pendingSaveData) {
       console.error('No pending save data found');
+      setShowDuplicateModal(false);
       setSaveLoading(false);
       return;
     }
@@ -878,6 +891,7 @@ function WellnessBuddyApp() {
     // Edge case: Validate pending data structure
     if (!pendingSaveData.userId || !pendingSaveData.analysisResult) {
       console.error('Invalid pending save data:', pendingSaveData);
+      setShowDuplicateModal(false);
       setSaveLoading(false);
       setPendingSaveData(null);
       setDuplicateInfo(null);
@@ -890,7 +904,8 @@ function WellnessBuddyApp() {
       // Error already handled in performNutritionSave
       console.error('Error during duplicate confirm save:', err);
     } finally {
-      // Edge case: Always cleanup state even if save fails
+      // Close modal and cleanup state after save completes
+      setShowDuplicateModal(false);
       setPendingSaveData(null);
       setDuplicateInfo(null);
     }
@@ -923,14 +938,21 @@ function WellnessBuddyApp() {
 
   // Handle duplicate weight modal confirmation
   const handleDuplicateWeightConfirm = async () => {
-    setShowDuplicateWeightModal(false);
-    
     if (pendingWeightSaveData) {
       try {
-        await performWeightSave(pendingWeightSaveData.weightData, pendingWeightSaveData.imageBase64);
+        setSaveLoading(true); // Show saving overlay
+        setLoadingState('saving');
+        // Use cached userId from pendingWeightSaveData
+        await performWeightSave(
+          pendingWeightSaveData.weightData, 
+          pendingWeightSaveData.imageBase64,
+          pendingWeightSaveData.userId
+        );
       } catch (err) {
         console.error('❌ Weight save error after duplicate confirmation:', err);
       } finally {
+        // Close modal and reset state after save completes
+        setShowDuplicateWeightModal(false);
         setPendingWeightSaveData(null);
         setDuplicateWeightInfo(null);
       }
@@ -980,6 +1002,7 @@ function WellnessBuddyApp() {
     setWeightResult(null);
     setImageType(null);
     setSaveError(null);
+    setLoadingState('analyzing'); // Reset to analyzing state
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -1062,6 +1085,8 @@ function WellnessBuddyApp() {
           }
           
           setWeightResult(weightToSave); // Store for display below upload box
+          setLoadingState('saving');
+          setSaveLoading(true); // Show saving overlay
           await saveWeightEntry(weightToSave, processedImage);
           // Don't clear imagePreview or return - let it show like food images
         } else {
@@ -1086,6 +1111,7 @@ function WellnessBuddyApp() {
         setNutritionData(result);
 
         // Check for duplicate food before saving
+        setLoadingState('saving'); // Switch to saving state
         setSaveLoading(true);
         try {
           // Edge case: User might be null or invalid
@@ -1310,6 +1336,7 @@ function WellnessBuddyApp() {
     setIsOtpVerified(false);
     setSuccessPopups([]);
     setSaveError(null);
+    setLoadingState('analyzing'); // Reset loading state
     
     // Clear weight-related states
     setWeightResult(null);
@@ -1753,6 +1780,8 @@ function WellnessBuddyApp() {
           onImageSelect={handleImageSelect}
           imagePreview={imagePreview}
           loading={loading}
+          loadingState={loadingState}
+          imageType={imageType}
           ref={fileInputRef}
         />
 
@@ -1771,7 +1800,6 @@ function WellnessBuddyApp() {
         {imageType === 'weight' && weightResult && (
           <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
               <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
-              <span className="mr-2">⚖️</span>
               Weight Analysis
             </h2>
             
@@ -1851,13 +1879,16 @@ function WellnessBuddyApp() {
           }}
         />
 
+        {/* Saving Toast */}
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-              Saving nutrition analysis...
+              {imageType === 'weight' ? 'Saving weight entry...' : 'Saving nutrition analysis...'}
             </div>
           </div>
         )}
+        
+        {/* Error Toast */}
         {saveError && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
