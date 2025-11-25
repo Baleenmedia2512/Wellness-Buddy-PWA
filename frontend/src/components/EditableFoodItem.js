@@ -123,17 +123,63 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     };
   }, []);
 
+  // Convert text numbers to digits
+  const textToNumber = (text) => {
+    const numberWords = {
+      'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+      'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+      'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+      'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+      'half': 0.5, 'quarter': 0.25
+    };
+    
+    const lowerText = text.toLowerCase();
+    
+    // Check for exact word match
+    for (const [word, num] of Object.entries(numberWords)) {
+      if (lowerText.includes(word)) {
+        return num;
+      }
+    }
+    
+    return null;
+  };
+
   // Generate dynamic serving options based on detected quantity
   const generateServingOptions = (baseServing, per100g, itemName, portionDesc) => {
     const options = [];
     
-    // Extract quantity from portion description - handles fractions, whole numbers, and numbers-only
-    // Examples: "2 idlis", "1/2 cup", "1 1/2 bowls", "3 chapatis", "3"
+    // Extract quantity from portion description - handles fractions, whole numbers, text numbers, and numbers-only
+    // Examples: "2 idlis", "two parottas", "1/2 cup", "1 1/2 bowls", "3 chapatis", "3"
     let detectedQuantity = 1;
     let itemUnit = itemName.toLowerCase();
     
-    // Try to match fraction pattern (e.g., "1/2 cup", "1 1/2 bowls")
-    const fractionMatch = portionDesc.match(/(\d+)?\s*(\d+)\/(\d+)\s*([a-zA-Z]+)/);
+    // First, try to convert text numbers to digits (e.g., "two parottas" -> "2 parottas")
+    let normalizedDesc = portionDesc;
+    const textNum = textToNumber(portionDesc);
+    if (textNum !== null) {
+      // Replace text number with digit
+      const textWords = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+                        'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty',
+                        'half', 'quarter'];
+      for (const word of textWords) {
+        const regex = new RegExp(`\\b${word}\\b`, 'gi');
+        if (regex.test(portionDesc)) {
+          const numberWords = {
+            'zero': 0, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5,
+            'six': 6, 'seven': 7, 'eight': 8, 'nine': 9, 'ten': 10,
+            'eleven': 11, 'twelve': 12, 'thirteen': 13, 'fourteen': 14, 'fifteen': 15,
+            'sixteen': 16, 'seventeen': 17, 'eighteen': 18, 'nineteen': 19, 'twenty': 20,
+            'half': 0.5, 'quarter': 0.25
+          };
+          normalizedDesc = portionDesc.replace(regex, numberWords[word.toLowerCase()]);
+          break;
+        }
+      }
+    }
+    
+    // Try to match fraction pattern (e.g., "1/2 cup", "1 1/2 bowls", "0.5 cup")
+    const fractionMatch = normalizedDesc.match(/(\d+)?\s*(\d+)\/(\d+)\s*([a-zA-Z]+)/);
     if (fractionMatch) {
       const whole = fractionMatch[1] ? parseInt(fractionMatch[1]) : 0;
       const numerator = parseInt(fractionMatch[2]);
@@ -141,17 +187,24 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       detectedQuantity = whole + (numerator / denominator);
       itemUnit = fractionMatch[4];
     } else {
-      // Try to match whole number with unit (e.g., "2 idlis", "3 chapatis")
-      const wholeMatch = portionDesc.match(/(\d+)\s*([a-zA-Z]+)/);
-      if (wholeMatch) {
-        detectedQuantity = parseInt(wholeMatch[1]);
-        itemUnit = wholeMatch[2];
+      // Try to match decimal number (e.g., "0.5 cup")
+      const decimalMatch = normalizedDesc.match(/(\d+\.?\d*)\s*([a-zA-Z]+)/);
+      if (decimalMatch) {
+        detectedQuantity = parseFloat(decimalMatch[1]);
+        itemUnit = decimalMatch[2];
       } else {
-        // Try to match number-only (e.g., "3")
-        const numberOnlyMatch = portionDesc.match(/^\d+$/);
-        if (numberOnlyMatch) {
-          detectedQuantity = parseInt(portionDesc);
-          // itemUnit already set to itemName.toLowerCase()
+        // Try to match whole number with unit (e.g., "2 idlis", "3 chapatis")
+        const wholeMatch = normalizedDesc.match(/(\d+)\s*([a-zA-Z]+)/);
+        if (wholeMatch) {
+          detectedQuantity = parseInt(wholeMatch[1]);
+          itemUnit = wholeMatch[2];
+        } else {
+          // Try to match number-only (e.g., "3")
+          const numberOnlyMatch = normalizedDesc.match(/^\d+\.?\d*$/);
+          if (numberOnlyMatch) {
+            detectedQuantity = parseFloat(normalizedDesc);
+            // itemUnit already set to itemName.toLowerCase()
+          }
         }
       }
     }
