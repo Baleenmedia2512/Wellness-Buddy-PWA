@@ -557,6 +557,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
             type="text"
             value={searchQuery}
             onChange={handleSearchInput}
+            onContextMenu={(e) => e.preventDefault()}
             onFocus={(e) => {
               // Scroll input into view when keyboard appears on mobile
               setTimeout(() => {
@@ -694,7 +695,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
                     <div className="flex items-center justify-between">
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{option.description}</div>
-                        <div className="text-xs text-gray-500 mt-0.5">{option.nutrition.calories} cal</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
+                          <span>{option.grams}g</span>
+                          <span>•</span>
+                          <span>{option.nutrition.calories} cal</span>
+                        </div>
                       </div>
                       {currentServingIndex === idx && (
                         <svg className="w-5 h-5 text-blue-600 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
@@ -720,6 +725,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
               type="text"
               value={customGrams}
               onChange={handleGramsChange}
+              onContextMenu={(e) => e.preventDefault()}
               placeholder="Enter grams"
               className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />

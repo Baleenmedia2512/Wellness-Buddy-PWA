@@ -14,11 +14,35 @@
       },
       "oauth_client": [
         {
+          "client_id": "610941252952-0hpf749d431ufnggh8m0lq6talniu5jg.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessbuddy.app",
+            "certificate_hash": "34fc80536c84c20f5ec7ffae7e39ab5e6a4f44ed"
+          }
+        },
+        {
           "client_id": "610941252952-1ovol30kmvb8g0cbg3u85521aq1bj4el.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
             "package_name": "com.wellnessbuddy.app",
             "certificate_hash": "25f340c610614d704d17bcfc6ec12db35a813930"
+          }
+        },
+        {
+          "client_id": "610941252952-6u6pv9to6rrhrurdb9chhcsf7pva8jeb.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessbuddy.app",
+            "certificate_hash": "fb1a43d4d618de3c7fbe736d052442dbdd2b8e83"
+          }
+        },
+        {
+          "client_id": "610941252952-9i08ksfnatqslh35fcccr7c1lkod3mqp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessbuddy.app",
+            "certificate_hash": "c0ea30a4c209e7767606c12c1e823dc582b9828c"
           }
         },
         {

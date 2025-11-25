@@ -19,6 +19,12 @@ public class MainActivity extends BridgeActivity {
         
         super.onCreate(savedInstanceState);
         
+        // Enable hardware acceleration for better animation performance
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        );
+        
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
         
         // Ensure dark status bar icons on all Android versions

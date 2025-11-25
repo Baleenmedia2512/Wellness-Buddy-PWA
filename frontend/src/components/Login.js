@@ -310,6 +310,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                     onChange={(e) => handleOTPChange(e.target, index)}
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={handlePaste}
+                    onContextMenu={(e) => e.preventDefault()}
                     className="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300"
                     autoComplete="off"
                   />
