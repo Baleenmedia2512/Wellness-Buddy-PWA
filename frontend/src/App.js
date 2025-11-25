@@ -1031,6 +1031,16 @@ function WellnessBuddyApp() {
         // It's a weight scale - try to extract weight
         console.log('🔍 Weight scale detected, extracting metrics...');
         setImageType('weight');
+
+
+        const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
+        if (FORCE_MANUAL_ENTRY) {
+          console.log('🧪 TEST MODE: Forcing manual weight entry modal');
+          setCurrentWeightImage(processedImage);
+          setShowManualWeightModal(true);
+          setLoading(false);
+          return;
+        }
         
         const detectedWeight = await weightDetectionService.extractWeightFromImage(file);
         
@@ -1188,7 +1198,8 @@ function WellnessBuddyApp() {
         console.error('❌ Gemini analysis error:', err);
       }
     } catch (err) {
-      setError('Failed to process image: ' + err.message);
+      const errorMessage = err?.message || err?.toString() || 'Unknown error occurred';
+      setError('Failed to process image: ' + errorMessage);
       console.error('❌ Image processing error:', err);
     } finally {
       setLoading(false);
