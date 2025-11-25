@@ -1,11 +1,28 @@
 // src\components\ImageUpload.js
 import React, { forwardRef, useRef, useState, useEffect, useImperativeHandle } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
 const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const fallbackInputRef = useRef(null);
+
+  // Helper to convert base64 to File
+  const base64ToFile = async (base64String, filename = 'image.jpg') => {
+    try {
+      const dataUrl = base64String.startsWith('data:') 
+        ? base64String 
+        : `data:image/jpeg;base64,${base64String}`;
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      return new File([blob], filename, { type: 'image/jpeg' });
+    } catch (error) {
+      console.error('Error converting base64 to file:', error);
+      throw new Error('Failed to process image data');
+    }
+  };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -22,12 +39,64 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
     }
   };
 
-  const triggerCamera = () => {
-    cameraInputRef.current?.click();
+  const triggerCamera = async () => {
+    // Use Capacitor Camera for native platforms
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Camera,
+          allowEditing: false,
+          correctOrientation: true,
+          width: 1280,
+          height: 1280
+        });
+
+        if (photo.base64String) {
+          const file = await base64ToFile(photo.base64String, `photo-${Date.now()}.jpg`);
+          onImageSelect(file);
+        }
+      } catch (err) {
+        console.error('Camera capture failed:', err);
+        // User cancelled or error - fall back to HTML input
+        if (err.message !== 'User cancelled photos app') {
+          cameraInputRef.current?.click();
+        }
+      }
+    } else {
+      cameraInputRef.current?.click();
+    }
   };
 
-  const triggerGallery = () => {
-    galleryInputRef.current?.click();
+  const triggerGallery = async () => {
+    // Use Capacitor Camera for native platforms (more reliable for gallery)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const photo = await Camera.getPhoto({
+          quality: 90,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Photos,
+          allowEditing: false,
+          correctOrientation: true,
+          width: 1920,
+          height: 1920
+        });
+
+        if (photo.base64String) {
+          const file = await base64ToFile(photo.base64String, `gallery-${Date.now()}.jpg`);
+          onImageSelect(file);
+        }
+      } catch (err) {
+        console.error('Gallery selection failed:', err);
+        // User cancelled or error - fall back to HTML input
+        if (err.message !== 'User cancelled photos app') {
+          galleryInputRef.current?.click();
+        }
+      }
+    } else {
+      galleryInputRef.current?.click();
+    }
   };
 
   // Expose reset method to parent component

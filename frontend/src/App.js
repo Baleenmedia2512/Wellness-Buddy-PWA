@@ -1198,7 +1198,23 @@ function WellnessBuddyApp() {
         console.error('❌ Gemini analysis error:', err);
       }
     } catch (err) {
-      const errorMessage = err?.message || err?.toString() || 'Unknown error occurred';
+      // Better error handling for undefined or missing error messages
+      let errorMessage = 'Unknown error occurred';
+      if (err) {
+        if (err.message) {
+          errorMessage = err.message;
+        } else if (typeof err === 'string') {
+          errorMessage = err;
+        } else if (err.toString && err.toString() !== '[object Object]') {
+          errorMessage = err.toString();
+        }
+      }
+      
+      // Provide more specific error messages for common Android gallery issues
+      if (errorMessage === 'Unknown error occurred' || errorMessage.includes('undefined')) {
+        errorMessage = 'Could not read the selected image. Please try selecting a different image or use the camera.';
+      }
+      
       setError('Failed to process image: ' + errorMessage);
       console.error('❌ Image processing error:', err);
     } finally {
