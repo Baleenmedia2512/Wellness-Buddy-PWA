@@ -1283,6 +1283,21 @@ function WellnessBuddyApp() {
     setIsOtpVerified(false);
     setSuccessPopups([]);
     setSaveError(null);
+    
+    // Clear weight-related states
+    setWeightResult(null);
+    setImageType(null);
+    setCurrentWeightImage(null);
+    setShowManualWeightModal(false);
+    setShowDuplicateWeightModal(false);
+    setDuplicateWeightInfo(null);
+    setPendingWeightSaveData(null);
+    
+    // Clear duplicate food states
+    setShowDuplicateModal(false);
+    setDuplicateInfo(null);
+    setPendingSaveData(null);
+    
     localStorage.removeItem('isOtpVerified');
     localStorage.removeItem('otpUser');
     localStorage.removeItem('currentPage');
@@ -1559,7 +1574,7 @@ function WellnessBuddyApp() {
         try {
           await GalleryMonitor.clearCurrentUser();
         } catch (clearError) {
-          console.warn('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
+          console.error('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
           // Continue with sign out even if this fails
         }
       }
