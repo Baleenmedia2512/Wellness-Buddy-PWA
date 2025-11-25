@@ -52,9 +52,16 @@ const WeightCard = React.memo(({
 
   /**
    * Format date with day and time
+   * Treats DB timestamp as local time (not UTC) to avoid timezone conversion
    */
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
+    // Parse as local time by removing the 'Z' suffix if present
+    // Database stores: "2025-11-25 10:18:15" 
+    // Backend sends: "2025-11-25T10:18:15.000Z"
+    // We want to display: 10:18 AM (not converted to local timezone)
+    const localDateString = dateString.replace('Z', '');
+    const date = new Date(localDateString);
+    
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);

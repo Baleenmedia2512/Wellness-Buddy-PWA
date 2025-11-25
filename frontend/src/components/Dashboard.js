@@ -1,6 +1,6 @@
 // src/components/Dashboard.js
 import React, { useState, lazy, Suspense } from 'react';
-import { ArrowLeft, Activity, Scale, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, AppleIcon, Scale, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // ✅ LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
@@ -79,7 +79,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Activity className="h-4 w-4" />
+              <AppleIcon 
+                className="h-4 w-4" 
+                strokeWidth={3.5}
+                style={{
+                  stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
+                  fill: 'none'
+                }}
+              />
               <span>Nutrition</span>
             </button>
 

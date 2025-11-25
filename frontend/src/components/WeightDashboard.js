@@ -146,7 +146,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       // Skip invalid entries but allow placeholders
       if (!entry || !entry.CreatedAt || !entry.Weight) return;
       
-      const date = new Date(entry.CreatedAt);
+      // Parse as local time (remove Z to avoid timezone conversion)
+      const date = new Date(entry.CreatedAt.replace('Z', ''));
       // Check if date is valid
       if (isNaN(date.getTime())) return;
       
@@ -540,7 +541,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         <span className="text-lg font-normal ml-1 text-gray-600">kg</span>
       </p>
       <p className="text-xs text-gray-500 mt-1">
-        {new Date(latestWeight.CreatedAt).toLocaleDateString('en-US', { 
+        {new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', { 
           month: 'short', 
           day: 'numeric', 
           year: 'numeric',
