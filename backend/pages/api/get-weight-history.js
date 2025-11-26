@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { userId, limit = 50, offset = 0, includeImage = 'true' } =
+  const { userId, includeImage = 'true' } =
     req.method === 'POST' ? req.body : req.query;
 
   if (!userId) {
@@ -31,7 +31,7 @@ export default async function handler(req, res) {
       database: process.env.DB_NAME,
     });
 
-    // ✅ Get weight history for user (exclude deleted entries)
+    // ✅ Get ALL weight history for user (no pagination - load everything)
     // Optionally exclude WeightImageBase64 for faster queries (duplicate check doesn't need images)
     const shouldIncludeImage = includeImage === 'true' || includeImage === true;
     const historyQuery = shouldIncludeImage 
@@ -49,7 +49,6 @@ export default async function handler(req, res) {
         FROM weight_records_table
         WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
         ORDER BY CreatedAt DESC
-        LIMIT ? OFFSET ?
       `
       : `
         SELECT 
@@ -64,23 +63,16 @@ export default async function handler(req, res) {
         FROM weight_records_table
         WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
         ORDER BY CreatedAt DESC
-        LIMIT ? OFFSET ?
       `;
 
-    const [rows] = await connection.execute(historyQuery, [
-      userId,
-      parseInt(limit),
-      parseInt(offset),
-    ]);
+    const [rows] = await connection.execute(historyQuery, [userId]);
 
-    // ✅ Get total count (exclude deleted entries)
-    const countQuery = `
-      SELECT COUNT(*) as total 
-      FROM weight_records_table
-      WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-    `;
-    const [countRows] = await connection.execute(countQuery, [userId]);
-    const totalCount = countRows[0].total;
+    // ✅ Calculate min/max/avg from the loaded data
+    const weights = rows.map(r => parseFloat(r.Weight)).filter(w => !isNaN(w));
+    const globalMinWeight = weights.length > 0 ? Math.min(...weights) : null;
+    const globalMaxWeight = weights.length > 0 ? Math.max(...weights) : null;
+    const globalAvgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null;
+    const totalCount = rows.length;
 
     // ✅ Calculate statistics
     let stats = {
@@ -88,9 +80,9 @@ export default async function handler(req, res) {
       latestWeight: null,
       previousWeight: null,
       weightChange: null,
-      averageWeight: null,
-      minWeight: null,
-      maxWeight: null,
+      averageWeight: globalAvgWeight,
+      minWeight: globalMinWeight,
+      maxWeight: globalMaxWeight,
     };
 
     if (rows.length > 0) {
@@ -107,11 +99,6 @@ export default async function handler(req, res) {
         stats.weightChange =
           parseFloat(rows[0].Weight) - parseFloat(rows[1].Weight);
       }
-
-      const weights = rows.map((r) => parseFloat(r.Weight));
-      stats.averageWeight = weights.reduce((a, b) => a + b, 0) / weights.length;
-      stats.minWeight = Math.min(...weights);
-      stats.maxWeight = Math.max(...weights);
     }
 
     await connection.end();
@@ -120,12 +107,6 @@ export default async function handler(req, res) {
       success: true,
       data: rows,
       stats,
-      pagination: {
-        total: totalCount,
-        limit: parseInt(limit),
-        offset: parseInt(offset),
-        hasMore: parseInt(offset) + rows.length < totalCount,
-      },
     });
   } catch (error) {
     console.error('❌ Database query error:', error);

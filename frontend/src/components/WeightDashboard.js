@@ -106,20 +106,13 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
 /**
  * Weight Dashboard - Unified component for weight tracking and insights
  * Monthly view with month-wise categorization
- * ✅ OPTIMIZED: Infinite scroll with IntersectionObserver
  */
 const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Weight history states
   const [weightHistory, setWeightHistory] = useState([]);
-  const [_stats, setStats] = useState(null); // eslint-disable-line no-unused-vars
+  const [globalStats, setGlobalStats] = useState(null); // Global min/max from ALL data
   const [loading, setLoading] = useState(true);
   const [_error, setError] = useState(null); // eslint-disable-line no-unused-vars
-
-  // ✅ INFINITE SCROLL: Pagination states
-  const [currentPage, setCurrentPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const ITEMS_PER_PAGE = 10; // Optimized page size
 
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
@@ -130,9 +123,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
-
-  // ✅ INTERSECTION OBSERVER: Sentinel ref for infinite scroll
-  const sentinelRef = useRef(null);
 
   // ✅ CACHE: Store userId to avoid repeated lookups
   const userIdRef = useRef(null);
@@ -220,58 +210,22 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
-   * ✅ OPTIMIZED: Initial fetch on mount
+   * Fetch ALL weight history on mount
    */
   useEffect(() => {
-    fetchWeightHistory(true);
+    fetchWeightHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
-   * ✅ INTERSECTION OBSERVER: Setup infinite scroll
+   * Fetch ALL weight history (no pagination)
    */
-  useEffect(() => {
-    if (!sentinelRef.current || !hasMore || loadingMore || loading) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !loadingMore) {
-          fetchWeightHistory(false);
-        }
-      },
-      {
-        root: null,
-        rootMargin: '100px', // Load before user reaches bottom
-        threshold: 0.1
-      }
-    );
-
-    observer.observe(sentinelRef.current);
-
-    // ✅ CLEANUP: Prevent memory leaks
-    return () => {
-      if (sentinelRef.current) {
-        observer.unobserve(sentinelRef.current);
-      }
-      observer.disconnect();
-    };
-  }, [hasMore, loadingMore, loading, currentPage]);
-
-  /**
-   * ✅ OPTIMIZED: Fetch weight history with pagination
-   * @param {boolean} isInitialLoad - True for first load, false for infinite scroll
-   */
-  const fetchWeightHistory = async (isInitialLoad = false) => {
+  const fetchWeightHistory = async () => {
     try {
-      if (isInitialLoad) {
-        setLoading(true);
-        setCurrentPage(0);
-      } else {
-        setLoadingMore(true);
-      }
+      setLoading(true);
       setError(null);
 
-      // ✅ OPTIMIZED: Use cached userId or fetch once
+      // Use cached userId or fetch once
       if (!userIdRef.current) {
         userIdRef.current = user?.id || await getUserId(user);
       }
@@ -281,12 +235,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error('User not authenticated or not found in database');
       }
       
-      const offset = isInitialLoad ? 0 : (currentPage + 1) * ITEMS_PER_PAGE;
-      const params = new URLSearchParams({
-        userId,
-        limit: String(ITEMS_PER_PAGE),
-        offset: String(offset)
-      });
+      const params = new URLSearchParams({ userId });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
@@ -299,28 +248,15 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      // ✅ OPTIMIZED: Append new data for infinite scroll (filter duplicates)
-      if (isInitialLoad) {
-        setWeightHistory(data.data || []);
-      } else {
-        setWeightHistory(prev => {
-          const newEntries = data.data || [];
-          const existingIds = new Set(prev.map(e => e.ID));
-          const uniqueNewEntries = newEntries.filter(e => !existingIds.has(e.ID));
-          return [...prev, ...uniqueNewEntries];
-        });
-        setCurrentPage(prev => prev + 1);
-      }
-      
-      setStats(data.stats || null);
-      setHasMore(data.pagination?.hasMore ?? false);
+      // Set all weight history data
+      setWeightHistory(data.data || []);
+      setGlobalStats(data.stats || null);
 
     } catch (err) {
       console.error('❌ Fetch weight history error:', err);
       setError(err.message || 'Failed to load weight history');
     } finally {
       setLoading(false);
-      setLoadingMore(false);
     }
   };
 
@@ -599,49 +535,40 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     </div>
   </div>
 
-  {/* Stats Grid - Lowest & Highest - Always show */}
-  {(() => {
-    // Calculate actual lowest and highest from ALL weight history
-    const validWeights = weightHistory
-      .filter(e => e && !e.isUndoPlaceholder && e.Weight && !isNaN(parseFloat(e.Weight)))
-      .map(e => parseFloat(e.Weight));
-    
-    const lowestWeight = validWeights.length > 0 ? Math.min(...validWeights) : null;
-    const highestWeight = validWeights.length > 0 ? Math.max(...validWeights) : null;
-    const currentWeight = latestWeight ? parseFloat(latestWeight.Weight) : null;
-    
-    return (
-      <div className="grid grid-cols-2 gap-3 mt-4">
-        {/* Lowest */}
-        <div className="bg-white rounded-xl p-3 text-center border border-white/40">
-          <p className="text-xs text-gray-600 mb-1">Lowest</p>
-          <p className="text-xl font-bold text-gray-900">
-            {lowestWeight !== null ? lowestWeight.toFixed(1) : '-'}
-          </p>
-          <p className="text-xs text-gray-500">kg</p>
-          {lowestWeight !== null ? (
-            <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
-          ) : (
-            <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
-          )}
-        </div>
+  {/* Stats Grid - Lowest & Highest - Always show (from ALL data via API) */}
+  <div className="grid grid-cols-2 gap-3 mt-4">
+    {/* Lowest */}
+    <div className="bg-white rounded-xl p-3 text-center border border-white/40">
+      <p className="text-xs text-gray-600 mb-1">Lowest</p>
+      <p className="text-xl font-bold text-gray-900">
+        {globalStats?.minWeight !== null && globalStats?.minWeight !== undefined 
+          ? globalStats.minWeight.toFixed(1) 
+          : '-'}
+      </p>
+      <p className="text-xs text-gray-500">kg</p>
+      {globalStats?.minWeight !== null && globalStats?.minWeight !== undefined ? (
+        <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
+      ) : (
+        <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+      )}
+    </div>
 
-        {/* Highest */}
-        <div className="bg-white rounded-xl p-3 text-center border border-white/40">
-          <p className="text-xs text-gray-600 mb-1">Highest</p>
-          <p className="text-xl font-bold text-gray-900">
-            {highestWeight !== null ? highestWeight.toFixed(1) : '-'}
-          </p>
-          <p className="text-xs text-gray-500">kg</p>
-          {highestWeight !== null ? (
-            <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
-          ) : (
-            <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
-          )}
-        </div>
-      </div>
-    );
-  })()}
+    {/* Highest */}
+    <div className="bg-white rounded-xl p-3 text-center border border-white/40">
+      <p className="text-xs text-gray-600 mb-1">Highest</p>
+      <p className="text-xl font-bold text-gray-900">
+        {globalStats?.maxWeight !== null && globalStats?.maxWeight !== undefined 
+          ? globalStats.maxWeight.toFixed(1) 
+          : '-'}
+      </p>
+      <p className="text-xs text-gray-500">kg</p>
+      {globalStats?.maxWeight !== null && globalStats?.maxWeight !== undefined ? (
+        <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
+      ) : (
+        <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+      )}
+    </div>
+  </div>
 </div>
 
           </div>
@@ -767,31 +694,6 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               );
             })
           )}
-
-          {/* ✅ INFINITE SCROLL: Loading sentinel */}
-          {hasMore && !loading && (
-            <div 
-              ref={sentinelRef} 
-              className="py-4 sm:py-6 md:py-8 flex justify-center items-center w-full"
-              aria-label="Loading more entries"
-            >
-              {loadingMore && (
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-3 text-gray-600 w-full px-4">
-                  <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 md:h-8 md:w-8 border-2 border-emerald-300 border-t-emerald-600"></div>
-                  <span className="text-xs sm:text-sm font-medium text-center">Loading more entries...</span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* ✅ END OF LIST: No more data indicator */}
-          {/* {!hasMore && weightHistory.length > 0 && (
-            <div className="py-6 text-center">
-              <p className="text-sm text-gray-500">
-                🎉 You've reached the beginning of your weight journey
-              </p>
-            </div>
-          )} */}
         </div>
         </div>
       </div>
