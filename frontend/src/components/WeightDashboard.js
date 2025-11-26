@@ -134,11 +134,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // ✅ INTERSECTION OBSERVER: Sentinel ref for infinite scroll
   const sentinelRef = useRef(null);
 
+  // ✅ CACHE: Store userId to avoid repeated lookups
+  const userIdRef = useRef(null);
+
   /**
-   * Group weight entries by month
+   * ✅ MEMOIZED: Group weight entries by month
    * Note: Placeholders are handled separately in the render logic
    */
-  const groupEntriesByMonth = () => {
+  const monthlyGroups = useMemo(() => {
     const grouped = {};
     
     // Process all entries including placeholders
@@ -168,7 +171,23 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     
     // Sort months in descending order (most recent first)
     return Object.values(grouped).sort((a, b) => b.date - a.date);
-  };
+  }, [weightHistory]);
+
+  /**
+   * ✅ MEMOIZED: Pre-compute previous weight map for O(1) lookup
+   */
+  const previousWeightMap = useMemo(() => {
+    const map = new Map();
+    const sorted = weightHistory
+      .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
+      .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
+    
+    for (let i = 0; i < sorted.length; i++) {
+      const prevEntry = i < sorted.length - 1 ? sorted[i + 1] : null;
+      map.set(sorted[i].ID, prevEntry ? prevEntry.Weight : null);
+    }
+    return map;
+  }, [weightHistory]);
 
   /**
    * Calculate month statistics
@@ -252,11 +271,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
       setError(null);
 
-      // Get the actual database UserId from team_table
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
+      // ✅ OPTIMIZED: Use cached userId or fetch once
+      if (!userIdRef.current) {
+        userIdRef.current = user?.id || await getUserId(user);
       }
+      const userId = userIdRef.current;
       
       if (!userId) {
         throw new Error('User not authenticated or not found in database');
@@ -348,10 +367,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
     // Immediately soft-delete in backend (like nutrition tab)
     try {
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
+      const userId = userIdRef.current || user?.id;
       
       const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
         method: 'DELETE',
@@ -409,10 +425,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
     // Call backend undo API to restore entry
     try {
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
+      const userId = userIdRef.current || user?.id;
       
       const response = await fetch(`${apiBaseUrl}/api/undo-deleted-weight-entry`, {
         method: 'POST',
@@ -493,7 +506,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
     // Get latest weight entry
     const latestWeight = weightHistory.length > 0 ? weightHistory[0] : null;
-    const monthlyGroups = groupEntriesByMonth();
+    const previousWeight = weightHistory.length > 1 ? weightHistory[1].Weight : null;
     
     // Get current month's entries for statistics
     const currentMonthEntries = monthlyGroups.length > 0 ? monthlyGroups[0].entries : [];
@@ -515,102 +528,138 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             </div>
           </div>
 
-          {/* Latest Weight Card */}
-          {latestWeight && currentMonthStats && (
-            <div className="mb-6">
-              {/*  bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 ||  bg-gradient-to-br from-emerald-400 to-teal-600 rounded-2xl */}
-              <div className="w-full max-w-md mx-auto 
-                bg-gradient-to-br  to-white 
-                backdrop-blur-xl rounded-2xl 
-                border 100 shadow-lg p-6 text-black">
-
-  {/* Month and Entries */}
-  {/* <div className="flex items-center justify-between mb-5">
-    <div className="flex items-center gap-2">
-      <Calendar className="w-4 h-4 text-purple-600" />
-      <span className="text-sm font-semibold text-purple-600">
-        {monthlyGroups.length > 0 ? monthlyGroups[0].monthName : getCurrentMonth()}
-      </span>
-    </div>
-    <span className="text-sm text-gray-600">
-      {currentMonthStats.count} {currentMonthStats.count === 1 ? 'entry' : 'entries'}
-    </span>
-  </div> */}
+          {/* Latest Weight Card - Always show (with data or empty state) */}
+          <div className="mb-6">
+            <div className="w-full max-w-md mx-auto 
+              bg-gradient-to-br to-white 
+              backdrop-blur-xl rounded-2xl 
+              border 100 shadow-lg p-6 text-black">
 
   {/* Current Weight */}
-  <div className="flex items-center justify-between mb-5">
+  <div className="flex items-center justify-between mb-4 sm:mb-5">
     <div className="flex-1">
-      <p className="text-sm text-gray-500">Current Weight</p>
-      <p className="text-4xl font-bold mt-1 text-black">
-        {latestWeight.Weight}
-        <span className="text-lg font-normal ml-1 text-gray-600">kg</span>
+      <p className="text-xs sm:text-sm text-gray-500">Current Weight</p>
+      <div className="flex items-center gap-2 mt-1">
+        <span className="text-3xl sm:text-4xl font-bold text-black whitespace-nowrap">
+          {latestWeight ? latestWeight.Weight : '-'}
+          <span className="text-base sm:text-lg font-normal ml-1 text-gray-600">kg</span>
+        </span>
+        <span className="text-sm sm:text-base text-gray-700 whitespace-nowrap">
+          ( Previous: {previousWeight !== null ? previousWeight : '-'} kg
+          {latestWeight && previousWeight !== null ? (
+            (() => {
+              const diff = (parseFloat(latestWeight.Weight) - parseFloat(previousWeight)).toFixed(2);
+              const diffNum = parseFloat(diff);
+              if (diffNum > 0) {
+                return (
+                  <span className="inline-flex items-center gap-0.5 text-red-500 font-medium ml-1">
+                    <TrendingUp className="w-5 h-5" />
+                    +{diff} kg
+                  </span>
+                );
+              } else if (diffNum < 0) {
+                return (
+                  <span className="inline-flex items-center gap-0.5 text-green-600 font-medium ml-1">
+                    <TrendingDown className="w-5 h-5" />
+                    {diff} kg
+                  </span>
+                );
+              } else {
+                return (
+                  <span className="inline-flex items-center gap-0.5 text-gray-500 font-medium ml-1">
+                    <Minus className="w-5 h-5" />
+                    0.00 kg
+                  </span>
+                );
+              }
+            })()
+          ) : (
+            <span className="inline-flex items-center gap-0.5 text-gray-400 font-medium ml-1">
+              <Minus className="w-5 h-5" />
+              - kg
+            </span>
+          )}
+          {' '})
+        </span>
+      </div>
+      <p className="text-xs text-gray-500 mt-1.5 sm:mt-2">
+        {latestWeight 
+          ? new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric'
+            })
+          : new Date().toLocaleDateString('en-US', { 
+              month: 'short', 
+              day: 'numeric', 
+              year: 'numeric'
+            })
+        }
       </p>
-      <p className="text-xs text-gray-500 mt-1">
-        {new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', { 
-          month: 'short', 
-          day: 'numeric', 
-          year: 'numeric',
-          hour: '2-digit',
-          minute: '2-digit'
-        })}
-      </p>
-    </div>
-
-    <div className="p-3 bg-white rounded-xl shadow-md">
-      <Scale className="w-10 h-10 text-green-700" />
     </div>
   </div>
 
-  {/* Stats Grid */}
-  <div className="grid grid-cols-3 gap-3 mt-4">
+  {/* Stats Grid - Lowest & Highest - Always show */}
+  {(() => {
+    // Calculate actual lowest and highest from ALL weight history
+    const validWeights = weightHistory
+      .filter(e => e && !e.isUndoPlaceholder && e.Weight && !isNaN(parseFloat(e.Weight)))
+      .map(e => parseFloat(e.Weight));
+    
+    const lowestWeight = validWeights.length > 0 ? Math.min(...validWeights) : null;
+    const highestWeight = validWeights.length > 0 ? Math.max(...validWeights) : null;
+    const currentWeight = latestWeight ? parseFloat(latestWeight.Weight) : null;
+    
+    return (
+      <div className="grid grid-cols-2 gap-3 mt-4">
+        {/* Lowest */}
+        <div className="bg-white rounded-xl p-3 text-center border border-white/40">
+          <p className="text-xs text-gray-600 mb-1">Lowest</p>
+          <p className="text-xl font-bold text-gray-900">
+            {lowestWeight !== null ? lowestWeight.toFixed(1) : '-'}
+          </p>
+          <p className="text-xs text-gray-500">kg</p>
+          {lowestWeight !== null ? (
+            <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
+          ) : (
+            <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+          )}
+        </div>
 
-    {/* Lowest */}
-    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
-      <p className="text-xs text-gray-600 mb-1">Lowest</p>
-      <p className="text-xl font-bold text-gray-900">{currentMonthStats.minWeight}</p>
-      <p className="text-xs text-gray-500">kg</p>
-      <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
-    </div>
-
-    {/* Highest */}
-    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
-      <p className="text-xs text-gray-600 mb-1">Highest</p>
-      <p className="text-xl font-bold text-gray-900">{currentMonthStats.maxWeight}</p>
-      <p className="text-xs text-gray-500">kg</p>
-      <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
-    </div>
-
-    {/* Average */}
-    <div className="bg-white rounded-xl p-3 text-center  border border-white/40">
-      <p className="text-xs text-gray-600 mb-1">Average</p>
-      <p className="text-xl font-bold text-gray-900">{currentMonthStats.avgWeight}</p>
-      <p className="text-xs text-gray-500">kg</p>
-
-      {parseFloat(latestWeight.Weight) < parseFloat(currentMonthStats.avgWeight) ? (
-        <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
-      ) : parseFloat(latestWeight.Weight) > parseFloat(currentMonthStats.avgWeight) ? (
-        <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
-      ) : (
-        <Minus className="w-4 h-4 mx-auto mt-1 text-blue-400" />
-      )}
-    </div>
-  </div>
+        {/* Highest */}
+        <div className="bg-white rounded-xl p-3 text-center border border-white/40">
+          <p className="text-xs text-gray-600 mb-1">Highest</p>
+          <p className="text-xl font-bold text-gray-900">
+            {highestWeight !== null ? highestWeight.toFixed(1) : '-'}
+          </p>
+          <p className="text-xs text-gray-500">kg</p>
+          {highestWeight !== null ? (
+            <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
+          ) : (
+            <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+          )}
+        </div>
+      </div>
+    );
+  })()}
 </div>
 
-            </div>
-          )}
+          </div>
+
+        {/* New user message - only show when no entries */}
+        {monthlyGroups.length === 0 && (
+          <div className="text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
+            <div className="text-6xl mb-4">⚖️</div>
+            <h3 className="text-xl font-semibold text-gray-800 mb-2">No Weight Entries</h3>
+            <p className="text-gray-500 text-sm max-w-xs mx-auto">
+              Take a photo of your weighing scale to start tracking your weight.
+            </p>
+          </div>
+        )}
 
         {/* Weight Entries Grouped by Month */}
         <div className="space-y-6">
-          {monthlyGroups.length === 0 ? (
-            <div className="text-center py-16 px-6 backdrop-blur-xl bg-white/30 rounded-2xl shadow-lg border border-white/40">
-              <div className="text-6xl mb-4">⚖️</div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">No Weight Entries</h3>
-              <p className="text-gray-600 max-w-xs mx-auto">
-                Take a photo of your weighing scale to start tracking your weight.
-              </p>
-            </div>
-          ) : (
+          {monthlyGroups.length > 0 && (
             monthlyGroups.map((monthGroup) => {
               const monthStats = getMonthStats(monthGroup.entries);
               
@@ -662,20 +711,34 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           );
                         }
 
-                        // Regular weight card
-                        // Use the complete weightHistory to find previous entry across all months
-                        const allHistorySorted = weightHistory
-                          .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
-                          .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
+                        // // Regular weight card
+                        // // Use the complete weightHistory to find previous entry across all months
+                        // const allHistorySorted = weightHistory
+                        //   .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
+                        //   .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
                         
-                        // Find the current entry's index in the complete history
-                        const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
+                        // // Find the current entry's index in the complete history
+                        // const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
                         
-                        // Get the previous entry (next in array since sorted newest first)
-                        const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
-                          ? allHistorySorted[currentIndex + 1]
-                          : null;
+                        // // Get the previous entry (next in array since sorted newest first)
+                        // const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
+                        //   ? allHistorySorted[currentIndex + 1]
+                        //   : null;
                         
+                        // // 🔍 DEBUG: Log last 3 weights
+                        // if (index === 0) {
+                        //   const last3 = allHistorySorted.slice(0, 3);
+                        //   console.log('📊 LAST 3 WEIGHTS:', last3.map((e, i) => ({
+                        //     position: i + 1,
+                        //     id: e.ID,
+                        //     weight: e.Weight,
+                        //     date: e.CreatedAt
+                        //   })));
+                        //   console.log('📊 Total entries:', allHistorySorted.length);
+                        // }
+
+                        // ✅ OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
+                        const prevWeight = previousWeightMap.get(entry.ID);
                         return (
                           <Suspense key={entry.ID} fallback={
                             <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 56 }}>
@@ -691,7 +754,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           }>
                             <WeightCard
                               data={entry}
-                              previousWeight={prevEntry ? prevEntry.Weight : null}
+                              previousWeight={prevWeight}
                               onDelete={handleDeleteEntry}
                               onView={handleViewEntry}
                               index={index}

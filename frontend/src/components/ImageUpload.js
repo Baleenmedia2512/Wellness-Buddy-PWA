@@ -129,6 +129,17 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
       ];
     }
     
+    // When image type is not yet detected
+    if (!imageType) {
+      return [
+        "Analyzing your image...",
+        "Detecting image type...",
+        "Is it food or weight?...",
+        "Processing image...",
+        "Just a moment..."
+      ];
+    }
+    
     if (imageType === 'weight') {
       return [
         "Reading the scale...",
@@ -201,6 +212,12 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
                             <div className="absolute inset-0 rounded-full bg-green-500/30 backdrop-blur-sm"></div>
                             <div className="absolute inset-0 rounded-full border-2 border-green-400/50"></div>
                             <div className="absolute inset-0 rounded-full border-2 border-green-400 border-t-transparent animate-spin"></div>
+                          </>
+                        ) : imageType === 'weight' ? (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-purple-500/30 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-purple-400/50"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-purple-400 border-t-transparent animate-spin"></div>
                           </>
                         ) : (
                           <>

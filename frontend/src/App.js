@@ -728,6 +728,7 @@ function WellnessBuddyApp() {
       const weightPopup = {
         id: `weight-${Date.now()}`,
         analysisId: data.id || null,
+        userId: userId, // Include userId for delete API
         isWeight: true, // Flag to identify weight entries
         weightData: {
           weightValue: weightData.weightValue,
@@ -1276,16 +1277,42 @@ function WellnessBuddyApp() {
     if (!popup || !popup.analysisId) return;
 
     try {
-      await deleteNutritionAnalysis({ id: popup.analysisId });
-      setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
-
-      if (nutritionData && popup.nutritionData === nutritionData) {
-        setNutritionData(null);
-        setImagePreview(null);
-        setSelectedImage(null);
+      // Handle weight entries differently from nutrition entries
+      if (popup.isWeight) {
+        // Delete weight entry
+        const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId: popup.userId, 
+            entryId: popup.analysisId 
+          })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'Failed to delete weight entry');
+        }
+        
+        // Clear weight result if it matches the deleted popup
+        if (weightResult && weightResult.weightValue === popup.weightData?.weightValue) {
+          setWeightResult(null);
+          setImagePreview(null);
+          setSelectedImage(null);
+        }
+      } else {
+        // Delete nutrition analysis
+        await deleteNutritionAnalysis({ id: popup.analysisId });
+        
+        if (nutritionData && popup.nutritionData === nutritionData) {
+          setNutritionData(null);
+          setImagePreview(null);
+          setSelectedImage(null);
+        }
       }
+      
+      setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
     } catch (err) {
-      console.error('Failed to delete analysis:', err);
+      console.error('Failed to delete:', err);
       setSaveError('Failed to delete: ' + (err.message || 'Unknown error'));
     }
   };

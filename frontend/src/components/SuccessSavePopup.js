@@ -428,10 +428,20 @@ const SuccessSavePopup = ({
 
       try {
         if (popup.analysisId) {
-          const res = await fetch(`${apiBaseUrl}/api/undo-deleted-analysis`, {
+          // Use different API endpoint for weight entries vs nutrition entries
+          const isWeightEntry = popup.isWeight;
+          const undoUrl = isWeightEntry 
+            ? `${apiBaseUrl}/api/undo-deleted-weight-entry`
+            : `${apiBaseUrl}/api/undo-deleted-analysis`;
+          
+          const undoBody = isWeightEntry
+            ? { id: popup.analysisId, userId: popup.userId }
+            : { id: popup.analysisId };
+
+          const res = await fetch(undoUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: popup.analysisId })
+            body: JSON.stringify(undoBody)
           });
           const data = await res.json();
           if (!data?.success) throw new Error(data?.message || 'Undo failed');
@@ -634,10 +644,20 @@ const SuccessSavePopup = ({
                   try { if ('vibrate' in navigator) navigator.vibrate(8); } catch {}
 
                   try {
-                    const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+                    // Use different API endpoint for weight entries vs nutrition entries
+                    const isWeightEntry = popup.isWeight;
+                    const deleteUrl = isWeightEntry 
+                      ? `${apiBaseUrl}/api/delete-weight-entry`
+                      : `${apiBaseUrl}/api/delete-background-analysis`;
+                    
+                    const deleteBody = isWeightEntry
+                      ? { userId: popup.userId, entryId: analysisId }
+                      : { id: analysisId };
+
+                    const res = await fetch(deleteUrl, {
                       method: 'DELETE',
                       headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ id: analysisId })
+                      body: JSON.stringify(deleteBody)
                     });
                     const json = await res.json();
 

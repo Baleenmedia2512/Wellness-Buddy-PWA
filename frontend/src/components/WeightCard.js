@@ -50,6 +50,15 @@ const WeightCard = React.memo(({
     ? (parseFloat(data.Weight) - parseFloat(previousWeight)).toFixed(1)
     : null;
 
+  // 🔍 DEBUG: Log what WeightCard receives
+  // console.log('📊 WeightCard Debug:', {
+  //   entryID: data.ID,
+  //   currentWeight: data.Weight,
+  //   previousWeight: previousWeight,
+  //   weightChange: weightChange,
+  //   date: data.CreatedAt
+  // });
+
   /**
    * Format date with day and time
    * Treats DB timestamp as local time (not UTC) to avoid timezone conversion
