@@ -28,10 +28,23 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
   const searchTimeoutRef = useRef(null);
+  
+  // Auto-save timer ref (Phase 1: Debounced Auto-Save)
+  const autoSaveTimeoutRef = useRef(null);
+  
+  // Track if user has made changes (Phase 1: Prevent auto-save on edit mode entry)
+  const hasUserChangesRef = useRef(false);
+  
+  // Track if Phase 2 instant save is in progress (prevents Phase 1 from interfering)
+  const isInstantSavingRef = useRef(false);
+  
+  // Phase 3: Sync status indicator
+  const [syncStatus, setSyncStatus] = useState('idle'); // idle|syncing|saved|error
+  const syncStatusTimeoutRef = useRef(null);
 
   // Expose save and cancel methods to parent via ref
   useImperativeHandle(ref, () => ({
-    save: handleSave,
+    save: handleDone,  // Changed from handleSave to handleDone
     cancel: handleCancel,
     isEditing
   }));
@@ -45,12 +58,59 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Initialize with current food item data
   // This preserves the original weight when entering edit mode
+  // Skip updates when in edit mode to prevent auto-save from resetting the UI
   useEffect(() => {
-    if (foodItem) {
+    if (foodItem && !isEditing) {
       const grams = foodItem.serving?.grams || foodItem.grams || '';
       setCustomGrams(grams);
     }
-  }, [foodItem]);
+  }, [foodItem, isEditing]);
+
+  // Phase 1: Debounced Auto-Save (Weight Input Only)
+  // Automatically save changes after 1 second of inactivity when typing weight
+  useEffect(() => {
+    // Skip if Phase 2 instant save is in progress
+    if (isInstantSavingRef.current) {
+      return;
+    }
+    
+    // Only auto-save when in edit mode and have valid data
+    if (!isEditing || !customGrams) {
+      return;
+    }
+
+    // Don't auto-save if user hasn't made any changes yet
+    if (!hasUserChangesRef.current) {
+      return;
+    }
+
+    // Clear any existing auto-save timer
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Validate data before setting timer
+    const grams = parseFloat(customGrams);
+    if (isNaN(grams) || grams <= 0) {
+      console.log('⏸️ [Phase 1] Auto-save skipped: Invalid grams value');
+      return;
+    }
+
+    // Set new timer for auto-save after 1 second of inactivity
+    console.log('⏱️ [Phase 1] Auto-save timer started (1s)...');
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      console.log('💾 [Phase 1] Auto-saving after 1s idle...');
+      handleAutoSave();
+      hasUserChangesRef.current = false; // Reset after save
+    }, 1000);
+
+    // Cleanup: Clear timer when dependencies change or component unmounts
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [customGrams, isEditing]);
 
   // Smart debounced search with prefetching
   const debouncedSearch = useCallback((query) => {
@@ -116,6 +176,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
+      }
+      // Phase 1: Cleanup auto-save timer on unmount
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+        console.log('🧹 [Phase 1] Auto-save timer cleaned up on unmount');
       }
     };
   }, []);
@@ -366,13 +431,15 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     const multiplier = parseFloat(grams) / 100;
     
-    return {
+    const result = {
       calories: Math.round(per100g.calories * multiplier),
       protein: Math.ceil(per100g.protein * multiplier),
       carbs: Math.ceil(per100g.carbs * multiplier),
       fat: Math.ceil(per100g.fat * multiplier),
       fiber: Math.ceil((per100g.fiber || 0) * multiplier)
     };
+    
+    return result;
   };
 
   // Handle search input with prefetching
@@ -392,6 +459,8 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     setSelectedFood(food);
     setSearchQuery(food.name);
     setSearchResults([]);
+    
+    console.log('⚡ [Phase 2] Food selected from search:', food.name);
     
     // Build serving options from defaultServing + servingOptions
     const options = [
@@ -432,18 +501,34 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       setCurrentServingIndex(0);
       setCustomGrams(options[0].grams.toString());
     }
-  };
-
-  // Handle serving size dropdown change
-  const handleServingChange = (e) => {
-    const selectedIndex = parseInt(e.target.value);
-    const selected = servingOptions[selectedIndex];
     
-    if (selected) {
-      setCurrentServing(selected);
-      setCurrentServingIndex(selectedIndex);
-      setCustomGrams(selected.grams.toString());
+    // Phase 2: Instant save when food is selected (no delay)
+    console.log('⚡ [Phase 2] Instant save triggered: Food selection changed');
+    
+    // Set flag to prevent Phase 1 from interfering
+    isInstantSavingRef.current = true;
+    
+    // Cancel any pending auto-save timer from Phase 1
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
     }
+    
+    // Save immediately with the newly selected food
+    // Use setTimeout to ensure React has queued the state updates
+    setTimeout(() => {
+      // Determine grams to use
+      const gramsToUse = !isNaN(existingGrams) && existingGrams > 0 
+        ? existingGrams.toString() 
+        : options[0].grams.toString();
+      
+      handleAutoSave(food, gramsToUse);
+      
+      // Reset flag after save completes
+      setTimeout(() => {
+        isInstantSavingRef.current = false;
+      }, 200);
+    }, 150);
   };
 
   // Handle custom grams input
@@ -453,6 +538,10 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Allow only numbers and decimal point
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setCustomGrams(value);
+      
+      // Phase 1: Mark that user made a change
+      hasUserChangesRef.current = true;
+      console.log('✏️ [Phase 1] User change detected: Weight input changed');
       
       const gramsValue = parseFloat(value);
       
@@ -483,25 +572,36 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     }
   };
 
-  // Save changes
-  const handleSave = () => {
-    if (!customGrams) {
-      alert('Please specify weight in grams');
+  // Auto-save changes (keeps edit mode open)
+  const handleAutoSave = (overrideFood = null, overrideGrams = null, overrideServingDesc = null) => {
+    const gramsToUse = overrideGrams || customGrams;
+    
+    if (!gramsToUse) {
       return;
     }
     
-    const grams = parseFloat(customGrams);
+    const grams = parseFloat(gramsToUse);
     if (isNaN(grams) || grams <= 0) {
-      alert('Please enter valid grams (greater than 0)');
       return;
     }
     
-    // Use selected food or current food item
-    const foodToSave = selectedFood || {
+    // Use override food (for instant saves) or selected food or current food item
+    const foodToSave = overrideFood || selectedFood || {
       name: foodItem.name,
       category: foodItem.category,
       per100g: foodItem.per100g
     };
+    
+    // Validate per100g exists
+    if (!foodToSave.per100g) {
+      console.error('❌ Cannot save: per100g data missing', foodToSave);
+      // Phase 3: Show error status
+      setSyncStatus('error');
+      return;
+    }
+    
+    // Phase 3: Show syncing status
+    setSyncStatus('syncing');
     
     // Calculate final nutrition
     const nutrition = calculateNutrition(foodToSave.per100g, grams);
@@ -510,7 +610,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       name: foodToSave.name,
       category: foodToSave.category,
       serving: {
-        description: currentServing?.description || `${grams}g`,
+        description: overrideServingDesc || currentServing?.description || `${grams}g`,
         grams: grams
       },
       grams: grams,
@@ -518,15 +618,61 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       per100g: foodToSave.per100g
     };
     
-    // Call parent update handler
-    onUpdate(index, updatedFood);
+    // Phase 1: Log auto-save event
+    console.log('✅ [Phase 1] Auto-saving (edit mode stays open):', {
+      name: updatedFood.name,
+      grams: updatedFood.grams,
+      calories: nutrition.calories,
+      serving: updatedFood.serving.description
+    });
+    
+    try {
+      // Call parent update handler WITHOUT closing edit mode
+      onUpdate(index, updatedFood);
+      
+      // Phase 3: Show saved confirmation
+      setSyncStatus('saved');
+      
+      // Clear previous timeout
+      if (syncStatusTimeoutRef.current) {
+        clearTimeout(syncStatusTimeoutRef.current);
+      }
+      
+      // Fade out after 1.5s
+      syncStatusTimeoutRef.current = setTimeout(() => {
+        setSyncStatus('idle');
+      }, 1500);
+      
+    } catch (error) {
+      console.error('❌ Auto-save failed:', error);
+      setSyncStatus('error');
+    }
+  };
+
+  // Close edit mode - data already auto-saved
+  const handleDone = () => {
+    console.log('✅ [Phase 3] Closing edit mode');
+    
+    // Clear any pending auto-save timers
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    if (syncStatusTimeoutRef.current) {
+      clearTimeout(syncStatusTimeoutRef.current);
+    }
+    
+    // Reset change tracking
+    hasUserChangesRef.current = false;
+    isInstantSavingRef.current = false;
     
     // Exit edit mode
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
+    setSearchError(null);
     setSelectedFood(null);
     setServingOptions([]);
+    setSyncStatus('idle');
     
     // Notify parent if callback provided
     if (onSave) {
@@ -536,6 +682,15 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Cancel editing
   const handleCancel = () => {
+    // Phase 1: Clear auto-save timer when canceling
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      console.log('❌ [Phase 1] Auto-save canceled by user');
+    }
+    
+    // Phase 1: Reset change tracking
+    hasUserChangesRef.current = false;
+    
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -553,6 +708,10 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   // Enter edit mode
   const handleEdit = () => {
     setIsEditing(true);
+    
+    // Phase 1: Reset change tracking when entering edit mode
+    hasUserChangesRef.current = false;
+    console.log('🔓 [Phase 1] Edit mode entered - change tracking reset');
     
     // Pre-fill with current food data - ensure we have a valid number
     const currentGrams = parseFloat(foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight) || 100;
@@ -575,7 +734,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       fat: Math.ceil(currentFat * 100 / currentGrams),
       fiber: Math.ceil(currentFiber * 100 / currentGrams)
     };
-
     
     const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`;
     
@@ -666,12 +824,51 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Edit mode
   return (
-    <div className="bg-blue-50/50 rounded-lg p-3 space-y-3 border border-blue-200">
-      {/* Search Input */}
+    <div className={`
+      bg-blue-50/50 rounded-lg p-3 space-y-3 border-2 transition-all duration-300
+      ${syncStatus === 'syncing' ? 'border-green-400 glow-green-saving' : ''}
+      ${syncStatus === 'saved' ? 'border-blue-200 glow-green-pulse' : 'border-blue-200'}
+      ${syncStatus === 'error' ? 'border-red-400' : ''}
+    `}>
+      {/* Search Input with Sync Status */}
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-          <Search className="w-3.5 h-3.5 text-gray-500" />
-          <span>Search Food (Optional)</span>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center justify-between gap-1.5">
+          <div className="flex items-center gap-1.5">
+            <Search className="w-3.5 h-3.5 text-gray-500" />
+            <span>Search Food (Optional)</span>
+          </div>
+          
+          {/* Phase 3: Sync Status Indicator - Top Right */}
+          {syncStatus !== 'idle' && (
+            <div 
+              className="flex items-center gap-1.5 text-xs font-medium"
+              role="status"
+              aria-live="polite"
+            >
+              {syncStatus === 'syncing' && (
+                <>
+                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-green-700">Saving...</span>
+                </>
+              )}
+              {syncStatus === 'saved' && (
+                <>
+                  <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                  </svg>
+                  <span className="text-green-700">Saved</span>
+                </>
+              )}
+              {syncStatus === 'error' && (
+                <>
+                  <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                  </svg>
+                  <span className="text-red-700">Failed</span>
+                </>
+              )}
+            </div>
+          )}
         </label>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -803,10 +1000,31 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
                     key={idx}
                     type="button"
                     onClick={() => {
+                      // Phase 2: Set flag to prevent Phase 1 from interfering
+                      isInstantSavingRef.current = true;
+                      
                       setCurrentServing(option);
                       setCurrentServingIndex(idx);
                       setCustomGrams(option.grams.toString());
                       setIsServingDropdownOpen(false);
+                      
+                      // Phase 2: Instant save on dropdown change
+                      console.log('⚡ [Phase 2] Instant save triggered: Serving dropdown changed to', option.description);
+                      
+                      // Cancel any pending auto-save timer from Phase 1
+                      if (autoSaveTimeoutRef.current) {
+                        clearTimeout(autoSaveTimeoutRef.current);
+                        autoSaveTimeoutRef.current = null;
+                      }
+                      
+                      // Save immediately with the selected serving's grams
+                      setTimeout(() => {
+                        handleAutoSave(null, option.grams.toString(), option.description);
+                        // Reset flag after save completes
+                        setTimeout(() => {
+                          isInstantSavingRef.current = false;
+                        }, 200);
+                      }, 150);
                     }}
                     className={`w-full px-3 py-2 rounded-lg transition-all text-left text-sm ${
                       currentServingIndex === idx
@@ -904,27 +1122,13 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
       {/* Action Buttons - only show if not hidden by parent */}
       {!hideButtons && (
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={!customGrams || parseFloat(customGrams) <= 0}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm ${
-              customGrams && parseFloat(customGrams) > 0
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            <Save className="w-4 h-4" />
-            <span>Save</span>
-          </button>
-          <button
-            onClick={handleCancel}
-            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm"
-          >
-            <X className="w-4 h-4" />
-            <span>Cancel</span>
-          </button>
-        </div>
+        <button
+          onClick={handleDone}
+          className="w-full px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow-md"
+        >
+          <X className="w-4 h-4" />
+          <span>Close Edit</span>
+        </button>
       )}
     </div>
   );
