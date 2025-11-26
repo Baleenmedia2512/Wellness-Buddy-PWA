@@ -1,7 +1,7 @@
 // src/components/EditableFoodItem.js
 import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { geminiService } from '../services/geminiService';
-import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet } from 'lucide-react';
+import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet, Leaf } from 'lucide-react';
 
 /**
  * Editable food item component for nutrition breakdown
@@ -44,9 +44,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   }, [isEditing, index, onEditingChange]);
 
   // Initialize with current food item data
+  // This preserves the original weight when entering edit mode
   useEffect(() => {
     if (foodItem) {
-      setCustomGrams(foodItem.serving?.grams || foodItem.grams || '');
+      const grams = foodItem.serving?.grams || foodItem.grams || '';
+      setCustomGrams(grams);
     }
   }, [foodItem]);
 
@@ -73,7 +75,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Check cache first (synchronous, instant)
     const cached = geminiService.getCachedSearch(trimmed);
     if (cached) {
-      console.log('✅ [EditableFoodItem] Using cached results for:', trimmed);
       setSearchResults(cached.results || []);
       setIsSearching(false);
       setSearchError(null);
@@ -86,15 +87,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     // Debounce the API call - only execute after 800ms of no typing
     searchTimeoutRef.current = setTimeout(async () => {
-      console.log('🔍 [EditableFoodItem] Searching for:', trimmed);
-      
       try {
         const results = await geminiService.searchFood(trimmed);
         setSearchResults(results.results || []);
         setSearchError(null);
-        console.log('✅ [EditableFoodItem] Search complete, results cached');
       } catch (error) {
-        console.error('❌ [EditableFoodItem] Search failed:', error);
         
         // Preserve existing results, show user-friendly error
         setSearchResults([]);
@@ -153,6 +150,37 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Examples: "2 idlis", "two parottas", "1/2 cup", "1 1/2 bowls", "3 chapatis", "3"
     let detectedQuantity = 1;
     let itemUnit = itemName.toLowerCase();
+    let useFractionFormat = false; // Track if original was in fraction format
+    
+    // Helper function to convert decimal to fraction string
+    const decimalToFraction = (decimal) => {
+      if (decimal % 1 === 0) {
+        // Whole number
+        return decimal.toString();
+      }
+      
+      const whole = Math.floor(decimal);
+      const fractionalPart = decimal - whole;
+      
+      // Common fractions
+      const fractions = {
+        0.25: '1/4',
+        0.5: '1/2',
+        0.75: '3/4',
+        0.333: '1/3',
+        0.667: '2/3'
+      };
+      
+      // Find closest fraction match
+      for (const [dec, frac] of Object.entries(fractions)) {
+        if (Math.abs(fractionalPart - parseFloat(dec)) < 0.01) {
+          return whole > 0 ? `${whole} ${frac}` : frac;
+        }
+      }
+      
+      // If no common fraction match, use decimal
+      return decimal % 1 === 0 ? decimal.toString() : decimal.toFixed(1);
+    };
     
     // First, try to convert text numbers to digits (e.g., "two parottas" -> "2 parottas")
     let normalizedDesc = portionDesc;
@@ -181,6 +209,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Try to match fraction pattern (e.g., "1/2 cup", "1 1/2 bowls", "0.5 cup")
     const fractionMatch = normalizedDesc.match(/(\d+)?\s*(\d+)\/(\d+)\s*([a-zA-Z]+)/);
     if (fractionMatch) {
+      useFractionFormat = true; // Original was in fraction format
       const whole = fractionMatch[1] ? parseInt(fractionMatch[1]) : 0;
       const numerator = parseInt(fractionMatch[2]);
       const denominator = parseInt(fractionMatch[3]);
@@ -209,74 +238,124 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       }
     }
     
-    // For fractions, generate options in fraction increments
-    // For whole numbers, generate integer increments
-    const isFraction = detectedQuantity < 1 || detectedQuantity % 1 !== 0;
-    const maxMultiplier = detectedQuantity * 2;
+    // Generate serving options dynamically following the pattern:
+    // 0.25 (1/4) → 0.25, 0.5, 0.75, 1, 1.5
+    // 0.5 (1/2) → 0.25, 0.5, 1, 1.5, 2
+    // 1 → 0.5, 1, 1.5, 2, 3
+    // 2 → 1, 1.5, 2, 2.5, 3, 4
+    // 3 → 1, 2, 2.5, 3, 3.5, 4, 5
+    // Pattern: Always use 0.5 and 1 increments only, minimum 0.25
     
-    if (isFraction) {
-      // Generate fractional options (e.g., 1/2, 1, 1 1/2, 2)
-      const increment = detectedQuantity; // Use the fraction as increment
-      for (let qty = increment; qty <= maxMultiplier; qty += increment) {
-        const multiplier = qty / detectedQuantity;
-        const gramsForQty = Math.round(baseServing.grams * multiplier);
-        const nutritionMultiplier = gramsForQty / 100;
-        
-        // Format fraction display
-        let qtyDisplay;
-        if (qty < 1) {
-          // Pure fraction like 1/2
-          const denom = Math.round(1 / qty);
-          qtyDisplay = `1/${denom}`;
-        } else if (qty % 1 === 0) {
-          // Whole number
-          qtyDisplay = qty.toString();
-        } else {
-          // Mixed fraction like 1 1/2
-          const whole = Math.floor(qty);
-          const frac = qty - whole;
-          const denom = Math.round(1 / frac);
-          qtyDisplay = `${whole} 1/${denom}`;
-        }
-        
-        options.push({
-          description: Math.abs(qty - detectedQuantity) < 0.01
-            ? `${qtyDisplay} ${itemUnit} (original)` 
-            : `${qtyDisplay} ${itemUnit}`,
-          grams: gramsForQty,
-          nutrition: {
-            calories: Math.round(per100g.calories * nutritionMultiplier),
-            protein: Math.ceil(per100g.protein * nutritionMultiplier),
-            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-            fat: Math.ceil(per100g.fat * nutritionMultiplier),
-            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
-          },
-          isOriginal: Math.abs(qty - detectedQuantity) < 0.01
-        });
+    const servingSizes = [];
+    
+    // Generate options below original
+    if (detectedQuantity <= 0.5) {
+      // For 0.25 and 0.5: add smaller fractions
+      if (detectedQuantity > 0.25) {
+        servingSizes.push(0.25);
       }
-    } else {
-      // Generate whole number options (e.g., 1, 2, 3, 4)
-      for (let qty = 1; qty <= maxMultiplier; qty++) {
-        const multiplier = qty / detectedQuantity;
-        const gramsForQty = Math.round(baseServing.grams * multiplier);
-        const nutritionMultiplier = gramsForQty / 100;
-        
-        options.push({
-          description: qty === detectedQuantity 
-            ? `${qty} ${itemUnit} (original)` 
-            : `${qty} ${itemUnit}`,
-          grams: gramsForQty,
-          nutrition: {
-            calories: Math.round(per100g.calories * nutritionMultiplier),
-            protein: Math.ceil(per100g.protein * nutritionMultiplier),
-            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-            fat: Math.ceil(per100g.fat * nutritionMultiplier),
-            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
-          },
-          isOriginal: qty === detectedQuantity
-        });
+      if (detectedQuantity === 0.5) {
+        // Already have 0.25, don't duplicate
+      }
+    } else if (detectedQuantity === 0.75) {
+      servingSizes.push(0.25, 0.5);
+    } else if (detectedQuantity === 1) {
+      servingSizes.push(0.5);
+    } else if (detectedQuantity === 1.5) {
+      servingSizes.push(0.5, 1);
+    } else if (detectedQuantity >= 2) {
+      // For 2 and above: add options below in 0.5 decrements
+      // Try to get 2 options below, but not go below 0.5 for values < 2, or 1 for values >= 2
+      const minValue = detectedQuantity >= 2 ? 1 : 0.5;
+      
+      // First option below (larger decrement)
+      let firstBelow;
+      if (detectedQuantity >= 3) {
+        // For 3+: go down by 1 or more
+        firstBelow = Math.max(minValue, detectedQuantity - Math.floor(detectedQuantity / 2));
+      } else {
+        // For 2-2.5: go down by 0.5 or 1
+        firstBelow = Math.max(minValue, detectedQuantity - 1);
+      }
+      
+      // Second option below (smaller decrement)
+      const secondBelow = detectedQuantity - 0.5;
+      
+      // Add first below if valid and different from second
+      if (firstBelow >= minValue && Math.abs(firstBelow - secondBelow) > 0.1) {
+        servingSizes.push(firstBelow);
+      }
+      
+      // Add second below if valid
+      if (secondBelow >= minValue) {
+        servingSizes.push(secondBelow);
       }
     }
+    
+    // Add original
+    servingSizes.push(detectedQuantity);
+    
+    // Generate options above original
+    if (detectedQuantity < 0.5) {
+      // For 0.25: add 0.5, 0.75, 1, 1.5
+      servingSizes.push(0.5, 0.75, 1, 1.5);
+    } else if (detectedQuantity === 0.5) {
+      // For 0.5: add 1, 1.5, 2
+      servingSizes.push(1, 1.5, 2);
+    } else if (detectedQuantity === 0.75) {
+      // For 0.75: add 1, 1.5, 2
+      servingSizes.push(1, 1.5, 2);
+    } else {
+      // For 1 and above: add +0.5, +1, and larger jumps
+      servingSizes.push(detectedQuantity + 0.5);
+      servingSizes.push(detectedQuantity + 1);
+      
+      // Add bigger jumps for variety
+      if (detectedQuantity >= 2) {
+        servingSizes.push(detectedQuantity + 1.5);
+        servingSizes.push(detectedQuantity + 2.5);
+      } else {
+        // For 1-1.5: add 3 as a bigger option
+        servingSizes.push(detectedQuantity + 1.5);
+      }
+    }
+    
+    // Remove duplicates and sort
+    const uniqueSizes = [...new Set(servingSizes)].sort((a, b) => a - b);
+    
+    // Generate options from unique sizes
+    uniqueSizes.forEach((qty) => {
+      const multiplier = qty / detectedQuantity;
+      const gramsForQty = Math.round(baseServing.grams * multiplier);
+      const nutritionMultiplier = gramsForQty / 100;
+      
+      // Format display based on original format
+      let qtyDisplay;
+      if (useFractionFormat) {
+        // Use fraction format (e.g., "1/2", "3/4", "1 1/2")
+        qtyDisplay = decimalToFraction(qty);
+      } else {
+        // Use decimal format (e.g., "0.5", "1", "1.5")
+        qtyDisplay = qty % 1 === 0 ? qty.toString() : qty.toFixed(1);
+      }
+      
+      const isOriginal = Math.abs(qty - detectedQuantity) < 0.01;
+      
+      options.push({
+        description: isOriginal 
+          ? `${qtyDisplay} ${itemUnit} (original)` 
+          : `${qtyDisplay} ${itemUnit}`,
+        grams: gramsForQty,
+        nutrition: {
+          calories: Math.round(per100g.calories * nutritionMultiplier),
+          protein: Math.ceil(per100g.protein * nutritionMultiplier),
+          carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
+          fat: Math.ceil(per100g.fat * nutritionMultiplier),
+          fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
+        },
+        isOriginal: isOriginal
+      });
+    });
     
     return options;
   };
@@ -310,7 +389,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Select food from search results
   const handleFoodSelect = (food) => {
-    console.log('[EditableFoodItem] Selected food:', food.name);
     setSelectedFood(food);
     setSearchQuery(food.name);
     setSearchResults([]);
@@ -333,10 +411,27 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     setServingOptions(options);
     
-    // Set default serving
-    setCurrentServing(options[0]);
-    setCurrentServingIndex(0);
-    setCustomGrams(options[0].grams.toString());
+    // IMPORTANT: Preserve the original weight from the food item being edited
+    // Do NOT change customGrams - keep the existing weight
+    const existingGrams = parseFloat(customGrams);
+    
+    // Find the closest serving option to the existing weight (for display purposes)
+    if (!isNaN(existingGrams) && existingGrams > 0) {
+      const closestIndex = options.reduce((closestIdx, opt, idx) => {
+        const currentDiff = Math.abs(options[closestIdx].grams - existingGrams);
+        const newDiff = Math.abs(opt.grams - existingGrams);
+        return newDiff < currentDiff ? idx : closestIdx;
+      }, 0);
+      
+      setCurrentServing(options[closestIndex]);
+      setCurrentServingIndex(closestIndex);
+      // Keep the existing customGrams value - DO NOT override it
+    } else {
+      // Fallback to default serving only if no valid existing weight
+      setCurrentServing(options[0]);
+      setCurrentServingIndex(0);
+      setCustomGrams(options[0].grams.toString());
+    }
   };
 
   // Handle serving size dropdown change
@@ -345,7 +440,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     const selected = servingOptions[selectedIndex];
     
     if (selected) {
-      console.log('[EditableFoodItem] Serving changed:', selected.description);
       setCurrentServing(selected);
       setCurrentServingIndex(selectedIndex);
       setCustomGrams(selected.grams.toString());
@@ -363,40 +457,27 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       const gramsValue = parseFloat(value);
       
       if (!isNaN(gramsValue) && servingOptions.length > 0) {
-        // Find the maximum grams in serving options
-        const maxServingIndex = servingOptions.reduce((maxIdx, opt, idx) => 
-          opt.grams > servingOptions[maxIdx].grams ? idx : maxIdx
-        , 0);
-        const maxServing = servingOptions[maxServingIndex];
-        
         // Check if grams exactly match any serving option (within 1g tolerance)
         const exactMatchIndex = servingOptions.findIndex(
           opt => Math.abs(opt.grams - gramsValue) < 1
         );
         
         if (exactMatchIndex !== -1) {
-          // Exact match found
-          console.log('[EditableFoodItem] Grams matched serving:', servingOptions[exactMatchIndex].description);
+          // Exact match found - update serving display to match
           setCurrentServing(servingOptions[exactMatchIndex]);
           setCurrentServingIndex(exactMatchIndex);
-        } else if (gramsValue >= maxServing.grams) {
-          // If typed grams exceeds max serving, auto-select max serving and cap the weight
-          console.log('[EditableFoodItem] Grams exceeds max, selecting:', maxServing.description);
-          setCurrentServing(maxServing);
-          setCurrentServingIndex(maxServingIndex);
-          setCustomGrams(maxServing.grams.toString());
         } else {
-          // Find closest serving option for display, but keep custom grams for calculation
+          // Find closest serving option for display only
+          // IMPORTANT: Never override customGrams - let user type any value
           const closestIndex = servingOptions.reduce((closestIdx, opt, idx) => {
             const currentDiff = Math.abs(servingOptions[closestIdx].grams - gramsValue);
             const newDiff = Math.abs(opt.grams - gramsValue);
             return newDiff < currentDiff ? idx : closestIdx;
           }, 0);
           
-          console.log('[EditableFoodItem] Custom grams, showing closest serving:', servingOptions[closestIndex].description);
           setCurrentServing(servingOptions[closestIndex]);
           setCurrentServingIndex(closestIndex);
-          // Keep the custom typed value for calculations
+          // customGrams is already set above - don't override it
         }
       }
     }
@@ -437,8 +518,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       per100g: foodToSave.per100g
     };
     
-    console.log('[EditableFoodItem] Saving updated food:', updatedFood);
-    
     // Call parent update handler
     onUpdate(index, updatedFood);
     
@@ -457,7 +536,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Cancel editing
   const handleCancel = () => {
-    console.log('[EditableFoodItem] Cancelled editing');
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -474,7 +552,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Enter edit mode
   const handleEdit = () => {
-    console.log('[EditableFoodItem] Entering edit mode for:', foodItem.name);
     setIsEditing(true);
     
     // Pre-fill with current food data - ensure we have a valid number
@@ -531,14 +608,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       defaultServing: baseServing,
       servingOptions: dynamicOptions.slice(1) // Exclude first option as it's the default
     };
-    
-    console.log('[EditableFoodItem] Mock food created:', { 
-      name: mockFood.name, 
-      currentGrams, 
-      per100g: mockFood.per100g,
-      servingOptionsCount: dynamicOptions.length,
-      currentNutrition: { currentCalories, currentProtein, currentCarbs, currentFat }
-    });
     
     setSelectedFood(mockFood);
     setServingOptions(dynamicOptions); // Use all dynamic options including the original
@@ -786,44 +855,45 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
           </div>
         </div>
 
-        {/* Nutrition Preview - Always show when grams available */}
+        {/* Nutrition Preview - Glassmorphism Pills */}
         {customGrams && selectedFood && selectedFood.per100g && (
-          <div className="bg-white rounded-lg p-2.5 border border-gray-200">
-            <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
               <span>Preview ({customGrams}g)</span>
-            </div>
+            </label>
             {(() => {
               const nutrition = calculateNutrition(selectedFood.per100g, parseFloat(customGrams));
               return nutrition ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-red-50 rounded p-2 border border-red-100">
-                    <div className="text-xs text-red-600 mb-0.5 flex items-center gap-1">
-                      <Flame className="w-3 h-3" />
-                      Cal
-                    </div>
-                    <div className="text-lg font-bold text-red-700">{nutrition.calories}</div>
+                <div className="flex flex-wrap justify-start gap-1.5 sm:gap-2">
+                  {/* Calories Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-red-700 whitespace-nowrap">{nutrition.calories}</span>
                   </div>
-                  <div className="bg-blue-50 rounded p-2 border border-blue-100">
-                    <div className="text-xs text-blue-600 mb-0.5 flex items-center gap-1">
-                      <Beef className="w-3 h-3" />
-                      Protein
-                    </div>
-                    <div className="text-lg font-bold text-blue-700">{nutrition.protein}g</div>
+                  
+                  {/* Protein Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Beef className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-blue-700 whitespace-nowrap">{nutrition.protein}g</span>
                   </div>
-                  <div className="bg-yellow-50 rounded p-2 border border-yellow-100">
-                    <div className="text-xs text-yellow-600 mb-0.5 flex items-center gap-1">
-                      <Wheat className="w-3 h-3" />
-                      Carbs
-                    </div>
-                    <div className="text-lg font-bold text-yellow-700">{nutrition.carbs}g</div>
+                  
+                  {/* Carbs Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-yellow-50/80 backdrop-blur-sm border border-yellow-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Wheat className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-700 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-yellow-800 whitespace-nowrap">{nutrition.carbs}g</span>
                   </div>
-                  <div className="bg-purple-50 rounded p-2 border border-purple-100">
-                    <div className="text-xs text-purple-600 mb-0.5 flex items-center gap-1">
-                      <Droplet className="w-3 h-3" />
-                      Fat
-                    </div>
-                    <div className="text-lg font-bold text-purple-700">{nutrition.fat}g</div>
+                  
+                  {/* Fat Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-purple-50/80 backdrop-blur-sm border border-purple-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-purple-700 whitespace-nowrap">{nutrition.fat}g</span>
+                  </div>
+                  
+                  {/* Fiber Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-green-50/80 backdrop-blur-sm border border-green-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Leaf className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-green-700 whitespace-nowrap">{nutrition.fiber}g</span>
                   </div>
                 </div>
               ) : null;
