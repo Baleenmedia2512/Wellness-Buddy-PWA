@@ -54,6 +54,9 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   // undo placeholders: key -> { originalMeal, expiresAt }
   const [undoState, setUndoState] = useState({});
   const [undoing, setUndoing] = useState(false);
+  
+  // Track when update is from auto-save to prevent UI reset
+  const isAutoSaveUpdateRef = useRef(false);
 
   // Initialize local editable data when meal changes
   useEffect(() => {
@@ -71,8 +74,15 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
       }));
       setLocalDetailedItems(transformedItems);
       setLocalNutrition(foodData.nutrition || {});
-      setIsEditing(false);
-      setEditingStates({});
+      
+      // Only reset editing states if NOT from auto-save
+      if (!isAutoSaveUpdateRef.current) {
+        setIsEditing(false);
+        setEditingStates({});
+      }
+      
+      // Reset the flag
+      isAutoSaveUpdateRef.current = false;
     }
   }, [selectedMeal]);
 
@@ -197,17 +207,19 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
 
       console.log('💾 Meal updated successfully:', result);
       
-      // Show success status
-      setSaveStatus('success');
+      // Phase 1: Don't show success status or close edit mode for auto-save
+      // Just update the data silently in the background
       setIsSaving(false);
       
-      // Exit editing mode and auto-hide success after 2 seconds
-      setEditingStates({});
-      setEditingIndex(null);
+      // Don't exit editing mode - let user continue editing
+      // setEditingStates({});
+      // setEditingIndex(null);
       
-      setTimeout(() => {
-        setSaveStatus(null);
-      }, 2000);
+      // Don't show success message for auto-save
+      // setSaveStatus('success');
+      // setTimeout(() => {
+      //   setSaveStatus(null);
+      // }, 2000);
 
       // Update local analyses state
       setAnalyses(prev => prev.map(meal => 
@@ -224,6 +236,9 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
           : meal
       ));
 
+      // Set flag to prevent UI reset on auto-save
+      isAutoSaveUpdateRef.current = true;
+      
       // Update selectedMeal
       setSelectedMeal(prev => ({
         ...prev,
@@ -1364,8 +1379,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
               </div>
             )}
 
-            {/* Saving indicator overlay */}
-            {isSaving && !saveStatus && (
+            {/* Saving indicator overlay - DISABLED for auto-save UX */}
+            {/* {isSaving && !saveStatus && (
               <div className="absolute inset-0 bg-white/95 rounded-3xl flex items-center justify-center z-10 animate-fadeIn">
                 <div className="text-center p-8">
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1375,7 +1390,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                   <p className="text-sm text-gray-500">Updating your meal data</p>
                 </div>
               </div>
-            )}
+            )} */}
 
             {(() => {
               // Use white for '+ {others} more' in modal
@@ -1522,45 +1537,17 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
                   {/* Action buttons area */}
                   {isEditing ? (
-                    // Save and Cancel buttons when editing
-                    <div className="p-4 pt-0 flex gap-2">
+                    // Close Edit button when editing
+                    <div className="p-4 pt-0">
                       <button
                         onClick={handleCancelEditing}
                         disabled={isSaving}
-                        className="flex-1 flex items-center justify-center gap-2 rounded-lg text-gray-700 text-sm font-medium px-4 py-2 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 bg-indigo-600 hover:bg-indigo-700 shadow-sm hover:shadow-md transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
-                        Cancel
-                      </button>
-                      <button
-                        disabled={isSaving}
-                        className={`flex-1 flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
-                          isSaving
-                            ? 'bg-green-400 cursor-not-allowed'
-                            : 'bg-green-500 hover:bg-green-600 hover:shadow-md active:scale-95'
-                        }`}
-                        onClick={() => {
-                          // Call save on the editing item
-                          if (editingIndex !== null && itemRefs.current[editingIndex]) {
-                            itemRefs.current[editingIndex].save();
-                          }
-                        }}
-                      >
-                        {isSaving ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Saving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Save
-                          </>
-                        )}
+                        Close Edit
                       </button>
                     </div>
                   ) : (
