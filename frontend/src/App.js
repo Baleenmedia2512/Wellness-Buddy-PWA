@@ -44,6 +44,7 @@ function WellnessBuddyApp() {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
+  const [savedNutritionMealId, setSavedNutritionMealId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingState, setLoadingState] = useState('analyzing'); // 'analyzing' | 'saving'
   const [error, setError] = useState(null);
@@ -833,6 +834,9 @@ function WellnessBuddyApp() {
       if (process.env.NODE_ENV !== 'production') {
         // console.log('✅ Save successful:', saveRes);
       }
+      
+      // Store meal ID for NutritionCard auto-save updates
+      setSavedNutritionMealId(saveRes.id || saveRes.insertId);
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -1789,10 +1793,12 @@ function WellnessBuddyApp() {
           user={user} 
           imagePreview={imagePreview} 
           selectedImage={selectedImage}
-          onSaveSuccess={() => {
+          savedMealId={savedNutritionMealId}
+          onClose={() => {
             setNutritionData(null);
             setImagePreview(null);
             setSelectedImage(null);
+            setSavedNutritionMealId(null);
           }}
         />}
         

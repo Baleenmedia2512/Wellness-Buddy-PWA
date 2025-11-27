@@ -39,8 +39,13 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   const isInstantSavingRef = useRef(false);
   
   // Phase 3: Sync status indicator
-  const [syncStatus, setSyncStatus] = useState('idle'); // idle|syncing|saved|error
+  const [syncStatus, setSyncStatus] = useState('idle'); // idle|syncing|saved|error|retrying
   const syncStatusTimeoutRef = useRef(null);
+  
+  // Phase 5: Retry logic
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  const retryTimeoutRef = useRef(null);
 
   // Expose save and cancel methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -49,12 +54,14 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     isEditing
   }));
 
-  // Notify parent when editing state changes
+  // Notify parent when editing state changes or sync status changes
   useEffect(() => {
     if (onEditingChange) {
-      onEditingChange(index, isEditing);
+      // Pass editing state and whether actively saving/retrying (blocking close)
+      const isBlocking = syncStatus === 'retrying';
+      onEditingChange(index, isEditing, isBlocking);
     }
-  }, [isEditing, index, onEditingChange]);
+  }, [isEditing, syncStatus, index, onEditingChange]);
 
   // Initialize with current food item data
   // This preserves the original weight when entering edit mode
@@ -92,14 +99,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Validate data before setting timer
     const grams = parseFloat(customGrams);
     if (isNaN(grams) || grams <= 0) {
-      console.log('⏸️ [Phase 1] Auto-save skipped: Invalid grams value');
       return;
     }
 
     // Set new timer for auto-save after 1 second of inactivity
-    console.log('⏱️ [Phase 1] Auto-save timer started (1s)...');
     autoSaveTimeoutRef.current = setTimeout(() => {
-      console.log('💾 [Phase 1] Auto-saving after 1s idle...');
       handleAutoSave();
       hasUserChangesRef.current = false; // Reset after save
     }, 1000);
@@ -180,7 +184,10 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       // Phase 1: Cleanup auto-save timer on unmount
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
-        console.log('🧹 [Phase 1] Auto-save timer cleaned up on unmount');
+      }
+      // Phase 5: Cleanup retry timeout on unmount
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
       }
     };
   }, []);
@@ -460,8 +467,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     setSearchQuery(food.name);
     setSearchResults([]);
     
-    console.log('⚡ [Phase 2] Food selected from search:', food.name);
-    
     // Build serving options from defaultServing + servingOptions
     const options = [
       {
@@ -503,8 +508,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     }
     
     // Phase 2: Instant save when food is selected (no delay)
-    console.log('⚡ [Phase 2] Instant save triggered: Food selection changed');
-    
     // Set flag to prevent Phase 1 from interfering
     isInstantSavingRef.current = true;
     
@@ -541,7 +544,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       
       // Phase 1: Mark that user made a change
       hasUserChangesRef.current = true;
-      console.log('✏️ [Phase 1] User change detected: Weight input changed');
       
       const gramsValue = parseFloat(value);
       
@@ -572,8 +574,8 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     }
   };
 
-  // Auto-save changes (keeps edit mode open)
-  const handleAutoSave = (overrideFood = null, overrideGrams = null, overrideServingDesc = null) => {
+  // Auto-save changes (keeps edit mode open) with retry logic
+  const handleAutoSave = async (overrideFood = null, overrideGrams = null, overrideServingDesc = null, currentRetry = 0) => {
     const gramsToUse = overrideGrams || customGrams;
     
     if (!gramsToUse) {
@@ -595,13 +597,9 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Validate per100g exists
     if (!foodToSave.per100g) {
       console.error('❌ Cannot save: per100g data missing', foodToSave);
-      // Phase 3: Show error status
       setSyncStatus('error');
       return;
     }
-    
-    // Phase 3: Show syncing status
-    setSyncStatus('syncing');
     
     // Calculate final nutrition
     const nutrition = calculateNutrition(foodToSave.per100g, grams);
@@ -618,41 +616,67 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       per100g: foodToSave.per100g
     };
     
-    // Phase 1: Log auto-save event
-    console.log('✅ [Phase 1] Auto-saving (edit mode stays open):', {
-      name: updatedFood.name,
-      grams: updatedFood.grams,
-      calories: nutrition.calories,
-      serving: updatedFood.serving.description
-    });
-    
     try {
-      // Call parent update handler WITHOUT closing edit mode
-      onUpdate(index, updatedFood);
+      // Phase 5: Set saving status (prevents closing during save)
+      setSyncStatus(currentRetry > 0 ? 'retrying' : 'saving');
       
-      // Phase 3: Show saved confirmation
+      // Phase 5: Add timeout wrapper for API call (10 seconds max)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+      
+      await Promise.race([
+        onUpdate(index, updatedFood),
+        timeoutPromise
+      ]);
+      
+      // Success - reset retry count and show saved status
+      setRetryCount(0);
       setSyncStatus('saved');
       
-      // Clear previous timeout
       if (syncStatusTimeoutRef.current) {
         clearTimeout(syncStatusTimeoutRef.current);
       }
       
-      // Fade out after 1.5s
       syncStatusTimeoutRef.current = setTimeout(() => {
         setSyncStatus('idle');
       }, 1500);
       
     } catch (error) {
-      console.error('❌ Auto-save failed:', error);
-      setSyncStatus('error');
+      console.error(`❌ Auto-save failed (attempt ${currentRetry + 1}/${maxRetries}):`, error);
+      
+      // Phase 5: Auto-retry with exponential backoff
+      if (currentRetry < maxRetries - 1) {
+        const retryDelay = Math.pow(2, currentRetry) * 1000; // 1s, 2s, 4s
+        setRetryCount(currentRetry + 1);
+        setSyncStatus('retrying');
+        
+        // Clear any existing retry timeout
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+        }
+        
+        retryTimeoutRef.current = setTimeout(() => {
+          handleAutoSave(overrideFood, overrideGrams, overrideServingDesc, currentRetry + 1);
+        }, retryDelay);
+      } else {
+        // Max retries reached - show persistent error
+        setRetryCount(0);
+        setSyncStatus('error');
+        // Don't auto-hide error - let user see it and manually retry
+      }
     }
+  };
+  
+  // Phase 5: Manual retry function
+  const handleManualRetry = () => {
+    setRetryCount(0);
+    setSyncStatus('retrying'); // Set to retrying state to block modal close
+    handleAutoSave(); // This will handle the save and update status accordingly
   };
 
   // Close edit mode - data already auto-saved
   const handleDone = () => {
-    console.log('✅ [Phase 3] Closing edit mode');
-    
     // Clear any pending auto-save timers
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
@@ -660,10 +684,14 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     if (syncStatusTimeoutRef.current) {
       clearTimeout(syncStatusTimeoutRef.current);
     }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
     
     // Reset change tracking
     hasUserChangesRef.current = false;
     isInstantSavingRef.current = false;
+    setRetryCount(0);
     
     // Exit edit mode
     setIsEditing(false);
@@ -685,11 +713,16 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Phase 1: Clear auto-save timer when canceling
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
-      console.log('❌ [Phase 1] Auto-save canceled by user');
+    }
+    
+    // Phase 5: Clear retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
     }
     
     // Phase 1: Reset change tracking
     hasUserChangesRef.current = false;
+    setRetryCount(0);
     
     setIsEditing(false);
     setSearchQuery('');
@@ -711,7 +744,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     // Phase 1: Reset change tracking when entering edit mode
     hasUserChangesRef.current = false;
-    console.log('🔓 [Phase 1] Edit mode entered - change tracking reset');
     
     // Pre-fill with current food data - ensure we have a valid number
     const currentGrams = parseFloat(foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight) || 100;
@@ -826,49 +858,60 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   return (
     <div className={`
       bg-blue-50/50 rounded-lg p-3 space-y-3 border-2 transition-all duration-300
-      ${syncStatus === 'syncing' ? 'border-green-400 glow-green-saving' : ''}
       ${syncStatus === 'saved' ? 'border-blue-200 glow-green-pulse' : 'border-blue-200'}
       ${syncStatus === 'error' ? 'border-red-400' : ''}
+      ${syncStatus === 'retrying' ? 'border-orange-400' : ''}
     `}>
       {/* Search Input with Sync Status */}
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <Search className="w-3.5 h-3.5 text-gray-500" />
-            <span>Search Food (Optional)</span>
-          </div>
-          
-          {/* Phase 3: Sync Status Indicator - Top Right */}
-          {syncStatus !== 'idle' && (
-            <div 
-              className="flex items-center gap-1.5 text-xs font-medium"
-              role="status"
-              aria-live="polite"
-            >
-              {syncStatus === 'syncing' && (
-                <>
-                  <div className="w-3 h-3 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
-                  <span className="text-green-700">Saving...</span>
-                </>
-              )}
-              {syncStatus === 'saved' && (
-                <>
-                  <svg className="w-3.5 h-3.5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
-                  </svg>
-                  <span className="text-green-700">Saved</span>
-                </>
-              )}
-              {syncStatus === 'error' && (
-                <>
-                  <svg className="w-3.5 h-3.5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
-                  <span className="text-red-700">Failed</span>
-                </>
-              )}
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-gray-500" />
+              <span>Search Food</span>
             </div>
-          )}
+            
+            {/* Phase 3 & 5: Sync Status Indicator - Top Right */}
+            {syncStatus !== 'idle' && (
+              <div 
+                className="flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                role="status"
+                aria-live="polite"
+              >
+                {syncStatus === 'retrying' && (
+                  <>
+                    <div className="w-3 h-3 border-2 border-orange-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    <span className="text-orange-700">Retrying... ({retryCount}/{maxRetries})</span>
+                  </>
+                )}
+                {syncStatus === 'saved' && (
+                  <>
+                    <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-700">Saved</span>
+                  </>
+                )}
+                {syncStatus === 'error' && (
+                  <>
+                    <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-red-700 font-medium">Save Failed</span>
+                    <button
+                      onClick={handleManualRetry}
+                      className="ml-2 px-2.5 py-0.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Retry
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </label>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -1009,8 +1052,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
                       setIsServingDropdownOpen(false);
                       
                       // Phase 2: Instant save on dropdown change
-                      console.log('⚡ [Phase 2] Instant save triggered: Serving dropdown changed to', option.description);
-                      
                       // Cancel any pending auto-save timer from Phase 1
                       if (autoSaveTimeoutRef.current) {
                         clearTimeout(autoSaveTimeoutRef.current);
@@ -1124,10 +1165,26 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       {!hideButtons && (
         <button
           onClick={handleDone}
-          className="w-full px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm hover:shadow-md"
+          disabled={syncStatus === 'saving' || syncStatus === 'retrying'}
+          className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
+            syncStatus === 'saving' || syncStatus === 'retrying'
+              ? 'bg-gray-400 cursor-not-allowed opacity-50'
+              : 'bg-indigo-600 hover:bg-indigo-700'
+          }`}
         >
-          <X className="w-4 h-4" />
-          <span>Close Edit</span>
+          <div className="flex items-center justify-center gap-2 h-5">
+            {(syncStatus === 'saving' || syncStatus === 'retrying') ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                <span className="inline-block">Saving...</span>
+              </>
+            ) : (
+              <>
+                <X className="w-4 h-4" />
+                <span className="inline-block">Close Edit</span>
+              </>
+            )}
+          </div>
         </button>
       )}
     </div>
