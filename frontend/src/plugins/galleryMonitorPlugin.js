@@ -31,7 +31,7 @@ const wrappedPlugin = {
 
           // Set initialized immediately since we've verified the plugin exists
           this._initialized = true;
-          console.log("✅ GalleryMonitor plugin initialized successfully");
+          // console.log("✅ GalleryMonitor plugin initialized successfully");
           resolve(true);
         } catch (error) {
           console.warn("Failed to initialize GalleryMonitor:", error);
@@ -40,7 +40,7 @@ const wrappedPlugin = {
         }
       });
     }
-
+    
     return this._initPromise;
   },
 

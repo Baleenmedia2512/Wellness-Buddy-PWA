@@ -1,10 +1,28 @@
 // src\components\ImageUpload.js
-import React, { forwardRef, useRef, useState, useEffect } from 'react';
+import React, { forwardRef, useRef, useState, useEffect, useImperativeHandle } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Capacitor } from '@capacitor/core';
+import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 
-const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }, ref) => {
+const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
+  const fallbackInputRef = useRef(null);
+
+  // Helper to convert base64 to File
+  const base64ToFile = async (base64String, filename = 'image.jpg') => {
+    try {
+      const dataUrl = base64String.startsWith('data:') 
+        ? base64String 
+        : `data:image/jpeg;base64,${base64String}`;
+      const response = await fetch(dataUrl);
+      const blob = await response.blob();
+      return new File([blob], filename, { type: 'image/jpeg' });
+    } catch (error) {
+      console.error('Error converting base64 to file:', error);
+      throw new Error('Failed to process image data');
+    }
+  };
 
   const handleFileChange = (event) => {
     const file = event.target.files[0];
@@ -21,29 +39,139 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
     }
   };
 
-  const triggerCamera = () => {
-    cameraInputRef.current?.click();
+  const triggerCamera = async () => {
+    // Use Capacitor Camera for native platforms
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const photo = await Camera.getPhoto({
+          quality: 85,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Camera,
+          allowEditing: false,
+          correctOrientation: true,
+          width: 1280,
+          height: 1280
+        });
+
+        if (photo.base64String) {
+          const file = await base64ToFile(photo.base64String, `photo-${Date.now()}.jpg`);
+          onImageSelect(file);
+        }
+      } catch (err) {
+        console.error('Camera capture failed:', err);
+        // User cancelled or error - fall back to HTML input
+        if (err.message !== 'User cancelled photos app') {
+          cameraInputRef.current?.click();
+        }
+      }
+    } else {
+      cameraInputRef.current?.click();
+    }
   };
 
-  const triggerGallery = () => {
-    galleryInputRef.current?.click();
+  const triggerGallery = async () => {
+    // Use Capacitor Camera for native platforms (more reliable for gallery)
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const photo = await Camera.getPhoto({
+          quality: 90,
+          resultType: CameraResultType.Base64,
+          source: CameraSource.Photos,
+          allowEditing: false,
+          correctOrientation: true,
+          width: 1920,
+          height: 1920
+        });
+
+        if (photo.base64String) {
+          const file = await base64ToFile(photo.base64String, `gallery-${Date.now()}.jpg`);
+          onImageSelect(file);
+        }
+      } catch (err) {
+        console.error('Gallery selection failed:', err);
+        // User cancelled or error - fall back to HTML input
+        if (err.message !== 'User cancelled photos app') {
+          galleryInputRef.current?.click();
+        }
+      }
+    } else {
+      galleryInputRef.current?.click();
+    }
   };
 
-  // Taglines for loading overlay
-  const taglines = [
-    "Scanning your meal...",
-    "Crunching the numbers...",
-    "Serving up nutrition facts...",
-    "Analyzing delicious details...",
-    "Counting every calorie...",
-    "Identifying ingredients...",
-    "Plating your nutrition insights...",
-    "Decoding your dish...",
-    "Looking deeper into your food...",
-    "Cooking up your results..."
-  ];
+  // Expose reset method to parent component
+  useImperativeHandle(ref, () => ({
+    resetInputs: () => {
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      if (galleryInputRef.current) galleryInputRef.current.value = '';
+      if (fallbackInputRef.current) fallbackInputRef.current.value = '';
+    }
+  }));
+
+  // Taglines for loading overlay based on state and image type
+  const getTaglines = () => {
+    if (loadingState === 'saving') {
+      if (imageType === 'weight') {
+        return [
+          "Saving your weight entry...",
+          "Recording your progress...",
+          "Updating your health journal...",
+          "Storing weight data...",
+          "Almost there..."
+        ];
+      }
+      return [
+        "Saving your meal...",
+        "Recording nutrition data...",
+        "Updating your food journal...",
+        "Storing your analysis...",
+        "Almost there..."
+      ];
+    }
+    
+    // When image type is not yet detected
+    if (!imageType) {
+      return [
+        "Analyzing your image...",
+        "Detecting image type...",
+        "Is it food or weight?...",
+        "Processing image...",
+        "Just a moment..."
+      ];
+    }
+    
+    if (imageType === 'weight') {
+      return [
+        "Reading the scale...",
+        "Detecting weight value...",
+        "Analyzing display...",
+        "Extracting measurements...",
+        "Processing weight data..."
+      ];
+    }
+    
+    return [
+      "Scanning your meal...",
+      "Crunching the numbers...",
+      "Serving up nutrition facts...",
+      "Analyzing delicious details...",
+      "Counting every calorie...",
+      "Identifying ingredients...",
+      "Plating your nutrition insights...",
+      "Decoding your dish...",
+      "Looking deeper into your food...",
+      "Cooking up your results..."
+    ];
+  };
+
+  const taglines = getTaglines();
 
   const [currentTaglineIndex, setCurrentTaglineIndex] = useState(0);
+
+  // Reset tagline index when loading state or image type changes
+  useEffect(() => {
+    setCurrentTaglineIndex(0);
+  }, [loadingState, imageType]);
 
   useEffect(() => {
     if (loading) {
@@ -52,7 +180,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
       }, 2500);
       return () => clearInterval(interval);
     }
-  }, [loading]);
+  }, [loading, taglines.length, loadingState, imageType]);
 
   return (
     <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-6">
@@ -61,7 +189,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
       {/* Gallery input */}
       <input ref={galleryInputRef} type="file" accept="image/*" onChange={handleFileChange} className="hidden" />
       {/* Fallback input */}
-      <input ref={ref} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
+      <input ref={fallbackInputRef} type="file" accept="image/*" capture="environment" onChange={handleFileChange} className="hidden" />
 
       {imagePreview ? (
         <div className="space-y-4">
@@ -77,10 +205,27 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
 
                   <div className="absolute inset-0 flex items-center justify-center p-6">
                     <div className="text-center">
-                      <div className="relative w-12 h-12 mx-auto mb-6">
-                        <div className="absolute inset-0 rounded-full bg-white/20 backdrop-blur-sm"></div>
-                        <div className="absolute inset-0 rounded-full border-2 border-white/30"></div>
-                        <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                      {/* Icon based on loading state */}
+                      <div className="relative w-14 h-14 mx-auto mb-6">
+                        {loadingState === 'saving' ? (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-green-500/30 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-green-400/50"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-green-400 border-t-transparent animate-spin"></div>
+                          </>
+                        ) : imageType === 'weight' ? (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-purple-500/30 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-purple-400/50"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-purple-400 border-t-transparent animate-spin"></div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="absolute inset-0 rounded-full bg-white/20 backdrop-blur-sm"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-white/30"></div>
+                            <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
+                          </>
+                        )}
                       </div>
 
                       {/* Animated Taglines */}
@@ -140,7 +285,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false }
         <div className="text-center">
           <div className="border-2 border-dashed border-green-300 rounded-lg p-8 hover:border-green-400 transition-colors duration-200">
             <div className="text-6xl mb-4">🍎</div>
-            <h3 className="text-lg font-semibold text-green-700 mb-2">Upload Food Photo</h3>
+            <h3 className="text-lg font-semibold text-green-700 mb-2">Upload Food Or Weight Photo</h3>
             <p className="text-gray-600 mb-4 text-sm">Take a photo with camera or select from gallery</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,0 +1,149 @@
+/* Lazy Loading Styles for Weight and Nutrition Dashboards */
+
+/* ============================================
+   LAZY LOAD CONTAINER STYLES
+   ============================================ */
+
+.lazy-load-container {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Smooth transition when content loads */
+.lazy-load-container[data-visible="true"] {
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================
+   IMAGE LAZY LOADING
+   ============================================ */
+
+/* Placeholder state while image is loading */
+img.lazy-load,
+img.lazy-image.loading {
+  opacity: 0;
+  transition: opacity 0.3s ease-in-out;
+}
+
+/* Loaded state - fade in */
+img.lazy-image.loaded {
+  opacity: 1;
+}
+
+/* ============================================
+   SHIMMER ANIMATION (Loading Placeholder)
+   ============================================ */
+
+.lazy-load-placeholder,
+.lazy-image-placeholder {
+  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ✅ INTERSECTION OBSERVER: Smooth entry animation for cards */
+.card-enter {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: cardEnter 0.4s ease-out forwards;
+}
+
+@keyframes cardEnter {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ✅ PERFORMANCE: GPU acceleration for smooth scrolling */
+.scroll-container {
+  will-change: scroll-position;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ✅ PERFORMANCE: Optimize transform for swipe interactions */
+.swipe-card {
+  will-change: transform;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+/* ============================================
+   IMAGE WRAPPER
+   ============================================ */
+
+.lazy-load-image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ============================================
+   ACCESSIBILITY: Reduced Motion
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  .lazy-load-container,
+  .lazy-load-placeholder,
+  .lazy-image-placeholder,
+  img.lazy-image {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  
+  img.lazy-load,
+  img.lazy-image.loading {
+    opacity: 1;
+  }
+  
+  .lazy-load-placeholder,
+  .lazy-image-placeholder {
+    animation: none;
+    background: #f0f0f0;
+  }
+}
+
+/* ============================================
+   UTILITY CLASSES
+   ============================================ */
+
+/* Maintain aspect ratio for lazy loaded images */
+.lazy-load-aspect-ratio {
+  position: relative;
+  width: 100%;
+  padding-bottom: 75%; /* 4:3 ratio - adjust as needed */
+}
+
+.lazy-load-aspect-ratio img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}

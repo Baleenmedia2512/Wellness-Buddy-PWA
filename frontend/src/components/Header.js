@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LogOut, User, History } from 'lucide-react';
+import { LogOut, User, LayoutDashboard } from 'lucide-react';
 import { getVersionString } from '../config/version';
 
 const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
@@ -74,10 +74,10 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
                     }}
                     className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-gray-50 text-left transition-colors"
                   >
-                    <History className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                    <LayoutDashboard className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800">Nutrition Dashboard</p>
-                      <p className="text-xs text-gray-500">View daily nutrition overview</p>
+                      <p className="text-sm font-medium text-gray-800">Dashboard</p>
+                      <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
                   </button>
                   

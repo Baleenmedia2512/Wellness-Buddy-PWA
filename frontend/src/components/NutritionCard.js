@@ -576,4 +576,7 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
   );
 };
 
+// Add display name for debugging
+NutritionCard.displayName = 'NutritionCard';
+
 export default NutritionCard;

@@ -14,9 +14,7 @@ import android.app.NotificationManager;
 public class FoodImageAnalysisPlugin extends Plugin {
     public void analyzeImage(PluginCall call) {
         String imagePath = call.getString("imagePath");
-        // TODO: Call JS Gemini analysis via Capacitor bridge
         Log.d("FoodImageAnalysisPlugin", "Analyze image: " + imagePath);
-        // Simulate callback
         JSObject ret = new JSObject();
         ret.put("result", "pending");
         call.resolve(ret);
@@ -55,7 +53,7 @@ public class FoodImageAnalysisPlugin extends Plugin {
     private void showAnalysisNotification(String imagePath, String result) {
         NotificationCompat.Builder builder = new NotificationCompat.Builder(getContext(), "GalleryMonitorChannel")
                 .setSmallIcon(android.R.drawable.ic_menu_camera)
-                .setContentTitle("🍽️ Food Analysis Complete")
+                .setContentTitle("Food Analysis Complete")
                 .setContentText("Result: " + result)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setAutoCancel(true);

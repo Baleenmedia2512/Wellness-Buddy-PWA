@@ -37,7 +37,7 @@ public class BootCompletedReceiver extends BroadcastReceiver {
             Log.d(TAG, "📱 Device boot detected (action: " + action + ")");
             Log.d(TAG, "Starting GalleryMonitorService...");
             
-            // Start the foreground service
+            // Start the gallery monitor foreground service
             Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
             serviceIntent.setPackage(context.getPackageName());
             
@@ -49,7 +49,7 @@ public class BootCompletedReceiver extends BroadcastReceiver {
                 }
                 Log.d(TAG, "✅ GalleryMonitorService started successfully");
             } catch (Exception e) {
-                Log.e(TAG, "❌ Failed to start service on boot", e);
+                Log.e(TAG, "❌ Failed to start GalleryMonitorService on boot", e);
             }
             
             // Schedule periodic heartbeat to keep service alive

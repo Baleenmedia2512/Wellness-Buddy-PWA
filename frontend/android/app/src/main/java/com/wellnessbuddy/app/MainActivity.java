@@ -7,6 +7,8 @@ import android.content.Intent;
 import android.net.Uri;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.WebView;
+import android.webkit.WebSettings;
 
 import com.getcapacitor.BridgeActivity;
 import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
@@ -14,6 +16,12 @@ import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
+        getWindow().setFlags(
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED
+        );
+        
         // Register the GalleryMonitorPlugin BEFORE super.onCreate()
         registerPlugin(GalleryMonitorPlugin.class);
         
@@ -26,6 +34,9 @@ public class MainActivity extends BridgeActivity {
         );
         
         android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
+        
+        // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
+        optimizeWebView();
         
         // Ensure dark status bar icons on all Android versions
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -63,6 +74,7 @@ public class MainActivity extends BridgeActivity {
         } else {
             startService(serviceIntent);
         }
+        android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
         
         // ✅ Schedule periodic heartbeat to ensure service stays alive
         com.wellnessbuddy.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
@@ -70,6 +82,45 @@ public class MainActivity extends BridgeActivity {
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
+    }
+    
+    /**
+     * ✅ ANDROID PERFORMANCE: Optimize WebView for fast image loading and rendering
+     */
+    private void optimizeWebView() {
+        try {
+            WebView webView = getBridge().getWebView();
+            if (webView != null) {
+                // Enable hardware acceleration at view level
+                webView.setLayerType(View.LAYER_TYPE_HARDWARE, null);
+                
+                WebSettings settings = webView.getSettings();
+                
+                // Enable caching for faster repeated loads
+                settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+                settings.setDomStorageEnabled(true);
+                
+                // Disable unnecessary features for better performance
+                settings.setGeolocationEnabled(false);
+                
+                // Enable modern web features needed for image processing
+                settings.setJavaScriptCanOpenWindowsAutomatically(true);
+                settings.setLoadsImagesAutomatically(true);
+                
+                // Optimize for mobile
+                settings.setLayoutAlgorithm(WebSettings.LayoutAlgorithm.TEXT_AUTOSIZING);
+                settings.setUseWideViewPort(true);
+                settings.setLoadWithOverviewMode(true);
+                
+                // Enable zoom for image viewing
+                settings.setSupportZoom(false);
+                settings.setBuiltInZoomControls(false);
+                
+                android.util.Log.d("MainActivity", "✅ WebView optimized for image performance");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "Failed to optimize WebView", e);
+        }
     }
     
     @Override

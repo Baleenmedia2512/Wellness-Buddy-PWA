@@ -11,16 +11,19 @@ import {
   Droplet,
   RotateCcw
 } from 'lucide-react';
-import DatePickerCalendar from './DatePickerCalendar';
+import '../LazyLoadStyles.css';
 import EditableFoodItem from './EditableFoodItem';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
-const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
+const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader, selectedDate: propSelectedDate, setSelectedDate: propSetSelectedDate }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Use parent's selectedDate if provided, otherwise use local state
+  const [localSelectedDate, setLocalSelectedDate] = useState(new Date());
+  const selectedDate = propSelectedDate || localSelectedDate;
+  const setSelectedDate = propSetSelectedDate || setLocalSelectedDate;
   const [dailyStats, setDailyStats] = useState({
     totalCalories: 0,
     totalProtein: 0,
@@ -264,6 +267,13 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
 
 
 
+  // ✅ PAGINATION STATE
+  const [displayedMeals, setDisplayedMeals] = useState([]);
+  const [hasMoreMeals, setHasMoreMeals] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const MEALS_PER_PAGE = 10;
+  const sentinelRef = useRef(null);
+
   /* ---------------- Helpers ---------------- */
 
   const getMealCategory = (timeString) => {
@@ -451,6 +461,45 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
   useEffect(() => {
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
+
+  // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
+  useEffect(() => {
+    const initialMeals = analyses.slice(0, MEALS_PER_PAGE);
+    setDisplayedMeals(initialMeals);
+    setHasMoreMeals(analyses.length > MEALS_PER_PAGE);
+  }, [analyses]);
+
+  // ✅ INFINITE SCROLL: Load more meals when sentinel is visible
+  useEffect(() => {
+    if (!sentinelRef.current || !hasMoreMeals || loadingMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMoreMeals && !loadingMore) {
+          setLoadingMore(true);
+          
+          setTimeout(() => {
+            const currentLength = displayedMeals.length;
+            const nextMeals = analyses.slice(0, currentLength + MEALS_PER_PAGE);
+            setDisplayedMeals(nextMeals);
+            setHasMoreMeals(nextMeals.length < analyses.length);
+            setLoadingMore(false);
+          }, 300);
+        }
+      },
+      {
+        root: null,
+        rootMargin: '100px',
+        threshold: 0.1
+      }
+    );
+
+    observer.observe(sentinelRef.current);
+
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [displayedMeals, analyses, hasMoreMeals, loadingMore]);
 
   const formatDateHeader = (date) => {
     const today = new Date();
@@ -799,25 +848,29 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
         <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
-      {/* Header */}
-      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-        <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
-          <div className="flex items-center justify-between p-4 md:p-6">
-            <button onClick={onBack} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-              <ArrowLeft className="h-5 w-5 text-gray-700" />
-            </button>
+      {/* Header - Only show if not hidden */}
+      {!hideHeader && (
+        <>
+          <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+            <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
+              <div className="flex items-center justify-between p-4 md:p-6">
+                <button onClick={onBack} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
+                  <ArrowLeft className="h-5 w-5 text-gray-700" />
+                </button>
 
-            <div className="text-center">
-              <h1 className="text-lg md:text-xl font-semibold text-gray-900">Nutrition</h1>
-              <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
+                <div className="text-center">
+                  <h1 className="text-lg md:text-xl font-semibold text-gray-900">Nutrition</h1>
+                  <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
+                </div>
+
+                <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
+                  <Calendar className="h-5 w-5 text-gray-700" />
+                </button>
+              </div>
             </div>
-
-            <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-              <Calendar className="h-5 w-5 text-gray-700" />
-            </button>
           </div>
-        </div>
-      </div>
+        </>
+      )}
 
       {/* Date selector */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
@@ -1165,10 +1218,18 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
       );
     }
 
+    // ✅ GROUP DISPLAYED MEALS (not all analyses)
+    const groupedDisplayedMeals = displayedMeals.reduce((acc, analysis) => {
+      const category = getMealCategory(analysis.CreatedAt);
+      if (!acc[category]) acc[category] = [];
+      acc[category].push(analysis);
+      return acc;
+    }, {});
+
     return (
       <>
         {['breakfast', 'morning-snack', 'lunch', 'evening-snack', 'dinner', 'late-night'].map((category) => {
-          const meals = groupedMeals[category] || [];
+          const meals = groupedDisplayedMeals[category] || [];
           if (meals.length === 0) return null;
 
           const categoryInfo = getMealCategoryInfo(category);
@@ -1235,6 +1296,18 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
             </div>
           );
         })}
+
+        {/* ✅ INFINITE SCROLL SENTINEL */}
+        {hasMoreMeals && (
+          <div ref={sentinelRef} className="py-4 flex justify-center">
+            {loadingMore && (
+              <div className="flex items-center gap-2 text-emerald-600">
+                <div className="animate-spin rounded-full h-5 w-5 border-2 border-emerald-300 border-t-emerald-600"></div>
+                <span className="text-sm font-medium">Loading more meals...</span>
+              </div>
+            )}
+          </div>
+        )}
       </>
     );
   })()}
@@ -1803,6 +1876,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 src={meal.ImageBase64.startsWith('data:image') ? meal.ImageBase64 : `data:image/jpeg;base64,${meal.ImageBase64}`}
                 alt={foodData.name}
                 className="w-full h-full object-cover"
+                loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : meal.ImagePath ? (
@@ -1810,6 +1884,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 src={meal.ImagePath}
                 alt={foodData.name}
                 className="w-full h-full object-cover"
+                loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (

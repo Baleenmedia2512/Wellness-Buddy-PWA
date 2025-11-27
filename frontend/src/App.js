@@ -1,20 +1,30 @@
 // src/App.js
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useIonRouter } from '@ionic/react';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
+import { PushNotifications } from '@capacitor/push-notifications';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import SuccessSavePopup from './components/SuccessSavePopup';
+import TestImageGuide from './components/TestImageGuide';
+import LoadingSpinner from './components/LoadingSpinner';
+import Login from './components/Login';
+import InactiveUserModal from './components/InactiveUserModal';
+import UserNotFoundModal from './components/UserNotFoundModal';
+import Header from './components/Header';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
-import TestImageGuide from './components/TestImageGuide';
-import LoadingSpinner from './components/LoadingSpinner';
-import Login from './components/Login';
-import NutritionDashboard from './components/NutritionDashboard';
-import InactiveUserModal from './components/InactiveUserModal';
-import UserNotFoundModal from './components/UserNotFoundModal';
 import { geminiService } from './services/geminiService';
+import { imageTypeDetector } from './services/imageTypeDetector';
+import { weightDetectionService } from './services/weightDetectionService';
+import { duplicateDetectionService } from './services/duplicateDetectionService';
+import ManualWeightEntryModal from './components/ManualWeightEntryModal';
+import DuplicateFoodModal from './components/DuplicateFoodModal';
+
+import GalleryMonitor from './services/galleryMonitor';
 import {
   signInWithGoogle,
   signInWithGooglePopup,
@@ -23,25 +33,26 @@ import {
   onAuthStateChange,
   isGoogleUser,
   isMobileDevice,
-  isNativePlatform,
   cleanup
 } from './services/firebase';
-import Header from './components/Header';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import GalleryMonitor from './services/galleryMonitor';
-import { PushNotifications } from '@capacitor/push-notifications';
+
+// ✅ ANDROID OPTIMIZATION: Lazy load heavy components
+const Dashboard = lazy(() => import('./components/Dashboard'));
 
 function WellnessBuddyApp() {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadingState, setLoadingState] = useState('analyzing'); // 'analyzing' | 'saving'
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
-  const [showNutritionDashboard, setShowNutritionDashboard] = useState(
-    localStorage.getItem('currentPage') === 'nutrition-dashboard'
+  const [showDashboard, setShowDashboard] = useState(
+    localStorage.getItem('currentPage') === 'dashboard' || 
+    localStorage.getItem('currentPage') === 'nutrition-dashboard' ||
+    localStorage.getItem('currentPage') === 'weight-tracking' ||
+    localStorage.getItem('currentPage') === 'weight-insights'
   );
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -51,7 +62,21 @@ function WellnessBuddyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  const [showManualWeightModal, setShowManualWeightModal] = useState(false);
+  const [currentWeightImage, setCurrentWeightImage] = useState(null);
+  const [imageType, setImageType] = useState(null); // 'food' | 'weight'
+  const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const fileInputRef = useRef(null);
+  
+  // Duplicate food detection state
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState(null);
+  const [pendingSaveData, setPendingSaveData] = useState(null);
+
+  // Duplicate weight detection state
+  const [showDuplicateWeightModal, setShowDuplicateWeightModal] = useState(false);
+  const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
+  const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -147,17 +172,16 @@ function WellnessBuddyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
-      if (showNutritionDashboard) {
-        setShowNutritionDashboard(false);
-        localStorage.setItem('currentPage', 'main');
+      if (showDashboard) {
+        showMainPage();
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showNutritionDashboard);
+    initializeBackButton(goBack, showToast, !showDashboard);
     return () => cleanupBackButton();
-  }, [ionRouter, showNutritionDashboard]);
+  }, [ionRouter, showDashboard]);
 
   // Background nutrition popup state — hydrate instantly from cache
   const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
@@ -203,6 +227,10 @@ function WellnessBuddyApp() {
         body: JSON.stringify({ email: userEmail })
       });
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
       
       // User not found in database
@@ -224,6 +252,7 @@ function WellnessBuddyApp() {
       setShowUserNotFoundModal(false);
       setIsUserActive(true);
       
+      
       return true;
     } catch (error) {
       console.error('Error checking user status:', error);
@@ -236,7 +265,7 @@ function WellnessBuddyApp() {
   }, [apiBaseUrl]);
 
   // Helper functions for navigation with localStorage persistence
-  const showNutritionDashboardPage = useCallback(async () => {
+  const showDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
       const isActive = await checkUserStatus(user);
@@ -245,12 +274,12 @@ function WellnessBuddyApp() {
         return;
       }
     }
-    setShowNutritionDashboard(true);
-    localStorage.setItem('currentPage', 'nutrition-dashboard');
+    setShowDashboard(true);
+    localStorage.setItem('currentPage', 'dashboard');
   }, [user, checkUserStatus]);
 
   const showMainPage = () => {
-    setShowNutritionDashboard(false);
+    setShowDashboard(false);
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -410,7 +439,7 @@ function WellnessBuddyApp() {
         const { GalleryMonitorPlugin } = await import('./plugins/galleryMonitorPlugin');
         const listener = await GalleryMonitorPlugin.addListener('notificationClicked', (data) => {
           if (data && data.action === 'openBackgroundHistory') {
-            showNutritionDashboardPage();
+            showDashboardPage();
           }
         });
 
@@ -429,7 +458,7 @@ function WellnessBuddyApp() {
       App.removeAllListeners();
       if (cleanupFn) cleanupFn();
     };
-  }, [showNutritionDashboardPage]);
+  }, [showDashboardPage]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -437,6 +466,12 @@ function WellnessBuddyApp() {
       try {
         const resultUser = await handleRedirectResult();
         if (resultUser) {
+          // Get the database UserId for the user
+          const dbUserId = await getUserId(resultUser);
+          if (dbUserId) {
+            resultUser.id = dbUserId;
+            console.log('✅ [Redirect] Attached database UserId to user object:', resultUser.id);
+          }
           setUser(resultUser);
           setAuthLoading(false);
         }
@@ -573,34 +608,358 @@ function WellnessBuddyApp() {
     }
   }, [saveError]);
 
-  // Helper function to compress images
-  const compressImage = (base64, quality = 0.7) => {
-    return new Promise((resolve) => {
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const img = new Image();
+  // ✅ ANDROID PERFORMANCE: Optimized image compression with async processing
+  const compressImage = (base64, quality = 0.7, maxWidth = 1920) => {
+    return new Promise((resolve, reject) => {
+      try {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { 
+          alpha: false,  // Disable alpha for JPEG (faster)
+          willReadFrequently: false 
+        });
+        const img = new Image();
+        
+        img.onload = () => {
+          try {
+            // Calculate new dimensions
+            let { width, height } = img;
+            
+            if (width > maxWidth) {
+              height = Math.floor((height * maxWidth) / width);
+              width = maxWidth;
+            }
+            
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Use faster rendering
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            
+            // Convert to JPEG with specified quality
+            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+            
+            // Clean up
+            canvas.width = 0;
+            canvas.height = 0;
+            img.src = '';
+            
+            resolve(compressedBase64);
+          } catch (err) {
+            reject(err);
+          }
+        };
+        
+        img.onerror = (err) => reject(new Error('Failed to load image for compression'));
+        img.src = base64;
+      } catch (err) {
+        reject(err);
+      }
+    });
+  };
+
+  /**
+   * Perform actual weight save to database (called after duplicate check)
+   */
+  const performWeightSave = async (weightData, imageBase64, cachedUserId = null) => {
+    try {
+      // Use cached userId if provided, otherwise get it
+      let userId = cachedUserId || user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
       
-      img.onload = () => {
-        // Calculate new dimensions (max 1920px width)
-        let { width, height } = img;
-        const maxWidth = 1920;
-        
-        if (width > maxWidth) {
-          height = (height * maxWidth) / width;
-          width = maxWidth;
-        }
-        
-        canvas.width = width;
-        canvas.height = height;
-        
-        // Draw and compress
-        ctx.drawImage(img, 0, 0, width, height);
-        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-        resolve(compressedBase64);
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+
+      const payload = {
+        userId,
+        weightValue: weightData.weightValue,
+        unit: weightData.unit,
+        bmi: weightData.bmi,
+        bodyFat: weightData.bodyFat,
+        muscleMass: weightData.muscleMass,
+        bmr: weightData.bmr,
+        imageBase64ToSave: imageBase64
+      };
+
+      // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
+
+      const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save weight entry');
+      }
+
+      console.log('✅ Weight entry saved successfully');
+      
+      // Hide saving overlay
+      setSaveLoading(false);
+      setLoadingState('idle');
+      
+      // Show success popup (similar to nutrition save)
+      setError(null);
+      
+      // Create weight success popup
+      const weightPopup = {
+        id: `weight-${Date.now()}`,
+        analysisId: data.id || null,
+        userId: userId, // Include userId for delete API
+        isWeight: true, // Flag to identify weight entries
+        weightData: {
+          weightValue: weightData.weightValue,
+          unit: weightData.unit,
+          bmi: weightData.bmi,
+          bodyFat: weightData.bodyFat,
+          muscleMass: weightData.muscleMass,
+          bmr: weightData.bmr
+        },
+        imagePreview: imageBase64,
+        timestamp: new Date()
       };
       
-      img.src = base64;
-    });
+      setSuccessPopups((prev) => [...prev, weightPopup]);
+      
+      // Keep imagePreview and selectedImage visible (like food images)
+      // Don't reset them here
+      
+    } catch (err) {
+      console.error('❌ Save weight error:', err);
+      setSaveLoading(false);
+      setLoadingState('idle');
+      setError(err.message || 'Failed to save weight entry');
+      throw err;
+    }
+  };
+
+  /**
+   * Save weight entry to database with duplicate check
+   */
+  const saveWeightEntry = async (weightData, imageBase64) => {
+    try {
+      // Get the actual database UserId from team_table
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+
+      // Check for duplicate weight before saving (fail-safe: proceed if check fails)
+      try {
+        const duplicateCheck = await duplicateDetectionService.checkForDuplicateWeight({
+          userId: userId,
+          weightValue: weightData.weightValue,
+          unit: weightData.unit || 'kg'
+        });
+        
+        if (duplicateCheck.isDuplicate) {
+          // Found duplicate - hide saving overlay and show confirmation modal
+          // console.log('⚠️ Duplicate weight detected:', duplicateCheck);
+          setSaveLoading(false); // Hide saving overlay while showing duplicate modal
+          setLoadingState('idle');
+          setDuplicateWeightInfo(duplicateCheck);
+          setPendingWeightSaveData({
+            weightData: weightData,
+            imageBase64: imageBase64,
+            userId: userId  // Cache userId for later use
+          });
+          setShowDuplicateWeightModal(true);
+          return; // Stop here to wait for user confirmation
+        }
+      } catch (duplicateCheckErr) {
+        // If duplicate check fails, log it but continue with save (fail-open)
+        console.warn('⚠️ Duplicate check failed, proceeding with save:', duplicateCheckErr);
+      }
+      
+      // No duplicate or duplicate check failed - proceed with save (pass cached userId)
+      await performWeightSave(weightData, imageBase64, userId);
+      
+    } catch (err) {
+      console.error('❌ Save weight error:', err);
+      setError(err.message || 'Failed to save weight entry');
+      throw err;
+    }
+  };
+
+  /**
+   * Handle manual weight entry from modal
+   */
+  const handleManualWeightSave = async (manualData) => {
+    try {
+      setShowManualWeightModal(false); // Close modal first
+      setLoadingState('saving');
+      setSaveLoading(true); // Show saving overlay
+      setImageType('weight'); // Ensure weight type is set
+      
+      await saveWeightEntry(
+        {
+          weightValue: manualData.weightValue,
+          unit: manualData.unit,
+          bmi: null,
+          bodyFat: null,
+          muscleMass: null,
+          bmr: null
+        },
+        currentWeightImage
+      );
+      
+      setCurrentWeightImage(null);
+      setLoading(false);
+      
+    } catch (err) {
+      console.error('❌ Manual weight save error:', err);
+      throw err; // Re-throw to show error in modal
+    }
+  };
+
+  // Helper function to perform nutrition save
+  const performNutritionSave = async (saveData) => {
+    try {
+      setSaveLoading(true);
+      
+      const saveRes = await saveNutritionAnalysis(saveData);
+
+      if (process.env.NODE_ENV !== 'production') {
+        // console.log('✅ Save successful:', saveRes);
+      }
+
+      // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
+      // Users can view saved data from Dashboard/Insights button
+      // Only show popup on web for backward compatibility
+      if (!Capacitor.isNativePlatform()) {
+        const newPopup = {
+          id: Date.now().toString(),
+          analysisId: saveRes.id,
+          nutritionData: saveData.analysisResult,
+          imagePreview: saveData.imageBase64,
+          timestamp: new Date()
+        };
+        setSuccessPopups((prev) => [...prev, newPopup]);
+      }
+    } catch (err) {
+      console.error('❌ Save failed:', err.message);
+      const friendlySaveError = getFriendlyErrorMessage(err);
+      setSaveError(friendlySaveError);
+      throw err;
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
+  // Handle duplicate modal confirmation
+  const handleDuplicateConfirm = async () => {
+    // Edge case: Prevent double-click/double-tap
+    if (!showDuplicateModal) {
+      console.warn('Duplicate confirm called but modal already closed');
+      return;
+    }
+    
+    // Edge case: No pending data (shouldn't happen but be safe)
+    if (!pendingSaveData) {
+      console.error('No pending save data found');
+      setShowDuplicateModal(false);
+      setSaveLoading(false);
+      return;
+    }
+    
+    // Edge case: Validate pending data structure
+    if (!pendingSaveData.userId || !pendingSaveData.analysisResult) {
+      console.error('Invalid pending save data:', pendingSaveData);
+      setShowDuplicateModal(false);
+      setSaveLoading(false);
+      setPendingSaveData(null);
+      setDuplicateInfo(null);
+      return;
+    }
+    
+    try {
+      await performNutritionSave(pendingSaveData);
+    } catch (err) {
+      // Error already handled in performNutritionSave
+      console.error('Error during duplicate confirm save:', err);
+    } finally {
+      // Close modal and cleanup state after save completes
+      setShowDuplicateModal(false);
+      setPendingSaveData(null);
+      setDuplicateInfo(null);
+    }
+  };
+
+  // Handle duplicate modal cancellation
+  const handleDuplicateCancel = () => {
+    // Edge case: Prevent double-click/double-tap
+    if (!showDuplicateModal) {
+      console.warn('Duplicate cancel called but modal already closed');
+      return;
+    }
+    
+    setShowDuplicateModal(false);
+    setPendingSaveData(null);
+    setDuplicateInfo(null);
+    setSaveLoading(false);
+    
+    // Clear the analysis and image to allow new upload
+    // Edge case: Check if states exist before clearing
+    if (nutritionData) setNutritionData(null);
+    if (imagePreview) setImagePreview(null);
+    if (selectedImage) setSelectedImage(null);
+    
+    // Reset ALL file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
+  };
+
+  // Handle duplicate weight modal confirmation
+  const handleDuplicateWeightConfirm = async () => {
+    if (pendingWeightSaveData) {
+      try {
+        setSaveLoading(true); // Show saving overlay
+        setLoadingState('saving');
+        // Use cached userId from pendingWeightSaveData
+        await performWeightSave(
+          pendingWeightSaveData.weightData, 
+          pendingWeightSaveData.imageBase64,
+          pendingWeightSaveData.userId
+        );
+      } catch (err) {
+        console.error('❌ Weight save error after duplicate confirmation:', err);
+      } finally {
+        // Close modal and reset state after save completes
+        setShowDuplicateWeightModal(false);
+        setPendingWeightSaveData(null);
+        setDuplicateWeightInfo(null);
+      }
+    }
+  };
+
+  // Handle duplicate weight modal cancellation
+  const handleDuplicateWeightCancel = () => {
+    setShowDuplicateWeightModal(false);
+    setPendingWeightSaveData(null);
+    setDuplicateWeightInfo(null);
+    setLoading(false);
+    
+    // Clear the weight data and image to allow new upload
+    setWeightResult(null);
+    setImagePreview(null);
+    setSelectedImage(null);
+    
+    // Reset ALL file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
   };
 
   const handleImageSelect = async (file) => {
@@ -625,74 +984,253 @@ function WellnessBuddyApp() {
     setSelectedImage(file);
     setError(null);
     setNutritionData(null);
+    setWeightResult(null);
+    setImageType(null);
     setSaveError(null);
+    setLoadingState('analyzing'); // Reset to analyzing state
 
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      let imageBase64 = e.target.result;
+    // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
+    try {
+      setLoading(true); // Show loading immediately
       
-      // Compress large images for better upload success
-      if (imageBase64.length > 2 * 1024 * 1024) { // 2MB base64 limit
-        try {
-          imageBase64 = await compressImage(imageBase64, 0.7); // 70% quality
-        } catch (compressError) {
-          console.warn('⚠️ Image compression failed, using original:', compressError);
+      const imageBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      
+      // ✅ ANDROID PERFORMANCE: Intelligent compression based on platform and size
+      const isAndroid = Capacitor.isNativePlatform();
+      const imageSizeMB = imageBase64.length / (1024 * 1024);
+      
+      let processedImage = imageBase64;
+      let compressionApplied = false;
+      
+      // Aggressive compression for Android or large images
+      if (isAndroid) {
+        // Android: Always compress for speed
+        if (imageSizeMB > 0.5) { // > 500KB
+          const maxWidth = 1280; // Optimal for Android
+          const quality = imageSizeMB > 2 ? 0.75 : 0.85; // More aggressive for larger images
+          processedImage = await compressImage(imageBase64, quality, maxWidth);
+          compressionApplied = true;
+        }
+      } else {
+        // Web: Compress only if needed
+        if (imageSizeMB > 2) { // > 2MB
+          processedImage = await compressImage(imageBase64, 0.8, 1920);
+          compressionApplied = true;
         }
       }
       
-      setImagePreview(imageBase64);
+      if (compressionApplied && process.env.NODE_ENV !== 'production') {
+        const newSizeMB = processedImage.length / (1024 * 1024);
+        // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
+      }
+      
+      // Set preview immediately for better UX
+      setImagePreview(processedImage);
 
+      // ✅ NEW: Detect if image is weight scale or food using Gemini AI
+      const detectedType = await imageTypeDetector.detectImageType(file);
+      
+      if (detectedType.type === 'weight' && detectedType.confidence > 0.6) {
+        // It's a weight scale - try to extract weight
+        console.log('🔍 Weight scale detected, extracting metrics...');
+        setImageType('weight');
+
+
+        // const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
+        // if (FORCE_MANUAL_ENTRY) {
+        //   console.log('🧪 TEST MODE: Forcing manual weight entry modal');
+        //   setCurrentWeightImage(processedImage);
+        //   setShowManualWeightModal(true);
+        //   setLoading(false);
+        //   return;
+        // }
+        
+        const detectedWeight = await weightDetectionService.extractWeightFromImage(file);
+        
+        if (detectedWeight.success && detectedWeight.weightValue) {
+          // Successfully detected weight - save to database AND show result
+          // console.log('✅ Weight detected:', detectedWeight);
+          
+          // Convert lbs to kg if needed
+          let weightToSave = { ...detectedWeight };
+          if (detectedWeight.unit === 'lbs') {
+            console.log(`🔄 Converting ${detectedWeight.weightValue} lbs to kg...`);
+            weightToSave.weightValue = weightDetectionService.convertWeight(
+              detectedWeight.weightValue, 
+              'lbs', 
+              'kg'
+            );
+            weightToSave.unit = 'kg';
+            console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
+          }
+          
+          setWeightResult(weightToSave); // Store for display below upload box
+          setLoadingState('saving');
+          setSaveLoading(true); // Show saving overlay
+          await saveWeightEntry(weightToSave, processedImage);
+          // Don't clear imagePreview or return - let it show like food images
+        } else {
+          // Weight detection failed - show manual entry modal
+          console.log('⚠️ Weight detection failed, opening manual entry modal');
+          setCurrentWeightImage(processedImage);
+          setShowManualWeightModal(true);
+          setLoading(false);
+          return;
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // It's a food image
+      setImageType('food');
+
+      // ✅ ANDROID PERFORMANCE: Start food analysis in parallel with preview rendering
       try {
-        setLoading(true);
         const result = await geminiService.analyzeImageForNutrition(file);
         setNutritionData(result);
 
-        // Auto-save to DB disabled for now
-        // setSaveLoading(true);
-        // try {
-        //   const userIdentifier = user.email || user.id || user.uid || 'anonymous';
-
-        //   const saveRes = await saveNutritionAnalysis({
-        //     userId: userIdentifier,
-        //     imagePath: file.name,
-        //     imageBase64,
-        //     analysisResult: result,
-        //     deviceInfo: window.navigator.userAgent
-        //   });
-
-        //   const newPopup = {
-        //     id: Date.now().toString(),
-        //     analysisId: saveRes.id,
-        //     nutritionData: result,
-        //     imagePreview: imageBase64,
-        //     timestamp: new Date()
-        //   };
-        //   setSuccessPopups((prev) => [...prev, newPopup]);
-        // } catch (err) {
-        //   // Debug: Log detailed error info
-        //   console.error('❌ Save failed:', {
-        //     error: err,
-        //     message: err.message,
-        //     stack: err.stack,
-        //     apiBaseUrl: apiBaseUrl,
-        //     userIdentifier: user.email || user.id || user.uid || 'anonymous'
-        //   });
+        // Check for duplicate food before saving
+        setLoadingState('saving'); // Switch to saving state
+        setSaveLoading(true);
+        try {
+          // Edge case: User might be null or invalid
+          if (!user) {
+            console.error('No user available for duplicate check');
+            throw new Error('Please sign in to save nutrition data');
+          }
           
-        //   const friendlySaveError = getFriendlyErrorMessage(err);
-        //   setSaveError(friendlySaveError);
-        // } finally {
-        //   setSaveLoading(false);
-        // }
+          const userIdentifier = user.email || user.id || user.uid || 'anonymous';
+          
+          // Get actual userId for duplicate check
+          let actualUserId = user?.id;
+          if (!actualUserId) {
+            try {
+              actualUserId = await getUserId(user);
+            } catch (userIdError) {
+              console.error('Failed to get userId:', userIdError);
+              // Edge case: If userId lookup fails, proceed without duplicate check
+              await performNutritionSave({
+                userId: userIdentifier,
+                imagePath: file.name,
+                imageBase64: processedImage,
+                analysisResult: result,
+                deviceInfo: window.navigator.userAgent
+              });
+              return;
+            }
+          }
+          
+          // Edge case: userId still invalid after lookup
+          if (!actualUserId) {
+            console.warn('Could not determine userId, skipping duplicate check');
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          // Check for duplicates in current meal time slot
+          let duplicateCheck;
+          try {
+            duplicateCheck = await duplicateDetectionService.checkForDuplicateFood({
+              userId: actualUserId,
+              analysisResult: result
+            });
+          } catch (duplicateError) {
+            // Edge case: Duplicate check failed (network error, etc.)
+            console.error('Duplicate check failed, proceeding with save:', duplicateError);
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          // Edge case: Invalid duplicate check response
+          if (!duplicateCheck || typeof duplicateCheck !== 'object') {
+            console.warn('Invalid duplicate check response, proceeding with save');
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            return;
+          }
+          
+          if (duplicateCheck.isDuplicate) {
+            // Found duplicate - show confirmation modal
+            console.log('⚠️ Duplicate food detected:', duplicateCheck);
+            setDuplicateInfo(duplicateCheck);
+            setPendingSaveData({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+            setShowDuplicateModal(true);
+            setSaveLoading(false);
+          } else {
+            // No duplicate - proceed with save
+            await performNutritionSave({
+              userId: userIdentifier,
+              imagePath: file.name,
+              imageBase64: processedImage,
+              analysisResult: result,
+              deviceInfo: window.navigator.userAgent
+            });
+          }
+        } catch (err) {
+          // Handle save errors
+          console.error('❌ Save failed:', err.message);
+          
+          const friendlySaveError = getFriendlyErrorMessage(err);
+          setSaveError(friendlySaveError);
+          setSaveLoading(false);
+        }
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
         console.error('❌ Gemini analysis error:', err);
-      } finally {
-        setLoading(false);
       }
-    };
-
-    reader.readAsDataURL(file);
+    } catch (err) {
+      // Better error handling for undefined or missing error messages
+      let errorMessage = 'Unknown error occurred';
+      if (err) {
+        if (err.message) {
+          errorMessage = err.message;
+        } else if (typeof err === 'string') {
+          errorMessage = err;
+        } else if (err.toString && err.toString() !== '[object Object]') {
+          errorMessage = err.toString();
+        }
+      }
+      
+      // Provide more specific error messages for common Android gallery issues
+      if (errorMessage === 'Unknown error occurred' || errorMessage.includes('undefined')) {
+        errorMessage = 'Could not read the selected image. Please try selecting a different image or use the camera.';
+      }
+      
+      setError('Failed to process image: ' + errorMessage);
+      console.error('❌ Image processing error:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Success popup handlers
@@ -723,16 +1261,42 @@ function WellnessBuddyApp() {
     if (!popup || !popup.analysisId) return;
 
     try {
-      await deleteNutritionAnalysis({ id: popup.analysisId });
-      setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
-
-      if (nutritionData && popup.nutritionData === nutritionData) {
-        setNutritionData(null);
-        setImagePreview(null);
-        setSelectedImage(null);
+      // Handle weight entries differently from nutrition entries
+      if (popup.isWeight) {
+        // Delete weight entry
+        const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            userId: popup.userId, 
+            entryId: popup.analysisId 
+          })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) {
+          throw new Error(data.message || 'Failed to delete weight entry');
+        }
+        
+        // Clear weight result if it matches the deleted popup
+        if (weightResult && weightResult.weightValue === popup.weightData?.weightValue) {
+          setWeightResult(null);
+          setImagePreview(null);
+          setSelectedImage(null);
+        }
+      } else {
+        // Delete nutrition analysis
+        await deleteNutritionAnalysis({ id: popup.analysisId });
+        
+        if (nutritionData && popup.nutritionData === nutritionData) {
+          setNutritionData(null);
+          setImagePreview(null);
+          setSelectedImage(null);
+        }
       }
+      
+      setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
     } catch (err) {
-      console.error('Failed to delete analysis:', err);
+      console.error('Failed to delete:', err);
       setSaveError('Failed to delete: ' + (err.message || 'Unknown error'));
     }
   };
@@ -783,6 +1347,22 @@ function WellnessBuddyApp() {
     setIsOtpVerified(false);
     setSuccessPopups([]);
     setSaveError(null);
+    setLoadingState('analyzing'); // Reset loading state
+    
+    // Clear weight-related states
+    setWeightResult(null);
+    setImageType(null);
+    setCurrentWeightImage(null);
+    setShowManualWeightModal(false);
+    setShowDuplicateWeightModal(false);
+    setDuplicateWeightInfo(null);
+    setPendingWeightSaveData(null);
+    
+    // Clear duplicate food states
+    setShowDuplicateModal(false);
+    setDuplicateInfo(null);
+    setPendingSaveData(null);
+    
     localStorage.removeItem('isOtpVerified');
     localStorage.removeItem('otpUser');
     localStorage.removeItem('currentPage');
@@ -1037,7 +1617,7 @@ function WellnessBuddyApp() {
         try {
           await GalleryMonitor.clearCurrentUser();
         } catch (clearError) {
-          console.warn('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
+          console.error('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
           // Continue with sign out even if this fails
         }
       }
@@ -1154,24 +1734,26 @@ function WellnessBuddyApp() {
     }
   };
 
-  // Full page dashboard
-  if (showNutritionDashboard) {
+  // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
+  if (showDashboard) {
     return (
-      <NutritionDashboard
-        user={user}
-        onBack={showMainPage}
-        apiBaseUrl={apiBaseUrl}
-        onMealDelete={handleDashboardMealDelete}
-      />
+      <Suspense fallback={<LoadingSpinner context="normal" />}>
+        <Dashboard
+          user={user}
+          onBack={showMainPage}
+          apiBaseUrl={apiBaseUrl}
+          onMealDelete={handleDashboardMealDelete}
+        />
+      </Suspense>
     );
-    }
+  }
 
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
       <Header
         user={user}
-        onShowBackgroundHistory={showNutritionDashboardPage}
+        onShowBackgroundHistory={showDashboardPage}
         onSignOut={handleSignOut}
       />
 
@@ -1187,6 +1769,8 @@ function WellnessBuddyApp() {
           onImageSelect={handleImageSelect}
           imagePreview={imagePreview}
           loading={loading}
+          loadingState={loadingState}
+          imageType={imageType}
           ref={fileInputRef}
         />
 
@@ -1200,7 +1784,7 @@ function WellnessBuddyApp() {
           </div>
         )}
 
-        {nutritionData && <NutritionCard 
+        {imageType === 'food' && nutritionData && <NutritionCard 
           data={nutritionData} 
           user={user} 
           imagePreview={imagePreview} 
@@ -1211,6 +1795,60 @@ function WellnessBuddyApp() {
             setSelectedImage(null);
           }}
         />}
+        
+        {imageType === 'weight' && weightResult && (
+          <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+              <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
+              Weight Analysis
+            </h2>
+            
+            {/* <div className="grid grid-cols-2 gap-4"> */}
+            <div className="">
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
+  <p className="text-sm text-purple-600 font-medium mb-1">Weight</p>
+
+  <p className="text-3xl font-bold text-purple-700">
+    {weightResult.weightValue}
+    <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
+  </p>
+
+</div>
+              
+              {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
+                <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
+                <p className="text-3xl font-bold text-blue-700">
+                  {weightResult.bmi || '--'}
+                </p>
+              </div> */}
+              
+              {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
+                <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
+                <p className="text-3xl font-bold text-green-700">
+                  {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
+                </p>
+              </div> */}
+              
+              {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
+                <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
+                <p className="text-3xl font-bold text-orange-700">
+                  {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
+                </p>
+              </div> */}
+              
+              {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
+                <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
+                <p className="text-3xl font-bold text-red-700">
+                  {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
+                </p>
+              </div> */}
+            </div>
+            
+            {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
+              <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
+              <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
+            </div> */}
+          </div>
+        )}
 
         {/* Success Save Popup: show both background and regular popups together */}
         <SuccessSavePopup
@@ -1240,13 +1878,16 @@ function WellnessBuddyApp() {
           }}
         />
 
+        {/* Saving Toast */}
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-              Saving nutrition analysis...
+              {imageType === 'weight' ? 'Saving weight entry...' : 'Saving nutrition analysis...'}
             </div>
           </div>
         )}
+        
+        {/* Error Toast */}
         {saveError && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
@@ -1261,9 +1902,9 @@ function WellnessBuddyApp() {
             <div>
               <h4 className="font-medium text-green-600 mb-1">📸 Image Analysis:</h4>
               <ol className="text-sm text-gray-600 space-y-1 ml-4">
-                <li>1. Take a clear photo of your food</li>
-                <li>2. Make sure the food is well-lit and visible</li>
-                <li>3. View detailed nutrition breakdown for detected foods</li>
+                <li>1. Take a clear photo of your food or weight</li>
+                <li>2. Make sure the food or weight are well-lit and visible</li>
+                <li>3. View detailed nutrition breakdown for detected foods or weights</li>
               </ol>
             </div>
           </div>
@@ -1271,10 +1912,10 @@ function WellnessBuddyApp() {
           <div className="mt-3 pt-3 border-t border-gray-200">
             <h4 className="font-semibold text-green-700 mb-2">💡 Tips for better results:</h4>
             <ul className="text-xs text-gray-600 space-y-1">
-              <li>• Take photos in good lighting conditions</li>
-              <li>• Ensure food items are clearly visible</li>
-              <li>• Avoid cluttered backgrounds</li>
-              <li>• For text queries, be specific about preparation methods</li>
+              <li>• Take photos in good lighting conditions </li>
+              <li>• Ensure food items or weights are clearly visible</li>
+              <li>• Avoid cluttered backgrounds </li>
+              <li>• For text queries, be specific about preparation methods </li>
             </ul>
           </div>
         </div>
@@ -1295,6 +1936,40 @@ function WellnessBuddyApp() {
         <UserNotFoundModal 
           userEmail={user?.email || user?.Email || 'your account'}
           onClose={handleUserNotFoundModalClose} 
+        />
+      )}
+
+      {/* Manual Weight Entry Modal */}
+      <ManualWeightEntryModal
+        isOpen={showManualWeightModal}
+        onClose={() => {
+          setShowManualWeightModal(false);
+          setCurrentWeightImage(null);
+          setLoading(false);
+        }}
+        onSave={handleManualWeightSave}
+        imagePreview={currentWeightImage}
+      />
+
+      {/* Duplicate Food Modal */}
+      {showDuplicateModal && duplicateInfo && (
+        <DuplicateFoodModal
+          foodName={duplicateInfo.originalFoodName || duplicateInfo.duplicateFoodName}
+          mealType={duplicateInfo.mealType}
+          onConfirm={handleDuplicateConfirm}
+          onCancel={handleDuplicateCancel}
+        />
+      )}
+
+      {/* Duplicate Weight Modal */}
+      {showDuplicateWeightModal && duplicateWeightInfo && (
+        <DuplicateFoodModal
+          isWeight={true}
+          weightValue={duplicateWeightInfo.existingWeight}
+          unit={duplicateWeightInfo.unit}
+          timeDifference={duplicateWeightInfo.timeDifference}
+          onConfirm={handleDuplicateWeightConfirm}
+          onCancel={handleDuplicateWeightCancel}
         />
       )}
     </div>
