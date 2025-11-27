@@ -166,7 +166,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const monthlyGroups = useMemo(() => {
     const grouped = {};
     
-    console.log('📊 Processing weightHistory:', weightHistory.length, 'entries');
+    // console.log('📊 Processing weightHistory:', weightHistory.length, 'entries');
     
     // Process all entries including placeholders
     weightHistory.forEach(entry => {
@@ -197,7 +197,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     
     // Sort months in descending order (most recent first) using sortDate
     const result = Object.values(grouped).sort((a, b) => b.sortDate - a.sortDate);
-    console.log('📊 Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
+    // console.log('📊 Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
     return result;
   }, [weightHistory]);
 
@@ -288,8 +288,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
 
       // Set all weight history data
-      console.log('📊 Weight history loaded:', data.data?.length, 'entries');
-      console.log('📊 Sample entries:', data.data?.slice(0, 3));
+      // console.log('📊 Weight history loaded:', data.data?.length, 'entries');
+      // console.log('📊 Sample entries:', data.data?.slice(0, 3));
       setWeightHistory(data.data || []);
       setGlobalStats(data.stats || null);
 
