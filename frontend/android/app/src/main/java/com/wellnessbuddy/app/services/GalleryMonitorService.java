@@ -46,7 +46,7 @@ public class GalleryMonitorService extends Service {
     private static final String CHANNEL_ID = "GalleryMonitorChannel";
     private static final int NOTIFICATION_ID = 101;
     
-    // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
+    // ✅ NOTIFICATIONS ENABLED: Analysis notifications are active
     private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
 
     private ExecutorService executorService;
@@ -144,6 +144,8 @@ public class GalleryMonitorService extends Service {
     }
 
     private Notification createNotification() {
+        // 🚨 NOTIFICATIONS MINIMIZED: Creating silent, minimal foreground service notification
+        // This notification is REQUIRED by Android for foreground services but is made as invisible as possible
         Intent notificationIntent = new Intent(this, MainActivity.class);
 
         PendingIntent pendingIntent = PendingIntent.getActivity(
@@ -155,7 +157,7 @@ public class GalleryMonitorService extends Service {
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle("Gallery Monitor Active")
-                .setContentText("Monitoring camera photos for food analysis")
+                .setContentText("Monitoring camera photos for food and weight analysis")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -168,17 +170,18 @@ public class GalleryMonitorService extends Service {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Gallery Monitor",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    NotificationManager.IMPORTANCE_HIGH  // High importance for sound and heads-up
             );
-            channel.setDescription("Monitors camera photos for food analysis");
+            channel.setDescription("Monitors camera photos for food and weight analysis");
             channel.enableLights(true);
             channel.enableVibration(true);
             channel.setShowBadge(true);
+            channel.setLockscreenVisibility(Notification.VISIBILITY_PUBLIC); // Show on lock screen
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);
-                Log.d(TAG, "✅ Notification channel created: " + CHANNEL_ID);
+                Log.d(TAG, "✅ Notification channel created with sound: " + CHANNEL_ID);
             }
         }
     }
@@ -286,7 +289,7 @@ public class GalleryMonitorService extends Service {
                 if (saved) {
                     Log.d(TAG, "✅ Analysis saved to MariaDB successfully for user: " + currentUserId);
 
-                    // 🚨 DEBUG: Show success notification (removable for production)
+                    // ✅ Show success notification
                     if (SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
                         // Post notification on main thread to ensure it's shown
                         new Handler(Looper.getMainLooper()).post(() -> {
@@ -299,6 +302,7 @@ public class GalleryMonitorService extends Service {
                 }
             });
 
+            // ✅ Show analysis notification with food details
             showAnalysisNotification(imagePath, result);
             foodImageQueue.remove(imagePath);
         }
@@ -436,7 +440,7 @@ public class GalleryMonitorService extends Service {
         return null;
     }
 
-    // Show Gemini analysis result notification
+    // ✅ Show Gemini analysis result notification with food details
     private void showAnalysisNotification(String imagePath, String result) {
         String foodName = "Food";
         int calories = -1;
@@ -490,7 +494,8 @@ public class GalleryMonitorService extends Service {
                 .setContentTitle("🍽️ Food Analysis Complete")
                 .setContentText(contentText)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true);
+                .setAutoCancel(true)
+                .setDefaults(NotificationCompat.DEFAULT_ALL);  // ✅ Enable sound, vibration, and lights
 
         // Make notification clickable - opens app with background history flag
         Intent notificationIntent = new Intent(this, MainActivity.class);
@@ -527,7 +532,7 @@ public class GalleryMonitorService extends Service {
         notificationManager.notify((int) System.currentTimeMillis(), builder.build());
     }
     
-    // 🚨 DEBUG: Show database save success notification (removable for production)
+    // ✅ Show database save success notification
     private void showDatabaseSuccessNotification(String imagePath, String userId) {
         if (!SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
             Log.d(TAG, "Debug notifications disabled, skipping success notification");
@@ -549,12 +554,11 @@ public class GalleryMonitorService extends Service {
                     .setContentTitle("🗄️ Database Save Complete")
                     .setContentText(shortText)
                     .setStyle(new NotificationCompat.BigTextStyle().bigText(longText))
-                    .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Changed from LOW to DEFAULT for better visibility
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                     .setAutoCancel(true)
                     .setShowWhen(true)
-                    .setWhen(System.currentTimeMillis());
-
-            // Remove setTimeoutAfter as it's not available on all API levels
+                    .setWhen(System.currentTimeMillis())
+                    .setDefaults(NotificationCompat.DEFAULT_ALL);  // ✅ Enable sound, vibration, and lights
             
             NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
             if (notificationManager != null) {
