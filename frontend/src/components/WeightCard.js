@@ -37,7 +37,8 @@ const WeightCard = React.memo(({
   };
 
   // Cleanup effect - must be called before any conditional returns
-  useEffect(() => () => cancelRAF(), [cancelRAF]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => cancelRAF(), []);
 
   // Validate data after hooks (hooks must be called unconditionally)
   if (!data || !data.Weight || !data.CreatedAt) {
@@ -167,7 +168,8 @@ const WeightCard = React.memo(({
       style={{ 
         touchAction: 'pan-y',
         minHeight: 60,
-        animation: `slideInUp 0.3s ease-out ${index * 0.05}s both`
+        // ✅ PERFORMANCE: Removed staggered animation delay for faster render
+        animation: 'slideInUp 0.2s ease-out both'
       }}
     >
       {/* Background delete reveal */}
@@ -282,19 +284,7 @@ const WeightCard = React.memo(({
           </div>
         </div>
       </div>
-
-      <style>{`
-        @keyframes slideInUp {
-          from {
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-      `}</style>
+      {/* ✅ PERFORMANCE: CSS keyframes moved to WeightDashboard parent to avoid per-card injection */}
     </div>
   );
 });

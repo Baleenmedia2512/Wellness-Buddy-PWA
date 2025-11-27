@@ -1,5 +1,5 @@
 // src/components/WeightDashboard.js
-import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense, useRef, useCallback } from 'react';
 import { 
   Scale,
   RotateCcw,
@@ -16,6 +16,38 @@ const WeightCard = lazy(() => import('./WeightCard'));
 const WeightCardModal = lazy(() => import('./WeightCardModal'));
 
 const UNDO_SECONDS = 10; // undo countdown duration
+
+/**
+ * ✅ PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
+ */
+const LazyLoadWrapper = ({ children, fallback, rootMargin = '100px' }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setIsVisible(true);
+          observer.disconnect(); // Once visible, stop observing
+        }
+      },
+      { rootMargin, threshold: 0 }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [rootMargin]);
+
+  return (
+    <div ref={ref}>
+      {isVisible ? children : fallback}
+    </div>
+  );
+};
 
 /**
  * UndoRow - Inline undo component with countdown
@@ -134,6 +166,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const monthlyGroups = useMemo(() => {
     const grouped = {};
     
+    console.log('📊 Processing weightHistory:', weightHistory.length, 'entries');
+    
     // Process all entries including placeholders
     weightHistory.forEach(entry => {
       // Skip invalid entries but allow placeholders
@@ -149,9 +183,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       
       if (!grouped[monthKey]) {
         grouped[monthKey] = {
+          monthKey, // Store the key for proper sorting
           monthName,
           entries: [],
-          date: date
+          // Use first day of month for consistent sorting
+          sortDate: new Date(date.getFullYear(), date.getMonth(), 1)
         };
       }
       
@@ -159,8 +195,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       grouped[monthKey].entries.push(entry);
     });
     
-    // Sort months in descending order (most recent first)
-    return Object.values(grouped).sort((a, b) => b.date - a.date);
+    // Sort months in descending order (most recent first) using sortDate
+    const result = Object.values(grouped).sort((a, b) => b.sortDate - a.sortDate);
+    console.log('📊 Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
+    return result;
   }, [weightHistory]);
 
   /**
@@ -235,7 +273,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error('User not authenticated or not found in database');
       }
       
-      const params = new URLSearchParams({ userId });
+      // ✅ PERFORMANCE: Don't load images on initial fetch - much faster
+      const params = new URLSearchParams({ userId, includeImage: 'false' });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
@@ -249,6 +288,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
 
       // Set all weight history data
+      console.log('📊 Weight history loaded:', data.data?.length, 'entries');
+      console.log('📊 Sample entries:', data.data?.slice(0, 3));
       setWeightHistory(data.data || []);
       setGlobalStats(data.stats || null);
 
@@ -591,7 +632,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               const monthStats = getMonthStats(monthGroup.entries);
               
               return (
-                <div key={monthGroup.monthName} className="mb-6">
+                <div key={monthGroup.monthKey} className="mb-6">
                   {/* Month Header */}
                   {/* <div className="bg-white rounded-xl  p-4 mb-4">
                     <div className="flex items-center justify-between">
@@ -618,7 +659,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   {/* Month Entries */}
                   <div className="space-y-3">
                     {monthGroup.entries
-                      .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight) // Filter out any invalid entries
+                      .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight)
                       .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
                       .map((entry, index) => {
                         // Show undo row if this is a placeholder
@@ -638,55 +679,51 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           );
                         }
 
-                        // // Regular weight card
-                        // // Use the complete weightHistory to find previous entry across all months
-                        // const allHistorySorted = weightHistory
-                        //   .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
-                        //   .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
-                        
-                        // // Find the current entry's index in the complete history
-                        // const currentIndex = allHistorySorted.findIndex(x => x.ID === entry.ID);
-                        
-                        // // Get the previous entry (next in array since sorted newest first)
-                        // const prevEntry = currentIndex !== -1 && currentIndex < allHistorySorted.length - 1
-                        //   ? allHistorySorted[currentIndex + 1]
-                        //   : null;
-                        
-                        // // 🔍 DEBUG: Log last 3 weights
-                        // if (index === 0) {
-                        //   const last3 = allHistorySorted.slice(0, 3);
-                        //   console.log('📊 LAST 3 WEIGHTS:', last3.map((e, i) => ({
-                        //     position: i + 1,
-                        //     id: e.ID,
-                        //     weight: e.Weight,
-                        //     date: e.CreatedAt
-                        //   })));
-                        //   console.log('📊 Total entries:', allHistorySorted.length);
-                        // }
-
                         // ✅ OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
                         const prevWeight = previousWeightMap.get(entry.ID);
-                        return (
-                          <Suspense key={entry.ID} fallback={
-                            <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 56 }}>
-                              <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
-                                <div className="w-9 h-9 xs:w-10 xs:h-10 sm:w-12 sm:h-12 bg-gray-200 rounded-lg"></div>
-                                <div className="flex-1 space-y-1.5 sm:space-y-2">
-                                  <div className="h-2.5 xs:h-3 sm:h-4 bg-gray-200 rounded w-3/4"></div>
-                                  <div className="h-2 xs:h-2.5 sm:h-3 bg-gray-200 rounded w-1/2"></div>
-                                </div>
-                                <div className="h-4 xs:h-5 sm:h-6 bg-gray-200 rounded w-8 xs:w-10 sm:w-12"></div>
+                        
+                        // Skeleton placeholder for lazy loading
+                        const skeleton = (
+                          <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 72 }}>
+                            <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
+                              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-200 rounded-lg"></div>
+                              <div className="flex-1 space-y-1.5 sm:space-y-2">
+                                <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4"></div>
+                                <div className="h-2.5 sm:h-3 bg-gray-200 rounded w-1/2"></div>
                               </div>
+                              <div className="h-6 sm:h-8 bg-gray-200 rounded w-12 sm:w-16"></div>
                             </div>
-                          }>
-                            <WeightCard
-                              data={entry}
-                              previousWeight={prevWeight}
-                              onDelete={handleDeleteEntry}
-                              onView={handleViewEntry}
-                              index={index}
-                            />
-                          </Suspense>
+                          </div>
+                        );
+
+                        // ✅ PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
+                        if (index < 10) {
+                          return (
+                            <Suspense key={entry.ID} fallback={skeleton}>
+                              <WeightCard
+                                data={entry}
+                                previousWeight={prevWeight}
+                                onDelete={handleDeleteEntry}
+                                onView={handleViewEntry}
+                                index={index}
+                              />
+                            </Suspense>
+                          );
+                        }
+
+                        // Lazy load items beyond the first 5
+                        return (
+                          <LazyLoadWrapper key={entry.ID} fallback={skeleton} rootMargin="200px">
+                            <Suspense fallback={skeleton}>
+                              <WeightCard
+                                data={entry}
+                                previousWeight={prevWeight}
+                                onDelete={handleDeleteEntry}
+                                onView={handleViewEntry}
+                                index={index}
+                              />
+                            </Suspense>
+                          </LazyLoadWrapper>
                         );
                       })}
                   </div>
@@ -709,8 +746,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   if (!hideHeader) {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* CSS keyframes for countdown animation */}
-        <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
+        {/* CSS keyframes for countdown animation and weight card animations */}
+        <style>{`
+          @keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+          @keyframes slideInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        `}</style>
 
         {viewMode === 'overview' && renderOverview()}
         
@@ -748,6 +788,12 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
   return (
     <>
+      {/* CSS keyframes for animations */}
+      <style>{`
+        @keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes slideInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+      
       {viewMode === 'overview' && renderOverview()}
       
       {/* Weight Card Modal */}
