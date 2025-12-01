@@ -1,14 +1,16 @@
 // src/components/ManualWeightEntryModal.js
 import React, { useState } from 'react';
-import { X, Scale } from 'lucide-react';
+import { X, Scale, Flame } from 'lucide-react';
 
 /**
  * Manual Weight Entry Modal
  * Opens when automatic weight detection fails
+ * Supports manual BMR entry
  */
 const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
   const [weight, setWeight] = useState('');
   const [unit, setUnit] = useState('kg');
+  const [bmr, setBmr] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
@@ -37,17 +39,33 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
         return;
       }
 
+      // Validate BMR if provided (optional field)
+      let bmrValue = null;
+      if (bmr && bmr.trim() !== '') {
+        bmrValue = parseFloat(bmr);
+        if (isNaN(bmrValue) || bmrValue <= 0) {
+          setError('BMR must be a positive number');
+          return;
+        }
+        if (bmrValue < 1100 || bmrValue > 2200) {
+          setError('BMR must be between 1100 and 2200 kcal/day');
+          return;
+        }
+      }
+
       setIsSaving(true);
 
       // Call parent save handler
       await onSave({
         weightValue,
-        unit
+        unit,
+        bmr: bmrValue
       });
 
       // Reset and close
       setWeight('');
       setUnit('kg');
+      setBmr('');
       setError('');
       onClose();
 
@@ -62,6 +80,7 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
   const handleCancel = () => {
     setWeight('');
     setUnit('kg');
+    setBmr('');
     setError('');
     onClose();
   };
@@ -154,12 +173,41 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
               </div>
             </div>
 
+            {/* BMR Input (Optional) */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">
+                <span className="flex items-center gap-2">
+                  <Flame className="w-4 h-4 text-orange-500" />
+                  BMR (Optional)
+                </span>
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  step="1"
+                  value={bmr}
+                  onChange={(e) => setBmr(e.target.value)}
+                  placeholder="e.g., 1650"
+                  className="flex-1 min-w-0 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-lg font-semibold bg-white"
+                  style={{ fontSize: '16px' }}
+                />
+                <span className="px-4 py-3 bg-gray-100 border-2 border-gray-300 rounded-xl text-gray-600 font-semibold flex-shrink-0">
+                  kcal
+                </span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Basal Metabolic Rate from your scale (if displayed)
+              </p>
+            </div>
+
             {/* Helper Text */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
               <p className="text-xs text-blue-700">
                 <strong>Valid ranges:</strong><br />
                 • kg: 20 - 300 kg<br />
-                • lbs: 44 - 660 lbs
+                • lbs: 44 - 660 lbs<br />
+                • BMR: 1100 - 2200 kcal/day (optional)
               </p>
             </div>
 

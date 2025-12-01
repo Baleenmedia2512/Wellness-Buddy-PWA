@@ -9,39 +9,6 @@ export const config = {
   },
 };
 
-/**
- * Calculate BMR using Mifflin-St Jeor formula
- * Men: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) + 5
- * Women: BMR = (10 × weight in kg) + (6.25 × height in cm) - (5 × age in years) - 161
- */
-function calculateBMR(weight, height, age, gender) {
-  if (!weight || !height || !age || !gender) {
-    return null;
-  }
-
-  const weightNum = parseFloat(weight);
-  const heightNum = parseFloat(height);
-  const ageNum = parseInt(age, 10);
-
-  if (isNaN(weightNum) || isNaN(heightNum) || isNaN(ageNum)) {
-    return null;
-  }
-
-  // Base calculation: (10 × weight) + (6.25 × height) - (5 × age)
-  const baseBMR = (10 * weightNum) + (6.25 * heightNum) - (5 * ageNum);
-
-  // Apply gender-specific adjustment
-  const genderLower = gender.toLowerCase();
-  if (genderLower === 'male' || genderLower === 'm') {
-    return Math.round(baseBMR + 5);
-  } else if (genderLower === 'female' || genderLower === 'f') {
-    return Math.round(baseBMR - 161);
-  }
-
-  // Default to male formula if gender is unknown
-  return Math.round(baseBMR + 5);
-}
-
 export default async function handler(req, res) {
   // Set CORS headers for all requests
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -106,32 +73,6 @@ export default async function handler(req, res) {
       database: process.env.DB_NAME
     });
 
-    // Fetch user profile to calculate BMR
-    const [userRows] = await connection.execute(
-      `SELECT Height, Age, Gender FROM team_table WHERE UserId = ? LIMIT 1`,
-      [userId]
-    );
-
-    let calculatedBmr = null;
-    if (userRows.length > 0) {
-      const userProfile = userRows[0];
-      calculatedBmr = calculateBMR(
-        weight,
-        userProfile.Height,
-        userProfile.Age,
-        userProfile.Gender
-      );
-      console.log('📊 [save-weight-entry] BMR calculated:', { 
-        weight, 
-        height: userProfile.Height, 
-        age: userProfile.Age, 
-        gender: userProfile.Gender, 
-        bmr: calculatedBmr 
-      });
-    } else {
-      console.log('⚠️ [save-weight-entry] User profile not found, BMR not calculated');
-    }
-
     // Insert weight entry into database
     const insertQuery = `
       INSERT INTO weight_records_table (
@@ -146,8 +87,8 @@ export default async function handler(req, res) {
     const bmiValue = bmi && !isNaN(parseFloat(bmi)) ? parseFloat(bmi) : null;
     const bodyFatValue = bodyFat && !isNaN(parseFloat(bodyFat)) ? parseFloat(bodyFat) : null;
     const muscleMassValue = muscleMass && !isNaN(parseFloat(muscleMass)) ? parseFloat(muscleMass) : null;
-    // Use calculated BMR if available, otherwise use provided BMR
-    const bmrValue = calculatedBmr || (bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null);
+    // Use provided BMR (manually entered)
+    const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
 
     const [result] = await connection.execute(insertQuery, [
       userId,

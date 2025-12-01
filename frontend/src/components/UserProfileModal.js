@@ -1,6 +1,6 @@
 // src/components/UserProfileModal.js
 import React, { useState, useEffect } from 'react';
-import { X, User, Save, CheckCircle } from 'lucide-react';
+import { X, User, Save, CheckCircle, Flame } from 'lucide-react';
 
 /**
  * User Profile Modal
@@ -9,10 +9,7 @@ import { X, User, Save, CheckCircle } from 'lucide-react';
 const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const [name, setName] = useState('');
   const [height, setHeight] = useState('');
-  const [age, setAge] = useState('');
-  const [gender, setGender] = useState('');
-  const [weight, setWeight] = useState(null);
-  const [bmr, setBmr] = useState(null);
+  const [bmr, setBmr] = useState('');
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -61,20 +58,14 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         const profile = data.data;
         setName(profile.userName || user.name || '');
         setHeight(profile.height ? String(profile.height) : '');
-        setAge(profile.age ? String(profile.age) : '');
-        setGender(profile.gender || '');
-        setWeight(profile.latestWeight);
-        setBmr(profile.latestBmr);
+        setBmr(profile.latestBmr ? String(Math.round(profile.latestBmr)) : '');
       }
     } catch (err) {
       console.error('❌ Error fetching user profile:', err);
       // Fall back to user object data
       setName(user?.name || '');
       setHeight('');
-      setAge('');
-      setGender('');
-      setWeight(null);
-      setBmr(null);
+      setBmr('');
     } finally {
       setIsLoading(false);
     }
@@ -87,16 +78,20 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setIsSaving(true);
 
       // Validate inputs
-      if (height && (parseFloat(height) < 50 || parseFloat(height) > 300)) {
-        setError('Height must be between 50 and 300 cm');
+      if (height && (parseFloat(height) < 50 || parseFloat(height) > 198)) {
+        setError('Height must be between 50 and 198 cm (max 6.5 feet)');
         setIsSaving(false);
         return;
       }
 
-      if (age && (parseInt(age) < 1 || parseInt(age) > 150)) {
-        setError('Age must be between 1 and 150 years');
-        setIsSaving(false);
-        return;
+      // Validate BMR if provided
+      if (bmr && bmr.trim() !== '') {
+        const bmrValue = parseFloat(bmr);
+        if (isNaN(bmrValue) || bmrValue < 1100 || bmrValue > 2200) {
+          setError('BMR must be between 1100 and 2200 kcal/day');
+          setIsSaving(false);
+          return;
+        }
       }
 
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
@@ -108,8 +103,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           email: user.email,
           name: name || undefined,
           height: height ? parseFloat(height) : undefined,
-          age: age ? parseInt(age) : undefined,
-          gender: gender || undefined,
+          bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
         }),
       });
 
@@ -122,7 +116,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       if (data.success) {
         // Update BMR if it was recalculated
         if (data.data?.bmr) {
-          setBmr(data.data.bmr);
+          setBmr(String(Math.round(data.data.bmr)));
         }
         
         // Notify parent component of the update
@@ -130,9 +124,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           onProfileUpdate({
             name,
             height: height ? parseFloat(height) : null,
-            age: age ? parseInt(age) : null,
-            gender,
-            bmr: data.data?.bmr || bmr,
+            bmr: data.data?.bmr || (bmr ? parseFloat(bmr) : null),
           });
         }
         
@@ -189,10 +181,10 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             <>
               {/* User Photo, Name, Email Section */}
               <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-50  rounded-xl border border-green-100">
-                {user?.picture ? (
+                {user?.photoURL ? (
                   <img
-                    src={user.picture}
-                    alt={user.name || 'User'}
+                    src={user.photoURL}
+                    alt={user.displayName || user.name || 'User'}
                     className="w-16 h-16 rounded-full border-2 border-green-200 object-cover"
                     referrerPolicy="no-referrer"
                   />
@@ -236,84 +228,37 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                     inputMode="decimal"
                     value={height}
                     onChange={(e) => setHeight(e.target.value)}
-                    placeholder="e.g., 170"
+                    placeholder="e.g., 183 (6 feet)"
                     className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
                     style={{ fontSize: '16px' }}
                     min="50"
-                    max="300"
+                    max="198"
                   />
                 </div>
 
-                {/* Age */}
+                {/* BMR */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Age
+                    <span className="flex items-center gap-2">
+                      <Flame className="w-4 h-4 text-orange-500" />
+                      BMR (kcal)
+                    </span>
                   </label>
                   <input
                     type="number"
                     inputMode="numeric"
-                    value={age}
-                    onChange={(e) => setAge(e.target.value)}
-                    placeholder="e.g., 30"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
+                    value={bmr}
+                    onChange={(e) => setBmr(e.target.value)}
+                    placeholder="e.g., 1650"
+                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-base bg-white"
                     style={{ fontSize: '16px' }}
-                    min="1"
-                    max="150"
+                    min="1100"
+                    max="2200"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Basal Metabolic Rate (1100 - 2200 kcal/day)
+                  </p>
                 </div>
-
-                {/* Gender */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Gender
-                  </label>
-                  <div className="flex gap-4">
-                    <label className="flex items-center cursor-pointer">
-                      <input
-                        type="radio"
-                        name="gender"
-                        value="male"
-                        checked={gender === 'male'}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="w-5 h-5 text-purple-600 border-gray-300 focus:ring-purple-500"
-                      />
-                      <span className="ml-2 text-base text-gray-700">Male</span>
-                    </label>
-                    <label className="flex items-center cursor-pointer">
-                      <input
-                        type="radio"
-                        name="gender"
-                        value="female"
-                        checked={gender === 'female'}
-                        onChange={(e) => setGender(e.target.value)}
-                        className="w-5 h-5 text-purple-600 border-gray-300 focus:ring-purple-500"
-                      />
-                      <span className="ml-2 text-base text-gray-700">Female</span>
-                    </label>
-                  </div>
-                </div>
-              </div>
-
-              {/* Read-only Section: Weight & BMR */}
-              <div className="mt-6 p-4 bg-gray-50 rounded-xl border border-gray-200">
-                <p className="text-sm font-semibold text-gray-600 mb-3">Health Metrics (Read-only)</p>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white p-3 rounded-lg border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">Current Weight</p>
-                    <p className="text-lg font-bold text-gray-800">
-                      {weight !== null ? `${weight} kg` : '—'}
-                    </p>
-                  </div>
-                  <div className="bg-white p-3 rounded-lg border border-gray-200">
-                    <p className="text-xs text-gray-500 mb-1">BMR</p>
-                    <p className="text-lg font-bold text-gray-800">
-                      {bmr !== null ? `${Math.round(bmr)} kcal` : '—'}
-                    </p>
-                  </div>
-                </div>
-                {/* <p className="text-xs text-gray-400 mt-2">
-                  Weight and BMR are updated automatically when you log your weight.
-                </p> */}
               </div>
 
               {/* Error Message */}

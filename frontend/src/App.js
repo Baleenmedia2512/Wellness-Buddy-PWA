@@ -809,7 +809,7 @@ function WellnessBuddyApp() {
           bmi: null,
           bodyFat: null,
           muscleMass: null,
-          bmr: null
+          bmr: manualData.bmr || null
         },
         currentWeightImage
       );
