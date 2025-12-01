@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
 import { LogOut, User, LayoutDashboard } from 'lucide-react';
 import { getVersionString } from '../config/version';
+import UserProfileModal from './UserProfileModal';
 
 const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
   const toggleMenu = () => setMenuOpen(!menuOpen);
   const closeMenu = () => setMenuOpen(false);
@@ -48,8 +50,14 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
               
               {/* Menu dropdown */}
               <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
-                {/* User info section */}
-                <div className="px-4 py-3 border-b border-gray-100">
+                {/* User info section - clickable to open profile */}
+                <button
+                  onClick={() => {
+                    setShowProfileModal(true);
+                    closeMenu();
+                  }}
+                  className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
+                >
                   <div className="flex items-center space-x-3">
                     <User className="h-5 w-5 text-gray-400" />
                     <div className="flex-1 min-w-0">
@@ -63,7 +71,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
                       )}
                     </div>
                   </div>
-                </div>
+                </button>
 
                 {/* Menu items */}
                 <div className="py-2">
@@ -107,6 +115,13 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
           )}
         </div>
       </div>
+
+      {/* User Profile Modal */}
+      <UserProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+      />
     </header>
   );
 };
