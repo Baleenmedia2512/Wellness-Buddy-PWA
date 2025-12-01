@@ -60,9 +60,11 @@ export default async function handler(req, res) {
     );
 
     let userInfo;
+    let isNewUser = false;
 
     if (userRows.length) {
       userInfo = userRows[0];
+      isNewUser = false;
     } else {
       const username = recipient.split('@')[0];
       const defaultPassword = 'User@123#';
@@ -81,11 +83,14 @@ export default async function handler(req, res) {
       );
 
       userInfo = newUserRows[0];
+      isNewUser = true;
+      console.log('🆕 [verify-otp] New user created:', recipient);
     }
 
     res.json({
       success: true,
       message: 'OTP verified successfully',
+      isNewUser: isNewUser,
       user: {
         id: userInfo.UserId,
         username: userInfo.UserName,

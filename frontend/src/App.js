@@ -23,6 +23,7 @@ import { weightDetectionService } from './services/weightDetectionService';
 import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
+import UserProfileModal from './components/UserProfileModal';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -77,6 +78,9 @@ function WellnessBuddyApp() {
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] = useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
+
+  // New user profile modal state - show profile page for first-time users
+  const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1403,7 +1407,10 @@ function WellnessBuddyApp() {
       if (user) {
         try {
           // Save user to backend first
-          await saveUserToBackend(user);
+          const saveResult = await saveUserToBackend(user);
+          console.log('📦 [handleSignIn] saveResult:', saveResult);
+          const isNewUser = saveResult?.isNewUser === true;
+          console.log('🆕 [handleSignIn] isNewUser:', isNewUser);
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -1439,6 +1446,14 @@ function WellnessBuddyApp() {
           
           if (isActive) {
             setUser(user);
+            // Show profile modal for new users to complete their profile
+            if (isNewUser) {
+              console.log('🆕 [handleSignIn] New user - showing profile modal');
+              // Small delay to ensure user state is set before showing modal
+              setTimeout(() => {
+                setShowNewUserProfileModal(true);
+              }, 500);
+            }
           } else {
             // User was saved but is inactive or not found - modal will show
             setUser(user); // Keep user state so modal can show user email
@@ -1495,7 +1510,10 @@ function WellnessBuddyApp() {
       if (user) {
         try {
           // Save user to backend first
-          await saveUserToBackend(user);
+          const saveResult = await saveUserToBackend(user);
+          console.log('📦 [handlePopupSignIn] saveResult:', saveResult);
+          const isNewUser = saveResult?.isNewUser === true;
+          console.log('🆕 [handlePopupSignIn] isNewUser:', isNewUser);
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -1531,6 +1549,14 @@ function WellnessBuddyApp() {
           
           if (isActive) {
             setUser(user);
+            // Show profile modal for new users to complete their profile
+            if (isNewUser) {
+              console.log('🆕 [handlePopupSignIn] New user - showing profile modal');
+              // Small delay to ensure user state is set before showing modal
+              setTimeout(() => {
+                setShowNewUserProfileModal(true);
+              }, 500);
+            }
           } else {
             // User was saved but is inactive or not found - modal will show
             setUser(user); // Keep user state so modal can show user email
@@ -1591,7 +1617,12 @@ function WellnessBuddyApp() {
       const data = await response.json();
       
       if (data.success) {
-        console.log('✅ [saveUserToBackend] User saved successfully');
+        console.log('✅ [saveUserToBackend] User saved successfully, isNewUser:', data.isNewUser);
+        
+        // If this is a new user, trigger the profile modal
+        if (data.isNewUser) {
+          console.log('🆕 [saveUserToBackend] New user detected, will show profile modal');
+        }
       } else {
         console.warn('⚠️ [saveUserToBackend] Save completed with warning:', data);
       }
@@ -1635,7 +1666,9 @@ function WellnessBuddyApp() {
     }
   };
 
-  const handleOtpVerified = async () => {
+  const handleOtpVerified = async (isNewUser = false) => {
+    console.log('🔐 [handleOtpVerified] Called with isNewUser:', isNewUser);
+    
     // Get the OTP user from localStorage
     const otpUser = localStorage.getItem('otpUser');
     
@@ -1657,6 +1690,15 @@ function WellnessBuddyApp() {
         
         setIsOtpVerified(true);
         localStorage.setItem('isOtpVerified', 'true');
+        setUser(parsedUser);
+        
+        // Show profile modal for new users
+        if (isNewUser || parsedUser.isNewUser) {
+          console.log('🆕 [handleOtpVerified] New user - showing profile modal');
+          setTimeout(() => {
+            setShowNewUserProfileModal(true);
+          }, 500);
+        }
       } catch (error) {
         console.error('Failed to check OTP user status:', error);
       }
@@ -1972,6 +2014,16 @@ function WellnessBuddyApp() {
           onCancel={handleDuplicateWeightCancel}
         />
       )}
+
+      {/* New User Profile Modal - shown for first-time users to complete their profile */}
+      <UserProfileModal
+        isOpen={showNewUserProfileModal}
+        onClose={() => setShowNewUserProfileModal(false)}
+        user={user}
+        onProfileUpdate={() => {
+          console.log('✅ [NewUserProfile] Profile updated successfully');
+        }}
+      />
     </div>
   );
 }
