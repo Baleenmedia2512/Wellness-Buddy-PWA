@@ -273,8 +273,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error('User not authenticated or not found in database');
       }
       
-      // ✅ PERFORMANCE: Don't load images on initial fetch - much faster
-      const params = new URLSearchParams({ userId, includeImage: 'false' });
+      // Include images so they display in the weight cards
+      const params = new URLSearchParams({ userId, includeImage: 'true' });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
