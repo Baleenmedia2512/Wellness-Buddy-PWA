@@ -1528,6 +1528,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                       <button
                         onClick={handleCancelEditing}
                         disabled={isSaving}
+                        aria-busy={isSaving}
+                        aria-live="polite"
                         className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
                           isSaving 
                             ? 'bg-gray-400 cursor-not-allowed opacity-50' 
@@ -1539,6 +1541,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                             <>
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                               <span className="inline-block">Saving...</span>
+                              <span className="sr-only">Saving changes, please wait</span>
                             </>
                           ) : (
                             <>

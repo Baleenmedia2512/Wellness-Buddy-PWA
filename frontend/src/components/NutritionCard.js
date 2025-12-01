@@ -173,7 +173,7 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
       </div>
 
       {/* Nutrition Grid */}
-      <div className="p-6">`
+      <div className="p-6">
         <div className="grid grid-cols-2 gap-3 mb-4">
           {/* Calories */}
           <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">

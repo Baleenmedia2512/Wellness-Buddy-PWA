@@ -275,9 +275,14 @@ function WellnessBuddyApp() {
         return;
       }
     }
+    
+    // Clear nutrition data and image preview when switching to dashboard
+    if (nutritionData) setNutritionData(null);
+    if (imagePreview) setImagePreview(null);
+    
     setShowDashboard(true);
     localStorage.setItem('currentPage', 'dashboard');
-  }, [user, checkUserStatus]);
+  }, [user, checkUserStatus, nutritionData, imagePreview]);
 
   const showMainPage = () => {
     setShowDashboard(false);

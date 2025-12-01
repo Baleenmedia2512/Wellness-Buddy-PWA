@@ -46,6 +46,9 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   const [retryCount, setRetryCount] = useState(0);
   const maxRetries = 3;
   const retryTimeoutRef = useRef(null);
+  
+  // Phase 7: AbortController to cancel pending saves
+  const abortControllerRef = useRef(null);
 
   // Expose save and cancel methods to parent via ref
   useImperativeHandle(ref, () => ({
@@ -617,6 +620,12 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     };
     
     try {
+      // Phase 7: Cancel any pending save request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      
       // Phase 5: Set saving status (prevents closing during save)
       setSyncStatus(currentRetry > 0 ? 'retrying' : 'saving');
       
@@ -686,6 +695,12 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     }
     if (retryTimeoutRef.current) {
       clearTimeout(retryTimeoutRef.current);
+    }
+    
+    // Phase 7: Cancel any pending API request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
     }
     
     // Reset change tracking
@@ -880,29 +895,33 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
               >
                 {syncStatus === 'retrying' && (
                   <>
-                    <div className="w-3 h-3 border-2 border-orange-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                    <div className="w-3 h-3 border-2 border-orange-600 border-t-transparent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
                     <span className="text-orange-700">Retrying... ({retryCount}/{maxRetries})</span>
+                    <span className="sr-only">Retrying save, attempt {retryCount} of {maxRetries}</span>
                   </>
                 )}
                 {syncStatus === 'saved' && (
                   <>
-                    <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
                     </svg>
                     <span className="text-green-700">Saved</span>
+                    <span className="sr-only">Changes saved successfully</span>
                   </>
                 )}
                 {syncStatus === 'error' && (
                   <>
-                    <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
                     </svg>
                     <span className="text-red-700 font-medium">Save Failed</span>
+                    <span className="sr-only">Error saving changes. Use the retry button to try again.</span>
                     <button
                       onClick={handleManualRetry}
+                      aria-label="Retry saving changes"
                       className="ml-2 px-2.5 py-0.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
                     >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                       </svg>
                       Retry
@@ -1166,6 +1185,8 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
         <button
           onClick={handleDone}
           disabled={syncStatus === 'saving' || syncStatus === 'retrying'}
+          aria-busy={syncStatus === 'saving' || syncStatus === 'retrying'}
+          aria-live="polite"
           className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
             syncStatus === 'saving' || syncStatus === 'retrying'
               ? 'bg-gray-400 cursor-not-allowed opacity-50'
@@ -1177,10 +1198,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
                 <span className="inline-block">Saving...</span>
+                <span className="sr-only">Saving changes, please wait</span>
               </>
             ) : (
               <>
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4" aria-hidden="true" />
                 <span className="inline-block">Close Edit</span>
               </>
             )}
