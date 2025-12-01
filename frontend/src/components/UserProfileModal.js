@@ -1,6 +1,6 @@
 // src/components/UserProfileModal.js
 import React, { useState, useEffect } from 'react';
-import { X, User, Save } from 'lucide-react';
+import { X, User, Save, CheckCircle } from 'lucide-react';
 
 /**
  * User Profile Modal
@@ -16,15 +16,31 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [successMessage, setSuccessMessage] = useState('');
+  const [hasSaved, setHasSaved] = useState(false);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
   // Fetch user profile when modal opens
   useEffect(() => {
     if (isOpen && user?.email) {
+      // Reset states when modal opens
+      setSuccessMessage('');
+      setHasSaved(false);
+      setError('');
       fetchUserProfile();
     }
   }, [isOpen, user?.email]);
+
+  // Auto-dismiss success message after 10 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage('');
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage]);
 
   const fetchUserProfile = async () => {
     try {
@@ -67,6 +83,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const handleSave = async () => {
     try {
       setError('');
+      setSuccessMessage('');
       setIsSaving(true);
 
       // Validate inputs
@@ -119,7 +136,9 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           });
         }
         
-        onClose();
+        // Show success message and keep modal open
+        setSuccessMessage('✅ Profile saved successfully!');
+        setHasSaved(true);
       } else {
         throw new Error(data.message || 'Failed to update profile');
       }
@@ -144,8 +163,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-purple-100 rounded-lg">
-              <User className="w-6 h-6 text-purple-600" />
+            <div className="p-2 bg-green-100 rounded-lg">
+              <User className="w-6 h-6 text-green-600" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-gray-800">My Profile</h2>
@@ -164,22 +183,22 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         <div className="p-6 space-y-5">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-10 w-10 border-4 border-purple-500 border-t-transparent"></div>
+              <div className="animate-spin rounded-full h-10 w-10 border-4 border-green-500 border-t-transparent"></div>
             </div>
           ) : (
             <>
               {/* User Photo, Name, Email Section */}
-              <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-xl border border-purple-100">
+              <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-50  rounded-xl border border-green-100">
                 {user?.picture ? (
                   <img
                     src={user.picture}
                     alt={user.name || 'User'}
-                    className="w-16 h-16 rounded-full border-2 border-purple-200 object-cover"
+                    className="w-16 h-16 rounded-full border-2 border-green-200 object-cover"
                     referrerPolicy="no-referrer"
                   />
                 ) : (
-                  <div className="w-16 h-16 rounded-full bg-purple-200 flex items-center justify-center">
-                    <User className="w-8 h-8 text-purple-600" />
+                  <div className="w-16 h-16 rounded-full bg-green-200 flex items-center justify-center">
+                    <User className="w-8 h-8 text-green-600" />
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
@@ -195,7 +214,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                 {/* Name */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Display Name
+                     Name
                   </label>
                   <input
                     type="text"
@@ -228,7 +247,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                 {/* Age */}
                 <div>
                   <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Age (years)
+                    Age
                   </label>
                   <input
                     type="number"
@@ -292,15 +311,23 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                     </p>
                   </div>
                 </div>
-                <p className="text-xs text-gray-400 mt-2">
+                {/* <p className="text-xs text-gray-400 mt-2">
                   Weight and BMR are updated automatically when you log your weight.
-                </p>
+                </p> */}
               </div>
 
               {/* Error Message */}
               {error && (
                 <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">
                   {error}
+                </div>
+              )}
+
+              {/* Success Message */}
+              {successMessage && (
+                <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg text-sm font-medium flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-500" />
+                  {successMessage}
                 </div>
               )}
             </>
@@ -315,7 +342,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
               disabled={isSaving}
               className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-white transition-colors disabled:opacity-50"
             >
-              Cancel
+              {hasSaved ? 'Close' : 'Cancel'}
             </button>
             <button
               onClick={handleSave}

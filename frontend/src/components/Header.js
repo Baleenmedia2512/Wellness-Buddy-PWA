@@ -1,17 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LogOut, User, LayoutDashboard } from 'lucide-react';
 import { getVersionString } from '../config/version';
 import UserProfileModal from './UserProfileModal';
 
 const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [savedUserName, setSavedUserName] = useState(null);
+  
+  // Initialize showProfileModal from localStorage to persist across page refreshes
+  const [showProfileModal, setShowProfileModal] = useState(() => {
+    const saved = localStorage.getItem('showProfileModal');
+    return saved === 'true';
+  });
+
+  // Persist modal state to localStorage
+  useEffect(() => {
+    localStorage.setItem('showProfileModal', showProfileModal.toString());
+  }, [showProfileModal]);
+
+  // Fetch saved user name from profile
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.email) return;
+      
+      try {
+        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+        const response = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.userName) {
+            setSavedUserName(data.data.userName);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for header:', err);
+      }
+    };
+
+    fetchUserProfile();
+  }, [user?.email]);
+
+  // Callback to update display name when profile is updated
+  const handleProfileUpdate = (profileData) => {
+    if (profileData?.name) {
+      setSavedUserName(profileData.name);
+    }
+  };
 
   const toggleMenu = () => setMenuOpen(!menuOpen);
   const closeMenu = () => setMenuOpen(false);
 
   const avatarUrl = user?.photoURL || 'https://www.gravatar.com/avatar/?d=mp';
-  const userName = user?.displayName || user?.username || user?.email || 'User';
+  // Use saved user name from profile first, then fall back to auth displayName
+  const userName = savedUserName || user?.displayName || user?.username || user?.email || 'User';
   const userEmail = user?.email || '';
 
   return (
@@ -121,6 +165,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
+        onProfileUpdate={handleProfileUpdate}
       />
     </header>
   );
