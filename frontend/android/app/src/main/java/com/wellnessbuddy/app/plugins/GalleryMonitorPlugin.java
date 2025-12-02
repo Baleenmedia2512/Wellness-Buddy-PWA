@@ -1,4 +1,4 @@
-package com.wellnessbuddy.app.plugins;
+package com.wellnessvalley.app.plugins;
 
 import android.content.Context;
 import android.content.Intent;
@@ -13,7 +13,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-import com.wellnessbuddy.app.services.GalleryMonitorService;
+import com.wellnessvalley.app.services.GalleryMonitorService;
 
 import org.json.JSONArray;
 

@@ -3,7 +3,7 @@
 # Background Service Testing Utility
 # Run this script to test various scenarios
 
-echo "🧪 Wellness Buddy Background Service Testing"
+echo "🧪 Wellness Valley Background Service Testing"
 echo "============================================="
 
 BASE_URL="http://localhost:3000"

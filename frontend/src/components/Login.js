@@ -182,7 +182,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             </div>
             
             <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              {otpSent ? 'Enter OTP' : 'Wellness Buddy'}
+              {otpSent ? 'Enter OTP' : 'Wellness Valley'}
             </h1>
             <p className="text-gray-500">
               {otpSent 

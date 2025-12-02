@@ -16,7 +16,7 @@ const PrivacyPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-gray-800">Wellness Buddy</h1>
+            <h1 className="text-xl font-bold text-gray-800">Wellness Valley</h1>
           </div>
           <button
             onClick={() => navigate(-1)}
@@ -47,7 +47,7 @@ const PrivacyPage = () => {
                   <strong>Last Updated:</strong> {new Date().toLocaleDateString()}
                 </p>
                 <p className="mb-4">
-                  This Privacy Policy describes how Wellness Buddy ("we," "our," or "us") collects, uses, and protects your personal information when you use our Progressive Web Application and related services.
+                  This Privacy Policy describes how Wellness Valley ("we," "our," or "us") collects, uses, and protects your personal information when you use our Progressive Web Application and related services.
                 </p>
                 <p className="mb-4">
                   We are committed to protecting your privacy and ensuring transparency about our data practices.

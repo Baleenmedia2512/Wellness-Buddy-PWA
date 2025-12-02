@@ -1,11 +1,11 @@
-package com.wellnessbuddy.app.plugins;
+package com.wellnessvalley.app.plugins;
 
 import android.util.Log;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.JSObject;
-import com.wellnessbuddy.app.services.FoodImageQueue;
+import com.wellnessvalley.app.services.FoodImageQueue;
 import android.content.Context;
 import androidx.core.app.NotificationCompat;
 import android.app.NotificationManager;

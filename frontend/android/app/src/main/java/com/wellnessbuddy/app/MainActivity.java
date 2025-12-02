@@ -1,4 +1,4 @@
-package com.wellnessbuddy.app;
+package com.wellnessvalley.app;
 
 import android.os.Bundle;
 import android.os.PowerManager;
@@ -11,7 +11,7 @@ import android.webkit.WebView;
 import android.webkit.WebSettings;
 
 import com.getcapacitor.BridgeActivity;
-import com.wellnessbuddy.app.plugins.GalleryMonitorPlugin;
+import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 
 public class MainActivity extends BridgeActivity {
     @Override
@@ -68,7 +68,7 @@ public class MainActivity extends BridgeActivity {
         requestBatteryOptimizationExemption();
 
         // ✅ Start background gallery monitor service
-        Intent serviceIntent = new Intent(this, com.wellnessbuddy.app.services.GalleryMonitorService.class);
+        Intent serviceIntent = new Intent(this, com.wellnessvalley.app.services.GalleryMonitorService.class);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
         } else {
@@ -77,7 +77,7 @@ public class MainActivity extends BridgeActivity {
         android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
         
         // ✅ Schedule periodic heartbeat to ensure service stays alive
-        com.wellnessbuddy.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
+        com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
         android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
         
         // Check if app was opened from notification

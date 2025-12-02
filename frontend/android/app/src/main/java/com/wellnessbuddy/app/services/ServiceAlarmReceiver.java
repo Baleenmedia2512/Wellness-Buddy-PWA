@@ -1,4 +1,4 @@
-package com.wellnessbuddy.app.services;
+package com.wellnessvalley.app.services;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -32,7 +32,7 @@ import android.app.ActivityManager;
  */
 public class ServiceAlarmReceiver extends BroadcastReceiver {
     private static final String TAG = "ServiceAlarmReceiver";
-    private static final String ACTION_HEARTBEAT = "com.wellnessbuddy.app.ACTION_SERVICE_HEARTBEAT";
+    private static final String ACTION_HEARTBEAT = "com.wellnessvalley.app.ACTION_SERVICE_HEARTBEAT";
     private static final int HEARTBEAT_INTERVAL_MS = 15 * 60 * 1000; // 15 minutes (battery optimized)
     private static final int REQUEST_CODE = 1001;
 

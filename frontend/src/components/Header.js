@@ -18,7 +18,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 flex items-center space-x-2">
             <span className="text-xl sm:text-2xl">🌿</span>
-            <span className="truncate">Wellness Buddy</span>
+            <span className="truncate">Wellness Valley</span>
           </h1>
           <p className="text-xs sm:text-sm text-green-600 mt-1 ml-9 sm:ml-10 truncate">
             Track your meals effortlessly

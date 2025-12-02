@@ -39,7 +39,7 @@ import {
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 
-function WellnessBuddyApp() {
+function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -1987,4 +1987,4 @@ function WellnessBuddyApp() {
   );
 }
 
-export default WellnessBuddyApp;
+export default WellnessValleyApp;

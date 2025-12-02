@@ -112,7 +112,7 @@ Add detection reasoning to response:
 ---
 
 #### **2. Android Java**
-**File:** `frontend/android/app/src/main/java/com/wellnessbuddy/app/services/GeminiApiClient.java`
+**File:** `frontend/android/app/src/main/java/com/wellnessvalley/app/services/GeminiApiClient.java`
 
 **Method:** `analyzeImage(String imagePath)`
 
@@ -449,7 +449,7 @@ Return valid JSON only, no markdown.`;
 
 ### **Java Changes**
 ```java
-// File: frontend/android/app/src/main/java/com/wellnessbuddy/app/services/GeminiApiClient.java
+// File: frontend/android/app/src/main/java/com/wellnessvalley/app/services/GeminiApiClient.java
 // Line: ~33-68
 
 public String analyzeImage(String imagePath) {

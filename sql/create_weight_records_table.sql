@@ -1,4 +1,4 @@
--- Create weight_records_table for Wellness Buddy PWA
+-- Create weight_records_table for Wellness Valley PWA
 -- This table stores weight tracking data with body composition metrics
 
 CREATE TABLE IF NOT EXISTS weight_records_table (

@@ -1,6 +1,6 @@
-package com.wellnessbuddy.app.services;
-import com.wellnessbuddy.app.R;
-import com.wellnessbuddy.app.BuildConfig;
+package com.wellnessvalley.app.services;
+import com.wellnessvalley.app.R;
+import com.wellnessvalley.app.BuildConfig;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -23,7 +23,7 @@ import android.widget.Toast;
 import androidx.annotation.Nullable;
 import androidx.core.app.NotificationCompat;
 
-import com.wellnessbuddy.app.MainActivity;
+import com.wellnessvalley.app.MainActivity;
 import android.content.SharedPreferences;
 
 import java.io.File;

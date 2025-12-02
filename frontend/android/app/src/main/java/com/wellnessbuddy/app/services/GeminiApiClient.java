@@ -1,4 +1,4 @@
-package com.wellnessbuddy.app.services;
+package com.wellnessvalley.app.services;
 
 import android.util.Base64;
 import android.util.Log;
