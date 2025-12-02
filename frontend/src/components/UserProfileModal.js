@@ -94,6 +94,9 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }
       }
 
+      // Add 5 second delay before saving
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: 'POST',
         headers: {
@@ -129,7 +132,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }
         
         // Show success message and keep modal open
-        setSuccessMessage('✅ Profile saved successfully!');
+        setSuccessMessage('Profile saved successfully!');
         setHasSaved(true);
       } else {
         throw new Error(data.message || 'Failed to update profile');
@@ -143,6 +146,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   };
 
   const handleCancel = () => {
+    // Prevent closing modal while saving is in progress
+    if (isSaving) return;
     setError('');
     onClose();
   };
@@ -174,7 +179,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           </div>
           <button
             onClick={handleCancel}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            disabled={isSaving}
+            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <X className="w-5 h-5 text-gray-500" />
           </button>
@@ -272,14 +278,15 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             <button
               onClick={handleCancel}
               disabled={isSaving}
-              className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-white transition-colors disabled:opacity-50"
+              className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
             >
+              <X className="w-5 h-5" />
               {hasSaved ? 'Close' : 'Cancel'}
             </button>
             <button
               onClick={handleSave}
               disabled={isSaving}
-              className="flex-1 px-6 py-3 bg-gradient-to-r from-purple-500 to-indigo-500 text-white rounded-lg font-semibold hover:from-purple-600 hover:to-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
+              className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
             >
               {isSaving ? (
                 <>
