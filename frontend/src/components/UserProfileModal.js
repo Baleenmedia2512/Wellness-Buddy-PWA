@@ -152,15 +152,24 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
+        {/* Header with User Photo and Name */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            <div className="p-2 bg-green-100 rounded-lg">
-              <User className="w-6 h-6 text-green-600" />
-            </div>
+            {user?.photoURL ? (
+              <img
+                src={user.photoURL}
+                alt={user.displayName || user.name || 'User'}
+                className="w-12 h-12 rounded-full border-2 border-green-200 object-cover"
+                referrerPolicy="no-referrer"
+              />
+            ) : (
+              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
+                <User className="w-6 h-6 text-green-600" />
+              </div>
+            )}
             <div>
-              <h2 className="text-xl font-bold text-gray-800">My Profile</h2>
-              <p className="text-sm text-gray-500">Update your personal information</p>
+              <h2 className="text-xl font-bold text-gray-800">{name || user?.displayName || user?.name || 'User'}</h2>
+              <p className="text-sm text-gray-500">{user?.email}</p>
             </div>
           </div>
           <button
@@ -179,28 +188,6 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             </div>
           ) : (
             <>
-              {/* User Photo, Name, Email Section */}
-              <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-green-50 to-green-50  rounded-xl border border-green-100">
-                {user?.photoURL ? (
-                  <img
-                    src={user.photoURL}
-                    alt={user.displayName || user.name || 'User'}
-                    className="w-16 h-16 rounded-full border-2 border-green-200 object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                ) : (
-                  <div className="w-16 h-16 rounded-full bg-green-200 flex items-center justify-center">
-                    <User className="w-8 h-8 text-green-600" />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <p className="text-lg font-semibold text-gray-800 truncate">
-                    {name || user?.name || 'User'}
-                  </p>
-                  <p className="text-sm text-gray-500 truncate">{user?.email}</p>
-                </div>
-              </div>
-
               {/* Editable Fields */}
               <div className="space-y-4">
                 {/* Name */}
