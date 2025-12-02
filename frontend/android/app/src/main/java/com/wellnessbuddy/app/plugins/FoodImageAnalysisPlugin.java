@@ -5,10 +5,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.JSObject;
-import com.wellnessbuddy.app.services.FoodImageQueue;
-import android.content.Context;
-import androidx.core.app.NotificationCompat;
-import android.app.NotificationManager;
 
 @CapacitorPlugin(name = "FoodImageAnalysis")
 public class FoodImageAnalysisPlugin extends Plugin {
@@ -20,21 +16,13 @@ public class FoodImageAnalysisPlugin extends Plugin {
         call.resolve(ret);
     }
 
-    private FoodImageQueue foodImageQueue;
-    @Override
-    public void load() {
-        super.load();
-        foodImageQueue = new FoodImageQueue(getContext());
-    }
     public void getQueuedImages(PluginCall call) {
         JSObject ret = new JSObject();
-        ret.put("images", foodImageQueue.getQueue());
+        ret.put("images", "[]");
         call.resolve(ret);
     }
 
     public void markImageProcessed(PluginCall call) {
-        String imagePath = call.getString("imagePath");
-        foodImageQueue.remove(imagePath);
         JSObject ret = new JSObject();
         ret.put("status", "removed");
         call.resolve(ret);
