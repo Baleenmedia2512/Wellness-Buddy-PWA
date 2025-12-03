@@ -1,7 +1,7 @@
 // src/components/EditableFoodItem.js
 import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { geminiService } from '../services/geminiService';
-import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet } from 'lucide-react';
+import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet, Leaf } from 'lucide-react';
 
 /**
  * Editable food item component for nutrition breakdown
@@ -28,27 +28,96 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
   const searchTimeoutRef = useRef(null);
+  
+  // Auto-save timer ref (Phase 1: Debounced Auto-Save)
+  const autoSaveTimeoutRef = useRef(null);
+  
+  // Track if user has made changes (Phase 1: Prevent auto-save on edit mode entry)
+  const hasUserChangesRef = useRef(false);
+  
+  // Track if Phase 2 instant save is in progress (prevents Phase 1 from interfering)
+  const isInstantSavingRef = useRef(false);
+  
+  // Phase 3: Sync status indicator
+  const [syncStatus, setSyncStatus] = useState('idle'); // idle|syncing|saved|error|retrying
+  const syncStatusTimeoutRef = useRef(null);
+  
+  // Phase 5: Retry logic
+  const [retryCount, setRetryCount] = useState(0);
+  const maxRetries = 3;
+  const retryTimeoutRef = useRef(null);
+  
+  // Phase 7: AbortController to cancel pending saves
+  const abortControllerRef = useRef(null);
 
   // Expose save and cancel methods to parent via ref
   useImperativeHandle(ref, () => ({
-    save: handleSave,
+    save: handleDone,  // Changed from handleSave to handleDone
     cancel: handleCancel,
     isEditing
   }));
 
-  // Notify parent when editing state changes
+  // Notify parent when editing state changes or sync status changes
   useEffect(() => {
     if (onEditingChange) {
-      onEditingChange(index, isEditing);
+      // Pass editing state and whether actively saving/retrying (blocking close)
+      const isBlocking = syncStatus === 'retrying';
+      onEditingChange(index, isEditing, isBlocking);
     }
-  }, [isEditing, index, onEditingChange]);
+  }, [isEditing, syncStatus, index, onEditingChange]);
 
   // Initialize with current food item data
+  // This preserves the original weight when entering edit mode
+  // Skip updates when in edit mode to prevent auto-save from resetting the UI
   useEffect(() => {
-    if (foodItem) {
-      setCustomGrams(foodItem.serving?.grams || foodItem.grams || '');
+    if (foodItem && !isEditing) {
+      const grams = foodItem.serving?.grams || foodItem.grams || '';
+      setCustomGrams(grams);
     }
-  }, [foodItem]);
+  }, [foodItem, isEditing]);
+
+  // Phase 1: Debounced Auto-Save (Weight Input Only)
+  // Automatically save changes after 1 second of inactivity when typing weight
+  useEffect(() => {
+    // Skip if Phase 2 instant save is in progress
+    if (isInstantSavingRef.current) {
+      return;
+    }
+    
+    // Only auto-save when in edit mode and have valid data
+    if (!isEditing || !customGrams) {
+      return;
+    }
+
+    // Don't auto-save if user hasn't made any changes yet
+    if (!hasUserChangesRef.current) {
+      return;
+    }
+
+    // Clear any existing auto-save timer
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+
+    // Validate data before setting timer
+    const grams = parseFloat(customGrams);
+    if (isNaN(grams) || grams <= 0) {
+      return;
+    }
+
+    // Set new timer for auto-save after 1 second of inactivity
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      handleAutoSave();
+      hasUserChangesRef.current = false; // Reset after save
+    }, 1000);
+
+    // Cleanup: Clear timer when dependencies change or component unmounts
+    return () => {
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+    };
+  }, [customGrams, isEditing]);
 
   // Smart debounced search with prefetching
   const debouncedSearch = useCallback((query) => {
@@ -73,7 +142,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Check cache first (synchronous, instant)
     const cached = geminiService.getCachedSearch(trimmed);
     if (cached) {
-      console.log('✅ [EditableFoodItem] Using cached results for:', trimmed);
       setSearchResults(cached.results || []);
       setIsSearching(false);
       setSearchError(null);
@@ -86,15 +154,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     // Debounce the API call - only execute after 800ms of no typing
     searchTimeoutRef.current = setTimeout(async () => {
-      console.log('🔍 [EditableFoodItem] Searching for:', trimmed);
-      
       try {
         const results = await geminiService.searchFood(trimmed);
         setSearchResults(results.results || []);
         setSearchError(null);
-        console.log('✅ [EditableFoodItem] Search complete, results cached');
       } catch (error) {
-        console.error('❌ [EditableFoodItem] Search failed:', error);
         
         // Preserve existing results, show user-friendly error
         setSearchResults([]);
@@ -119,6 +183,14 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     return () => {
       if (searchTimeoutRef.current) {
         clearTimeout(searchTimeoutRef.current);
+      }
+      // Phase 1: Cleanup auto-save timer on unmount
+      if (autoSaveTimeoutRef.current) {
+        clearTimeout(autoSaveTimeoutRef.current);
+      }
+      // Phase 5: Cleanup retry timeout on unmount
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
       }
     };
   }, []);
@@ -153,6 +225,37 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Examples: "2 idlis", "two parottas", "1/2 cup", "1 1/2 bowls", "3 chapatis", "3"
     let detectedQuantity = 1;
     let itemUnit = itemName.toLowerCase();
+    let useFractionFormat = false; // Track if original was in fraction format
+    
+    // Helper function to convert decimal to fraction string
+    const decimalToFraction = (decimal) => {
+      if (decimal % 1 === 0) {
+        // Whole number
+        return decimal.toString();
+      }
+      
+      const whole = Math.floor(decimal);
+      const fractionalPart = decimal - whole;
+      
+      // Common fractions
+      const fractions = {
+        0.25: '1/4',
+        0.5: '1/2',
+        0.75: '3/4',
+        0.333: '1/3',
+        0.667: '2/3'
+      };
+      
+      // Find closest fraction match
+      for (const [dec, frac] of Object.entries(fractions)) {
+        if (Math.abs(fractionalPart - parseFloat(dec)) < 0.01) {
+          return whole > 0 ? `${whole} ${frac}` : frac;
+        }
+      }
+      
+      // If no common fraction match, use decimal
+      return decimal % 1 === 0 ? decimal.toString() : decimal.toFixed(1);
+    };
     
     // First, try to convert text numbers to digits (e.g., "two parottas" -> "2 parottas")
     let normalizedDesc = portionDesc;
@@ -181,6 +284,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Try to match fraction pattern (e.g., "1/2 cup", "1 1/2 bowls", "0.5 cup")
     const fractionMatch = normalizedDesc.match(/(\d+)?\s*(\d+)\/(\d+)\s*([a-zA-Z]+)/);
     if (fractionMatch) {
+      useFractionFormat = true; // Original was in fraction format
       const whole = fractionMatch[1] ? parseInt(fractionMatch[1]) : 0;
       const numerator = parseInt(fractionMatch[2]);
       const denominator = parseInt(fractionMatch[3]);
@@ -209,74 +313,124 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       }
     }
     
-    // For fractions, generate options in fraction increments
-    // For whole numbers, generate integer increments
-    const isFraction = detectedQuantity < 1 || detectedQuantity % 1 !== 0;
-    const maxMultiplier = detectedQuantity * 2;
+    // Generate serving options dynamically following the pattern:
+    // 0.25 (1/4) → 0.25, 0.5, 0.75, 1, 1.5
+    // 0.5 (1/2) → 0.25, 0.5, 1, 1.5, 2
+    // 1 → 0.5, 1, 1.5, 2, 3
+    // 2 → 1, 1.5, 2, 2.5, 3, 4
+    // 3 → 1, 2, 2.5, 3, 3.5, 4, 5
+    // Pattern: Always use 0.5 and 1 increments only, minimum 0.25
     
-    if (isFraction) {
-      // Generate fractional options (e.g., 1/2, 1, 1 1/2, 2)
-      const increment = detectedQuantity; // Use the fraction as increment
-      for (let qty = increment; qty <= maxMultiplier; qty += increment) {
-        const multiplier = qty / detectedQuantity;
-        const gramsForQty = Math.round(baseServing.grams * multiplier);
-        const nutritionMultiplier = gramsForQty / 100;
-        
-        // Format fraction display
-        let qtyDisplay;
-        if (qty < 1) {
-          // Pure fraction like 1/2
-          const denom = Math.round(1 / qty);
-          qtyDisplay = `1/${denom}`;
-        } else if (qty % 1 === 0) {
-          // Whole number
-          qtyDisplay = qty.toString();
-        } else {
-          // Mixed fraction like 1 1/2
-          const whole = Math.floor(qty);
-          const frac = qty - whole;
-          const denom = Math.round(1 / frac);
-          qtyDisplay = `${whole} 1/${denom}`;
-        }
-        
-        options.push({
-          description: Math.abs(qty - detectedQuantity) < 0.01
-            ? `${qtyDisplay} ${itemUnit} (original)` 
-            : `${qtyDisplay} ${itemUnit}`,
-          grams: gramsForQty,
-          nutrition: {
-            calories: Math.round(per100g.calories * nutritionMultiplier),
-            protein: Math.ceil(per100g.protein * nutritionMultiplier),
-            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-            fat: Math.ceil(per100g.fat * nutritionMultiplier),
-            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
-          },
-          isOriginal: Math.abs(qty - detectedQuantity) < 0.01
-        });
+    const servingSizes = [];
+    
+    // Generate options below original
+    if (detectedQuantity <= 0.5) {
+      // For 0.25 and 0.5: add smaller fractions
+      if (detectedQuantity > 0.25) {
+        servingSizes.push(0.25);
       }
-    } else {
-      // Generate whole number options (e.g., 1, 2, 3, 4)
-      for (let qty = 1; qty <= maxMultiplier; qty++) {
-        const multiplier = qty / detectedQuantity;
-        const gramsForQty = Math.round(baseServing.grams * multiplier);
-        const nutritionMultiplier = gramsForQty / 100;
-        
-        options.push({
-          description: qty === detectedQuantity 
-            ? `${qty} ${itemUnit} (original)` 
-            : `${qty} ${itemUnit}`,
-          grams: gramsForQty,
-          nutrition: {
-            calories: Math.round(per100g.calories * nutritionMultiplier),
-            protein: Math.ceil(per100g.protein * nutritionMultiplier),
-            carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
-            fat: Math.ceil(per100g.fat * nutritionMultiplier),
-            fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
-          },
-          isOriginal: qty === detectedQuantity
-        });
+      if (detectedQuantity === 0.5) {
+        // Already have 0.25, don't duplicate
+      }
+    } else if (detectedQuantity === 0.75) {
+      servingSizes.push(0.25, 0.5);
+    } else if (detectedQuantity === 1) {
+      servingSizes.push(0.5);
+    } else if (detectedQuantity === 1.5) {
+      servingSizes.push(0.5, 1);
+    } else if (detectedQuantity >= 2) {
+      // For 2 and above: add options below in 0.5 decrements
+      // Try to get 2 options below, but not go below 0.5 for values < 2, or 1 for values >= 2
+      const minValue = detectedQuantity >= 2 ? 1 : 0.5;
+      
+      // First option below (larger decrement)
+      let firstBelow;
+      if (detectedQuantity >= 3) {
+        // For 3+: go down by 1 or more
+        firstBelow = Math.max(minValue, detectedQuantity - Math.floor(detectedQuantity / 2));
+      } else {
+        // For 2-2.5: go down by 0.5 or 1
+        firstBelow = Math.max(minValue, detectedQuantity - 1);
+      }
+      
+      // Second option below (smaller decrement)
+      const secondBelow = detectedQuantity - 0.5;
+      
+      // Add first below if valid and different from second
+      if (firstBelow >= minValue && Math.abs(firstBelow - secondBelow) > 0.1) {
+        servingSizes.push(firstBelow);
+      }
+      
+      // Add second below if valid
+      if (secondBelow >= minValue) {
+        servingSizes.push(secondBelow);
       }
     }
+    
+    // Add original
+    servingSizes.push(detectedQuantity);
+    
+    // Generate options above original
+    if (detectedQuantity < 0.5) {
+      // For 0.25: add 0.5, 0.75, 1, 1.5
+      servingSizes.push(0.5, 0.75, 1, 1.5);
+    } else if (detectedQuantity === 0.5) {
+      // For 0.5: add 1, 1.5, 2
+      servingSizes.push(1, 1.5, 2);
+    } else if (detectedQuantity === 0.75) {
+      // For 0.75: add 1, 1.5, 2
+      servingSizes.push(1, 1.5, 2);
+    } else {
+      // For 1 and above: add +0.5, +1, and larger jumps
+      servingSizes.push(detectedQuantity + 0.5);
+      servingSizes.push(detectedQuantity + 1);
+      
+      // Add bigger jumps for variety
+      if (detectedQuantity >= 2) {
+        servingSizes.push(detectedQuantity + 1.5);
+        servingSizes.push(detectedQuantity + 2.5);
+      } else {
+        // For 1-1.5: add 3 as a bigger option
+        servingSizes.push(detectedQuantity + 1.5);
+      }
+    }
+    
+    // Remove duplicates and sort
+    const uniqueSizes = [...new Set(servingSizes)].sort((a, b) => a - b);
+    
+    // Generate options from unique sizes
+    uniqueSizes.forEach((qty) => {
+      const multiplier = qty / detectedQuantity;
+      const gramsForQty = Math.round(baseServing.grams * multiplier);
+      const nutritionMultiplier = gramsForQty / 100;
+      
+      // Format display based on original format
+      let qtyDisplay;
+      if (useFractionFormat) {
+        // Use fraction format (e.g., "1/2", "3/4", "1 1/2")
+        qtyDisplay = decimalToFraction(qty);
+      } else {
+        // Use decimal format (e.g., "0.5", "1", "1.5")
+        qtyDisplay = qty % 1 === 0 ? qty.toString() : qty.toFixed(1);
+      }
+      
+      const isOriginal = Math.abs(qty - detectedQuantity) < 0.01;
+      
+      options.push({
+        description: isOriginal 
+          ? `${qtyDisplay} ${itemUnit} (original)` 
+          : `${qtyDisplay} ${itemUnit}`,
+        grams: gramsForQty,
+        nutrition: {
+          calories: Math.round(per100g.calories * nutritionMultiplier),
+          protein: Math.ceil(per100g.protein * nutritionMultiplier),
+          carbs: Math.ceil(per100g.carbs * nutritionMultiplier),
+          fat: Math.ceil(per100g.fat * nutritionMultiplier),
+          fiber: Math.ceil((per100g.fiber || 0) * nutritionMultiplier)
+        },
+        isOriginal: isOriginal
+      });
+    });
     
     return options;
   };
@@ -287,13 +441,15 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     const multiplier = parseFloat(grams) / 100;
     
-    return {
+    const result = {
       calories: Math.round(per100g.calories * multiplier),
       protein: Math.ceil(per100g.protein * multiplier),
       carbs: Math.ceil(per100g.carbs * multiplier),
       fat: Math.ceil(per100g.fat * multiplier),
       fiber: Math.ceil((per100g.fiber || 0) * multiplier)
     };
+    
+    return result;
   };
 
   // Handle search input with prefetching
@@ -310,7 +466,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Select food from search results
   const handleFoodSelect = (food) => {
-    console.log('[EditableFoodItem] Selected food:', food.name);
     setSelectedFood(food);
     setSearchQuery(food.name);
     setSearchResults([]);
@@ -333,23 +488,53 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     setServingOptions(options);
     
-    // Set default serving
-    setCurrentServing(options[0]);
-    setCurrentServingIndex(0);
-    setCustomGrams(options[0].grams.toString());
-  };
-
-  // Handle serving size dropdown change
-  const handleServingChange = (e) => {
-    const selectedIndex = parseInt(e.target.value);
-    const selected = servingOptions[selectedIndex];
+    // IMPORTANT: Preserve the original weight from the food item being edited
+    // Do NOT change customGrams - keep the existing weight
+    const existingGrams = parseFloat(customGrams);
     
-    if (selected) {
-      console.log('[EditableFoodItem] Serving changed:', selected.description);
-      setCurrentServing(selected);
-      setCurrentServingIndex(selectedIndex);
-      setCustomGrams(selected.grams.toString());
+    // Find the closest serving option to the existing weight (for display purposes)
+    if (!isNaN(existingGrams) && existingGrams > 0) {
+      const closestIndex = options.reduce((closestIdx, opt, idx) => {
+        const currentDiff = Math.abs(options[closestIdx].grams - existingGrams);
+        const newDiff = Math.abs(opt.grams - existingGrams);
+        return newDiff < currentDiff ? idx : closestIdx;
+      }, 0);
+      
+      setCurrentServing(options[closestIndex]);
+      setCurrentServingIndex(closestIndex);
+      // Keep the existing customGrams value - DO NOT override it
+    } else {
+      // Fallback to default serving only if no valid existing weight
+      setCurrentServing(options[0]);
+      setCurrentServingIndex(0);
+      setCustomGrams(options[0].grams.toString());
     }
+    
+    // Phase 2: Instant save when food is selected (no delay)
+    // Set flag to prevent Phase 1 from interfering
+    isInstantSavingRef.current = true;
+    
+    // Cancel any pending auto-save timer from Phase 1
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+      autoSaveTimeoutRef.current = null;
+    }
+    
+    // Save immediately with the newly selected food
+    // Use setTimeout to ensure React has queued the state updates
+    setTimeout(() => {
+      // Determine grams to use
+      const gramsToUse = !isNaN(existingGrams) && existingGrams > 0 
+        ? existingGrams.toString() 
+        : options[0].grams.toString();
+      
+      handleAutoSave(food, gramsToUse);
+      
+      // Reset flag after save completes
+      setTimeout(() => {
+        isInstantSavingRef.current = false;
+      }, 200);
+    }, 150);
   };
 
   // Handle custom grams input
@@ -360,67 +545,64 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     if (value === '' || /^\d*\.?\d*$/.test(value)) {
       setCustomGrams(value);
       
+      // Phase 1: Mark that user made a change
+      hasUserChangesRef.current = true;
+      
       const gramsValue = parseFloat(value);
       
       if (!isNaN(gramsValue) && servingOptions.length > 0) {
-        // Find the maximum grams in serving options
-        const maxServingIndex = servingOptions.reduce((maxIdx, opt, idx) => 
-          opt.grams > servingOptions[maxIdx].grams ? idx : maxIdx
-        , 0);
-        const maxServing = servingOptions[maxServingIndex];
-        
         // Check if grams exactly match any serving option (within 1g tolerance)
         const exactMatchIndex = servingOptions.findIndex(
           opt => Math.abs(opt.grams - gramsValue) < 1
         );
         
         if (exactMatchIndex !== -1) {
-          // Exact match found
-          console.log('[EditableFoodItem] Grams matched serving:', servingOptions[exactMatchIndex].description);
+          // Exact match found - update serving display to match
           setCurrentServing(servingOptions[exactMatchIndex]);
           setCurrentServingIndex(exactMatchIndex);
-        } else if (gramsValue >= maxServing.grams) {
-          // If typed grams exceeds max serving, auto-select max serving and cap the weight
-          console.log('[EditableFoodItem] Grams exceeds max, selecting:', maxServing.description);
-          setCurrentServing(maxServing);
-          setCurrentServingIndex(maxServingIndex);
-          setCustomGrams(maxServing.grams.toString());
         } else {
-          // Find closest serving option for display, but keep custom grams for calculation
+          // Find closest serving option for display only
+          // IMPORTANT: Never override customGrams - let user type any value
           const closestIndex = servingOptions.reduce((closestIdx, opt, idx) => {
             const currentDiff = Math.abs(servingOptions[closestIdx].grams - gramsValue);
             const newDiff = Math.abs(opt.grams - gramsValue);
             return newDiff < currentDiff ? idx : closestIdx;
           }, 0);
           
-          console.log('[EditableFoodItem] Custom grams, showing closest serving:', servingOptions[closestIndex].description);
           setCurrentServing(servingOptions[closestIndex]);
           setCurrentServingIndex(closestIndex);
-          // Keep the custom typed value for calculations
+          // customGrams is already set above - don't override it
         }
       }
     }
   };
 
-  // Save changes
-  const handleSave = () => {
-    if (!customGrams) {
-      alert('Please specify weight in grams');
+  // Auto-save changes (keeps edit mode open) with retry logic
+  const handleAutoSave = async (overrideFood = null, overrideGrams = null, overrideServingDesc = null, currentRetry = 0) => {
+    const gramsToUse = overrideGrams || customGrams;
+    
+    if (!gramsToUse) {
       return;
     }
     
-    const grams = parseFloat(customGrams);
+    const grams = parseFloat(gramsToUse);
     if (isNaN(grams) || grams <= 0) {
-      alert('Please enter valid grams (greater than 0)');
       return;
     }
     
-    // Use selected food or current food item
-    const foodToSave = selectedFood || {
+    // Use override food (for instant saves) or selected food or current food item
+    const foodToSave = overrideFood || selectedFood || {
       name: foodItem.name,
       category: foodItem.category,
       per100g: foodItem.per100g
     };
+    
+    // Validate per100g exists
+    if (!foodToSave.per100g) {
+      console.error('❌ Cannot save: per100g data missing', foodToSave);
+      setSyncStatus('error');
+      return;
+    }
     
     // Calculate final nutrition
     const nutrition = calculateNutrition(foodToSave.per100g, grams);
@@ -429,7 +611,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       name: foodToSave.name,
       category: foodToSave.category,
       serving: {
-        description: currentServing?.description || `${grams}g`,
+        description: overrideServingDesc || currentServing?.description || `${grams}g`,
         grams: grams
       },
       grams: grams,
@@ -437,17 +619,103 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       per100g: foodToSave.per100g
     };
     
-    console.log('[EditableFoodItem] Saving updated food:', updatedFood);
+    try {
+      // Phase 7: Cancel any pending save request
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+      
+      // Phase 5: Set saving status (prevents closing during save)
+      setSyncStatus(currentRetry > 0 ? 'retrying' : 'saving');
+      
+      // Phase 5: Add timeout wrapper for API call (10 seconds max)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Request timeout')), 10000)
+      );
+      
+      await Promise.race([
+        onUpdate(index, updatedFood),
+        timeoutPromise
+      ]);
+      
+      // Success - reset retry count and show saved status
+      setRetryCount(0);
+      setSyncStatus('saved');
+      
+      if (syncStatusTimeoutRef.current) {
+        clearTimeout(syncStatusTimeoutRef.current);
+      }
+      
+      syncStatusTimeoutRef.current = setTimeout(() => {
+        setSyncStatus('idle');
+      }, 1500);
+      
+    } catch (error) {
+      console.error(`❌ Auto-save failed (attempt ${currentRetry + 1}/${maxRetries}):`, error);
+      
+      // Phase 5: Auto-retry with exponential backoff
+      if (currentRetry < maxRetries - 1) {
+        const retryDelay = Math.pow(2, currentRetry) * 1000; // 1s, 2s, 4s
+        setRetryCount(currentRetry + 1);
+        setSyncStatus('retrying');
+        
+        // Clear any existing retry timeout
+        if (retryTimeoutRef.current) {
+          clearTimeout(retryTimeoutRef.current);
+        }
+        
+        retryTimeoutRef.current = setTimeout(() => {
+          handleAutoSave(overrideFood, overrideGrams, overrideServingDesc, currentRetry + 1);
+        }, retryDelay);
+      } else {
+        // Max retries reached - show persistent error
+        setRetryCount(0);
+        setSyncStatus('error');
+        // Don't auto-hide error - let user see it and manually retry
+      }
+    }
+  };
+  
+  // Phase 5: Manual retry function
+  const handleManualRetry = () => {
+    setRetryCount(0);
+    setSyncStatus('retrying'); // Set to retrying state to block modal close
+    handleAutoSave(); // This will handle the save and update status accordingly
+  };
+
+  // Close edit mode - data already auto-saved
+  const handleDone = () => {
+    // Clear any pending auto-save timers
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    if (syncStatusTimeoutRef.current) {
+      clearTimeout(syncStatusTimeoutRef.current);
+    }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
     
-    // Call parent update handler
-    onUpdate(index, updatedFood);
+    // Phase 7: Cancel any pending API request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    
+    // Reset change tracking
+    hasUserChangesRef.current = false;
+    isInstantSavingRef.current = false;
+    setRetryCount(0);
     
     // Exit edit mode
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
+    setSearchError(null);
     setSelectedFood(null);
     setServingOptions([]);
+    setSyncStatus('idle');
     
     // Notify parent if callback provided
     if (onSave) {
@@ -457,7 +725,20 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Cancel editing
   const handleCancel = () => {
-    console.log('[EditableFoodItem] Cancelled editing');
+    // Phase 1: Clear auto-save timer when canceling
+    if (autoSaveTimeoutRef.current) {
+      clearTimeout(autoSaveTimeoutRef.current);
+    }
+    
+    // Phase 5: Clear retry timeout
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+    }
+    
+    // Phase 1: Reset change tracking
+    hasUserChangesRef.current = false;
+    setRetryCount(0);
+    
     setIsEditing(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -474,8 +755,10 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Enter edit mode
   const handleEdit = () => {
-    console.log('[EditableFoodItem] Entering edit mode for:', foodItem.name);
     setIsEditing(true);
+    
+    // Phase 1: Reset change tracking when entering edit mode
+    hasUserChangesRef.current = false;
     
     // Pre-fill with current food data - ensure we have a valid number
     const currentGrams = parseFloat(foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight) || 100;
@@ -498,7 +781,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       fat: Math.ceil(currentFat * 100 / currentGrams),
       fiber: Math.ceil(currentFiber * 100 / currentGrams)
     };
-
     
     const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`;
     
@@ -531,14 +813,6 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       defaultServing: baseServing,
       servingOptions: dynamicOptions.slice(1) // Exclude first option as it's the default
     };
-    
-    console.log('[EditableFoodItem] Mock food created:', { 
-      name: mockFood.name, 
-      currentGrams, 
-      per100g: mockFood.per100g,
-      servingOptionsCount: dynamicOptions.length,
-      currentNutrition: { currentCalories, currentProtein, currentCarbs, currentFat }
-    });
     
     setSelectedFood(mockFood);
     setServingOptions(dynamicOptions); // Use all dynamic options including the original
@@ -597,12 +871,66 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
   // Edit mode
   return (
-    <div className="bg-blue-50/50 rounded-lg p-3 space-y-3 border border-blue-200">
-      {/* Search Input */}
+    <div className={`
+      bg-blue-50/50 rounded-lg p-3 space-y-3 border-2 transition-all duration-300
+      ${syncStatus === 'saved' ? 'border-blue-200 glow-green-pulse' : 'border-blue-200'}
+      ${syncStatus === 'error' ? 'border-red-400' : ''}
+      ${syncStatus === 'retrying' ? 'border-orange-400' : ''}
+    `}>
+      {/* Search Input with Sync Status */}
       <div>
-        <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-          <Search className="w-3.5 h-3.5 text-gray-500" />
-          <span>Search Food (Optional)</span>
+        <label className="block text-xs font-medium text-gray-700 mb-1.5">
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5">
+              <Search className="w-3.5 h-3.5 text-gray-500" />
+              <span>Search Food</span>
+            </div>
+            
+            {/* Phase 3 & 5: Sync Status Indicator - Top Right */}
+            {syncStatus !== 'idle' && (
+              <div 
+                className="flex items-center gap-1.5 text-xs font-medium whitespace-nowrap"
+                role="status"
+                aria-live="polite"
+              >
+                {syncStatus === 'retrying' && (
+                  <>
+                    <div className="w-3 h-3 border-2 border-orange-600 border-t-transparent rounded-full animate-spin flex-shrink-0" aria-hidden="true" />
+                    <span className="text-orange-700">Retrying... ({retryCount}/{maxRetries})</span>
+                    <span className="sr-only">Retrying save, attempt {retryCount} of {maxRetries}</span>
+                  </>
+                )}
+                {syncStatus === 'saved' && (
+                  <>
+                    <svg className="w-3.5 h-3.5 text-green-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="text-green-700">Saved</span>
+                    <span className="sr-only">Changes saved successfully</span>
+                  </>
+                )}
+                {syncStatus === 'error' && (
+                  <>
+                    <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                    <span className="text-red-700 font-medium">Save Failed</span>
+                    <span className="sr-only">Error saving changes. Use the retry button to try again.</span>
+                    <button
+                      onClick={handleManualRetry}
+                      aria-label="Retry saving changes"
+                      className="ml-2 px-2.5 py-0.5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-colors flex items-center gap-1"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Retry
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </label>
         <div className="relative">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -734,10 +1062,29 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
                     key={idx}
                     type="button"
                     onClick={() => {
+                      // Phase 2: Set flag to prevent Phase 1 from interfering
+                      isInstantSavingRef.current = true;
+                      
                       setCurrentServing(option);
                       setCurrentServingIndex(idx);
                       setCustomGrams(option.grams.toString());
                       setIsServingDropdownOpen(false);
+                      
+                      // Phase 2: Instant save on dropdown change
+                      // Cancel any pending auto-save timer from Phase 1
+                      if (autoSaveTimeoutRef.current) {
+                        clearTimeout(autoSaveTimeoutRef.current);
+                        autoSaveTimeoutRef.current = null;
+                      }
+                      
+                      // Save immediately with the selected serving's grams
+                      setTimeout(() => {
+                        handleAutoSave(null, option.grams.toString(), option.description);
+                        // Reset flag after save completes
+                        setTimeout(() => {
+                          isInstantSavingRef.current = false;
+                        }, 200);
+                      }, 150);
                     }}
                     className={`w-full px-3 py-2 rounded-lg transition-all text-left text-sm ${
                       currentServingIndex === idx
@@ -786,44 +1133,45 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
           </div>
         </div>
 
-        {/* Nutrition Preview - Always show when grams available */}
+        {/* Nutrition Preview - Glassmorphism Pills */}
         {customGrams && selectedFood && selectedFood.per100g && (
-          <div className="bg-white rounded-lg p-2.5 border border-gray-200">
-            <div className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
               <span>Preview ({customGrams}g)</span>
-            </div>
+            </label>
             {(() => {
               const nutrition = calculateNutrition(selectedFood.per100g, parseFloat(customGrams));
               return nutrition ? (
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="bg-red-50 rounded p-2 border border-red-100">
-                    <div className="text-xs text-red-600 mb-0.5 flex items-center gap-1">
-                      <Flame className="w-3 h-3" />
-                      Cal
-                    </div>
-                    <div className="text-lg font-bold text-red-700">{nutrition.calories}</div>
+                <div className="flex flex-wrap justify-start gap-1.5 sm:gap-2">
+                  {/* Calories Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-red-700 whitespace-nowrap">{nutrition.calories}</span>
                   </div>
-                  <div className="bg-blue-50 rounded p-2 border border-blue-100">
-                    <div className="text-xs text-blue-600 mb-0.5 flex items-center gap-1">
-                      <Beef className="w-3 h-3" />
-                      Protein
-                    </div>
-                    <div className="text-lg font-bold text-blue-700">{nutrition.protein}g</div>
+                  
+                  {/* Protein Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-blue-50/80 backdrop-blur-sm border border-blue-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Beef className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-blue-700 whitespace-nowrap">{nutrition.protein}g</span>
                   </div>
-                  <div className="bg-yellow-50 rounded p-2 border border-yellow-100">
-                    <div className="text-xs text-yellow-600 mb-0.5 flex items-center gap-1">
-                      <Wheat className="w-3 h-3" />
-                      Carbs
-                    </div>
-                    <div className="text-lg font-bold text-yellow-700">{nutrition.carbs}g</div>
+                  
+                  {/* Carbs Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-yellow-50/80 backdrop-blur-sm border border-yellow-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Wheat className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-700 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-yellow-800 whitespace-nowrap">{nutrition.carbs}g</span>
                   </div>
-                  <div className="bg-purple-50 rounded p-2 border border-purple-100">
-                    <div className="text-xs text-purple-600 mb-0.5 flex items-center gap-1">
-                      <Droplet className="w-3 h-3" />
-                      Fat
-                    </div>
-                    <div className="text-lg font-bold text-purple-700">{nutrition.fat}g</div>
+                  
+                  {/* Fat Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-purple-50/80 backdrop-blur-sm border border-purple-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Droplet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-purple-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-purple-700 whitespace-nowrap">{nutrition.fat}g</span>
+                  </div>
+                  
+                  {/* Fiber Pill - Glassmorphism */}
+                  <div className="flex items-center justify-center gap-1.5 sm:gap-2 min-h-[40px] sm:min-h-[44px] bg-green-50/80 backdrop-blur-sm border border-green-200/50 rounded-full px-2.5 sm:px-3 py-2 sm:py-2.5 flex-shrink-0">
+                    <Leaf className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-green-600 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-bold text-green-700 whitespace-nowrap">{nutrition.fiber}g</span>
                   </div>
                 </div>
               ) : null;
@@ -834,27 +1182,32 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
       {/* Action Buttons - only show if not hidden by parent */}
       {!hideButtons && (
-        <div className="flex gap-2">
-          <button
-            onClick={handleSave}
-            disabled={!customGrams || parseFloat(customGrams) <= 0}
-            className={`flex-1 px-4 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm ${
-              customGrams && parseFloat(customGrams) > 0
-                ? 'bg-green-600 hover:bg-green-700 text-white'
-                : 'bg-gray-200 text-gray-400 cursor-not-allowed'
-            }`}
-          >
-            <Save className="w-4 h-4" />
-            <span>Save</span>
-          </button>
-          <button
-            onClick={handleCancel}
-            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors flex items-center justify-center gap-1.5 text-sm"
-          >
-            <X className="w-4 h-4" />
-            <span>Cancel</span>
-          </button>
-        </div>
+        <button
+          onClick={handleDone}
+          disabled={syncStatus === 'saving' || syncStatus === 'retrying'}
+          aria-busy={syncStatus === 'saving' || syncStatus === 'retrying'}
+          aria-live="polite"
+          className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
+            syncStatus === 'saving' || syncStatus === 'retrying'
+              ? 'bg-gray-400 cursor-not-allowed opacity-50'
+              : 'bg-indigo-600 hover:bg-indigo-700'
+          }`}
+        >
+          <div className="flex items-center justify-center gap-2 h-5">
+            {(syncStatus === 'saving' || syncStatus === 'retrying') ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                <span className="inline-block">Saving...</span>
+                <span className="sr-only">Saving changes, please wait</span>
+              </>
+            ) : (
+              <>
+                <X className="w-4 h-4" aria-hidden="true" />
+                <span className="inline-block">Close Edit</span>
+              </>
+            )}
+          </div>
+        </button>
       )}
     </div>
   );

@@ -54,6 +54,9 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   // undo placeholders: key -> { originalMeal, expiresAt }
   const [undoState, setUndoState] = useState({});
   const [undoing, setUndoing] = useState(false);
+  
+  // Track when update is from auto-save to prevent UI reset
+  const isAutoSaveUpdateRef = useRef(false);
 
   // Initialize local editable data when meal changes
   useEffect(() => {
@@ -71,8 +74,15 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
       }));
       setLocalDetailedItems(transformedItems);
       setLocalNutrition(foodData.nutrition || {});
-      setIsEditing(false);
-      setEditingStates({});
+      
+      // Only reset editing states if NOT from auto-save
+      if (!isAutoSaveUpdateRef.current) {
+        setIsEditing(false);
+        setEditingStates({});
+      }
+      
+      // Reset the flag
+      isAutoSaveUpdateRef.current = false;
     }
   }, [selectedMeal]);
 
@@ -90,11 +100,14 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   }, [editingStates]);
 
   // Handle editing state change from EditableFoodItem
-  const handleEditingChange = useCallback((index, isItemEditing) => {
+  const handleEditingChange = useCallback((index, isItemEditing, isBlocking = false) => {
     setEditingStates(prev => ({
       ...prev,
       [index]: isItemEditing
     }));
+    
+    // Track if any item is actively saving/retrying (blocks modal close)
+    setIsSaving(isBlocking);
   }, []);
 
   // Handle cancel editing
@@ -194,22 +207,22 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to update meal');
       }
-
-      console.log('💾 Meal updated successfully:', result);
       
-      // Show success status
-      setSaveStatus('success');
+      // IMPORTANT: Return immediately so EditableFoodItem can show "Saved ✓" instantly
+      // Continue state updates in background without blocking
       setIsSaving(false);
       
-      // Exit editing mode and auto-hide success after 2 seconds
-      setEditingStates({});
-      setEditingIndex(null);
+      // Don't exit editing mode - let user continue editing
+      // setEditingStates({});
+      // setEditingIndex(null);
       
-      setTimeout(() => {
-        setSaveStatus(null);
-      }, 2000);
+      // Don't show success message for auto-save
+      // setSaveStatus('success');
+      // setTimeout(() => {
+      //   setSaveStatus(null);
+      // }, 2000);
 
-      // Update local analyses state
+      // Update local analyses state (non-blocking - happens after return)
       setAnalyses(prev => prev.map(meal => 
         meal.ID === selectedMeal.ID
           ? {
@@ -224,6 +237,9 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
           : meal
       ));
 
+      // Set flag to prevent UI reset on auto-save
+      isAutoSaveUpdateRef.current = true;
+      
       // Update selectedMeal
       setSelectedMeal(prev => ({
         ...prev,
@@ -235,33 +251,18 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         TotalFiber: Math.round(newTotals.fiber || 0)
       }));
 
-      // Reload stats to reflect changes
-      await fetchDayAnalyses(selectedDate);
+      // Reload stats to reflect changes (non-blocking - happens in background)
+      fetchDayAnalyses(selectedDate).catch(err => 
+        console.error('❌ Error reloading stats:', err)
+      );
+      
+      // Function returns here immediately after API success
     } catch (error) {
       console.error('❌ Error updating meal:', error);
       
-      // Show error status
-      setSaveStatus('error');
-      
-      // Revert changes on error
-      const foodData = parseAnalysisData(selectedMeal.AnalysisData);
-      const transformedItems = (foodData.detailedItems || []).map(item => ({
-        ...item,
-        serving: {
-          description: item.portion,
-          grams: item.weight_g
-        },
-        portionDescription: item.portion,
-        grams: item.weight_g
-      }));
-      setLocalDetailedItems(transformedItems);
-      setLocalNutrition(foodData.nutrition || {});
-      
-      // Auto-reset error after 3 seconds
-      setTimeout(() => {
-        setSaveStatus(null);
-        setIsSaving(false);
-      }, 3000);
+      // Phase 5: Don't show error UI in parent - let EditableFoodItem handle it
+      // Just re-throw the error so EditableFoodItem can catch and display retry UI
+      throw error;
     }
   };
 
@@ -524,7 +525,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   };
 
   const handleCloseModal = () => {
-    // Prevent closing if currently saving or showing status
+    // Prevent closing if currently saving/retrying or showing status
     if (isSaving || saveStatus) {
       return;
     }
@@ -1364,8 +1365,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
               </div>
             )}
 
-            {/* Saving indicator overlay */}
-            {isSaving && !saveStatus && (
+            {/* Saving indicator overlay - DISABLED for auto-save UX */}
+            {/* {isSaving && !saveStatus && (
               <div className="absolute inset-0 bg-white/95 rounded-3xl flex items-center justify-center z-10 animate-fadeIn">
                 <div className="text-center p-8">
                   <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1375,7 +1376,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                   <p className="text-sm text-gray-500">Updating your meal data</p>
                 </div>
               </div>
-            )}
+            )} */}
 
             {(() => {
               // Use white for '+ {others} more' in modal
@@ -1522,45 +1523,35 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
 
                   {/* Action buttons area */}
                   {isEditing ? (
-                    // Save and Cancel buttons when editing
-                    <div className="p-4 pt-0 flex gap-2">
+                    // Close Edit button when editing
+                    <div className="p-4 pt-0">
                       <button
                         onClick={handleCancelEditing}
                         disabled={isSaving}
-                        className="flex-1 flex items-center justify-center gap-2 rounded-lg text-gray-700 text-sm font-medium px-4 py-2 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                        </svg>
-                        Cancel
-                      </button>
-                      <button
-                        disabled={isSaving}
-                        className={`flex-1 flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
-                          isSaving
-                            ? 'bg-green-400 cursor-not-allowed'
-                            : 'bg-green-500 hover:bg-green-600 hover:shadow-md active:scale-95'
+                        aria-busy={isSaving}
+                        aria-live="polite"
+                        className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
+                          isSaving 
+                            ? 'bg-gray-400 cursor-not-allowed opacity-50' 
+                            : 'bg-indigo-600 hover:bg-indigo-700'
                         }`}
-                        onClick={() => {
-                          // Call save on the editing item
-                          if (editingIndex !== null && itemRefs.current[editingIndex]) {
-                            itemRefs.current[editingIndex].save();
-                          }
-                        }}
                       >
-                        {isSaving ? (
-                          <>
-                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            <span>Saving...</span>
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                            </svg>
-                            Save
-                          </>
-                        )}
+                        <div className="flex items-center justify-center gap-2 h-5">
+                          {isSaving ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" aria-hidden="true" />
+                              <span className="inline-block">Saving...</span>
+                              <span className="sr-only">Saving changes, please wait</span>
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                              <span className="inline-block">Close Edit</span>
+                            </>
+                          )}
+                        </div>
                       </button>
                     </div>
                   ) : (
