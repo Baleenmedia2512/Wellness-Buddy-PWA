@@ -490,11 +490,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const currentMonthStats = getMonthStats(currentMonthEntries);
 
     return (
-      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-6">
+      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2">
         <div className="px-4 md:px-6">
           {/* Current Month Header */}
-          <div className="mt-5 mb-6">
-            <div className="flex items-rigth justify-between">
+          {/* <div className="mt-5 mb-6"> */}
+            {/* <div className="flex items-rigth justify-between"> */}
               {/* <div>
                 <h2 className="text-2xl font-bold text-gray-800">{currentMonth}</h2>
                 <p className="text-sm text-gray-500 mt-1">Weight tracking history</p>
@@ -502,8 +502,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               {/* <div className="bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full p-3">
                 <Scale className="w-6 h-6 text-white" />
               </div> */}
-            </div>
-          </div>
+            {/* </div> */}
+          {/* </div> */}
 
           {/* Latest Weight Card - Always show (with data or empty state) */}
           <div className="mb-6">

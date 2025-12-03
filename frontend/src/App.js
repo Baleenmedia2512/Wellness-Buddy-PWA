@@ -55,6 +55,7 @@ function WellnessBuddyApp() {
     localStorage.getItem('currentPage') === 'weight-tracking' ||
     localStorage.getItem('currentPage') === 'weight-insights'
   );
+  const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
@@ -278,12 +279,21 @@ function WellnessBuddyApp() {
         return;
       }
     }
+    // Set the initial tab based on the last analyzed image type
+    if (imageType === 'weight') {
+      setDashboardInitialTab('weight');
+    } else if (imageType === 'food') {
+      setDashboardInitialTab('nutrition');
+    } else {
+      setDashboardInitialTab(null); // Use default/last used tab
+    }
     setShowDashboard(true);
     localStorage.setItem('currentPage', 'dashboard');
-  }, [user, checkUserStatus]);
+  }, [user, checkUserStatus, imageType]);
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setDashboardInitialTab(null); // Clear initial tab when going back
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -1785,6 +1795,7 @@ function WellnessBuddyApp() {
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
           onMealDelete={handleDashboardMealDelete}
+          initialTab={dashboardInitialTab}
         />
       </Suspense>
     );

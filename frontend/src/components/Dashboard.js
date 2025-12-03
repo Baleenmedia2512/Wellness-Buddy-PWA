@@ -9,10 +9,15 @@ const WeightDashboard = lazy(() => import('./WeightDashboard'));
 /**
  * Unified Dashboard with tabs for Nutrition and Weight tracking
  * Replaces the separate Nutrition Dashboard and Weight Tracking pages
+ * @param {string} initialTab - Optional tab to open initially ('nutrition' or 'weight')
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
   const [activeTab, setActiveTab] = useState(() => {
-    // Restore last active tab from localStorage
+    // Use initialTab prop if provided, otherwise restore from localStorage
+    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight')) {
+      localStorage.setItem('dashboard_activeTab', initialTab);
+      return initialTab;
+    }
     return localStorage.getItem('dashboard_activeTab') || 'nutrition';
   });
 
