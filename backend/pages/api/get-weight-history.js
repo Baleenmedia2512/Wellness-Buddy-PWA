@@ -67,12 +67,26 @@ export default async function handler(req, res) {
 
     const [rows] = await connection.execute(historyQuery, [userId]);
 
+    // ✅ Format CreatedAt as local time string (without UTC conversion)
+    // MySQL stores local time, but mysql2 returns Date objects which get serialized as UTC
+    const formattedRows = rows.map(row => ({
+      ...row,
+      CreatedAt: row.CreatedAt instanceof Date 
+        ? row.CreatedAt.getFullYear() + '-' +
+          String(row.CreatedAt.getMonth() + 1).padStart(2, '0') + '-' +
+          String(row.CreatedAt.getDate()).padStart(2, '0') + 'T' +
+          String(row.CreatedAt.getHours()).padStart(2, '0') + ':' +
+          String(row.CreatedAt.getMinutes()).padStart(2, '0') + ':' +
+          String(row.CreatedAt.getSeconds()).padStart(2, '0')
+        : row.CreatedAt
+    }));
+
     // ✅ Calculate min/max/avg from the loaded data
-    const weights = rows.map(r => parseFloat(r.Weight)).filter(w => !isNaN(w));
+    const weights = formattedRows.map(r => parseFloat(r.Weight)).filter(w => !isNaN(w));
     const globalMinWeight = weights.length > 0 ? Math.min(...weights) : null;
     const globalMaxWeight = weights.length > 0 ? Math.max(...weights) : null;
     const globalAvgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null;
-    const totalCount = rows.length;
+    const totalCount = formattedRows.length;
 
     // ✅ Calculate statistics
     let stats = {
@@ -85,19 +99,19 @@ export default async function handler(req, res) {
       maxWeight: globalMaxWeight,
     };
 
-    if (rows.length > 0) {
+    if (formattedRows.length > 0) {
       stats.latestWeight = {
-        value: parseFloat(rows[0].Weight),
-        date: rows[0].CreatedAt,
+        value: parseFloat(formattedRows[0].Weight),
+        date: formattedRows[0].CreatedAt,
       };
 
-      if (rows.length > 1) {
+      if (formattedRows.length > 1) {
         stats.previousWeight = {
-          value: parseFloat(rows[1].Weight),
-          date: rows[1].CreatedAt,
+          value: parseFloat(formattedRows[1].Weight),
+          date: formattedRows[1].CreatedAt,
         };
         stats.weightChange =
-          parseFloat(rows[0].Weight) - parseFloat(rows[1].Weight);
+          parseFloat(formattedRows[0].Weight) - parseFloat(formattedRows[1].Weight);
       }
     }
 
@@ -105,7 +119,7 @@ export default async function handler(req, res) {
 
     res.status(200).json({
       success: true,
-      data: rows,
+      data: formattedRows,
       stats,
     });
   } catch (error) {

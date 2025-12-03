@@ -87,6 +87,7 @@ export default async function handler(req, res) {
     const bmiValue = bmi && !isNaN(parseFloat(bmi)) ? parseFloat(bmi) : null;
     const bodyFatValue = bodyFat && !isNaN(parseFloat(bodyFat)) ? parseFloat(bodyFat) : null;
     const muscleMassValue = muscleMass && !isNaN(parseFloat(muscleMass)) ? parseFloat(muscleMass) : null;
+    // Use provided BMR (manually entered)
     const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
 
     const [result] = await connection.execute(insertQuery, [
@@ -109,6 +110,7 @@ export default async function handler(req, res) {
         userId,
         weightValue: weight,
         unit,
+        bmr: bmrValue,
         imageBase64: imageBase64ToSave,
         timestamp: new Date().toISOString()
       }

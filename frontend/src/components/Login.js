@@ -78,11 +78,18 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
         setSuccessMessage('OTP verified successfully!');
 
         // ✅ Save user info to localStorage (or state via prop)
-        localStorage.setItem('otpUser', JSON.stringify(data.user));
+        // Include isNewUser flag in the stored user data
+        const userDataWithNewFlag = {
+          ...data.user,
+          isNewUser: data.isNewUser === true
+        };
+        localStorage.setItem('otpUser', JSON.stringify(userDataWithNewFlag));
+        console.log('📦 [Login] OTP verified, isNewUser:', data.isNewUser);
 
         setTimeout(async () => {
           setSuccessMessage('');
-          await onOtpVerified();
+          // Pass isNewUser to the callback
+          await onOtpVerified(data.isNewUser === true);
           
           // Reset verified state after callback in case user is inactive
           // This allows them to try again if needed
