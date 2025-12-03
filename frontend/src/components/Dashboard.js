@@ -1,6 +1,30 @@
 // src/components/Dashboard.js
 import React, { useState, lazy, Suspense } from 'react';
-import { ArrowLeft, AppleIcon, Scale, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+
+// Custom weighing scale icon component
+const WeighingScaleIcon = ({ className }) => (
+  <svg 
+    className={className} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    {/* Outer rounded square (scale body) */}
+    <rect x="3" y="3" width="18" height="18" rx="3" ry="3" />
+    {/* Inner dial display area */}
+    <path d="M6 10 C6 7, 18 7, 18 10" />
+    {/* Dial tick marks */}
+    <line x1="8" y1="8.5" x2="8" y2="9.5" />
+    <line x1="12" y1="7" x2="12" y2="8" />
+    <line x1="16" y1="8.5" x2="16" y2="9.5" />
+    {/* Needle pointing up */}
+    <line x1="12" y1="12" x2="12" y2="9" />
+  </svg>
+);
 
 // ✅ LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
@@ -103,7 +127,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <Scale className="h-4 w-4" />
+              <WeighingScaleIcon className="h-4 w-4" />
               <span>Weight</span>
             </button>
           </div>
