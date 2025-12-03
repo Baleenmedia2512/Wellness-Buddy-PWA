@@ -33,13 +33,13 @@ android {
     }
     
     signingConfigs {
-        release {
-            storeFile file('../wellness-buddy-keystore.jks')
-            storePassword 'MyWellnessBuddy@234#'
-            keyAlias 'wellness-buddy'
-            keyPassword 'MyWellnessBuddy@234#'
-        }
+    release {
+        storeFile file('../wellness-valley-keystore.jks')
+        storePassword 'MyWellnessValley@234#'
+        keyAlias 'wellness-valley'
+        keyPassword 'MyWellnessValley@234#'
     }
+}
     
     buildTypes {
         release {
