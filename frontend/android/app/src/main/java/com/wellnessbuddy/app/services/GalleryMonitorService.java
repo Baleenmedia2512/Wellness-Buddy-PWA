@@ -306,7 +306,7 @@ public class GalleryMonitorService extends Service {
     
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
-        android.content.SharedPreferences prefs = getSharedPreferences("WellnessBuddy", MODE_PRIVATE);
+        android.content.SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_PRIVATE);
         String userEmail = prefs.getString("current_user_email", null);
         // Log all stored preferences for debugging
         Log.d(TAG, "🔍 SharedPreferences Debug:");

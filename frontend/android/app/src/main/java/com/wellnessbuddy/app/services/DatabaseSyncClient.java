@@ -48,7 +48,7 @@ public class DatabaseSyncClient {
                     MediaType.parse("application/json")
                 ))
                 .addHeader("Content-Type", "application/json")
-                .addHeader("User-Agent", "WellnessBuddy-Android/1.0")
+                .addHeader("User-Agent", "WellnessValley-Android/1.0")
                 .build();
                 
             Response response = client.newCall(request).execute();
@@ -62,7 +62,7 @@ public class DatabaseSyncClient {
                     
                     // Cache the successful lookup result in SharedPreferences
                     if (context != null) {
-                        android.content.SharedPreferences prefs = context.getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
+                        android.content.SharedPreferences prefs = context.getSharedPreferences("WellnessValley", Context.MODE_PRIVATE);
                         prefs.edit().putString("cached_db_user_id", dbUserId).apply();
                         Log.d(TAG, "✅ Database UserId cached locally: " + dbUserId);
                     }
@@ -130,7 +130,7 @@ public class DatabaseSyncClient {
                     MediaType.parse("application/json")
                 ))
                 .addHeader("Content-Type", "application/json")
-                .addHeader("User-Agent", "WellnessBuddy-Android/1.0")
+                .addHeader("User-Agent", "WellnessValley-Android/1.0")
                 .build();
 
             Response response = client.newCall(request).execute();
@@ -158,7 +158,7 @@ public class DatabaseSyncClient {
             Request request = new Request.Builder()
                 .url(apiBaseUrl + "/api/get-background-analysis?userId=test&limit=1")
                 .get()
-                .addHeader("User-Agent", "WellnessBuddy-Android/1.0")
+                .addHeader("User-Agent", "WellnessValley-Android/1.0")
                 .build();
                 
             Response response = client.newCall(request).execute();

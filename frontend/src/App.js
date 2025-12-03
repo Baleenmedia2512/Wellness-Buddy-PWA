@@ -98,17 +98,17 @@ function WellnessValleyApp() {
 
   const loadCachedBgPopup = () => {
     try {
-      const raw = localStorage.getItem('wellnessBuddy_cachedBgPopup');
+      const raw = localStorage.getItem('wellnessValley_cachedBgPopup');
       if (!raw) return null;
       const cached = JSON.parse(raw);
       if (!cached?.analysisId) return null;
-      const ackId = localStorage.getItem('wellnessBuddy_lastBgNutritionId');
+      const ackId = localStorage.getItem('wellnessValley_lastBgNutritionId');
       if (ackId && String(ackId) === String(cached.analysisId)) return null;
 
       // Optional TTL (6h) to avoid very old resurfacing
       const MAX_AGE_MS = 1000 * 60 * 60 * 6;
       if (cached.cachedAt && Date.now() - cached.cachedAt > MAX_AGE_MS) {
-        localStorage.removeItem('wellnessBuddy_cachedBgPopup');
+        localStorage.removeItem('wellnessValley_cachedBgPopup');
         return null;
       }
       return cached;
@@ -120,20 +120,20 @@ function WellnessValleyApp() {
   const persistBgCache = (popup) => {
     try {
       localStorage.setItem(
-        'wellnessBuddy_cachedBgPopup',
+        'wellnessValley_cachedBgPopup',
         JSON.stringify({ ...popup, cachedAt: Date.now() })
       );
     } catch {}
   };
 
   const clearBgCache = () => {
-    try { localStorage.removeItem('wellnessBuddy_cachedBgPopup'); } catch {}
+    try { localStorage.removeItem('wellnessValley_cachedBgPopup'); } catch {}
   };
 
   const ackBgPopup = (analysisId) => {
     try {
       if (analysisId != null) {
-        localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(analysisId));
+        localStorage.setItem('wellnessValley_lastBgNutritionId', String(analysisId));
       }
       clearBgCache(); // ensure it won’t repaint on refresh
     } catch {}
@@ -144,7 +144,7 @@ function WellnessValleyApp() {
   // Success popup state - support for multiple popups with localStorage persistence
   const [successPopups, setSuccessPopups] = useState(() => {
     try {
-      const saved = localStorage.getItem('wellnessBuddy_successPopups');
+      const saved = localStorage.getItem('wellnessValley_successPopups');
       if (saved) {
         const parsedPopups = JSON.parse(saved);
         const validPopups = parsedPopups.filter(
@@ -340,7 +340,7 @@ function WellnessValleyApp() {
       if (!latest) return;
 
       // Only show if not acknowledged
-      const lastAckId = localStorage.getItem('wellnessBuddy_lastBgNutritionId');
+      const lastAckId = localStorage.getItem('wellnessValley_lastBgNutritionId');
       if (String(latest.ID) === String(lastAckId)) return;
 
       // Build image
@@ -597,7 +597,7 @@ function WellnessValleyApp() {
   // Persist popups to localStorage whenever they change
   useEffect(() => {
     try {
-      localStorage.setItem('wellnessBuddy_successPopups', JSON.stringify(successPopups));
+      localStorage.setItem('wellnessValley_successPopups', JSON.stringify(successPopups));
     } catch (error) {
       console.error('❌ Failed to save popups to localStorage:', error);
     }
@@ -1375,7 +1375,7 @@ function WellnessValleyApp() {
     localStorage.removeItem('isOtpVerified');
     localStorage.removeItem('otpUser');
     localStorage.removeItem('currentPage');
-    localStorage.removeItem('wellnessBuddy_successPopups');
+    localStorage.removeItem('wellnessValley_successPopups');
     clearBgCache();
 
     try {

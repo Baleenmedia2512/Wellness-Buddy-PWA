@@ -91,7 +91,7 @@ public class GalleryMonitorPlugin extends Plugin {
             }
 
             // Save user info in preferences
-            SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
+            SharedPreferences prefs = getContext().getSharedPreferences("WellnessValley", Context.MODE_PRIVATE);
             SharedPreferences.Editor editor = prefs.edit();
             editor.putString("current_user_id", userId);
 
@@ -203,7 +203,7 @@ public class GalleryMonitorPlugin extends Plugin {
     @PluginMethod
     public void getCurrentUser(PluginCall call) {
         try {
-            SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
+            SharedPreferences prefs = getContext().getSharedPreferences("WellnessValley", Context.MODE_PRIVATE);
             String userId = prefs.getString("current_user_id", null);
             String userEmail = prefs.getString("current_user_email", null);
             
@@ -220,7 +220,7 @@ public class GalleryMonitorPlugin extends Plugin {
     @PluginMethod
     public void clearCurrentUser(PluginCall call) {
         try {
-            SharedPreferences prefs = getContext().getSharedPreferences("WellnessBuddy", Context.MODE_PRIVATE);
+            SharedPreferences prefs = getContext().getSharedPreferences("WellnessValley", Context.MODE_PRIVATE);
             prefs.edit()
                 .remove("current_user_id")
                 .remove("current_user_email")

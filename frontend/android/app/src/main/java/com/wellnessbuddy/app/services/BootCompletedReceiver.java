@@ -105,7 +105,7 @@ public class BootCompletedReceiver extends BroadcastReceiver {
                 )
                 .setConstraints(constraints)
                 .addTag("service_heartbeat")
-                .addTag("wellness_buddy_background")
+                .addTag("wellness_valley_background")
                 .build();
             
             // Enqueue the work - REPLACE policy to update the interval
