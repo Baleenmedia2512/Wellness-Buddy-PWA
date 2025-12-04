@@ -9,10 +9,12 @@ import {
   Beef,
   Wheat,
   Droplet,
-  RotateCcw
+  RotateCcw,
+  Bug
 } from 'lucide-react';
 import '../LazyLoadStyles.css';
 import EditableFoodItem from './EditableFoodItem';
+import FoodCorrectionsDebugPanel from './FoodCorrectionsDebugPanel';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -36,6 +38,9 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
+
+  // Debug panel state
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // Editable food items state
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
@@ -864,9 +869,11 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                   <p className="text-sm text-gray-600">{formatDateHeader(selectedDate)}</p>
                 </div>
 
-                <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
-                  <Calendar className="h-5 w-5 text-gray-700" />
-                </button>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowCalendar(!showCalendar)} className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors">
+                    <Calendar className="h-5 w-5 text-gray-700" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1513,6 +1520,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                                 onEditingChange={handleEditingChange}
                                 disabled={isEditing && !editingStates[index]}
                                 hideButtons={true}
+                                user={user}
                               />
                             </div>
                           ))}
@@ -1688,6 +1696,23 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
           </div>
         </div>
       )}
+      
+      {/* Debug Panel Button (Bottom Right - Consistent with Main Page) */}
+      <button
+        onClick={() => setShowDebugPanel(true)}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
+        title="Open Food Corrections Debug Panel"
+        aria-label="Open Food Corrections Debug Panel"
+      >
+        <Bug className="h-5 w-5 md:h-6 md:w-6" />
+      </button>
+      
+      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
+      <FoodCorrectionsDebugPanel
+        userId={user?.id}
+        isOpen={showDebugPanel}
+        onClose={() => setShowDebugPanel(false)}
+      />
     </div>
   );
 };

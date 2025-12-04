@@ -334,6 +334,7 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
                   onUpdate={handleFoodUpdate}
                   onEditingChange={handleEditingChange}
                   disabled={editingIndex !== null && editingIndex !== index}
+                  user={user}
                 />
               ))}
             </div>

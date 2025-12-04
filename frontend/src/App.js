@@ -4,6 +4,7 @@ import { useIonRouter } from '@ionic/react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
+import { Bug } from 'lucide-react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
 import TestImageGuide from './components/TestImageGuide';
@@ -12,6 +13,7 @@ import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
+import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
@@ -81,6 +83,9 @@ function WellnessBuddyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+  
+  // Debug panel state
+  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -406,6 +411,15 @@ function WellnessBuddyApp() {
       }
 
       if (user) {
+        // Get database UserId if not already attached
+        if (!user.id) {
+          const dbUserId = await getUserId(user);
+          if (dbUserId) {
+            user.id = dbUserId;
+            console.log('✅ [Auth State] Attached database UserId to user object:', user.id);
+          }
+        }
+        
         // Skip status check if this is a fresh Google sign-in that's being saved
         // The handleSignIn/handlePopupSignIn functions will handle status check after save
         const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
@@ -458,6 +472,15 @@ function WellnessBuddyApp() {
         if (otpUser) {
           try {
             const parsedUser = JSON.parse(otpUser);
+            
+            // Get database UserId if not already attached
+            if (!parsedUser.id) {
+              const dbUserId = await getUserId(parsedUser);
+              if (dbUserId) {
+                parsedUser.id = dbUserId;
+                console.log('✅ [OTP Restore] Attached database UserId to user object:', parsedUser.id);
+              }
+            }
             
             // Check user status before restoring
             const isActive = await checkUserStatus(parsedUser);
@@ -1586,6 +1609,16 @@ function WellnessBuddyApp() {
         onShowBackgroundHistory={showDashboardPage}
         onSignOut={handleSignOut}
       />
+      
+      {/* Debug Panel Button (Bottom Right - Mobile Friendly) */}
+      <button
+        onClick={() => setShowDebugPanel(true)}
+        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
+        title="Open Food Corrections Debug Panel"
+        aria-label="Open Food Corrections Debug Panel"
+      >
+        <Bug className="h-5 w-5 md:h-6 md:w-6" />
+      </button>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
         {/* Back button toast message */}
@@ -1787,6 +1820,13 @@ function WellnessBuddyApp() {
         onProfileUpdate={() => {
           console.log('✅ [NewUserProfile] Profile updated successfully');
         }}
+      />
+      
+      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
+      <FoodCorrectionsDebugPanel
+        userId={user?.id}
+        isOpen={showDebugPanel}
+        onClose={() => setShowDebugPanel(false)}
       />
     </div>
   );

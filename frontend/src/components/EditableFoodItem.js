@@ -1,13 +1,14 @@
 // src/components/EditableFoodItem.js
 import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { geminiService } from '../services/geminiService';
+import { saveFoodCorrection } from '../services/foodCorrectionService';
 import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet, Leaf } from 'lucide-react';
 
 /**
  * Editable food item component for nutrition breakdown
  * Allows users to search and replace food items with accurate serving sizes
  */
-const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChange, disabled, onSave, onCancel, hideButtons }, ref) => {
+const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChange, disabled, onSave, onCancel, hideButtons, user }, ref) => {
   // Display/Edit mode toggle
   const [isEditing, setIsEditing] = useState(false);
   
@@ -28,6 +29,9 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   // Original values for cancel
   const originalFoodRef = useRef(foodItem);
   const searchTimeoutRef = useRef(null);
+  
+  // Cache userId to avoid repeated API calls
+  const userIdRef = useRef(user?.id || null);
   
   // Auto-save timer ref (Phase 1: Debounced Auto-Save)
   const autoSaveTimeoutRef = useRef(null);
@@ -465,10 +469,59 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   };
 
   // Select food from search results
-  const handleFoodSelect = (food) => {
+  const handleFoodSelect = async (food) => {
+    console.log('[CORRECTION DEBUG] handleFoodSelect triggered');
+    console.log('[CORRECTION DEBUG] Original food:', originalFoodRef.current?.name);
+    console.log('[CORRECTION DEBUG] New food selected:', food.name);
+    
     setSelectedFood(food);
     setSearchQuery(food.name);
     setSearchResults([]);
+    
+    // Track food correction if name changed
+    try {
+      const originalName = originalFoodRef.current?.name;
+      const newName = food.name;
+      
+      // Check if user changed the food name
+      if (originalName && newName && originalName.trim().toLowerCase() !== newName.trim().toLowerCase()) {
+        console.log('[CORRECTION DEBUG] ✅ Name changed - saving correction');
+        
+        // Get userId (use cache first, then fetch if needed)
+        let userId = userIdRef.current || user?.id;
+        if (!userId && user) {
+          console.log('[CORRECTION DEBUG] Fetching userId from database...');
+          const { getUserId } = await import('../services/getUserId');
+          userId = await getUserId(user);
+          // Cache it for future use
+          if (userId) {
+            userIdRef.current = userId;
+          }
+        }
+        console.log('[CORRECTION DEBUG] User ID:', userId);
+        
+        if (userId) {
+          console.log('[CORRECTION DEBUG] Calling saveFoodCorrection API...');
+          // Save correction asynchronously (don't block UI)
+          saveFoodCorrection(userId, originalName, newName)
+            .then(response => {
+              console.log('[CORRECTION DEBUG] ✅ API Response:', response);
+              if (response.success) {
+                console.log('✅ Food correction saved:', response.message);
+              }
+            })
+            .catch(error => {
+              console.error('[CORRECTION DEBUG] ❌ API Error:', error);
+            });
+        } else {
+          console.log('[CORRECTION DEBUG] ❌ No userId found');
+        }
+      } else {
+        console.log('[CORRECTION DEBUG] ❌ Name not changed');
+      }
+    } catch (error) {
+      console.error('[CORRECTION DEBUG] ❌ Exception:', error);
+    }
     
     // Build serving options from defaultServing + servingOptions
     const options = [
@@ -685,7 +738,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   };
 
   // Close edit mode - data already auto-saved
-  const handleDone = () => {
+  const handleDone = async () => {
     // Clear any pending auto-save timers
     if (autoSaveTimeoutRef.current) {
       clearTimeout(autoSaveTimeoutRef.current);
