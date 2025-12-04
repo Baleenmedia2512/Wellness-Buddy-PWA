@@ -6,7 +6,6 @@ import { App } from '@capacitor/app';
 import { PushNotifications } from '@capacitor/push-notifications';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
-import SuccessSavePopup from './components/SuccessSavePopup';
 import TestImageGuide from './components/TestImageGuide';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
@@ -14,7 +13,6 @@ import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
-import { fetchLatestBackgroundNutrition } from './services/backgroundNutritionService';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
@@ -23,6 +21,7 @@ import { weightDetectionService } from './services/weightDetectionService';
 import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
+import UserProfileModal from './components/UserProfileModal';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -55,6 +54,7 @@ function WellnessValleyApp() {
     localStorage.getItem('currentPage') === 'weight-tracking' ||
     localStorage.getItem('currentPage') === 'weight-insights'
   );
+  const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
@@ -79,84 +79,70 @@ function WellnessValleyApp() {
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
+  // New user profile modal state - show profile page for first-time users
+  const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
-  // Make a compact, user-friendly title from foods[]
-  const titleFromFoods = (foods = []) => {
-    const list = Array.isArray(foods) ? foods : [];
-    const count = list.length;
-    if (count === 0) return 'Food';
-    const safe = (v) => (v?.toString?.() || '').trim();
-    const first = safe(list[0]?.name) || 'Food';
-    if (count === 1) return first;
-    if (count === 2) {
-      const second = safe(list[1]?.name) || 'another item';
-      return `${first} & ${second}`;
-    }
-    return `${first} + ${count - 1} more`;
-  };
+  // // Make a compact, user-friendly title from foods[]
+  // const titleFromFoods = (foods = []) => {
+  //   const list = Array.isArray(foods) ? foods : [];
+  //   const count = list.length;
+  //   if (count === 0) return 'Food';
+  //   const safe = (v) => (v?.toString?.() || '').trim();
+  //   const first = safe(list[0]?.name) || 'Food';
+  //   if (count === 1) return first;
+  //   if (count === 2) {
+  //     const second = safe(list[1]?.name) || 'another item';
+  //     return `${first} & ${second}`;
+  //   }
+  //   return `${first} + ${count - 1} more`;
+  // };
 
-  const loadCachedBgPopup = () => {
-    try {
-      const raw = localStorage.getItem('wellnessValley_cachedBgPopup');
-      if (!raw) return null;
-      const cached = JSON.parse(raw);
-      if (!cached?.analysisId) return null;
-      const ackId = localStorage.getItem('wellnessValley_lastBgNutritionId');
-      if (ackId && String(ackId) === String(cached.analysisId)) return null;
+  // const loadCachedBgPopup = () => {
+  //   try {
+  //     const raw = localStorage.getItem('wellnessBuddy_cachedBgPopup');
+  //     if (!raw) return null;
+  //     const cached = JSON.parse(raw);
+  //     if (!cached?.analysisId) return null;
+  //     const ackId = localStorage.getItem('wellnessBuddy_lastBgNutritionId');
+  //     if (ackId && String(ackId) === String(cached.analysisId)) return null;
 
-      // Optional TTL (6h) to avoid very old resurfacing
-      const MAX_AGE_MS = 1000 * 60 * 60 * 6;
-      if (cached.cachedAt && Date.now() - cached.cachedAt > MAX_AGE_MS) {
-        localStorage.removeItem('wellnessValley_cachedBgPopup');
-        return null;
-      }
-      return cached;
-    } catch {
-      return null;
-    }
-  };
+  //     // Optional TTL (6h) to avoid very old resurfacing
+  //     const MAX_AGE_MS = 1000 * 60 * 60 * 6;
+  //     if (cached.cachedAt && Date.now() - cached.cachedAt > MAX_AGE_MS) {
+  //       localStorage.removeItem('wellnessBuddy_cachedBgPopup');
+  //       return null;
+  //     }
+  //     return cached;
+  //   } catch {
+  //     return null;
+  //   }
+  // };
 
-  const persistBgCache = (popup) => {
-    try {
-      localStorage.setItem(
-        'wellnessValley_cachedBgPopup',
-        JSON.stringify({ ...popup, cachedAt: Date.now() })
-      );
-    } catch {}
-  };
+  // const persistBgCache = (popup) => {
+  //   try {
+  //     localStorage.setItem(
+  //       'wellnessBuddy_cachedBgPopup',
+  //       JSON.stringify({ ...popup, cachedAt: Date.now() })
+  //     );
+  //   } catch {}
+  // };
 
-  const clearBgCache = () => {
-    try { localStorage.removeItem('wellnessValley_cachedBgPopup'); } catch {}
-  };
+  // const clearBgCache = () => {
+  //   try { localStorage.removeItem('wellnessBuddy_cachedBgPopup'); } catch {}
+  // };
 
-  const ackBgPopup = (analysisId) => {
-    try {
-      if (analysisId != null) {
-        localStorage.setItem('wellnessValley_lastBgNutritionId', String(analysisId));
-      }
-      clearBgCache(); // ensure it won’t repaint on refresh
-    } catch {}
-  };
+  // const ackBgPopup = (analysisId) => {
+  //   try {
+  //     if (analysisId != null) {
+  //       localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(analysisId));
+  //     }
+      // clearBgCache(); // ensure it won’t repaint on refresh
+    // } catch {}
+  // };
 
   // --------------------------------------------------------------------
-
-  // Success popup state - support for multiple popups with localStorage persistence
-  const [successPopups, setSuccessPopups] = useState(() => {
-    try {
-      const saved = localStorage.getItem('wellnessValley_successPopups');
-      if (saved) {
-        const parsedPopups = JSON.parse(saved);
-        const validPopups = parsedPopups.filter(
-          (popup) => popup && popup.id && popup.nutritionData && popup.imagePreview
-        );
-        return validPopups;
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  });
 
   // Navigation hook for back button handling
   const ionRouter = useIonRouter();
@@ -184,8 +170,7 @@ function WellnessValleyApp() {
     return () => cleanupBackButton();
   }, [ionRouter, showDashboard]);
 
-  // Background nutrition popup state — hydrate instantly from cache
-  const [bgNutritionPopup, setBgNutritionPopup] = useState(() => loadCachedBgPopup());
+
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -280,12 +265,21 @@ function WellnessValleyApp() {
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
     
+    // Set the initial tab based on the last analyzed image type
+    if (imageType === 'weight') {
+      setDashboardInitialTab('weight');
+    } else if (imageType === 'food') {
+      setDashboardInitialTab('nutrition');
+    } else {
+      setDashboardInitialTab(null); // Use default/last used tab
+    }
     setShowDashboard(true);
     localStorage.setItem('currentPage', 'dashboard');
-  }, [user, checkUserStatus, nutritionData, imagePreview]);
+  }, [user, checkUserStatus, nutritionData, imagePreview, imageType]);
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setDashboardInitialTab(null); // Clear initial tab when going back
     localStorage.setItem('currentPage', 'main');
   };
 
@@ -316,94 +310,7 @@ function WellnessValleyApp() {
     await handleSignOut();
   };
 
-  // Show background nutrition popup if new record exists and not acknowledged
-  useEffect(() => {
-    const maybeShowBgNutritionPopup = async () => {
-      if (!user) return;
-      
-      // Skip status check for fresh sign-ins (being handled by sign-in flow)
-      const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-      if (isFreshSignIn) {
-        return;
-      }
-      
-      // Re-check user status in real-time
-      const isActive = await checkUserStatus(user);
-      if (!isActive) return;
 
-      // Always use DB UserID only
-      let dbUserId = user.id;
-      if (!dbUserId) dbUserId = await getUserId(user);
-      if (!dbUserId) return;
-
-      const latest = await fetchLatestBackgroundNutrition(dbUserId);
-      if (!latest) return;
-
-      // Only show if not acknowledged
-      const lastAckId = localStorage.getItem('wellnessValley_lastBgNutritionId');
-      if (String(latest.ID) === String(lastAckId)) return;
-
-      // Build image
-      let imagePreview = null;
-      if (latest.ImageBase64) {
-        imagePreview = latest.ImageBase64.startsWith('data:image')
-          ? latest.ImageBase64
-          : `data:image/jpeg;base64,${latest.ImageBase64}`;
-      } else if (latest.ImagePath) {
-        imagePreview = latest.ImagePath;
-      }
-
-      // Parse nutrition
-      let parsed, nutritionData;
-      try {
-        parsed = typeof latest.AnalysisData === 'string'
-          ? JSON.parse(latest.AnalysisData)
-          : latest.AnalysisData;
-
-        const detailedItems = Array.isArray(parsed.foods)
-          ? parsed.foods.map((item) => ({
-              ...item,
-              calories: item.nutrition?.calories ?? 0,
-              protein: item.nutrition?.protein ?? 0,
-              carbs: item.nutrition?.carbs ?? 0,
-              fat: item.nutrition?.fat ?? 0,
-              fiber: item.nutrition?.fiber ?? 0
-            }))
-          : [];
-
-        // Title like: "Idli", "Idli & Sambar", "Idli + 2 more"
-        const category = { name: titleFromFoods(detailedItems) };
-
-        nutritionData = {
-          ...parsed,
-          nutrition: parsed?.total || {},
-          detailedItems,
-          category
-        };
-      } catch {
-        nutritionData = null;
-      }
-
-      // Guard: only meaningful nutrition
-      const n = nutritionData?.nutrition;
-      const meaningful =
-        n && ((n.calories > 0) || (n.protein > 0) || (n.carbs > 0) || (n.fat > 0));
-      if (!meaningful) return;
-
-      const popup = {
-        id: `bg-${latest.ID}`,
-        analysisId: latest.ID,
-        nutritionData,
-        imagePreview,
-        timestamp: latest.CreatedAt
-      };
-
-      setBgNutritionPopup(popup);
-      persistBgCache(popup); // cache for instant paint on next refresh
-    };
-
-    maybeShowBgNutritionPopup();
-  }, [user, checkUserStatus]);
 
   const handleSaveUserCache = async (user) => {
     if (user && Capacitor.isNativePlatform()) {
@@ -594,14 +501,6 @@ function WellnessValleyApp() {
     };
   }, []);
 
-  // Persist popups to localStorage whenever they change
-  useEffect(() => {
-    try {
-      localStorage.setItem('wellnessValley_successPopups', JSON.stringify(successPopups));
-    } catch (error) {
-      console.error('❌ Failed to save popups to localStorage:', error);
-    }
-  }, [successPopups]);
 
   // Auto-dismiss save error after 5 seconds
   useEffect(() => {
@@ -714,25 +613,7 @@ function WellnessValleyApp() {
       // Show success popup (similar to nutrition save)
       setError(null);
       
-      // Create weight success popup
-      const weightPopup = {
-        id: `weight-${Date.now()}`,
-        analysisId: data.id || null,
-        userId: userId, // Include userId for delete API
-        isWeight: true, // Flag to identify weight entries
-        weightData: {
-          weightValue: weightData.weightValue,
-          unit: weightData.unit,
-          bmi: weightData.bmi,
-          bodyFat: weightData.bodyFat,
-          muscleMass: weightData.muscleMass,
-          bmr: weightData.bmr
-        },
-        imagePreview: imageBase64,
-        timestamp: new Date()
-      };
-      
-      setSuccessPopups((prev) => [...prev, weightPopup]);
+
       
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -815,7 +696,7 @@ function WellnessValleyApp() {
           bmi: null,
           bodyFat: null,
           muscleMass: null,
-          bmr: null
+          bmr: manualData.bmr || null
         },
         currentWeightImage
       );
@@ -845,17 +726,6 @@ function WellnessValleyApp() {
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
-      // Only show popup on web for backward compatibility
-      if (!Capacitor.isNativePlatform()) {
-        const newPopup = {
-          id: Date.now().toString(),
-          analysisId: saveRes.id,
-          nutritionData: saveData.analysisResult,
-          imagePreview: saveData.imageBase64,
-          timestamp: new Date()
-        };
-        setSuccessPopups((prev) => [...prev, newPopup]);
-      }
     } catch (err) {
       console.error('❌ Save failed:', err.message);
       const friendlySaveError = getFriendlyErrorMessage(err);
@@ -1242,74 +1112,6 @@ function WellnessValleyApp() {
     }
   };
 
-  // Success popup handlers
-  const handleSuccessPopupClose = (popupId) => {
-    // If closing background nutrition popup
-    if (bgNutritionPopup && popupId === bgNutritionPopup.id) {
-      ackBgPopup(bgNutritionPopup.analysisId); // mark as acknowledged + clear cache
-      setBgNutritionPopup(null);
-      return;
-    }
-    if (popupId) {
-      setSuccessPopups((prev) => prev.filter((popup) => popup.id !== popupId));
-    } else {
-      setSuccessPopups([]);
-    }
-  };
-
-  const handleSuccessPopupDelete = async (popupId) => {
-    // Special-case delete for bg popup -> just acknowledge and hide
-    if (bgNutritionPopup && popupId === bgNutritionPopup.id) {
-      ackBgPopup(bgNutritionPopup.analysisId);
-      setBgNutritionPopup(null);
-      return;
-    }
-
-    // Normal saved popups
-    const popup = successPopups.find((p) => p.id === popupId);
-    if (!popup || !popup.analysisId) return;
-
-    try {
-      // Handle weight entries differently from nutrition entries
-      if (popup.isWeight) {
-        // Delete weight entry
-        const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            userId: popup.userId, 
-            entryId: popup.analysisId 
-          })
-        });
-        const data = await response.json();
-        if (!response.ok || !data.success) {
-          throw new Error(data.message || 'Failed to delete weight entry');
-        }
-        
-        // Clear weight result if it matches the deleted popup
-        if (weightResult && weightResult.weightValue === popup.weightData?.weightValue) {
-          setWeightResult(null);
-          setImagePreview(null);
-          setSelectedImage(null);
-        }
-      } else {
-        // Delete nutrition analysis
-        await deleteNutritionAnalysis({ id: popup.analysisId });
-        
-        if (nutritionData && popup.nutritionData === nutritionData) {
-          setNutritionData(null);
-          setImagePreview(null);
-          setSelectedImage(null);
-        }
-      }
-      
-      setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
-    } catch (err) {
-      console.error('Failed to delete:', err);
-      setSaveError('Failed to delete: ' + (err.message || 'Unknown error'));
-    }
-  };
-
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || '';
     
@@ -1354,7 +1156,6 @@ function WellnessValleyApp() {
     setError(null);
     setUser(null);
     setIsOtpVerified(false);
-    setSuccessPopups([]);
     setSaveError(null);
     setLoadingState('analyzing'); // Reset loading state
     
@@ -1375,17 +1176,6 @@ function WellnessValleyApp() {
     localStorage.removeItem('isOtpVerified');
     localStorage.removeItem('otpUser');
     localStorage.removeItem('currentPage');
-    localStorage.removeItem('wellnessValley_successPopups');
-    clearBgCache();
-
-    try {
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('successPopups_')) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch {}
 
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
@@ -1412,7 +1202,10 @@ function WellnessValleyApp() {
       if (user) {
         try {
           // Save user to backend first
-          await saveUserToBackend(user);
+          const saveResult = await saveUserToBackend(user);
+          console.log('📦 [handleSignIn] saveResult:', saveResult);
+          const isNewUser = saveResult?.isNewUser === true;
+          console.log('🆕 [handleSignIn] isNewUser:', isNewUser);
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -1448,6 +1241,14 @@ function WellnessValleyApp() {
           
           if (isActive) {
             setUser(user);
+            // Show profile modal for new users to complete their profile
+            if (isNewUser) {
+              console.log('🆕 [handleSignIn] New user - showing profile modal');
+              // Small delay to ensure user state is set before showing modal
+              setTimeout(() => {
+                setShowNewUserProfileModal(true);
+              }, 500);
+            }
           } else {
             // User was saved but is inactive or not found - modal will show
             setUser(user); // Keep user state so modal can show user email
@@ -1504,7 +1305,10 @@ function WellnessValleyApp() {
       if (user) {
         try {
           // Save user to backend first
-          await saveUserToBackend(user);
+          const saveResult = await saveUserToBackend(user);
+          console.log('📦 [handlePopupSignIn] saveResult:', saveResult);
+          const isNewUser = saveResult?.isNewUser === true;
+          console.log('🆕 [handlePopupSignIn] isNewUser:', isNewUser);
           
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -1540,6 +1344,14 @@ function WellnessValleyApp() {
           
           if (isActive) {
             setUser(user);
+            // Show profile modal for new users to complete their profile
+            if (isNewUser) {
+              console.log('🆕 [handlePopupSignIn] New user - showing profile modal');
+              // Small delay to ensure user state is set before showing modal
+              setTimeout(() => {
+                setShowNewUserProfileModal(true);
+              }, 500);
+            }
           } else {
             // User was saved but is inactive or not found - modal will show
             setUser(user); // Keep user state so modal can show user email
@@ -1600,7 +1412,12 @@ function WellnessValleyApp() {
       const data = await response.json();
       
       if (data.success) {
-        console.log('✅ [saveUserToBackend] User saved successfully');
+        console.log('✅ [saveUserToBackend] User saved successfully, isNewUser:', data.isNewUser);
+        
+        // If this is a new user, trigger the profile modal
+        if (data.isNewUser) {
+          console.log('🆕 [saveUserToBackend] New user detected, will show profile modal');
+        }
       } else {
         console.warn('⚠️ [saveUserToBackend] Save completed with warning:', data);
       }
@@ -1644,7 +1461,9 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleOtpVerified = async () => {
+  const handleOtpVerified = async (isNewUser = false) => {
+    console.log('🔐 [handleOtpVerified] Called with isNewUser:', isNewUser);
+    
     // Get the OTP user from localStorage
     const otpUser = localStorage.getItem('otpUser');
     
@@ -1666,6 +1485,15 @@ function WellnessValleyApp() {
         
         setIsOtpVerified(true);
         localStorage.setItem('isOtpVerified', 'true');
+        setUser(parsedUser);
+        
+        // Show profile modal for new users
+        if (isNewUser || parsedUser.isNewUser) {
+          console.log('🆕 [handleOtpVerified] New user - showing profile modal');
+          setTimeout(() => {
+            setShowNewUserProfileModal(true);
+          }, 500);
+        }
       } catch (error) {
         console.error('Failed to check OTP user status:', error);
       }
@@ -1733,15 +1561,7 @@ function WellnessValleyApp() {
     );
   }
 
-  // Remove success popup for a meal if deleted in dashboard (before undo expires)
-  const handleDashboardMealDelete = (deletedAnalysisId) => {
-    if (!deletedAnalysisId) return;
-    setSuccessPopups((prev) => prev.filter((p) => p.analysisId !== deletedAnalysisId));
-    if (bgNutritionPopup && bgNutritionPopup.analysisId === deletedAnalysisId) {
-      ackBgPopup(deletedAnalysisId); // mark acknowledged and clear cache
-      setBgNutritionPopup(null);
-    }
-  };
+
 
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (showDashboard) {
@@ -1751,7 +1571,7 @@ function WellnessValleyApp() {
           user={user}
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
-          onMealDelete={handleDashboardMealDelete}
+          initialTab={dashboardInitialTab}
         />
       </Suspense>
     );
@@ -1861,33 +1681,7 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {/* Success Save Popup: show both background and regular popups together */}
-        <SuccessSavePopup
-          popups={bgNutritionPopup ? [bgNutritionPopup, ...successPopups] : successPopups}
-          onClose={handleSuccessPopupClose}
-          onDelete={handleSuccessPopupDelete}
-          onRestore={(popupId, popup, indexHint, meta) => {
-            // If this is the background popup, put it back at the head
-            if (popupId?.startsWith?.('bg-')) {
-              setBgNutritionPopup(popup);
-              persistBgCache(popup); // keep cache fresh
-              // also ensure it doesn't exist in successPopups
-              setSuccessPopups((prev) => prev.filter((p) => p.id !== popupId));
-              return;
-            }
 
-            // Normal saved popup: reinsert at its previous position
-            setSuccessPopups((prev) => {
-              if (prev.find((p) => p.id === popupId)) return prev;
-              let insertAt = typeof indexHint === 'number' ? indexHint : prev.length;
-              if (meta?.hasBgHead) insertAt = Math.max(0, insertAt - 1);
-              insertAt = Math.max(0, Math.min(insertAt, prev.length));
-              const next = prev.slice();
-              next.splice(insertAt, 0, popup);
-              return next;
-            });
-          }}
-        />
 
         {/* Saving Toast */}
         {saveLoading && (
@@ -1983,6 +1777,16 @@ function WellnessValleyApp() {
           onCancel={handleDuplicateWeightCancel}
         />
       )}
+
+      {/* New User Profile Modal - shown for first-time users to complete their profile */}
+      <UserProfileModal
+        isOpen={showNewUserProfileModal}
+        onClose={() => setShowNewUserProfileModal(false)}
+        user={user}
+        onProfileUpdate={() => {
+          console.log('✅ [NewUserProfile] Profile updated successfully');
+        }}
+      />
     </div>
   );
 }

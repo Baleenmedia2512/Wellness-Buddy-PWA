@@ -273,8 +273,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error('User not authenticated or not found in database');
       }
       
-      // ✅ PERFORMANCE: Don't load images on initial fetch - much faster
-      const params = new URLSearchParams({ userId, includeImage: 'false' });
+      // Include images so they display in the weight cards
+      const params = new URLSearchParams({ userId, includeImage: 'true' });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
@@ -490,11 +490,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const currentMonthStats = getMonthStats(currentMonthEntries);
 
     return (
-      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-6">
+      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2">
         <div className="px-4 md:px-6">
           {/* Current Month Header */}
-          <div className="mt-5 mb-6">
-            <div className="flex items-rigth justify-between">
+          {/* <div className="mt-5 mb-6"> */}
+            {/* <div className="flex items-rigth justify-between"> */}
               {/* <div>
                 <h2 className="text-2xl font-bold text-gray-800">{currentMonth}</h2>
                 <p className="text-sm text-gray-500 mt-1">Weight tracking history</p>
@@ -502,64 +502,26 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               {/* <div className="bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full p-3">
                 <Scale className="w-6 h-6 text-white" />
               </div> */}
-            </div>
-          </div>
+            {/* </div> */}
+          {/* </div> */}
 
           {/* Latest Weight Card - Always show (with data or empty state) */}
           <div className="mb-6">
             <div className="w-full max-w-md mx-auto 
               bg-gradient-to-br to-white 
               backdrop-blur-xl rounded-2xl 
-              border 100 shadow-lg p-6 text-black">
+              border 100 shadow-lg p-4 sm:p-6 text-black">
 
-  {/* Current Weight */}
-  <div className="flex items-center justify-between mb-4 sm:mb-5">
-    <div className="flex-1">
-      <p className="text-xs sm:text-sm text-gray-500">Current Weight</p>
-      <div className="flex items-center gap-2 mt-1">
-        <span className="text-3xl sm:text-4xl font-bold text-black whitespace-nowrap">
-          {latestWeight ? latestWeight.Weight : '-'}
-          <span className="text-base sm:text-lg font-normal ml-1 text-gray-600">kg</span>
-        </span>
-        <span className="text-sm sm:text-base text-gray-700 whitespace-nowrap">
-          ( Previous: {previousWeight !== null ? previousWeight : '-'} kg
-          {latestWeight && previousWeight !== null ? (
-            (() => {
-              const diff = (parseFloat(latestWeight.Weight) - parseFloat(previousWeight)).toFixed(2);
-              const diffNum = parseFloat(diff);
-              if (diffNum > 0) {
-                return (
-                  <span className="inline-flex items-center gap-0.5 text-red-500 font-medium ml-1">
-                    <TrendingUp className="w-5 h-5" />
-                    +{diff} kg
-                  </span>
-                );
-              } else if (diffNum < 0) {
-                return (
-                  <span className="inline-flex items-center gap-0.5 text-green-600 font-medium ml-1">
-                    <TrendingDown className="w-5 h-5" />
-                    {diff} kg
-                  </span>
-                );
-              } else {
-                return (
-                  <span className="inline-flex items-center gap-0.5 text-gray-500 font-medium ml-1">
-                    <Minus className="w-5 h-5" />
-                    0.00 kg
-                  </span>
-                );
-              }
-            })()
-          ) : (
-            <span className="inline-flex items-center gap-0.5 text-gray-400 font-medium ml-1">
-              <Minus className="w-5 h-5" />
-              - kg
-            </span>
-          )}
-          {' '})
-        </span>
+  {/* Current Weight & Previous Weight - Side by Side */}
+  <div className="flex items-start justify-between mb-4 sm:mb-5">
+    {/* Current Weight - Left */}
+    <div className="flex-1 min-w-0">
+      <p className="text-[10px] xs:text-xs sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Current Weight</p>
+      <div className="flex items-baseline flex-wrap">
+        <span className="text-xl xs:text-2xl sm:text-3xl font-bold text-black">{latestWeight ? latestWeight.Weight : '-'}</span>
+        <span className="text-xs xs:text-sm sm:text-base font-normal ml-0.5 sm:ml-1 text-gray-600">kg</span>
       </div>
-      <p className="text-xs text-gray-500 mt-1.5 sm:mt-2">
+      <p className="text-[10px] xs:text-xs text-gray-500 mt-0.5 sm:mt-1">
         {latestWeight 
           ? new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', { 
               month: 'short', 
@@ -574,39 +536,81 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         }
       </p>
     </div>
+
+    {/* Previous Weight - Right */}
+    <div className="flex-1 min-w-0 text-right">
+      <p className="text-[10px] xs:text-xs sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Previous Weight</p>
+      <div className="flex items-baseline justify-end flex-wrap">
+        <span className="text-xl xs:text-2xl sm:text-3xl font-bold text-gray-500">{previousWeight !== null ? previousWeight : '-'}</span>
+        <span className="text-xs xs:text-sm sm:text-base font-normal ml-0.5 sm:ml-1 text-gray-600">kg</span>
+      </div>
+      {latestWeight && previousWeight !== null ? (
+        (() => {
+          const diff = (parseFloat(latestWeight.Weight) - parseFloat(previousWeight)).toFixed(2);
+          const diffNum = parseFloat(diff);
+          if (diffNum > 0) {
+            return (
+              <p className="flex items-center justify-end gap-0.5 text-[10px] xs:text-xs text-red-500 font-medium mt-0.5 sm:mt-1">
+                <TrendingUp className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
+                +{diff} kg
+              </p>
+            );
+          } else if (diffNum < 0) {
+            return (
+              <p className="flex items-center justify-end gap-0.5 text-[10px] xs:text-xs text-green-600 font-medium mt-0.5 sm:mt-1">
+                <TrendingDown className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
+                {diff} kg
+              </p>
+            );
+          } else {
+            return (
+              <p className="flex items-center justify-end gap-0.5 text-[10px] xs:text-xs text-gray-500 font-medium mt-0.5 sm:mt-1">
+                <Minus className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
+                0.00 kg
+              </p>
+            );
+          }
+        })()
+      ) : (
+        <p className="flex items-center justify-end gap-0.5 text-[10px] xs:text-xs text-gray-400 font-medium mt-0.5 sm:mt-1">
+          <Minus className="w-3 h-3 xs:w-3.5 xs:h-3.5" />
+          - kg
+        </p>
+      )}
+    </div>
   </div>
 
   {/* Stats Grid - Lowest & Highest - Always show (from ALL data via API) */}
-  <div className="grid grid-cols-2 gap-3 mt-4">
+  <div className="grid grid-cols-2 gap-2 sm:gap-3 mt-3 sm:mt-4">
     {/* Lowest */}
-    <div className="bg-white rounded-xl p-3 text-center border border-white/40">
-      <p className="text-xs text-gray-600 mb-1">Lowest</p>
-      <p className="text-xl font-bold text-gray-900">
+    <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 text-center border border-white/40">
+      <p className="text-[10px] xs:text-xs text-gray-600 mb-0.5 sm:mb-1">Lowest</p>
+      <p className="text-lg xs:text-xl font-bold text-gray-900">
         {globalStats?.minWeight !== null && globalStats?.minWeight !== undefined 
           ? globalStats.minWeight.toFixed(1) 
           : '-'}
       </p>
-      <p className="text-xs text-gray-500">kg</p>
+      <p className="text-[10px] xs:text-xs text-gray-500">kg</p>
       {globalStats?.minWeight !== null && globalStats?.minWeight !== undefined ? (
-        <TrendingDown className="w-4 h-4 mx-auto mt-1 text-green-600" />
+        <TrendingDown className="w-3 h-3 xs:w-4 xs:h-4 mx-auto mt-0.5 sm:mt-1 text-green-600" />
       ) : (
-        <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+        <Minus className="w-4 h-3 xs:w-5 xs:h-4 mx-auto mt-0.5 sm:mt-1 text-gray-400" />
       )}
     </div>
 
     {/* Highest */}
-    <div className="bg-white rounded-xl p-3 text-center border border-white/40">
-      <p className="text-xs text-gray-600 mb-1">Highest</p>
-      <p className="text-xl font-bold text-gray-900">
+    <div className="bg-white rounded-lg sm:rounded-xl p-2 sm:p-3 text-center border border-white/40">
+      <p className="text-[10px] xs:text-xs text-gray-600 mb-0.5 sm:mb-1">Highest</p>
+      <p className="text-lg xs:text-xl font-bold text-gray-900">
         {globalStats?.maxWeight !== null && globalStats?.maxWeight !== undefined 
           ? globalStats.maxWeight.toFixed(1) 
           : '-'}
       </p>
-      <p className="text-xs text-gray-500">kg</p>
+      <p className="text-[10px] xs:text-xs text-gray-500">kg</p>
       {globalStats?.maxWeight !== null && globalStats?.maxWeight !== undefined ? (
-        <TrendingUp className="w-4 h-4 mx-auto mt-1 text-red-500" />
+        <TrendingUp className="w-3 h-3 xs:w-4 xs:h-4 mx-auto mt-0.5 sm:mt-1 text-red-500" />
       ) : (
-        <Minus className="w-5 h-4 mx-auto mt-1 text-gray-400" />
+        <Minus className="w-4 h-3 xs:w-5 xs:h-4 mx-auto mt-0.5 sm:mt-1 text-gray-400" />
       )}
     </div>
   </div>

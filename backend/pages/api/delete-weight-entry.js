@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Database connection
+    // Database connection . //
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST,
       user: process.env.DB_USER,
