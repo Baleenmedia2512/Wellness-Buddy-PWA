@@ -515,8 +515,13 @@ Use USDA values. Return valid JSON only, no markdown.`;
         return parsed;
       }
       
-      // Unknown format
-      console.warn('⚠️ Unexpected JSON structure, returning as-is:', parsed);
+      // If it has foods property (nutrition analysis format), return as-is
+      if (parsed.foods) {
+        console.log('✅ Parsed nutrition analysis with foods property');
+        return parsed;
+      }
+      
+      // Unknown format - return as-is without warning (could be valid response)
       return parsed;
     } catch (parseError) {
       console.error('❌ Failed to parse response. Length:', text.length);

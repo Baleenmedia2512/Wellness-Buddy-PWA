@@ -153,8 +153,8 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
     <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden">
       {/* Header */}
       <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex-1">
+        <div className="flex items-center justify-center gap-3">
+          <div className="flex-1 text-center">
             <h2 className="text-xl font-bold">
               {generateMealName()}
             </h2>
