@@ -14,6 +14,7 @@ import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
 import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
+import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
@@ -420,6 +421,12 @@ function WellnessBuddyApp() {
           }
         }
         
+        // Load user context for AI personalization
+        if (user.id) {
+          console.log('🔄 [Auth State] Loading user context...');
+          await getUserContext(user.id);
+        }
+        
         // Skip status check if this is a fresh Google sign-in that's being saved
         // The handleSignIn/handlePopupSignIn functions will handle status check after save
         const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
@@ -480,6 +487,12 @@ function WellnessBuddyApp() {
                 parsedUser.id = dbUserId;
                 console.log('✅ [OTP Restore] Attached database UserId to user object:', parsedUser.id);
               }
+            }
+            
+            // Load user context for AI personalization
+            if (parsedUser.id) {
+              console.log('🔄 [OTP Restore] Loading user context...');
+              await getUserContext(parsedUser.id);
             }
             
             // Check user status before restoring
@@ -1462,6 +1475,10 @@ function WellnessBuddyApp() {
       
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem('freshGoogleSignIn');
+      
+      // Clear user context cache
+      clearContextCache();
+      console.log('🗑️ [Sign Out] User context cache cleared');
       
       if (Capacitor.isNativePlatform()) {
         try {
