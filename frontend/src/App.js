@@ -1610,7 +1610,7 @@ function WellnessBuddyApp() {
         onSignOut={handleSignOut}
       />
       
-      {/* Debug Panel Button (Bottom Right - Mobile Friendly) */}
+      {/* Debug Panel Button */}
       <button
         onClick={() => setShowDebugPanel(true)}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
