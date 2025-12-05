@@ -15,9 +15,9 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { email, name, height, bmr } = req.body;
+  const { email, name, height, bmr, dietType } = req.body;
 
-  console.log('👤 [update-user-profile] Request received:', { email, name, height, bmr });
+  console.log('👤 [update-user-profile] Request received:', { email, name, height, bmr, dietType });
 
   // Validate required field
   if (!email) {
@@ -72,6 +72,17 @@ export default async function handler(req, res) {
       updateValues.push(parseFloat(height));
     }
 
+    if (dietType !== undefined && dietType !== null) {
+      // Validate diet type
+      const validDietTypes = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
+      if (validDietTypes.includes(dietType)) {
+        updateFields.push('DietType = ?');
+        updateValues.push(dietType);
+      } else {
+        console.log('⚠️ [update-user-profile] Invalid diet type:', dietType);
+      }
+    }
+
     // Update team_table if there are fields to update
     if (updateFields.length > 0) {
       updateValues.push(email); // For WHERE clause
@@ -122,6 +133,7 @@ export default async function handler(req, res) {
         name: name || undefined,
         height: height ? parseFloat(height) : undefined,
         bmr: savedBmr || undefined,
+        dietType: dietType || undefined,
       },
     };
 

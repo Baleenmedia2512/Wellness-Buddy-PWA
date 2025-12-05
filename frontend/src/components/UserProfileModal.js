@@ -1,6 +1,6 @@
 // src/components/UserProfileModal.js
-import React, { useState, useEffect } from 'react';
-import { X, User, Save, CheckCircle, Flame } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { X, User, Save, CheckCircle, Flame, ChevronDown } from 'lucide-react';
 
 /**
  * User Profile Modal
@@ -10,6 +10,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const [name, setName] = useState('');
   const [height, setHeight] = useState('');
   const [bmr, setBmr] = useState('');
+  const [dietType, setDietType] = useState('');
+  const [isDietDropdownOpen, setIsDietDropdownOpen] = useState(false);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -17,6 +19,22 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const [hasSaved, setHasSaved] = useState(false);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const dropdownOptionsRef = useRef(null);
+  const modalContentRef = useRef(null);
+
+  // Auto-scroll to show all dropdown options when dropdown opens
+  useEffect(() => {
+    if (isDietDropdownOpen && dropdownOptionsRef.current && modalContentRef.current) {
+      setTimeout(() => {
+        // Scroll to the dropdown options to ensure they're fully visible
+        dropdownOptionsRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end', // Align to bottom to show all options
+          inline: 'nearest'
+        });
+      }, 100);
+    }
+  }, [isDietDropdownOpen]);
 
   // Fetch user profile when modal opens
   useEffect(() => {
@@ -59,6 +77,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         setName(profile.userName || user.name || '');
         setHeight(profile.height ? String(profile.height) : '');
         setBmr(profile.latestBmr ? String(Math.round(profile.latestBmr)) : '');
+        setDietType(profile.dietType || '');
       }
     } catch (err) {
       console.error('❌ Error fetching user profile:', err);
@@ -66,6 +85,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setName(user?.name || '');
       setHeight('');
       setBmr('');
+      setDietType('');
     } finally {
       setIsLoading(false);
     }
@@ -107,6 +127,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           name: name || undefined,
           height: height ? parseFloat(height) : undefined,
           bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
+          dietType: dietType || undefined,
         }),
       });
 
@@ -128,6 +149,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             name,
             height: height ? parseFloat(height) : null,
             bmr: data.data?.bmr || (bmr ? parseFloat(bmr) : null),
+            dietType: dietType || null,
           });
         }
         
@@ -156,7 +178,10 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div 
+        ref={modalContentRef}
+        className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
+      >
         {/* Header with User Photo and Name */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
@@ -250,6 +275,85 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                   />
                   <p className="text-xs text-gray-500 mt-1">
                     Basal Metabolic Rate (1100 - 2200 kcal/day)
+                  </p>
+                </div>
+
+                {/* Diet Preference - Custom Dropdown */}
+                <div className="relative">
+                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                    Diet Preference
+                  </label>
+                  
+                  {/* Dropdown Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => setIsDietDropdownOpen(!isDietDropdownOpen)}
+                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 flex items-center justify-between"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-gray-900 text-base truncate">
+                        {dietType ? (
+                          <>
+                            {dietType === 'Vegetarian' && '🌱 Vegetarian'}
+                            {dietType === 'Non-Vegetarian' && '🍗 Non-Vegetarian'}
+                            {dietType === 'Vegan' && '🥦 Vegan'}
+                            {dietType === 'Pescatarian' && '🐟 Pescatarian'}
+                          </>
+                        ) : (
+                          <span className="text-gray-400">Select diet type</span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronDown 
+                      className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ml-2 ${
+                        isDietDropdownOpen ? 'rotate-180' : ''
+                      }`}
+                    />
+                  </button>
+
+                  {/* Dropdown Options */}
+                  {isDietDropdownOpen && (
+                    <div 
+                      ref={dropdownOptionsRef}
+                      className="absolute z-50 w-full mt-2 bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden"
+                    >
+                      {[
+                        { value: 'Vegetarian', label: '🌱 Vegetarian', desc: 'No meat or fish' },
+                        { value: 'Non-Vegetarian', label: '🍗 Non-Vegetarian', desc: 'Includes all foods' },
+                        { value: 'Vegan', label: '🥦 Vegan', desc: 'No animal products' },
+                        { value: 'Pescatarian', label: '🐟 Pescatarian', desc: 'Fish but no meat' },
+                      ].map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            setDietType(option.value);
+                            setIsDietDropdownOpen(false);
+                          }}
+                          className={`w-full px-4 py-3 transition-all text-left border-b border-gray-100 last:border-b-0 ${
+                            dietType === option.value
+                              ? 'bg-green-50 text-green-900'
+                              : 'text-gray-700 hover:bg-gray-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium text-base">{option.label}</div>
+                              <div className="text-xs text-gray-500 mt-0.5">{option.desc}</div>
+                            </div>
+                            {dietType === option.value && (
+                              <svg className="w-5 h-5 text-green-600 flex-shrink-0 ml-2" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                              </svg>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <p className="text-xs text-gray-500 mt-1">
+                    AI will prioritize foods matching your diet preference
                   </p>
                 </div>
               </div>
