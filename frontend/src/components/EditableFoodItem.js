@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { geminiService } from '../services/geminiService';
 import { saveFoodCorrection } from '../services/foodCorrectionService';
+import { getUserContext } from '../services/userContextService';
 import { Search, Edit2, Save, X, Scale, Utensils, Flame, Beef, Wheat, Droplet, Leaf } from 'lucide-react';
 
 /**
@@ -508,6 +509,12 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
               console.log('[CORRECTION DEBUG] ✅ API Response:', response);
               if (response.success) {
                 console.log('✅ Food correction saved:', response.message);
+                
+                // Refresh user context to update AI personalization
+                console.log('🔄 [Food Correction] Refreshing user context...');
+                getUserContext(userId)
+                  .then(() => console.log('✅ [Food Correction] User context refreshed'))
+                  .catch(error => console.error('❌ [Food Correction] Failed to refresh context:', error));
               }
             })
             .catch(error => {

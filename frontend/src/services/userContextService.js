@@ -11,19 +11,23 @@ let cachedContext = null;
 let cacheTimestamp = null;
 const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
 
+// Context update listeners
+const contextUpdateListeners = new Set();
+
 /**
  * Fetch user context from backend
  * @param {number} userId - User's database ID
+ * @param {boolean} forceRefresh - Force fetch even if cache is valid
  * @returns {Promise<Object>} User context object
  */
-export const getUserContext = async (userId) => {
+export const getUserContext = async (userId, forceRefresh = false) => {
   if (!userId) {
     console.warn('[USER CONTEXT] ⚠️ No userId provided');
     return null;
   }
 
-  // Return cached data if still valid
-  if (cachedContext && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION_MS)) {
+  // Return cached data if still valid (unless force refresh)
+  if (!forceRefresh && cachedContext && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION_MS)) {
     console.log('[USER CONTEXT] ✅ Returning cached context');
     return cachedContext;
   }
@@ -50,10 +54,21 @@ export const getUserContext = async (userId) => {
         dietPreference: result.data.dietPreference,
         recentMeals: result.data.recentMeals.length
       });
+      
+      // Debug: Log actual data to see what we got
+      if (result.data.recentMeals.length === 0) {
+        console.log('[USER CONTEXT] ℹ️ No recent meals found - you may need to upload food images');
+      }
+      if (result.data.globalPatterns.length === 0) {
+        console.log('[USER CONTEXT] ℹ️ No global patterns found - need 3+ users making same correction');
+      }
 
       // Cache the result
       cachedContext = result.data;
       cacheTimestamp = Date.now();
+      
+      // Notify all listeners that context has been updated
+      notifyContextUpdate(result.data);
 
       return result.data;
     } else {
@@ -117,12 +132,12 @@ export const formatContextForAI = (context) => {
     const corrections = context.personalCorrections
       .slice(0, 5) // Top 5
       .map(c => `"${c.ai_detected}" → "${c.user_corrected}" (${c.times_corrected}x)`)
-      .join(', ');
-    parts.push(`User's food corrections: ${corrections}`);
+      .join('\n  ');
+    parts.push(`User's food corrections:\n  ${corrections}`);
   }
 
-  // Diet preference
-  if (context.dietPreference) {
+  // Diet preference (exclude Non-Vegetarian as it's default)
+  if (context.dietPreference && context.dietPreference !== 'Non-Vegetarian') {
     parts.push(`User's diet preference: ${context.dietPreference}`);
   }
 
@@ -140,16 +155,42 @@ export const formatContextForAI = (context) => {
     const patterns = context.globalPatterns
       .slice(0, 3) // Top 3
       .map(p => `"${p.ai_detected}" → "${p.user_corrected}" (${p.user_count} users)`)
-      .join(', ');
-    parts.push(`Common corrections: ${patterns}`);
+      .join('\n  ');
+    parts.push(`Common corrections:\n  ${patterns}`);
   }
 
-  return parts.join('. ');
+  return parts.join('\n\n');
+};
+
+/**
+ * Subscribe to context updates
+ * @param {Function} callback - Called when context is updated
+ * @returns {Function} Unsubscribe function
+ */
+export const subscribeToContextUpdates = (callback) => {
+  contextUpdateListeners.add(callback);
+  // Return unsubscribe function
+  return () => contextUpdateListeners.delete(callback);
+};
+
+/**
+ * Notify all listeners of context update
+ * @param {Object} context - Updated context
+ */
+const notifyContextUpdate = (context) => {
+  contextUpdateListeners.forEach(listener => {
+    try {
+      listener(context);
+    } catch (error) {
+      console.error('[USER CONTEXT] Error in listener:', error);
+    }
+  });
 };
 
 export default {
   getUserContext,
   clearContextCache,
   getCachedContext,
-  formatContextForAI
+  formatContextForAI,
+  subscribeToContextUpdates
 };

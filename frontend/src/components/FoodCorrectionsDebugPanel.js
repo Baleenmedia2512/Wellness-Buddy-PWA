@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getUserCorrections } from '../services/foodCorrectionService';
-import { X, RefreshCw, TrendingUp } from 'lucide-react';
+import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../services/userContextService';
+import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 
 /**
  * Debug panel to view user's food corrections
@@ -10,20 +11,33 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
   const [corrections, setCorrections] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [activeTab, setActiveTab] = useState('corrections'); // 'corrections' | 'context'
+  const [userContext, setUserContext] = useState(null);
 
-  // Load corrections
-  const loadCorrections = async () => {
+  // Load corrections and context
+  const loadData = async (forceRefresh = false) => {
     if (!userId) return;
 
     setLoading(true);
     setError(null);
 
     try {
-      const response = await getUserCorrections(userId);
-      setCorrections(response.data || []);
+      // Load corrections and user context in parallel
+      // Force refresh bypasses cache to get fresh data
+      const [correctionsResponse, context] = await Promise.all([
+        getUserCorrections(userId),
+        getUserContext(userId, forceRefresh)
+      ]);
+      
+      setCorrections(correctionsResponse.data || []);
+      setUserContext(context);
+      
+      if (forceRefresh) {
+        console.log('✅ [Debug Panel] Force refreshed context:', context);
+      }
     } catch (err) {
-      console.error('Error loading corrections:', err);
-      setError('Failed to load corrections');
+      console.error('Error loading data:', err);
+      setError('Failed to load data');
     } finally {
       setLoading(false);
     }
@@ -32,8 +46,25 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
   // Load on mount and when userId changes
   useEffect(() => {
     if (isOpen && userId) {
-      loadCorrections();
+      loadData();
     }
+  }, [isOpen, userId]);
+  
+  // Subscribe to context updates (from profile edits, food corrections, etc.)
+  useEffect(() => {
+    if (!isOpen || !userId) return;
+    
+    const unsubscribe = subscribeToContextUpdates((updatedContext) => {
+      console.log('✅ [Debug Panel] Context updated automatically:', updatedContext);
+      setUserContext(updatedContext);
+      // Also refresh corrections in case food name was corrected
+      getUserCorrections(userId).then(response => {
+        setCorrections(response.data || []);
+      });
+    });
+    
+    // Cleanup subscription when panel closes or userId changes
+    return unsubscribe;
   }, [isOpen, userId]);
 
   if (!isOpen) return null;
@@ -48,33 +79,60 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-3 py-2.5 border-b">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm md:text-base font-semibold">Food Corrections</h2>
-            <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 text-[10px] md:text-xs rounded font-medium">DEV MODE</span>
+        <div className="border-b">
+          <div className="flex items-center justify-between px-3 py-2.5">
+            <div className="flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-blue-600" />
+              <h2 className="text-sm md:text-base font-semibold">AI Personalization</h2>
+              <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-800 text-[10px] md:text-xs rounded font-medium">DEV MODE</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => loadData(true)}
+                disabled={loading}
+                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+                title="Refresh (force fetch new data)"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              <button
+                onClick={onClose}
+                className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1">
+          
+          {/* Tabs */}
+          <div className="flex border-t">
             <button
-              onClick={loadCorrections}
-              disabled={loading}
-              className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
-              title="Refresh"
+              onClick={() => setActiveTab('corrections')}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'corrections'
+                  ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              Corrections ({corrections.length})
             </button>
             <button
-              onClick={onClose}
-              className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
+              onClick={() => setActiveTab('context')}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors flex items-center justify-center gap-1.5 ${
+                activeTab === 'context'
+                  ? 'text-purple-600 border-b-2 border-purple-600 bg-purple-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
             >
-              <X className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5" />
+              User Context
             </button>
           </div>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-3">
-          {loading && !corrections.length && (
+          {loading && !corrections.length && !userContext && (
             <div className="flex items-center justify-center h-24">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
             </div>
@@ -86,14 +144,15 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
             </div>
           )}
 
-          {!loading && !error && corrections.length === 0 && (
+          {/* Corrections Tab */}
+          {activeTab === 'corrections' && !loading && !error && corrections.length === 0 && (
             <div className="text-center py-6 text-gray-500">
               <p className="text-sm">No corrections yet</p>
               <p className="text-xs mt-1.5">Edit some food names to see them here!</p>
             </div>
           )}
 
-          {corrections.length > 0 && (
+          {activeTab === 'corrections' && corrections.length > 0 && (
             <div className="space-y-2">
               <div className="text-xs text-gray-600 mb-2 px-1">
                 Total: <span className="font-semibold">{corrections.length}</span> correction{corrections.length !== 1 ? 's' : ''}
@@ -132,12 +191,90 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
               ))}
             </div>
           )}
+          
+          {/* User Context Tab */}
+          {activeTab === 'context' && (
+            <div className="space-y-3">
+              {/* AI Prompt Preview */}
+              <div className="bg-gradient-to-br from-purple-50 to-blue-50 rounded-lg p-3 border-2 border-purple-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Sparkles className="w-4 h-4 text-purple-600" />
+                  <h3 className="text-sm font-semibold text-purple-900">AI Context Prompt</h3>
+                </div>
+                
+                {userContext ? (
+                  <div className="bg-white rounded-md p-3 border border-purple-200 text-sm text-gray-800 leading-relaxed whitespace-pre-wrap break-words max-h-48 overflow-y-auto">
+                    {formatContextForAI(userContext) || 'No context available yet'}
+                  </div>
+                ) : (
+                  <div className="text-xs text-purple-600 text-center py-4">
+                    No context loaded. Sign in to see your AI context.
+                  </div>
+                )}
+              </div>
+
+              {/* Simplified Stats */}
+              <div className="bg-gray-50 rounded-lg p-3 border border-gray-200 text-xs space-y-2">
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-gray-600 font-medium">Personal Corrections:</span>
+                    <span className="font-semibold text-blue-600">{userContext?.personalCorrections?.length || 0}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500">Your food name corrections that AI learns from</p>
+                </div>
+                
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <span className="text-gray-600 font-medium">Global Patterns:</span>
+                    <span className="font-semibold text-purple-600">{userContext?.globalPatterns?.length || 0}</span>
+                  </div>
+                  <p className="text-[10px] text-gray-500">Common corrections made by 3+ users</p>
+                </div>
+                
+                {userContext?.dietPreference && userContext.dietPreference !== 'Non-Vegetarian' && (
+                  <div className="pt-1 border-t border-gray-300">
+                    <div className="flex justify-between items-center">
+                      <span className="text-gray-600 font-medium">Diet Preference:</span>
+                      <span className="font-semibold text-green-600">{userContext.dietPreference}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Info Description */}
+              <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                <div className="flex items-start gap-2">
+                  <div className="flex-shrink-0 w-5 h-5 bg-blue-100 rounded-full flex items-center justify-center mt-0.5">
+                    <span className="text-blue-600 text-xs font-bold">i</span>
+                  </div>
+                  <div className="text-xs text-blue-800 leading-relaxed">
+                    <p className="font-semibold mb-1">How this prompt is built:</p>
+                    <ul className="space-y-0.5 ml-2">
+                      <li>• Your <strong>personal corrections</strong> (top 5 by frequency)</li>
+                      <li>• Your <strong>diet preference</strong> (if not Non-Vegetarian)</li>
+                      <li>• <strong>Global patterns</strong> from 3+ users with same corrections</li>
+                    </ul>
+                    <p className="mt-1.5 text-blue-700">This context is automatically added to every AI food detection request.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-3 py-2 border-t bg-gray-50 text-[10px] md:text-xs text-gray-600 space-y-0.5">
-          <p>This panel shows all food name corrections you've made.</p>
-          <p>The AI will learn from these corrections to improve future suggestions.</p>
+          {activeTab === 'corrections' ? (
+            <>
+              <p>This panel shows all food name corrections you've made.</p>
+              <p>The AI will learn from these corrections to improve future suggestions.</p>
+            </>
+          ) : (
+            <>
+              <p>User context is injected into Gemini AI prompts to personalize food detection.</p>
+              <p>Built from your corrections, diet preference, and common patterns across users.</p>
+            </>
+          )}
         </div>
       </div>
     </div>
