@@ -25,6 +25,7 @@ export default async function handler(req, res) {
   }
 
   // Check if request body is too large or malformed
+  // Check 
   if (!req.body) {
     return res.status(400).json({ 
       message: 'Request body is missing or too large. Maximum size is 10MB.' 
