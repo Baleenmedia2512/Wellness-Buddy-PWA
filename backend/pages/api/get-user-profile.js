@@ -37,7 +37,7 @@ export default async function handler(req, res) {
 
     // Fetch user profile from team_table
     const [userRows] = await connection.execute(
-      `SELECT UserId, UserName, Email, Height 
+      `SELECT UserId, UserName, Email, Height, DietType 
        FROM team_table 
        WHERE Email = ? 
        LIMIT 1`,
@@ -89,6 +89,7 @@ export default async function handler(req, res) {
       userName: user.UserName,
       email: user.Email,
       height: user.Height ? parseFloat(user.Height) : null,
+      dietType: user.DietType || null,
       latestWeight: null,
       latestBmr: null,
       weightRecordDate: null,
