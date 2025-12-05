@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { LogOut, User, LayoutDashboard } from 'lucide-react';
 import { getVersionString } from '../config/version';
 import UserProfileModal from './UserProfileModal';
+import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -63,7 +64,11 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
       <div className="max-w-md mx-auto px-4 py-4 flex justify-between items-start">
         <div className="flex-1 min-w-0">
           <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 flex items-center space-x-2">
-            <span className="text-xl sm:text-2xl">🌿</span>
+            <img 
+              src={wellnessValleyIcon} 
+              alt="Wellness Valley" 
+              className="h-7 w-7 sm:h-8 sm:w-8 object-contain"
+            />
             <span className="truncate">Wellness Valley</span>
           </h1>
           <p className="text-xs sm:text-sm text-green-600 mt-1 ml-9 sm:ml-10 truncate">

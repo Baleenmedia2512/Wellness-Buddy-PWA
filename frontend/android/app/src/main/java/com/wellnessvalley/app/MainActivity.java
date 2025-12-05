@@ -1,6 +1,8 @@
 package com.wellnessvalley.app;
 
 import android.os.Bundle;
+import android.os.PowerManager;
+import android.provider.Settings;
 import android.content.Intent;
 import android.net.Uri;
 import android.view.View;
@@ -14,6 +16,9 @@ import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // Register the GalleryMonitorPlugin BEFORE super.onCreate()
+        registerPlugin(GalleryMonitorPlugin.class);
+        
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -59,9 +64,9 @@ public class MainActivity extends BridgeActivity {
 
         // Request battery optimization exemption
         requestBatteryOptimizationExemption();
-
+        
         // ✅ Start background gallery monitor service
-        Intent serviceIntent = new Intent(this, com.wellnessbuddy.app.services.GalleryMonitorService.class);
+        Intent serviceIntent = new Intent(this, com.wellnessvalley.app.services.GalleryMonitorService.class);
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             startForegroundService(serviceIntent);
         } else {
@@ -70,11 +75,44 @@ public class MainActivity extends BridgeActivity {
         android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
         
         // ✅ Schedule periodic heartbeat to ensure service stays alive
-        com.wellnessbuddy.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
+        com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
         android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
+        
+        android.util.Log.d("MainActivity", "✅ GalleryMonitorPlugin registered in MainActivity");
+    }
+    
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        handleNotificationIntent(intent);
+    }
+    
+    private void handleNotificationIntent(Intent intent) {
+        if (intent != null && intent.getBooleanExtra("openBackgroundHistory", false)) {
+            // Send event to JavaScript side after a short delay to ensure the app is ready
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                try {
+                    GalleryMonitorPlugin.triggerNotificationEvent("openBackgroundHistory");
+                } catch (Exception e) {
+                    android.util.Log.e("MainActivity", "Failed to trigger notification event", e);
+                }
+            }, 1000);
+        }
+    }
+    
+    private void requestBatteryOptimizationExemption() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (!pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                Intent intent = new Intent();
+                intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                intent.setData(Uri.parse("package:" + getPackageName()));
+                startActivity(intent);
+            }
+        }
     }
     
     /**
@@ -115,6 +153,8 @@ public class MainActivity extends BridgeActivity {
             android.util.Log.e("MainActivity", "Failed to optimize WebView", e);
         }
     }
+
+    
 
     // Request Media, Notification, and Camera permissions
     private void requestAllPermissions() {
