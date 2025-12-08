@@ -87,6 +87,10 @@ function WellnessValleyApp() {
   
   // Debug panel state
   const [showDebugPanel, setShowDebugPanel] = useState(false);
+  
+  // User context state - stored and reused for AI personalization
+  const [userContext, setUserContext] = useState(null);
+  const [userContextLoading, setUserContextLoading] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -424,7 +428,16 @@ function WellnessValleyApp() {
         // Load user context for AI personalization
         if (user.id) {
           console.log('🔄 [Auth State] Loading user context...');
-          await getUserContext(user.id);
+          setUserContextLoading(true);
+          try {
+            const context = await getUserContext(user.id);
+            setUserContext(context);
+            console.log('✅ [Auth State] User context stored in state');
+          } catch (error) {
+            console.error('❌ [Auth State] Failed to load context:', error);
+          } finally {
+            setUserContextLoading(false);
+          }
         }
         
         // Skip status check if this is a fresh Google sign-in that's being saved
@@ -461,6 +474,22 @@ function WellnessValleyApp() {
     });
     return () => unsubscribe();
   }, [checkUserStatus]);
+  
+  // Subscribe to user context updates (from profile edits, food corrections, etc.)
+  useEffect(() => {
+    if (!user?.id) return;
+    
+    const { subscribeToContextUpdates } = require('./services/userContextService');
+    const unsubscribe = subscribeToContextUpdates((updatedContext) => {
+      console.log('✅ [App] User context updated in state:', {
+        corrections: updatedContext?.personalCorrections?.length || 0,
+        diet: updatedContext?.dietPreference
+      });
+      setUserContext(updatedContext);
+    });
+    
+    return unsubscribe;
+  }, [user?.id]);
 
   // Setup for authenticated users
   useEffect(() => {
@@ -492,7 +521,16 @@ function WellnessValleyApp() {
             // Load user context for AI personalization
             if (parsedUser.id) {
               console.log('🔄 [OTP Restore] Loading user context...');
-              await getUserContext(parsedUser.id);
+              setUserContextLoading(true);
+              try {
+                const context = await getUserContext(parsedUser.id);
+                setUserContext(context);
+                console.log('✅ [OTP Restore] User context stored in state');
+              } catch (error) {
+                console.error('❌ [OTP Restore] Failed to load context:', error);
+              } finally {
+                setUserContextLoading(false);
+              }
             }
             
             // Check user status before restoring
@@ -1006,8 +1044,16 @@ function WellnessValleyApp() {
       setImageType('food');
 
       // ✅ ANDROID PERFORMANCE: Start food analysis in parallel with preview rendering
+      // ✅ AI PERSONALIZATION: Use stored user context for instant personalization
       try {
-        const result = await geminiService.analyzeImageForNutrition(file);
+        // Use pre-loaded user context (no fetch delay!)
+        console.log('🎯 [AI Personalization] Using stored context:', {
+          available: !!userContext,
+          corrections: userContext?.personalCorrections?.length || 0,
+          diet: userContext?.dietPreference
+        });
+        
+        const result = await geminiService.analyzeImageForNutrition(file, user?.id, userContext);
         setNutritionData(result);
 
         // Check for duplicate food before saving
@@ -1477,7 +1523,9 @@ function WellnessValleyApp() {
       
       // Clear user context cache
       clearContextCache();
-      console.log('🗑️ [Sign Out] User context cache cleared');
+      setUserContext(null);
+      setUserContextLoading(false);
+      console.log('🗑️ [Sign Out] User context cache and state cleared');
       
       if (Capacitor.isNativePlatform()) {
         try {

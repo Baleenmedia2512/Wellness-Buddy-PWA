@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getUserContext, formatContextForAI } from './userContextService';
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -182,7 +183,78 @@ class GeminiService {
     });
   }
 
-  async analyzeImageForNutrition(imageFile) {
+  /**
+   * Build personalized prompt with user context
+   * @param {Object} userContext - User's personalization context
+   * @returns {string} Personalized prompt for Gemini
+   */
+  buildPersonalizedPrompt(userContext) {
+    const promptParts = [];
+    
+    // Add personalization context if available
+    if (userContext) {
+      const contextText = formatContextForAI(userContext);
+      
+      if (contextText) {
+        promptParts.push('=== USER PERSONALIZATION CONTEXT ===');
+        promptParts.push(contextText);
+        promptParts.push('');
+        promptParts.push('USE THIS CONTEXT TO:');
+        promptParts.push('1. Prioritize food names the user has corrected before');
+        promptParts.push('2. Consider their diet preference when detecting ambiguous foods');
+        promptParts.push('3. Learn from common corrections made by multiple users');
+        promptParts.push('');
+        promptParts.push('===================================');
+        promptParts.push('');
+        
+        console.log('📝 [AI Personalization] Context injected into prompt:', {
+          corrections: userContext.personalCorrections?.length || 0,
+          diet: userContext.dietPreference,
+          globalPatterns: userContext.globalPatterns?.length || 0
+        });
+      }
+    }
+    
+    // Standard analysis prompt
+    promptParts.push('Analyze this food image and return nutrition data in JSON format. Be quick but accurate.');
+    promptParts.push('');
+    promptParts.push('RULES:');
+    promptParts.push('1. Estimate portions based on visual cues (plate size, typical servings)');
+    promptParts.push('2. Use standard nutrition values');
+    promptParts.push('3. Return concise JSON only');
+    promptParts.push('');
+    promptParts.push('FORMAT:');
+    promptParts.push('{');
+    promptParts.push('  "foods": [');
+    promptParts.push('    {');
+    promptParts.push('      "name": "food name",');
+    promptParts.push('      "portion": "description like \'2 idlis\' or \'1 cup rice\'",');
+    promptParts.push('      "weight_g": number,');
+    promptParts.push('      "nutrition": {');
+    promptParts.push('        "calories": number,');
+    promptParts.push('        "protein": number,');
+    promptParts.push('        "carbs": number,');
+    promptParts.push('        "fat": number,');
+    promptParts.push('        "fiber": number');
+    promptParts.push('      }');
+    promptParts.push('    }');
+    promptParts.push('  ],');
+    promptParts.push('  "total": {');
+    promptParts.push('    "calories": number,');
+    promptParts.push('    "protein": number,');
+    promptParts.push('    "carbs": number,');
+    promptParts.push('    "fat": number,');
+    promptParts.push('    "fiber": number');
+    promptParts.push('  },');
+    promptParts.push('  "confidence": "high/medium/low"');
+    promptParts.push('}');
+    promptParts.push('');
+    promptParts.push('Return valid JSON only, no markdown.');
+    
+    return promptParts.join('\n');
+  }
+
+  async analyzeImageForNutrition(imageFile, userId = null, userContext = null) {
     const startTime = Date.now();
     // console.log('🔍 GeminiService: Starting optimized image analysis...');
     // console.log('📸 Original image:', imageFile.name, imageFile.type, imageFile.size);
@@ -192,6 +264,27 @@ class GeminiService {
     }
 
     try {
+      // Use provided context or fetch if userId given but no context
+      if (!userContext && userId) {
+        try {
+          console.log('🎯 [AI Personalization] Fetching user context for userId:', userId);
+          userContext = await getUserContext(userId);
+          console.log('✅ [AI Personalization] Context fetched:', {
+            corrections: userContext?.personalCorrections?.length || 0,
+            diet: userContext?.dietPreference,
+            patterns: userContext?.globalPatterns?.length || 0
+          });
+        } catch (error) {
+          console.warn('⚠️ [AI Personalization] Failed to load context, continuing without:', error);
+        }
+      } else if (userContext) {
+        console.log('✅ [AI Personalization] Using pre-loaded context:', {
+          corrections: userContext?.personalCorrections?.length || 0,
+          diet: userContext?.dietPreference,
+          patterns: userContext?.globalPatterns?.length || 0
+        });
+      }
+      
       // Preprocess image for faster processing
       const processedImage = await this.preprocessImage(imageFile);
       // console.log('📸 Processed image size:', processedImage.size);
@@ -204,41 +297,8 @@ class GeminiService {
       
       // console.log('📋 Image converted to base64, length:', imageBase64.length);
       
-      // Simplified, more focused prompt for faster processing
-      const prompt = `Analyze this food image and return nutrition data in JSON format. Be quick but accurate.
-
-RULES:
-1. Estimate portions based on visual cues (plate size, typical servings)
-2. Use standard nutrition values
-3. Return concise JSON only
-
-FORMAT:
-{
-  "foods": [
-    {
-      "name": "food name",
-      "portion": "description like '2 idlis' or '1 cup rice'",
-      "weight_g": number,
-      "nutrition": {
-        "calories": number,
-        "protein": number,
-        "carbs": number,
-        "fat": number,
-        "fiber": number
-      }
-    }
-  ],
-  "total": {
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number,
-    "fiber": number
-  },
-  "confidence": "high/medium/low"
-}
-
-Return valid JSON only, no markdown.`;
+      // Build personalized prompt with user context
+      const prompt = this.buildPersonalizedPrompt(userContext);
 
       const imagePart = {
         inlineData: {
