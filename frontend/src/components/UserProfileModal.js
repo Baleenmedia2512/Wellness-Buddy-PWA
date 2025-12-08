@@ -1,6 +1,7 @@
 // src/components/UserProfileModal.js
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, Save, CheckCircle, Flame, ChevronDown } from 'lucide-react';
+import { getUserContext } from '../services/userContextService';
 
 /**
  * User Profile Modal
@@ -151,6 +152,14 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             bmr: data.data?.bmr || (bmr ? parseFloat(bmr) : null),
             dietType: dietType || null,
           });
+        }
+        
+        // Refresh user context to update AI personalization (especially diet preference)
+        if (user?.id) {
+          console.log('🔄 [Profile Update] Refreshing user context...');
+          getUserContext(user.id)
+            .then(() => console.log('✅ [Profile Update] User context refreshed'))
+            .catch(error => console.error('❌ [Profile Update] Failed to refresh context:', error));
         }
         
         // Show success message and keep modal open

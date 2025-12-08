@@ -14,6 +14,7 @@ import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
 import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
+import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
@@ -420,6 +421,12 @@ function WellnessValleyApp() {
           }
         }
         
+        // Load user context for AI personalization
+        if (user.id) {
+          console.log('🔄 [Auth State] Loading user context...');
+          await getUserContext(user.id);
+        }
+        
         // Skip status check if this is a fresh Google sign-in that's being saved
         // The handleSignIn/handlePopupSignIn functions will handle status check after save
         const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
@@ -480,6 +487,12 @@ function WellnessValleyApp() {
                 parsedUser.id = dbUserId;
                 console.log('✅ [OTP Restore] Attached database UserId to user object:', parsedUser.id);
               }
+            }
+            
+            // Load user context for AI personalization
+            if (parsedUser.id) {
+              console.log('🔄 [OTP Restore] Loading user context...');
+              await getUserContext(parsedUser.id);
             }
             
             // Check user status before restoring
@@ -1462,6 +1475,10 @@ function WellnessValleyApp() {
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem('freshGoogleSignIn');
       
+      // Clear user context cache
+      clearContextCache();
+      console.log('🗑️ [Sign Out] User context cache cleared');
+      
       if (Capacitor.isNativePlatform()) {
         try {
           await GalleryMonitor.clearCurrentUser();
@@ -1609,7 +1626,7 @@ function WellnessValleyApp() {
         onSignOut={handleSignOut}
       />
       
-      {/* Debug Panel Button (Bottom Right - Mobile Friendly) */}
+      {/* Debug Panel Button */}
       <button
         onClick={() => setShowDebugPanel(true)}
         className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
