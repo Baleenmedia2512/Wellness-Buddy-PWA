@@ -11,7 +11,7 @@ const CameraTest = ({ onClose }) => {
     setTestResults([]);
     
     const results = [];
-    
+    //s
     try {
       results.push('🔍 Testing device capabilities...');
       setTestResults([...results]);
