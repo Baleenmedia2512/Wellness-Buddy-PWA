@@ -14,7 +14,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Database connection for local development
+    // Database connection for local developments
     const connection = await mysql.createConnection({
       host: process.env.DB_HOST || 'localhost',
       user: process.env.DB_USER || 'root',
