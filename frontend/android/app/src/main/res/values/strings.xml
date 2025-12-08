@@ -1,8 +1,8 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">Wellness Buddy</string>
-    <string name="title_activity_main">Wellness Buddy</string>
-    <string name="package_name">com.wellnessbuddy.app</string>
-    <string name="custom_url_scheme">com.wellnessbuddy.app</string>
+    <string name="app_name">Wellness Valley</string>
+    <string name="title_activity_main">Wellness Valley</string>
+    <string name="package_name">com.wellnessvalley.app</string>
+    <string name="custom_url_scheme">com.wellnessvalley.app</string>
     <string name="server_client_id">610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com</string>
 </resources>

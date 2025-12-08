@@ -1,6 +1,6 @@
 const config = {
-  appId: 'com.wellnessbuddy.app',
-  appName: 'Wellness Buddy',
+  appId: 'com.wellnessvalley.app',
+  appName: 'Wellness Valley',
   webDir: 'build',
   bundledWebRuntime: false,
   

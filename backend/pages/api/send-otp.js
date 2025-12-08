@@ -86,7 +86,7 @@ export default async function handler(req, res) {
         <body>
           <div class="container">
             <div class="header">
-              <h1>🌿 Wellness Buddy</h1>
+              <h1>🌿 Wellness Valley</h1>
               <p>Your trusted health companion</p>
             </div>
             
@@ -109,8 +109,8 @@ export default async function handler(req, res) {
               <div class="security-note">
                 <div class="security-icon">🔒</div>
                 <div class="security-text">
-                  Never share this code with anyone. Wellness Buddy will never ask for your OTP via phone or email.
-                </div>
+                  Never share this code with anyone. Wellness Valley will never ask for your OTP via phone or email.
+                </p>
               </div>
               
               <p class="message">
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
             
             <div class="footer">
               <p>
-                <strong>Wellness Buddy Team</strong><br>
+                <strong>Wellness Valley Team</strong><br>
                 This is an automated message. Please do not reply to this email.<br>
                 Need help? Contact us at easy2work.india@gmail.com
               </p>
@@ -132,9 +132,9 @@ export default async function handler(req, res) {
 
 
       await transporter.sendMail({
-        from: '"Wellness Buddy" <easy2work.india@gmail.com>',
+        from: '"Wellness Valley" <easy2work.india@gmail.com>',
         to: recipient,
-        subject: '🔐 Your OTP Code - Wellness Buddy',
+        subject: '🔐 Your OTP Code - Wellness Valley',
         html: emailTemplate
       });
     }

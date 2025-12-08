@@ -7,11 +7,11 @@ const InactiveUserModal = ({ userEmail, onClose }) => {
   const supportEmail = 'easy2work.india@gmail.com';
 
   const handleSendEmail = async () => {
-    const subject = encodeURIComponent('Wellness Buddy - Account Access Request');
+    const subject = encodeURIComponent('Wellness Valley - Account Access Request');
     const body = encodeURIComponent(
-      `Hello Wellness Buddy Support,\n\n` +
+      `Hello Wellness Valley Support,\n\n` +
       `My account (${userEmail}) is currently restricted from accessing the app.\n\n` +
-      `I would like to request access to continue using Wellness Buddy.\n\n` +
+      `I would like to request access to continue using Wellness Valley.\n\n` +
       `Please review my account status and help me regain access.\n\n` +
       `Thank you for your assistance.\n\n` +
       `Best regards`

@@ -1,10 +1,10 @@
-App Name: Wellness Buddy
+App Name: Wellness Valley
 
 Short Description (80 characters max):
 AI nutrition tracker - Snap food photos, get instant health insights! 🥗📸
 
 Full Description:
-🥗 WELLNESS BUDDY - Your AI-Powered Nutrition Companion
+🥗 WELLNESS VALLEY - Your AI-Powered Nutrition Companion
 
 Transform your health journey with intelligent food tracking and personalized nutrition insights!
 
@@ -16,7 +16,7 @@ Transform your health journey with intelligent food tracking and personalized nu
 • 📱 Offline Ready - Works without internet connection
 • 🔒 Privacy First - Your data stays secure and private
 
-✨ WHY WELLNESS BUDDY?
+✨ WHY WELLNESS VALLEY?
 Our advanced AI technology makes nutrition tracking effortless. Simply take a photo of your meal, and our smart system identifies foods and provides detailed nutritional information. Get personalized insights to help you make healthier choices and reach your wellness goals.
 
 🏥 HEALTH & SAFETY:
@@ -25,12 +25,12 @@ This app is designed for general wellness and nutrition education. It is not a s
 📞 SUPPORT:
 We're here to help! Contact us at easy2work.india@gmail.com for support or feedback.
 
-Download Wellness Buddy today and start your journey to better health! 🌟
+Download Wellness Valley today and start your journey to better health! 🌟
 
 ---
 
 Release Notes v1.0:
-🎉 Welcome to Wellness Buddy v1.0!
+🎉 Welcome to Wellness Valley v1.0!
 
 🥗 AI-powered nutrition tracking
 📸 Smart food photo analysis  
@@ -38,10 +38,3 @@ Release Notes v1.0:
 🔒 Privacy-focused design
 
 Start your wellness journey today!
-
----
-
-Category: Health & Fitness
-Tags: nutrition, health, fitness, food tracking, AI, wellness
-Content Rating: Everyone
-Target Audience: Adults (18+)

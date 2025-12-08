@@ -133,7 +133,7 @@ export default async function handler(req, res) {
       totalFat,
       totalFiber,
       processedBy,
-      deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Buddy Web App'),
+      deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
       imageBase64ToSave
     ]);
 

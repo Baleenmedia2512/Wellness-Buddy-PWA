@@ -21,13 +21,13 @@ export default function DeleteAccount() {
       <h2 style={{ color: '#374151', fontSize: '18px', marginBottom: '16px' }}>Account Deletion Process</h2>
       
       <p style={{ color: '#6b7280', marginBottom: '16px' }}>
-        To delete your Wellness Buddy account and all associated data, please follow these steps:
+        To delete your Wellness Valley account and all associated data, please follow these steps:
       </p>
 
       <ol style={{ color: '#6b7280', paddingLeft: '20px', marginBottom: '24px' }}>
         <li style={{ marginBottom: '8px' }}>Send an email to <strong>easy2work.india@gmail.com</strong></li>
         <li style={{ marginBottom: '8px' }}>Include your registered email address in the request</li>
-        <li style={{ marginBottom: '8px' }}>Use subject line: "Account Deletion Request - Wellness Buddy"</li>
+        <li style={{ marginBottom: '8px' }}>Use subject line: "Account Deletion Request - Wellness Valley"</li>
         <li style={{ marginBottom: '8px' }}>We will process your request within 7 business days</li>
       </ol>
 

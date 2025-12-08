@@ -16,7 +16,7 @@ const TermsPage = () => {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
               </svg>
             </div>
-            <h1 className="text-xl font-bold text-gray-800">Wellness Buddy</h1>
+            <h1 className="text-xl font-bold text-gray-800">Wellness Valley</h1>
           </div>
           <button
             onClick={() => navigate(-1)}
@@ -47,7 +47,7 @@ const TermsPage = () => {
                   <strong>Last Updated:</strong> {new Date().toLocaleDateString()}
                 </p>
                 <p className="mb-4">
-                  Welcome to Wellness Buddy ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our Progressive Web Application (PWA) and related services (collectively, the "Service").
+                  Welcome to Wellness Valley ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our Progressive Web Application (PWA) and related services (collectively, the "Service").
                 </p>
                 <p className="mb-4">
                   By accessing or using our Service, you agree to be bound by these Terms. If you disagree with any part of these terms, you may not access the Service.
