@@ -7,11 +7,11 @@ const UserNotFoundModal = ({ userEmail, onClose }) => {
   const supportEmail = 'easy2work.india@gmail.com';
 
   const handleSendEmail = async () => {
-    const subject = encodeURIComponent('Wellness Buddy - Account Not Found');
+    const subject = encodeURIComponent('Wellness Valley - Account Not Found');
     const body = encodeURIComponent(
-      `Hello Wellness Buddy Support,\n\n` +
+      `Hello Wellness Valley Support,\n\n` +
       `I tried to access the app with ${userEmail}, but my account was not found in the system.\n\n` +
-      `Please help me create/restore my account so I can use Wellness Buddy.\n\n` +
+      `Please help me create/restore my account so I can use Wellness Valley.\n\n` +
       `Thank you for your assistance.\n\n` +
       `Best regards`
     );

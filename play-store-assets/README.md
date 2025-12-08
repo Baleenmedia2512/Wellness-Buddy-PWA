@@ -1,4 +1,4 @@
-# 📁 Play Store Assets - Wellness Buddy
+# 📁 Play Store Assets - Wellness Valley
 
 ## ✅ **FOLDER STRUCTURE CREATED SUCCESSFULLY!**
 

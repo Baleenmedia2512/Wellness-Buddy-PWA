@@ -53,7 +53,7 @@ export default async function handler(req, res) {
       [otpData.ID]
     );
 
-    // Check & insert user if not exists
+    // Check & insert user if not exists.
     const [userRows] = await connection.execute(
       'SELECT * FROM team_table WHERE Email = ? LIMIT 1',
       [recipient]
@@ -73,7 +73,7 @@ export default async function handler(req, res) {
       await connection.execute(
         `INSERT INTO team_table
           (EntryDateTime, EntryUser, UserName, Password, \`TargetWeight(in_kg)\`, CoachName, CoCoachName, Status, CoachApproved, Email)
-          VALUES (NOW(), 'Wellness Buddy', ?, ?, 0, '', '', 'Active', 0, ?)`,
+          VALUES (NOW(), 'Wellness Valley', ?, ?, 0, '', '', 'Active', 0, ?)`,
         [username, hashedPassword, recipient]
       );
 

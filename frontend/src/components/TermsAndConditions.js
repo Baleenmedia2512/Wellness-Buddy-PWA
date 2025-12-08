@@ -27,7 +27,7 @@ const TermsAndConditions = ({ onClose }) => {
                 <strong>Last Updated:</strong> {new Date().toLocaleDateString()}
               </p>
               <p className="mb-4">
-                Welcome to Wellness Buddy ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our Progressive Web Application (PWA) and related services (collectively, the "Service").
+                Welcome to Wellness Valley ("we," "our," or "us"). These Terms and Conditions ("Terms") govern your use of our Progressive Web Application (PWA) and related services (collectively, the "Service").
               </p>
               <p className="mb-4">
                 By accessing or using our Service, you agree to be bound by these Terms. If you disagree with any part of these terms, you may not access the Service.
@@ -37,14 +37,14 @@ const TermsAndConditions = ({ onClose }) => {
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-3">1. Acceptance of Terms</h3>
               <p className="mb-3">
-                By downloading, installing, or using the Wellness Buddy app, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy.
+                By downloading, installing, or using the Wellness Valley app, you acknowledge that you have read, understood, and agree to be bound by these Terms and our Privacy Policy.
               </p>
             </div>
 
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-3">2. Description of Service</h3>
               <p className="mb-3">
-                Wellness Buddy is a health and nutrition tracking application that allows users to:
+                Wellness Valley is a health and nutrition tracking application that allows users to:
               </p>
               <ul className="list-disc list-inside ml-4 space-y-1 mb-3">
                 <li>Track food intake and nutritional information</li>
@@ -74,7 +74,7 @@ const TermsAndConditions = ({ onClose }) => {
               <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-3">
                 <p className="text-yellow-800 font-semibold mb-2">IMPORTANT HEALTH NOTICE:</p>
                 <ul className="list-disc list-inside space-y-1 text-yellow-700">
-                  <li>Wellness Buddy is NOT a medical device or diagnostic tool</li>
+                  <li>Wellness Valley is NOT a medical device or diagnostic tool</li>
                   <li>Information provided is for general wellness purposes only</li>
                   <li>Always consult healthcare professionals for medical advice</li>
                   <li>Do not use our app to diagnose or treat medical conditions</li>
@@ -99,7 +99,7 @@ const TermsAndConditions = ({ onClose }) => {
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-3">6. Intellectual Property Rights</h3>
               <p className="mb-3">
-                The Service and its original content, features, and functionality are owned by Wellness Buddy and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws.
+                The Service and its original content, features, and functionality are owned by Wellness Valley and are protected by international copyright, trademark, patent, trade secret, and other intellectual property laws.
               </p>
             </div>
 
@@ -120,7 +120,7 @@ const TermsAndConditions = ({ onClose }) => {
             <div>
               <h3 className="text-lg font-semibold text-gray-800 mb-3">9. Limitation of Liability</h3>
               <p className="mb-3">
-                TO THE MAXIMUM EXTENT PERMITTED BY LAW, WELLNESS BUDDY SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, USE, OR OTHER INTANGIBLE LOSSES.
+                TO THE MAXIMUM EXTENT PERMITTED BY LAW, WELLNESS VALLEY SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO LOSS OF PROFITS, DATA, USE, OR OTHER INTANGIBLE LOSSES.
               </p>
             </div>
 

@@ -2,6 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import TermsAndConditions from './TermsAndConditions';
 import PrivacyPolicy from './PrivacyPolicy';
+import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -181,15 +182,17 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
         
         <div className="p-8">
           <div className="text-center mb-8">
-            {/* Animated logo */}
-            <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-teal-400 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+            {/* Wellness Valley Logo */}
+            <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+              <img 
+                src={wellnessValleyIcon} 
+                alt="Wellness Valley" 
+                className="w-full h-full object-contain"
+              />
             </div>
             
             <h1 className="text-3xl font-bold text-gray-800 mb-2">
-              {otpSent ? 'Enter OTP' : 'Wellness Buddy'}
+              {otpSent ? 'Enter OTP' : 'Wellness Valley'}
             </h1>
             <p className="text-gray-500">
               {otpSent 

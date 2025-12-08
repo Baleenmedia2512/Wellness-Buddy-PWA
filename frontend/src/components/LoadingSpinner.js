@@ -90,7 +90,7 @@ const LoadingSpinner = ({ context = 'analysis' }) => {
                 <div className="w-6 h-6 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 flex items-center justify-center">
                   <span className="text-white text-xs font-bold">💡</span>
                 </div>
-                <span className="text-green-700 font-semibold text-sm">Wellness Buddy</span>
+                <span className="text-green-700 font-semibold text-sm">Wellness Valley</span>
               </div>
               <p className="text-green-800 text-xs font-medium italic leading-relaxed">
                 "{randomTagline}"
@@ -122,7 +122,7 @@ const LoadingSpinner = ({ context = 'analysis' }) => {
                   <span className="text-white font-bold text-sm">📱</span>
                 </div>
                 <div className="text-left">
-                  <h4 className="text-green-600 font-bold text-sm">Wellness Buddy</h4>
+                  <h4 className="text-green-600 font-bold text-sm">Wellness Valley</h4>
                   <p className="text-gray-400 text-xs">AI-Powered Nutrition Analysis</p>
                 </div>
               </div>

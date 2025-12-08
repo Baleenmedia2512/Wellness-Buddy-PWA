@@ -11,9 +11,8 @@ const CameraTest = ({ onClose }) => {
     setTestResults([]);
     
     const results = [];
-    
+    //s
     try {
-      // Test 1: Device Detection
       results.push('🔍 Testing device capabilities...');
       setTestResults([...results]);
       
