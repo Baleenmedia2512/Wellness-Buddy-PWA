@@ -62,9 +62,8 @@ class GeminiService {
     this.genAI = null;
     this.model = null;
     
-    // Add timeout and retry configuration
-    this.timeout = 20000; // 20 second timeout (faster response)
-    this.maxRetries = 2;
+    // Timeout configuration
+    this.timeout = 30000; // 30 second timeout
     
     // Search cache for faster repeated searches
     this.searchCache = new Map();
@@ -83,10 +82,19 @@ class GeminiService {
       startTime: new Date().toISOString()
     };
     
+    // Store last prompt for debugging
+    this.lastPrompt = null;
+    this.lastPromptTimestamp = null;
+    
+    // Rate limiting (Gemini free tier: 5 RPM)
+    this.requestTimestamps = [];
+    this.maxRequestsPerMinute = 4; // Keep under 5 RPM limit
+    this.minDelayBetweenRequests = 15000; // 15 seconds between requests (4 per minute)
+    
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
@@ -99,12 +107,61 @@ class GeminiService {
     }
   }
 
+  /**
+   * Wait with delay to respect rate limits
+   */
+  async waitForRateLimit() {
+    // Clean old timestamps (older than 1 minute)
+    const now = Date.now();
+    this.requestTimestamps = this.requestTimestamps.filter(ts => now - ts < 60000);
+    
+    // If we're at limit, wait until oldest request is >1 minute old
+    if (this.requestTimestamps.length >= this.maxRequestsPerMinute) {
+      const oldestRequest = this.requestTimestamps[0];
+      const waitTime = 60000 - (now - oldestRequest) + 1000; // Add 1s buffer
+      
+      if (waitTime > 0) {
+        console.log(`⏳ [Rate Limit] Waiting ${Math.ceil(waitTime / 1000)}s to respect 5 RPM limit...`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
+    }
+    
+    // Add minimum delay between consecutive requests
+    if (this.requestTimestamps.length > 0) {
+      const lastRequest = this.requestTimestamps[this.requestTimestamps.length - 1];
+      const timeSinceLastRequest = now - lastRequest;
+      
+      if (timeSinceLastRequest < this.minDelayBetweenRequests) {
+        const delay = this.minDelayBetweenRequests - timeSinceLastRequest;
+        console.log(`⏳ [Rate Limit] Adding ${Math.ceil(delay / 1000)}s delay between requests...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+    
+    // Record this request
+    this.requestTimestamps.push(Date.now());
+  }
+  
+  /**
+   * Execute API call with rate limiting
+   */
+  async executeWithRateLimit(apiCall) {
+    await this.waitForRateLimit();
+    
+    // Execute with timeout, no retries
+    return await Promise.race([
+      apiCall(),
+      this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+    ]);
+  }
+
   getApiInfo() {
     return {
       hasCredentials: !!this.apiKey,
       provider: 'Google Gemini',
       dailyLimit: 1500,
-      description: 'Google Gemini AI for food image analysis (Optimized)'
+      rateLimit: `${this.maxRequestsPerMinute} requests/minute`,
+      description: 'Google Gemini AI for food image analysis (Rate Limited)'
     };
   }
 
@@ -251,7 +308,24 @@ class GeminiService {
     promptParts.push('');
     promptParts.push('Return valid JSON only, no markdown.');
     
-    return promptParts.join('\n');
+    const fullPrompt = promptParts.join('\n');
+    
+    // Store for debugging (accessible via geminiService.getLastPrompt())
+    this.lastPrompt = fullPrompt;
+    this.lastPromptTimestamp = new Date().toISOString();
+    
+    return fullPrompt;
+  }
+  
+  /**
+   * Get the last prompt sent to Gemini (for debugging)
+   * @returns {Object} { prompt: string, timestamp: string }
+   */
+  getLastPrompt() {
+    return {
+      prompt: this.lastPrompt,
+      timestamp: this.lastPromptTimestamp
+    };
   }
 
   async analyzeImageForNutrition(imageFile, userId = null, userContext = null) {
@@ -307,10 +381,9 @@ class GeminiService {
         }
       };
 
-      // Make API call with timeout and retry logic
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent([prompt, imagePart]),
-        this.maxRetries
+      // Make API call with rate limiting and timeout (no retries)
+      const result = await this.executeWithRateLimit(() => 
+        this.model.generateContent([prompt, imagePart])
       );
 
       const response = await result.response;
@@ -363,9 +436,9 @@ FORMAT:
 
 Use USDA values. Return valid JSON only, no markdown.`;
 
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent(prompt),
-        this.maxRetries
+      // Make API call with rate limiting and timeout (no retries)
+      const result = await this.executeWithRateLimit(() => 
+        this.model.generateContent(prompt)
       );
 
       const response = await result.response;
@@ -448,9 +521,9 @@ Use USDA values. Return valid JSON only, no markdown.`;
 
       console.log('📤 Sending search request to Gemini...');
 
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent(prompt),
-        this.maxRetries
+      // Make API call with rate limiting and timeout (no retries)
+      const result = await this.executeWithRateLimit(() => 
+        this.model.generateContent(prompt)
       );
 
       const response = await result.response;
@@ -500,30 +573,6 @@ Use USDA values. Return valid JSON only, no markdown.`;
   }
 
   // Utility methods
-  async makeApiCallWithRetry(apiCall, maxRetries) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // console.log(`🔄 Attempt ${attempt}/${maxRetries}`);
-        
-        return await Promise.race([
-          apiCall(),
-          this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
-        ]);
-      } catch (error) {
-        console.warn(`❌ Attempt ${attempt} failed:`, error.message);
-        
-        if (attempt === maxRetries) {
-          throw error;
-        }
-        
-        // Exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        // console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-
   timeoutPromise(ms, message) {
     return new Promise((_, reject) => {
       setTimeout(() => reject(new Error(message)), ms);
@@ -629,7 +678,7 @@ Use USDA values. Return valid JSON only, no markdown.`;
         safetyRatings: firstCandidate.safetyRatings || [],
         
         // Model info
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-2.5-flash-lite',
         
         // Additional metadata
         candidateCount: candidates.length,

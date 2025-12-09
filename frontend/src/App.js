@@ -1053,6 +1053,9 @@ function WellnessValleyApp() {
           diet: userContext?.dietPreference
         });
         
+        // Show rate limiting message if needed
+        setLoadingState('analyzing'); // Ensure we show "Analyzing..." state
+        
         const result = await geminiService.analyzeImageForNutrition(file, user?.id, userContext);
         setNutritionData(result);
 
