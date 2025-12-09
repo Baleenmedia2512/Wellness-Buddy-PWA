@@ -86,12 +86,12 @@ class GeminiService {
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.0-flash",
+        model: "gemini-2.5-flash",
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
           topP: 0.95,
-          maxOutputTokens: 1500, // Increased to prevent truncation (was 800)
+          maxOutputTokens: 8192, // Increased for gemini-2.5-flash to prevent truncation
           candidateCount: 1,
           responseMimeType: 'application/json'
         }
@@ -629,14 +629,14 @@ Use USDA values. Return valid JSON only, no markdown.`;
         safetyRatings: firstCandidate.safetyRatings || [],
         
         // Model info
-        modelUsed: 'gemini-2.0-flash',
+        modelUsed: 'gemini-2.5-flash',
         
         // Additional metadata
         candidateCount: candidates.length,
         responseLength: response.text ? response.text().length : 0
       };
 
-      // Calculate cost estimate (for gemini-2.0-flash)
+      // Calculate cost estimate (for gemini-2.5-flash - free tier)
       const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
       const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
       const totalCost = inputCost + outputCost;
@@ -654,22 +654,22 @@ Use USDA values. Return valid JSON only, no markdown.`;
       }
       this.sessionMetrics.requestsByType[requestType]++;
 
-      // // Log to console with nice formatting
-      // console.log(`📊 Token Usage [${requestType}]:`, {
-      //   '🔤 Prompt Tokens': tokenData.promptTokens,
-      //   '💬 Response Tokens': tokenData.completionTokens,
-      //   '📈 Total Tokens': tokenData.totalTokens,
-      //   '⏱️ Processing Time': `${processingTime}ms`,
-      //   '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
-      // });
+      // Log to console with nice formatting
+      console.log(`📊 Token Usage [${requestType}]:`, {
+        '🔤 Prompt Tokens': tokenData.promptTokens,
+        '💬 Response Tokens (Output)': tokenData.completionTokens,
+        '📈 Total Tokens': tokenData.totalTokens,
+        '⏱️ Processing Time': `${processingTime}ms`,
+        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
+      });
 
-      // // Log response quality
-      // console.log(`🔍 Response Quality [${requestType}]:`, {
-      //   '✅ Finish Reason': tokenData.finishReason,
-      //   '🛡️ Safety Ratings': tokenData.safetyRatings.length > 0 ? 'Passed' : 'N/A',
-      //   '📝 Response Length': `${tokenData.responseLength} chars`,
-      //   '🎯 Candidates': tokenData.candidateCount
-      // });
+      // Log response quality
+      console.log(`🔍 Response Quality [${requestType}]:`, {
+        '✅ Finish Reason': tokenData.finishReason,
+        '🛡️ Safety Ratings': tokenData.safetyRatings.length > 0 ? 'Passed' : 'N/A',
+        '📝 Response Length': `${tokenData.responseLength} chars`,
+        '🎯 Candidates': tokenData.candidateCount
+      });
 
       // // Log safety ratings detail
       // if (tokenData.safetyRatings.length > 0) {

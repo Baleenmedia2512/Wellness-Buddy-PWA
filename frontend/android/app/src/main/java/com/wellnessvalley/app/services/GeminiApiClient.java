@@ -15,7 +15,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 public class GeminiApiClient {
-private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent";
+private static final String GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
     private final String apiKey;
     private final OkHttpClient client;
 
@@ -69,8 +69,19 @@ private static final String GEMINI_API_URL = "https://generativelanguage.googlea
             JSONArray parts = new JSONArray();
             parts.put(new JSONObject().put("text", prompt));
             parts.put(imagePart);
+            
+            // Add generation config matching geminiService.js
+            JSONObject generationConfig = new JSONObject();
+            generationConfig.put("temperature", 0);
+            generationConfig.put("topK", 1);
+            generationConfig.put("topP", 0.95);
+            generationConfig.put("maxOutputTokens", 8192);
+            generationConfig.put("candidateCount", 1);
+            generationConfig.put("responseMimeType", "application/json");
+            
             JSONObject requestBody = new JSONObject();
             requestBody.put("contents", new JSONArray().put(new JSONObject().put("parts", parts)));
+            requestBody.put("generationConfig", generationConfig);
 
             Request request = new Request.Builder()
                     .url(GEMINI_API_URL + "?key=" + apiKey)
