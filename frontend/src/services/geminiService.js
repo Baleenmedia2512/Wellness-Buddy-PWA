@@ -86,11 +86,6 @@ class GeminiService {
     this.lastPrompt = null;
     this.lastPromptTimestamp = null;
     
-    // Rate limiting (Gemini free tier: 5 RPM)
-    this.requestTimestamps = [];
-    this.maxRequestsPerMinute = 4; // Keep under 5 RPM limit
-    this.minDelayBetweenRequests = 15000; // 15 seconds between requests (4 per minute)
-    
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
@@ -107,61 +102,14 @@ class GeminiService {
     }
   }
 
-  /**
-   * Wait with delay to respect rate limits
-   */
-  async waitForRateLimit() {
-    // Clean old timestamps (older than 1 minute)
-    const now = Date.now();
-    this.requestTimestamps = this.requestTimestamps.filter(ts => now - ts < 60000);
-    
-    // If we're at limit, wait until oldest request is >1 minute old
-    if (this.requestTimestamps.length >= this.maxRequestsPerMinute) {
-      const oldestRequest = this.requestTimestamps[0];
-      const waitTime = 60000 - (now - oldestRequest) + 1000; // Add 1s buffer
-      
-      if (waitTime > 0) {
-        console.log(`⏳ [Rate Limit] Waiting ${Math.ceil(waitTime / 1000)}s to respect 5 RPM limit...`);
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-    }
-    
-    // Add minimum delay between consecutive requests
-    if (this.requestTimestamps.length > 0) {
-      const lastRequest = this.requestTimestamps[this.requestTimestamps.length - 1];
-      const timeSinceLastRequest = now - lastRequest;
-      
-      if (timeSinceLastRequest < this.minDelayBetweenRequests) {
-        const delay = this.minDelayBetweenRequests - timeSinceLastRequest;
-        console.log(`⏳ [Rate Limit] Adding ${Math.ceil(delay / 1000)}s delay between requests...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-    
-    // Record this request
-    this.requestTimestamps.push(Date.now());
-  }
-  
-  /**
-   * Execute API call with rate limiting
-   */
-  async executeWithRateLimit(apiCall) {
-    await this.waitForRateLimit();
-    
-    // Execute with timeout, no retries
-    return await Promise.race([
-      apiCall(),
-      this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
-    ]);
-  }
+
 
   getApiInfo() {
     return {
       hasCredentials: !!this.apiKey,
       provider: 'Google Gemini',
       dailyLimit: 1500,
-      rateLimit: `${this.maxRequestsPerMinute} requests/minute`,
-      description: 'Google Gemini AI for food image analysis (Rate Limited)'
+      description: 'Google Gemini AI for food image analysis'
     };
   }
 
@@ -278,15 +226,20 @@ class GeminiService {
     promptParts.push('RULES:');
     promptParts.push('1. Estimate portions based on visual cues (plate size, typical servings)');
     promptParts.push('2. Use standard nutrition values');
-    promptParts.push('3. Return concise JSON only');
+    promptParts.push('3. For LIQUID foods (beverages, soups, drinks, juices, etc.), return volume in ml/L instead of weight in grams');
+    promptParts.push('4. For SOLID foods, continue using weight in grams/kg');
+    promptParts.push('5. Return concise JSON only');
     promptParts.push('');
     promptParts.push('FORMAT:');
     promptParts.push('{');
     promptParts.push('  "foods": [');
     promptParts.push('    {');
     promptParts.push('      "name": "food name",');
-    promptParts.push('      "portion": "description like \'2 idlis\' or \'1 cup rice\'",');
-    promptParts.push('      "weight_g": number,');
+    promptParts.push('      "portion": "description like \'2 idlis\' or \'250ml juice\' or \'1 cup soup\'",');
+    promptParts.push('      "weight_g": number (for solid foods),');
+    promptParts.push('      "volume_ml": number (for liquid foods),');
+    promptParts.push('      "unit": "g" or "ml",');
+    promptParts.push('      "isLiquid": boolean,');
     promptParts.push('      "nutrition": {');
     promptParts.push('        "calories": number,');
     promptParts.push('        "protein": number,');
@@ -305,6 +258,8 @@ class GeminiService {
     promptParts.push('  },');
     promptParts.push('  "confidence": "high/medium/low"');
     promptParts.push('}');
+    promptParts.push('');
+    promptParts.push('IMPORTANT: Liquids like water, juice, milk, coffee, tea, soup, smoothies should use volume_ml and unit="ml". Solids like rice, bread, meat should use weight_g and unit="g".');
     promptParts.push('');
     promptParts.push('Return valid JSON only, no markdown.');
     
@@ -381,10 +336,11 @@ class GeminiService {
         }
       };
 
-      // Make API call with rate limiting and timeout (no retries)
-      const result = await this.executeWithRateLimit(() => 
-        this.model.generateContent([prompt, imagePart])
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent([prompt, imagePart]),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -423,8 +379,11 @@ class GeminiService {
 FORMAT:
 {
   "name": "${foodText}",
-  "serving": "description like '1 cup cooked'",
-  "weight_g": number,
+  "serving": "description like '1 cup cooked' or '250ml glass'",
+  "weight_g": number (for solid foods),
+  "volume_ml": number (for liquid foods),
+  "unit": "g" or "ml",
+  "isLiquid": boolean,
   "nutrition": {
     "calories": number,
     "protein": number,
@@ -434,12 +393,14 @@ FORMAT:
   }
 }
 
+IMPORTANT: For liquids (water, juice, milk, coffee, tea, soup, smoothies), use volume_ml and unit="ml". For solids, use weight_g and unit="g".
 Use USDA values. Return valid JSON only, no markdown.`;
 
-      // Make API call with rate limiting and timeout (no retries)
-      const result = await this.executeWithRateLimit(() => 
-        this.model.generateContent(prompt)
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -517,14 +478,16 @@ Use USDA values. Return valid JSON only, no markdown.`;
 
     try {
       const prompt = `"${foodQuery}" 2 variations JSON:
-[{"name":"str","category":"str","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]`;
+[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
+NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For solids, use isLiquid=false, unit="g".`;
 
       console.log('📤 Sending search request to Gemini...');
 
-      // Make API call with rate limiting and timeout (no retries)
-      const result = await this.executeWithRateLimit(() => 
-        this.model.generateContent(prompt)
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -805,7 +768,9 @@ Use USDA values. Return valid JSON only, no markdown.`;
         detailedItems: data.foods.map(food => ({
           name: food.name,
           portionDescription: food.portion || 'Unknown portion',
-          estimatedWeight: food.weight_g || 'Unknown',
+          estimatedWeight: food.weight_g || food.volume_ml || 'Unknown',
+          unit: food.unit || (food.volume_ml ? 'ml' : 'g'),
+          isLiquid: food.isLiquid || false,
           calories: Math.round(food.nutrition.calories || 0),
           protein: Math.round(food.nutrition.protein || 0),
           carbs: Math.round(food.nutrition.carbs || 0),
@@ -835,13 +800,16 @@ Use USDA values. Return valid JSON only, no markdown.`;
         itemCount: 1,
         servingInfo: {
           description: data.serving,
-          weight: data.weight_g,
-          unit: 'g'
+          weight: data.weight_g || data.volume_ml,
+          unit: data.unit || (data.volume_ml ? 'ml' : 'g'),
+          isLiquid: data.isLiquid || false
         },
         detailedItems: [{
           name: data.name,
           portionDescription: data.serving || 'Unknown portion',
-          estimatedWeight: data.weight_g || 'Unknown',
+          estimatedWeight: data.weight_g || data.volume_ml || 'Unknown',
+          unit: data.unit || (data.volume_ml ? 'ml' : 'g'),
+          isLiquid: data.isLiquid || false,
           calories: Math.round(data.nutrition.calories || 0),
           protein: Math.round(data.nutrition.protein || 0),
           carbs: Math.round(data.nutrition.carbs || 0),

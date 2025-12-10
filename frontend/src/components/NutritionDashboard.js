@@ -72,10 +72,14 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         ...item,
         serving: {
           description: item.portion,
-          grams: item.weight_g
+          grams: item.weight_g || item.volume_ml || item.grams || 100,
+          unit: item.unit || (item.volume_ml ? 'ml' : 'g'),
+          isLiquid: item.isLiquid || false
         },
         portionDescription: item.portion,
-        grams: item.weight_g
+        grams: item.weight_g || item.volume_ml || item.grams || 100,
+        unit: item.unit || (item.volume_ml ? 'ml' : 'g'),
+        isLiquid: item.isLiquid || false
       }));
       setLocalDetailedItems(transformedItems);
       setLocalNutrition(foodData.nutrition || {});
@@ -123,10 +127,14 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
       ...item,
       serving: {
         description: item.portion,
-        grams: item.weight_g
+        grams: item.weight_g || item.volume_ml || item.grams || 100,
+        unit: item.unit || (item.volume_ml ? 'ml' : 'g'),
+        isLiquid: item.isLiquid || false
       },
       portionDescription: item.portion,
-      grams: item.weight_g
+      grams: item.weight_g || item.volume_ml || item.grams || 100,
+      unit: item.unit || (item.volume_ml ? 'ml' : 'g'),
+      isLiquid: item.isLiquid || false
     }));
     setLocalDetailedItems(transformedItems);
     setLocalNutrition(foodData.nutrition || {});
@@ -174,7 +182,10 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         foods: newItems.map(item => ({
           name: item.name,
           portion: item.serving?.description || item.portionDescription || item.portion || '1 serving',
-          weight_g: item.serving?.grams || item.grams || item.weight_g || 100,
+          weight_g: item.unit === 'ml' ? null : (item.serving?.grams || item.grams || item.weight_g || 100),
+          volume_ml: item.unit === 'ml' ? (item.serving?.grams || item.grams || item.weight_g || 100) : null,
+          unit: item.unit || item.serving?.unit || 'g',
+          isLiquid: item.isLiquid || item.serving?.isLiquid || false,
           nutrition: {
             calories: Math.round(item.nutrition?.calories || item.calories || 0),
             protein: Math.round(item.nutrition?.protein || item.protein || 0),
