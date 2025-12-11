@@ -825,6 +825,16 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Phase 1: Reset change tracking when entering edit mode
     hasUserChangesRef.current = false;
     
+    // Debug: Log foodItem to see what data we have
+    console.log('🔍 [EditableFoodItem] handleEdit - foodItem:', {
+      name: foodItem.name,
+      unit: foodItem.unit,
+      isLiquid: foodItem.isLiquid,
+      servingUnit: foodItem.serving?.unit,
+      servingIsLiquid: foodItem.serving?.isLiquid,
+      fullItem: foodItem
+    });
+    
     // Pre-fill with current food data - ensure we have a valid number
     const currentGrams = parseFloat(foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight) || 100;
     setCustomGrams(currentGrams.toString());
