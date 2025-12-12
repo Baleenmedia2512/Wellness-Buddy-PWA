@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { getUserCorrections } from '../services/foodCorrectionService';
 import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../services/userContextService';
+import { geminiService } from '../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 
 /**
@@ -11,8 +12,9 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
   const [corrections, setCorrections] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('corrections'); // 'corrections' | 'context'
+  const [activeTab, setActiveTab] = useState('corrections'); // 'corrections' | 'context' | 'prompt'
   const [userContext, setUserContext] = useState(null);
+  const [lastPrompt, setLastPrompt] = useState(null);
 
   // Load corrections and context
   const loadData = async (forceRefresh = false) => {
@@ -66,6 +68,15 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
     // Cleanup subscription when panel closes or userId changes
     return unsubscribe;
   }, [isOpen, userId]);
+  
+  // Load last prompt when panel opens or when switching to prompt tab
+  useEffect(() => {
+    if (isOpen && activeTab === 'prompt') {
+      const promptData = geminiService.getLastPrompt();
+      setLastPrompt(promptData);
+      console.log('🔍 [Debug Panel] Loaded last prompt:', promptData);
+    }
+  }, [isOpen, activeTab]);
 
   if (!isOpen) return null;
 
@@ -88,10 +99,20 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
             </div>
             <div className="flex items-center gap-1">
               <button
-                onClick={() => loadData(true)}
+                onClick={() => {
+                  if (activeTab === 'prompt') {
+                    // Refresh prompt
+                    const promptData = geminiService.getLastPrompt();
+                    setLastPrompt(promptData);
+                    console.log('🔄 [Debug Panel] Refreshed prompt:', promptData);
+                  } else {
+                    // Refresh corrections and context
+                    loadData(true);
+                  }
+                }}
                 disabled={loading}
                 className="p-1.5 hover:bg-gray-100 rounded-full transition-colors"
-                title="Refresh (force fetch new data)"
+                title={activeTab === 'prompt' ? 'Refresh prompt' : 'Refresh (force fetch new data)'}
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
               </button>
@@ -126,6 +147,16 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
             >
               <Sparkles className="w-3.5 h-3.5" />
               User Context
+            </button>
+            <button
+              onClick={() => setActiveTab('prompt')}
+              className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                activeTab === 'prompt'
+                  ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
+                  : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
+              }`}
+            >
+              Recent Prompt
             </button>
           </div>
         </div>
@@ -260,6 +291,67 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
               </div>
             </div>
           )}
+          
+          {/* Recent Prompt Tab */}
+          {activeTab === 'prompt' && (
+            <div className="space-y-3">
+              {lastPrompt?.prompt ? (
+                <>
+                  <div className="bg-green-50 rounded-lg p-3 border border-green-200">
+                    <div className="flex items-start gap-2 mb-2">
+                      <div className="flex-shrink-0 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center mt-0.5">
+                        <span className="text-green-600 text-xs font-bold">✓</span>
+                      </div>
+                      <div className="text-xs text-green-800">
+                        <p className="font-semibold mb-1">Last Sent to Gemini:</p>
+                        <p className="text-green-700">
+                          {new Date(lastPrompt.timestamp).toLocaleString('en-US', {
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="bg-gray-900 rounded-lg p-3 border border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-sm font-semibold text-green-400">Full Prompt Text</h3>
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(lastPrompt.prompt);
+                          alert('Prompt copied to clipboard!');
+                        }}
+                        className="px-2 py-1 bg-gray-800 hover:bg-gray-700 text-green-400 text-xs rounded transition-colors"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <pre className="text-xs text-gray-300 leading-relaxed whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono">{lastPrompt.prompt}</pre>
+                  </div>
+                  
+                  <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
+                    <div className="text-xs text-blue-800">
+                      <p className="font-semibold mb-1">📊 Prompt Stats:</p>
+                      <ul className="space-y-0.5 ml-2">
+                        <li>• Characters: <strong>{lastPrompt.prompt.length.toLocaleString()}</strong></li>
+                        <li>• Lines: <strong>{lastPrompt.prompt.split('\n').length}</strong></li>
+                        <li>• Approx. Tokens: <strong>~{Math.ceil(lastPrompt.prompt.length / 4)}</strong></li>
+                      </ul>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <p className="text-sm">No prompt sent yet</p>
+                  <p className="text-xs mt-1.5">Upload a food image to see the AI prompt!</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Footer */}
@@ -269,10 +361,15 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
               <p>This panel shows all food name corrections you've made.</p>
               <p>The AI will learn from these corrections to improve future suggestions.</p>
             </>
-          ) : (
+          ) : activeTab === 'context' ? (
             <>
               <p>User context is injected into Gemini AI prompts to personalize food detection.</p>
               <p>Built from your corrections, diet preference, and common patterns across users.</p>
+            </>
+          ) : (
+            <>
+              <p>This shows the exact prompt sent to Gemini AI for the most recent food analysis.</p>
+              <p>Includes your personalization context + standard analysis instructions.</p>
             </>
           )}
         </div>

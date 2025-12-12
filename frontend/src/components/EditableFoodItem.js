@@ -667,14 +667,19 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Calculate final nutrition
     const nutrition = calculateNutrition(foodToSave.per100g, grams);
     
+    const unit = foodToSave.unit || (foodToSave.isLiquid ? 'ml' : 'g');
     const updatedFood = {
       name: foodToSave.name,
       category: foodToSave.category,
       serving: {
-        description: overrideServingDesc || currentServing?.description || `${grams}g`,
-        grams: grams
+        description: overrideServingDesc || currentServing?.description || `${grams}${unit}`,
+        grams: grams,
+        unit: unit,
+        isLiquid: foodToSave.isLiquid || false
       },
       grams: grams,
+      unit: unit,
+      isLiquid: foodToSave.isLiquid || false,
       nutrition: nutrition,
       per100g: foodToSave.per100g
     };
@@ -820,6 +825,16 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     // Phase 1: Reset change tracking when entering edit mode
     hasUserChangesRef.current = false;
     
+    // Debug: Log foodItem to see what data we have
+    console.log('🔍 [EditableFoodItem] handleEdit - foodItem:', {
+      name: foodItem.name,
+      unit: foodItem.unit,
+      isLiquid: foodItem.isLiquid,
+      servingUnit: foodItem.serving?.unit,
+      servingIsLiquid: foodItem.serving?.isLiquid,
+      fullItem: foodItem
+    });
+    
     // Pre-fill with current food data - ensure we have a valid number
     const currentGrams = parseFloat(foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight) || 100;
     setCustomGrams(currentGrams.toString());
@@ -835,14 +850,16 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     
     // Calculate per100g values or use existing
     const per100gValues = foodItem.per100g || {
-      calories: Math.round(currentCalories * 100 / currentGrams),
-      protein: Math.ceil(currentProtein * 100 / currentGrams),
-      carbs: Math.ceil(currentCarbs * 100 / currentGrams),
-      fat: Math.ceil(currentFat * 100 / currentGrams),
-      fiber: Math.ceil(currentFiber * 100 / currentGrams)
+      calories: currentCalories * 100 / currentGrams, // Keep precise value, don't round
+      protein: currentProtein * 100 / currentGrams,
+      carbs: currentCarbs * 100 / currentGrams,
+      fat: currentFat * 100 / currentGrams,
+      fiber: currentFiber * 100 / currentGrams
     };
     
-    const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}g`;
+    // Get unit from foodItem
+    const itemUnit = foodItem.unit || foodItem.serving?.unit || (foodItem.isLiquid || foodItem.serving?.isLiquid ? 'ml' : 'g');
+    const portionDesc = foodItem.serving?.description || foodItem.portionDescription || `${currentGrams}${itemUnit}`;
     
     // Create base serving
     const baseServing = {
@@ -869,6 +886,8 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
     const mockFood = {
       name: foodItem.name,
       category: foodItem.category || 'Food',
+      unit: foodItem.unit || foodItem.serving?.unit || 'g',
+      isLiquid: foodItem.isLiquid || foodItem.serving?.isLiquid || false,
       per100g: per100gValues,
       defaultServing: baseServing,
       servingOptions: dynamicOptions.slice(1) // Exclude first option as it's the default
@@ -891,6 +910,9 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
   // Display mode
   if (!isEditing) {
     const displayGrams = foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight || '';
+    const unit = foodItem.unit || foodItem.serving?.unit || 'g';
+    const isLiquid = foodItem.isLiquid || foodItem.serving?.isLiquid || false;
+    
     let servingDesc = foodItem.serving?.description || foodItem.portionDescription || '';
     
     // If servingDesc is just a number, construct a proper description
@@ -907,6 +929,9 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
             <span className="font-medium text-gray-900 text-base">{foodItem.name}</span>
             {servingDesc && (
               <span className="text-sm text-gray-600">{servingDesc}</span>
+            )}
+            {displayGrams && (
+              <span className="text-xs text-gray-500">({displayGrams}{unit})</span>
             )}
           </div>
           <div className="text-xs text-gray-600">
@@ -1156,7 +1181,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
                       <div className="flex-1 min-w-0">
                         <div className="font-medium truncate">{option.description}</div>
                         <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-                          <span>{option.grams}g</span>
+                          <span>{option.grams}{selectedFood?.unit || (selectedFood?.isLiquid ? 'ml' : 'g')}</span>
                           <span>•</span>
                           <span>{option.nutrition.calories} cal</span>
                         </div>
@@ -1174,11 +1199,11 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
           </div>
         )}
 
-        {/* Custom Grams Input - Always visible */}        {/* Custom Grams Input - Always visible */}
+        {/* Custom Grams/ML Input - Always visible */}
         <div>
           <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-gray-500" />
-            <span>Weight</span>
+            <span>{selectedFood?.isLiquid ? 'Volume' : 'Weight'}</span>
           </label>
           <div className="relative">
             <input
@@ -1186,10 +1211,12 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
               value={customGrams}
               onChange={handleGramsChange}
               onContextMenu={(e) => e.preventDefault()}
-              placeholder="Enter grams"
-              className="w-full px-3 py-2 pr-8 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+              placeholder={selectedFood?.isLiquid ? 'Enter ml' : 'Enter grams'}
+              className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
             />
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">g</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
+              {selectedFood?.unit || (selectedFood?.isLiquid ? 'ml' : 'g')}
+            </span>
           </div>
         </div>
 
@@ -1198,7 +1225,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
           <div>
             <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
-              <span>Preview ({customGrams}g)</span>
+              <span>Preview ({customGrams}{selectedFood?.unit || (selectedFood?.isLiquid ? 'ml' : 'g')})</span>
             </label>
             {(() => {
               const nutrition = calculateNutrition(selectedFood.per100g, parseFloat(customGrams));

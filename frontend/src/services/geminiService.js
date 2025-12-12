@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { getUserContext, formatContextForAI } from './userContextService';
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -61,9 +62,8 @@ class GeminiService {
     this.genAI = null;
     this.model = null;
     
-    // Add timeout and retry configuration
-    this.timeout = 20000; // 20 second timeout (faster response)
-    this.maxRetries = 2;
+    // Timeout configuration
+    this.timeout = 30000; // 30 second timeout
     
     // Search cache for faster repeated searches
     this.searchCache = new Map();
@@ -82,10 +82,14 @@ class GeminiService {
       startTime: new Date().toISOString()
     };
     
+    // Store last prompt for debugging
+    this.lastPrompt = null;
+    this.lastPromptTimestamp = null;
+    
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
@@ -98,12 +102,14 @@ class GeminiService {
     }
   }
 
+
+
   getApiInfo() {
     return {
       hasCredentials: !!this.apiKey,
       provider: 'Google Gemini',
       dailyLimit: 1500,
-      description: 'Google Gemini AI for food image analysis (Optimized)'
+      description: 'Google Gemini AI for food image analysis'
     };
   }
 
@@ -182,7 +188,116 @@ class GeminiService {
     });
   }
 
-  async analyzeImageForNutrition(imageFile) {
+  /**
+   * Build personalized prompt with user context
+   * @param {Object} userContext - User's personalization context
+   * @returns {string} Personalized prompt for Gemini
+   */
+  buildPersonalizedPrompt(userContext) {
+    const promptParts = [];
+    
+    // Add personalization context if available
+    if (userContext) {
+      const contextText = formatContextForAI(userContext);
+      
+      if (contextText) {
+        promptParts.push('=== USER PERSONALIZATION CONTEXT ===');
+        promptParts.push(contextText);
+        promptParts.push('');
+        promptParts.push('IMPORTANT: This context is for REFERENCE ONLY, not absolute rules.');
+        promptParts.push('');
+        promptParts.push('USE THIS CONTEXT AS SUGGESTIONS TO:');
+        promptParts.push('1. Break ties ONLY when the image is ambiguous or unclear');
+        promptParts.push('2. Consider diet preferences ONLY when food type is uncertain');
+        promptParts.push('3. Use corrections as hints, but ALWAYS prioritize what you SEE in the image');
+        promptParts.push('');
+        promptParts.push('CRITICAL VISUAL-FIRST RULES:');
+        promptParts.push('1. COLOR MATTERS: Yellow shake = likely Mango/Banana, Pink = Strawberry, Brown = Chocolate');
+        promptParts.push('   Even if user previously corrected Mango→Strawberry, trust the COLOR you see now');
+        promptParts.push('2. TEXTURE MATTERS: Plain white idly ≠ Rava idly (which has visible grains)');
+        promptParts.push('3. SHAPE/FORM MATTERS: Round roti ≠ triangular paratha');
+        promptParts.push('');
+        promptParts.push('Apply corrections ONLY when visual evidence is insufficient or matches the correction.');
+        promptParts.push('Example: If you see a YELLOW shake, detect "Mango Shake" even if past correction was Mango→Strawberry.');
+        promptParts.push('Example: If you see PINK/RED shake, then apply the Strawberry correction.');
+        promptParts.push('');
+        promptParts.push('PRIORITY ORDER: Visual Evidence > User Corrections > Diet Preferences > Global Patterns');
+        promptParts.push('');
+        promptParts.push('===================================');
+        promptParts.push('');
+        
+        console.log('📝 [AI Personalization] Context injected into prompt:', {
+          corrections: userContext.personalCorrections?.length || 0,
+          diet: userContext.dietPreference,
+          globalPatterns: userContext.globalPatterns?.length || 0
+        });
+      }
+    }
+    
+    // Standard analysis prompt
+    promptParts.push('Analyze this food image and return nutrition data in JSON format. Be quick but accurate.');
+    promptParts.push('');
+    promptParts.push('RULES:');
+    promptParts.push('1. Estimate portions based on visual cues (plate size, typical servings)');
+    promptParts.push('2. Use standard nutrition values');
+    promptParts.push('3. For LIQUID foods (beverages, soups, drinks, juices, etc.), return volume in ml/L instead of weight in grams');
+    promptParts.push('4. For SOLID foods, continue using weight in grams/kg');
+    promptParts.push('5. Return concise JSON only');
+    promptParts.push('');
+    promptParts.push('FORMAT:');
+    promptParts.push('{');
+    promptParts.push('  "foods": [');
+    promptParts.push('    {');
+    promptParts.push('      "name": "food name",');
+    promptParts.push('      "portion": "description like \'2 idlis\' or \'250ml juice\' or \'1 cup soup\'",');
+    promptParts.push('      "weight_g": number (for solid foods),');
+    promptParts.push('      "volume_ml": number (for liquid foods),');
+    promptParts.push('      "unit": "g" or "ml",');
+    promptParts.push('      "isLiquid": boolean,');
+    promptParts.push('      "nutrition": {');
+    promptParts.push('        "calories": number,');
+    promptParts.push('        "protein": number,');
+    promptParts.push('        "carbs": number,');
+    promptParts.push('        "fat": number,');
+    promptParts.push('        "fiber": number');
+    promptParts.push('      }');
+    promptParts.push('    }');
+    promptParts.push('  ],');
+    promptParts.push('  "total": {');
+    promptParts.push('    "calories": number,');
+    promptParts.push('    "protein": number,');
+    promptParts.push('    "carbs": number,');
+    promptParts.push('    "fat": number,');
+    promptParts.push('    "fiber": number');
+    promptParts.push('  },');
+    promptParts.push('  "confidence": "high/medium/low"');
+    promptParts.push('}');
+    promptParts.push('');
+    promptParts.push('IMPORTANT: Liquids like water, juice, milk, coffee, tea, soup, smoothies should use volume_ml and unit="ml". Solids like rice, bread, meat should use weight_g and unit="g".');
+    promptParts.push('');
+    promptParts.push('Return valid JSON only, no markdown.');
+    
+    const fullPrompt = promptParts.join('\n');
+    
+    // Store for debugging (accessible via geminiService.getLastPrompt())
+    this.lastPrompt = fullPrompt;
+    this.lastPromptTimestamp = new Date().toISOString();
+    
+    return fullPrompt;
+  }
+  
+  /**
+   * Get the last prompt sent to Gemini (for debugging)
+   * @returns {Object} { prompt: string, timestamp: string }
+   */
+  getLastPrompt() {
+    return {
+      prompt: this.lastPrompt,
+      timestamp: this.lastPromptTimestamp
+    };
+  }
+
+  async analyzeImageForNutrition(imageFile, userId = null, userContext = null) {
     const startTime = Date.now();
     // console.log('🔍 GeminiService: Starting optimized image analysis...');
     // console.log('📸 Original image:', imageFile.name, imageFile.type, imageFile.size);
@@ -192,6 +307,27 @@ class GeminiService {
     }
 
     try {
+      // Use provided context or fetch if userId given but no context
+      if (!userContext && userId) {
+        try {
+          console.log('🎯 [AI Personalization] Fetching user context for userId:', userId);
+          userContext = await getUserContext(userId);
+          console.log('✅ [AI Personalization] Context fetched:', {
+            corrections: userContext?.personalCorrections?.length || 0,
+            diet: userContext?.dietPreference,
+            patterns: userContext?.globalPatterns?.length || 0
+          });
+        } catch (error) {
+          console.warn('⚠️ [AI Personalization] Failed to load context, continuing without:', error);
+        }
+      } else if (userContext) {
+        console.log('✅ [AI Personalization] Using pre-loaded context:', {
+          corrections: userContext?.personalCorrections?.length || 0,
+          diet: userContext?.dietPreference,
+          patterns: userContext?.globalPatterns?.length || 0
+        });
+      }
+      
       // Preprocess image for faster processing
       const processedImage = await this.preprocessImage(imageFile);
       // console.log('📸 Processed image size:', processedImage.size);
@@ -204,41 +340,8 @@ class GeminiService {
       
       // console.log('📋 Image converted to base64, length:', imageBase64.length);
       
-      // Simplified, more focused prompt for faster processing
-      const prompt = `Analyze this food image and return nutrition data in JSON format. Be quick but accurate.
-
-RULES:
-1. Estimate portions based on visual cues (plate size, typical servings)
-2. Use standard nutrition values
-3. Return concise JSON only
-
-FORMAT:
-{
-  "foods": [
-    {
-      "name": "food name",
-      "portion": "description like '2 idlis' or '1 cup rice'",
-      "weight_g": number,
-      "nutrition": {
-        "calories": number,
-        "protein": number,
-        "carbs": number,
-        "fat": number,
-        "fiber": number
-      }
-    }
-  ],
-  "total": {
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number,
-    "fiber": number
-  },
-  "confidence": "high/medium/low"
-}
-
-Return valid JSON only, no markdown.`;
+      // Build personalized prompt with user context
+      const prompt = this.buildPersonalizedPrompt(userContext);
 
       const imagePart = {
         inlineData: {
@@ -247,11 +350,11 @@ Return valid JSON only, no markdown.`;
         }
       };
 
-      // Make API call with timeout and retry logic
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent([prompt, imagePart]),
-        this.maxRetries
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent([prompt, imagePart]),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -290,8 +393,11 @@ Return valid JSON only, no markdown.`;
 FORMAT:
 {
   "name": "${foodText}",
-  "serving": "description like '1 cup cooked'",
-  "weight_g": number,
+  "serving": "description like '1 cup cooked' or '250ml glass'",
+  "weight_g": number (for solid foods),
+  "volume_ml": number (for liquid foods),
+  "unit": "g" or "ml",
+  "isLiquid": boolean,
   "nutrition": {
     "calories": number,
     "protein": number,
@@ -301,12 +407,14 @@ FORMAT:
   }
 }
 
+IMPORTANT: For liquids (water, juice, milk, coffee, tea, soup, smoothies), use volume_ml and unit="ml". For solids, use weight_g and unit="g".
 Use USDA values. Return valid JSON only, no markdown.`;
 
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent(prompt),
-        this.maxRetries
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -384,14 +492,16 @@ Use USDA values. Return valid JSON only, no markdown.`;
 
     try {
       const prompt = `"${foodQuery}" 2 variations JSON:
-[{"name":"str","category":"str","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]`;
+[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
+NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For solids, use isLiquid=false, unit="g".`;
 
       console.log('📤 Sending search request to Gemini...');
 
-      const result = await this.makeApiCallWithRetry(
-        () => this.model.generateContent(prompt),
-        this.maxRetries
-      );
+      // Make API call with timeout
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
+      ]);
 
       const response = await result.response;
       const text = response.text();
@@ -440,30 +550,6 @@ Use USDA values. Return valid JSON only, no markdown.`;
   }
 
   // Utility methods
-  async makeApiCallWithRetry(apiCall, maxRetries) {
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        // console.log(`🔄 Attempt ${attempt}/${maxRetries}`);
-        
-        return await Promise.race([
-          apiCall(),
-          this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`)
-        ]);
-      } catch (error) {
-        console.warn(`❌ Attempt ${attempt} failed:`, error.message);
-        
-        if (attempt === maxRetries) {
-          throw error;
-        }
-        
-        // Exponential backoff
-        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        // console.log(`⏳ Waiting ${delay}ms before retry...`);
-        await new Promise(resolve => setTimeout(resolve, delay));
-      }
-    }
-  }
-
   timeoutPromise(ms, message) {
     return new Promise((_, reject) => {
       setTimeout(() => reject(new Error(message)), ms);
@@ -569,7 +655,7 @@ Use USDA values. Return valid JSON only, no markdown.`;
         safetyRatings: firstCandidate.safetyRatings || [],
         
         // Model info
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-2.5-flash-lite',
         
         // Additional metadata
         candidateCount: candidates.length,
@@ -696,7 +782,9 @@ Use USDA values. Return valid JSON only, no markdown.`;
         detailedItems: data.foods.map(food => ({
           name: food.name,
           portionDescription: food.portion || 'Unknown portion',
-          estimatedWeight: food.weight_g || 'Unknown',
+          estimatedWeight: food.weight_g || food.volume_ml || 'Unknown',
+          unit: food.unit || (food.volume_ml ? 'ml' : 'g'),
+          isLiquid: food.isLiquid || false,
           calories: Math.round(food.nutrition.calories || 0),
           protein: Math.round(food.nutrition.protein || 0),
           carbs: Math.round(food.nutrition.carbs || 0),
@@ -726,13 +814,16 @@ Use USDA values. Return valid JSON only, no markdown.`;
         itemCount: 1,
         servingInfo: {
           description: data.serving,
-          weight: data.weight_g,
-          unit: 'g'
+          weight: data.weight_g || data.volume_ml,
+          unit: data.unit || (data.volume_ml ? 'ml' : 'g'),
+          isLiquid: data.isLiquid || false
         },
         detailedItems: [{
           name: data.name,
           portionDescription: data.serving || 'Unknown portion',
-          estimatedWeight: data.weight_g || 'Unknown',
+          estimatedWeight: data.weight_g || data.volume_ml || 'Unknown',
+          unit: data.unit || (data.volume_ml ? 'ml' : 'g'),
+          isLiquid: data.isLiquid || false,
           calories: Math.round(data.nutrition.calories || 0),
           protein: Math.round(data.nutrition.protein || 0),
           carbs: Math.round(data.nutrition.carbs || 0),
