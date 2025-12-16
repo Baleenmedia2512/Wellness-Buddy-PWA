@@ -215,6 +215,12 @@ COMMENT 'User dietary preference';
 
 **Development + Testing Activities:**
 - [ ] **AI Prompt Integration:** Modify `geminiService.js` to inject user context (corrections, diet, recent meals) → Test: Upload lemon rice → AI wrong → Correct → Upload again → Verify AI learned
+- [x] **Visual-First AI Logic:** ✅ **COMPLETED (Dec 12, 2025)** - Implemented smart AI prioritization with visual evidence > user corrections
+  - Added liquid food detection (volume_ml, unit, isLiquid fields)
+  - Color-aware AI: "Yellow shake = Mango, Pink = Strawberry" (visual priority)
+  - Smart corrections: "This context is for REFERENCE ONLY, not absolute rules"
+  - Priority hierarchy: Visual Evidence > User Corrections > Diet Preferences > Global Patterns
+  - Files modified: `geminiService.js` (buildPersonalizedPrompt, transformOptimizedResponse)
 - [ ] **Prompt Debug Panel:** Create developer panel showing actual AI prompt with context → Test: Verify shows corrections, diet, recent meals in prompt
 - [ ] **Diet Context:** Ensure AI respects diet preference → Test: Set Veg diet → Upload ambiguous food → Verify AI prioritizes veg options
 - [ ] **Android AI Integration:** Update `GeminiApiClient.java` with context parameter → Test: Upload → AI wrong → Correct → Upload again → Verify learned
