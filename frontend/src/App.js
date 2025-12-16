@@ -40,6 +40,7 @@ import {
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
@@ -91,6 +92,9 @@ function WellnessValleyApp() {
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
+
+  // Admin dashboard state
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1674,6 +1678,7 @@ function WellnessValleyApp() {
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
+        onShowAdminDashboard={() => setShowAdminDashboard(true)}
         onSignOut={handleSignOut}
       />
       
@@ -1895,6 +1900,16 @@ function WellnessValleyApp() {
         isOpen={showDebugPanel}
         onClose={() => setShowDebugPanel(false)}
       />
+
+      {/* Admin Dashboard */}
+      {showAdminDashboard && (
+        <Suspense fallback={<LoadingSpinner message="Loading admin dashboard..." />}>
+          <AdminDashboard
+            onClose={() => setShowAdminDashboard(false)}
+            user={user}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
