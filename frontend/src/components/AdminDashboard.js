@@ -14,9 +14,12 @@ import {
   Search,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { App as CapacitorApp } from '@capacitor/app';
 
 // --- Dynamic Demo Data Generator ---
 const generateDemoData = () => {
@@ -479,6 +482,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [sortDirection, setSortDirection] = useState('desc');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [showItemsDropdown, setShowItemsDropdown] = useState(false);
 
   const fetchTokenData = async () => {
     if (showDemoData) {
@@ -529,6 +533,30 @@ const AdminDashboard = ({ user, onClose }) => {
     fetchTokenData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, showDemoData, customStartDate, customEndDate]);
+
+  // Android back button handler
+  useEffect(() => {
+    let backButtonListener;
+    
+    const setupBackButton = async () => {
+      try {
+        backButtonListener = await CapacitorApp.addListener('backButton', ({ canGoBack }) => {
+          // Close this modal and go back to main page
+          onClose();
+        });
+      } catch (error) {
+        console.log('Back button handler not available:', error);
+      }
+    };
+
+    setupBackButton();
+
+    return () => {
+      if (backButtonListener) {
+        backButtonListener.remove();
+      }
+    };
+  }, [onClose]);
 
   const handleDateRangeSelect = (start, end) => {
     setCustomStartDate(start);
@@ -909,8 +937,8 @@ const AdminDashboard = ({ user, onClose }) => {
 
           {/* Pagination */}
           {filteredAndSortedUsers.length > 0 && (
-            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 bg-gray-50/30">
-              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4">
+            <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 bg-gray-50/30 overflow-visible">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 overflow-visible">
                 {/* Page navigation - Left side */}
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start">
                   <button
@@ -966,29 +994,62 @@ const AdminDashboard = ({ user, onClose }) => {
                 </div>
 
                 {/* Items per page selector - Right side */}
-                <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-end overflow-visible">
                   <span className="text-sm text-gray-600 whitespace-nowrap">
                     {startIndex + 1}-{Math.min(endIndex, filteredAndSortedUsers.length)} of {filteredAndSortedUsers.length}
                   </span>
                   <span className="text-gray-400">|</span>
-                  <div className="flex items-center gap-2">
-                    <label htmlFor="items-per-page" className="text-sm text-gray-600 whitespace-nowrap">
+                  <div className="flex items-center gap-2 overflow-visible">
+                    <label className="text-sm text-gray-600 whitespace-nowrap">
                       Show:
                     </label>
-                    <select
-                      id="items-per-page"
-                      value={itemsPerPage}
-                      onChange={(e) => {
-                        setItemsPerPage(Number(e.target.value));
-                        setCurrentPage(1);
-                      }}
-                      className="text-sm border border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent cursor-pointer"
-                    >
-                      <option value={5}>5</option>
-                      <option value={10}>10</option>
-                      <option value={20}>20</option>
-                      <option value={50}>50</option>
-                    </select>
+                    <div className="relative overflow-visible">
+                      <button
+                        type="button"
+                        onClick={() => setShowItemsDropdown(!showItemsDropdown)}
+                        className="text-sm border-2 border-gray-300 rounded-lg px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 cursor-pointer flex items-center gap-2 min-w-[70px] justify-between hover:border-gray-400 transition-colors"
+                      >
+                        <span className="font-medium">{itemsPerPage}</span>
+                        <ChevronDown className={`w-4 h-4 text-gray-500 transition-transform duration-200 ${showItemsDropdown ? 'rotate-180' : ''}`} />
+                      </button>
+                      
+                      {/* Dropdown Options */}
+                      {showItemsDropdown && (
+                        <div className="fixed inset-0 z-[999]" onClick={() => setShowItemsDropdown(false)}>
+                          <div 
+                            className="absolute bg-white border-2 border-gray-200 rounded-lg shadow-2xl min-w-[100px] overflow-hidden"
+                            style={{
+                              top: 'auto',
+                              bottom: '60px',
+                              right: '16px',
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {[5, 10, 20, 50].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => {
+                                  setItemsPerPage(value);
+                                  setCurrentPage(1);
+                                  setShowItemsDropdown(false);
+                                }}
+                                className={`w-full px-4 py-3 text-sm text-left transition-all flex items-center justify-between border-b border-gray-100 last:border-b-0 ${
+                                  itemsPerPage === value 
+                                    ? 'bg-green-500 text-white font-bold' 
+                                    : 'text-gray-700 hover:bg-green-50 active:bg-green-100'
+                                }`}
+                              >
+                                <span>{value}</span>
+                                {itemsPerPage === value && (
+                                  <Check className="w-5 h-5" strokeWidth={3} />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
