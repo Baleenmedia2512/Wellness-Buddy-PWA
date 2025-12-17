@@ -26,7 +26,7 @@ export default async function handler(req, res) {
   let connection;
 
   try {
-    const { email, timeRange = 'month', operationType, model } = req.query;
+    const { email, timeRange = 'month', operationType, model, startDate, endDate } = req.query;
 
     if (!email) {
       return res.status(400).json({ success: false, message: 'Email is required' });
@@ -37,27 +37,37 @@ export default async function handler(req, res) {
 
     // Calculate date range
     const now = new Date();
-    let startDate;
+    let startDateObj;
+    let endDateObj = now;
     
-    switch (timeRange) {
-      case 'today':
-        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-        break;
-      case 'week':
-        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        break;
-      case 'month':
-        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-        break;
-      case 'all':
-      default:
-        startDate = new Date(0); // Beginning of time
-        break;
+    // If custom date range provided, use it
+    if (startDate && endDate) {
+      startDateObj = new Date(startDate);
+      endDateObj = new Date(endDate);
+      // Set end date to end of day
+      endDateObj.setHours(23, 59, 59, 999);
+    } else {
+      // Use predefined time ranges
+      switch (timeRange) {
+        case 'today':
+          startDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          break;
+        case 'week':
+          startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case 'month':
+          startDateObj = new Date(now.getFullYear(), now.getMonth(), 1);
+          break;
+        case 'all':
+        default:
+          startDateObj = new Date(0); // Beginning of time
+          break;
+      }
     }
 
     // Build WHERE clause
-    let whereConditions = ['CreatedAt >= ?'];
-    let queryParams = [startDate];
+    let whereConditions = ['CreatedAt >= ?', 'CreatedAt <= ?'];
+    let queryParams = [startDateObj, endDateObj];
 
     if (operationType && operationType !== 'all') {
       whereConditions.push('OperationType = ?');
@@ -168,7 +178,7 @@ export default async function handler(req, res) {
     // Query 7: Daily statistics (last 30 days)
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyParams = [...queryParams];
-    dailyParams[0] = thirtyDaysAgo > startDate ? thirtyDaysAgo : startDate;
+    dailyParams[0] = thirtyDaysAgo > startDateObj ? thirtyDaysAgo : startDateObj;
 
     const [dailyStatsRows] = await connection.execute(
       `SELECT 
@@ -182,6 +192,26 @@ export default async function handler(req, res) {
       ORDER BY date DESC
       LIMIT 30`,
       dailyParams
+    );
+
+    // Query 8: User spending aggregation (with user names from team_table)
+    const [userSpendingRows] = await connection.execute(
+      `SELECT 
+        a.UserId as userId,
+        a.Email as email,
+        COALESCE(t.UserName, SUBSTRING_INDEX(a.Email, '@', 1)) as userName,
+        COALESCE(SUM(a.InputTokens), 0) as inputTokens,
+        COALESCE(SUM(a.OutputTokens), 0) as outputTokens,
+        COALESCE(SUM(a.TotalTokens), 0) as totalTokens,
+        COALESCE(SUM(a.TotalTokenCost), 0) as totalCost,
+        COUNT(*) as requestCount
+      FROM ai_token_usage_table a
+      LEFT JOIN team_table t ON a.UserId = t.UserId
+      WHERE ${whereClause}
+      GROUP BY a.UserId, a.Email, t.UserName
+      ORDER BY totalCost DESC
+      LIMIT 50`,
+      queryParams
     );
 
     // Calculate percentages for operation types
@@ -233,6 +263,16 @@ export default async function handler(req, res) {
         })),
         dailyStats: dailyStatsRows.map(row => ({
           date: row.date,
+          totalTokens: Number(row.totalTokens),
+          totalCost: Number(row.totalCost),
+          requestCount: Number(row.requestCount)
+        })),
+        userSpending: userSpendingRows.map(row => ({
+          userId: row.userId,
+          email: row.email,
+          userName: row.userName,
+          inputTokens: Number(row.inputTokens),
+          outputTokens: Number(row.outputTokens),
           totalTokens: Number(row.totalTokens),
           totalCost: Number(row.totalCost),
           requestCount: Number(row.requestCount)
