@@ -138,7 +138,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                     </div>
                   </button>
 
-                  {/* Admin Dashboard - shown for development */}
+                  {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
                     <button
                       onClick={() => {

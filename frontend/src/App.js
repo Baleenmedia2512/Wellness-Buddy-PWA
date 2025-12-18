@@ -93,6 +93,9 @@ function WellnessValleyApp() {
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
 
+  // User role state - for role-based access control
+  const [userRole, setUserRole] = useState('user');
+
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
@@ -247,10 +250,15 @@ function WellnessValleyApp() {
         return false;
       }
       
-      // User is active - clear any modal states
+      // User is active - clear any modal states and store role
       setShowInactiveModal(false);
       setShowUserNotFoundModal(false);
       setIsUserActive(true);
+      
+      // Store user role for access control
+      if (data.role) {
+        setUserRole(data.role);
+      }
       
       
       return true;
@@ -1678,7 +1686,7 @@ function WellnessValleyApp() {
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
-        onShowAdminDashboard={() => setShowAdminDashboard(true)}
+        onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
         onSignOut={handleSignOut}
       />
       

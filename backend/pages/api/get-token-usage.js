@@ -35,6 +35,29 @@ export default async function handler(req, res) {
     // Create database connection
     connection = await mysql.createConnection(dbConfig);
 
+    // Verify user has admin or developer role
+    const [userRows] = await connection.execute(
+      'SELECT Role FROM team_table WHERE Email = ? LIMIT 1',
+      [email]
+    );
+
+    if (!userRows.length) {
+      await connection.end();
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. User not found.' 
+      });
+    }
+
+    const userRole = userRows[0].Role;
+    if (userRole !== 'admin' && userRole !== 'developer') {
+      await connection.end();
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Access denied. Admin or Developer role required.' 
+      });
+    }
+
     // Calculate date range
     const now = new Date();
     let startDateObj;
