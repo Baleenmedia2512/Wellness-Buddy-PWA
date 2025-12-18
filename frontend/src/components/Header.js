@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield } from 'lucide-react';
 import { getVersionString } from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   
@@ -137,6 +137,23 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory }) => {
                       <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
                   </button>
+
+                  {/* Admin Dashboard - shown for admin/developer roles only */}
+                  {onShowAdminDashboard && (
+                    <button
+                      onClick={() => {
+                        onShowAdminDashboard();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-blue-50 text-left transition-colors"
+                    >
+                      <Shield className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">AI Token Monitor</p>
+                        <p className="text-xs text-gray-500">Token usage analytics</p>
+                      </div>
+                    </button>
+                  )}
                   
                   <button
                     onClick={() => {

@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     console.log('📊 [lookup-user-id] Database connection established');
 
     // Try to find user by email first (most reliable)
-    let query = 'SELECT UserId, UserName, Email, Status FROM team_table WHERE Email = ?';
+    let query = 'SELECT UserId, UserName, Email, Status, Role FROM team_table WHERE Email = ?';
     let params = [email];
     
     console.log('🔎 [lookup-user-id] Executing query:', query, 'with params:', params);
@@ -86,7 +86,8 @@ export default async function handler(req, res) {
       userName: user.UserName,
       email: user.Email,
       status: user.Status,
-      isActive: isActive
+      isActive: isActive,
+      role: user.Role || 'user'
     };
 
     console.log('📤 [lookup-user-id] Sending response:', response);

@@ -40,6 +40,7 @@ import {
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
+const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
@@ -91,6 +92,12 @@ function WellnessValleyApp() {
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
+
+  // User role state - for role-based access control
+  const [userRole, setUserRole] = useState('user');
+
+  // Admin dashboard state
+  const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -243,10 +250,15 @@ function WellnessValleyApp() {
         return false;
       }
       
-      // User is active - clear any modal states
+      // User is active - clear any modal states and store role
       setShowInactiveModal(false);
       setShowUserNotFoundModal(false);
       setIsUserActive(true);
+      
+      // Store user role for access control
+      if (data.role) {
+        setUserRole(data.role);
+      }
       
       
       return true;
@@ -1674,6 +1686,7 @@ function WellnessValleyApp() {
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
+        onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
         onSignOut={handleSignOut}
       />
       
@@ -1895,6 +1908,16 @@ function WellnessValleyApp() {
         isOpen={showDebugPanel}
         onClose={() => setShowDebugPanel(false)}
       />
+
+      {/* Admin Dashboard */}
+      {showAdminDashboard && (
+        <Suspense fallback={<LoadingSpinner message="Loading admin dashboard..." />}>
+          <AdminDashboard
+            onClose={() => setShowAdminDashboard(false)}
+            user={user}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
