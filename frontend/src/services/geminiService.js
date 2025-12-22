@@ -62,6 +62,13 @@ class GeminiService {
     this.genAI = null;
     this.model = null;
     
+    // API Base URL for backend calls
+    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'https://wellness-buddy-pwa.vercel.app';
+    
+    // Current user info for token tracking (set by caller)
+    this.currentUserId = null;
+    this.currentUserEmail = null;
+    
     // Timeout configuration
     this.timeout = 30000; // 30 second timeout
     
@@ -102,7 +109,12 @@ class GeminiService {
     }
   }
 
-
+  // Method to set current user info for token tracking
+  setCurrentUser(userId, userEmail) {
+    this.currentUserId = userId;
+    this.currentUserEmail = userEmail;
+    console.log('📊 [Token Monitor] User set for tracking:', { userId, email: userEmail });
+  }
 
   getApiInfo() {
     return {
@@ -697,6 +709,27 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
         '🎯 Candidates': tokenData.candidateCount
       });
 
+      // Save token usage to database if user info is available
+      if (this.currentUserId && this.currentUserEmail) {
+        this.saveTokenUsageToDatabase({
+          userId: this.currentUserId,
+          email: this.currentUserEmail,
+          operationType: requestType,
+          modelName: tokenData.modelUsed,
+          inputTokens: tokenData.promptTokens,
+          outputTokens: tokenData.completionTokens,
+          totalTokens: tokenData.totalTokens,
+          inputTokenCost: inputCost,
+          outputTokenCost: outputCost,
+          totalTokenCost: totalCost
+        }).catch(err => {
+          // Don't throw - just log the error so it doesn't interrupt the flow
+          console.warn('⚠️ Failed to save token usage to database:', err.message);
+        });
+      } else {
+        console.warn('⚠️ Token usage not saved - user info not set. Call setCurrentUser() first.');
+      }
+
       // // Log safety ratings detail
       // if (tokenData.safetyRatings.length > 0) {
       //   console.log('🛡️ Safety Details:', tokenData.safetyRatings);
@@ -727,6 +760,43 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
 
     } catch (error) {
       console.warn('⚠️ Could not extract token usage:', error.message);
+    }
+  }
+
+  // Save token usage data to backend database
+  async saveTokenUsageToDatabase(tokenData) {
+    try {
+      console.log('📤 Sending token data to:', `${this.apiBaseUrl}/api/save-token-usage`);
+      console.log('📦 Token data payload:', tokenData);
+      
+      const response = await fetch(`${this.apiBaseUrl}/api/save-token-usage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tokenData)
+      });
+
+      console.log('📥 Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Token usage saved to database:', result.id);
+      } else {
+        throw new Error(result.message || 'Failed to save token usage');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ Error saving token usage to database:', error);
+      throw error;
     }
   }
 

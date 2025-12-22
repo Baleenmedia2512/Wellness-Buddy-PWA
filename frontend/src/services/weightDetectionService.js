@@ -12,6 +12,13 @@ class WeightDetectionService {
     this.model = null;
     this.timeout = 60000; // 60 second timeout
     this.maxRetries = 2;
+    
+    // API Base URL for backend calls
+    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'https://wellness-buddy-pwa.vercel.app';
+    
+    // Current user info for token tracking
+    this.currentUserId = null;
+    this.currentUserEmail = null;
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -25,6 +32,13 @@ class WeightDetectionService {
         }
       });
     }
+  }
+
+  // Method to set current user info for token tracking
+  setCurrentUser(userId, userEmail) {
+    this.currentUserId = userId;
+    this.currentUserEmail = userEmail;
+    console.log('📊 [Token Monitor] User set for weight tracking:', { userId, email: userEmail });
   }
 
   /**
@@ -172,6 +186,9 @@ Examples:
       // Parse the JSON response
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
+      
+      // Log token usage for weight detection
+      this.logTokenUsage(response, 'weight_detection', processingTime);
 
       // console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
 
@@ -329,6 +346,95 @@ Examples:
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  /**
+   * Log token usage and save to database
+   */
+  logTokenUsage(response, requestType, processingTime) {
+    try {
+      const usageMetadata = response.usageMetadata || {};
+      
+      const tokenData = {
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        completionTokens: usageMetadata.candidatesTokenCount || 0,
+        totalTokens: usageMetadata.totalTokenCount || 0,
+      };
+
+      // Calculate cost estimate (for gemini-2.5-flash)
+      const inputCost = (tokenData.promptTokens / 1000000) * 0.075;
+      const outputCost = (tokenData.completionTokens / 1000000) * 0.30;
+      const totalCost = inputCost + outputCost;
+
+      console.log(`📊 Token Usage [${requestType}]:`, {
+        '🔤 Prompt Tokens': tokenData.promptTokens,
+        '💬 Response Tokens (Output)': tokenData.completionTokens,
+        '📈 Total Tokens': tokenData.totalTokens,
+        '⏱️ Processing Time': `${processingTime}ms`,
+        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
+      });
+
+      // Save token usage to database if user info is available
+      if (this.currentUserId && this.currentUserEmail) {
+        this.saveTokenUsageToDatabase({
+          userId: this.currentUserId,
+          email: this.currentUserEmail,
+          operationType: requestType,
+          modelName: 'gemini-2.5-flash-lite',
+          inputTokens: tokenData.promptTokens,
+          outputTokens: tokenData.completionTokens,
+          totalTokens: tokenData.totalTokens,
+          inputTokenCost: inputCost,
+          outputTokenCost: outputCost,
+          totalTokenCost: totalCost
+        }).catch(err => {
+          console.warn('⚠️ Failed to save token usage to database:', err.message);
+        });
+      } else {
+        console.warn('⚠️ Token usage not saved - user info not set. Call setCurrentUser() first.');
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not extract token usage:', error.message);
+    }
+  }
+
+  /**
+   * Save token usage data to backend database
+   */
+  async saveTokenUsageToDatabase(tokenData) {
+    try {
+      console.log('📤 Sending token data to:', `${this.apiBaseUrl}/api/save-token-usage`);
+      console.log('📦 Token data payload:', tokenData);
+      
+      const response = await fetch(`${this.apiBaseUrl}/api/save-token-usage`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(tokenData)
+      });
+
+      console.log('📥 Response status:', response.status, response.statusText);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('❌ API Error Response:', errorText);
+        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
+      }
+
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Token usage saved to database:', result.id);
+      } else {
+        throw new Error(result.message || 'Failed to save token usage');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('❌ Error saving token usage to database:', error);
+      throw error;
+    }
   }
 
   /**

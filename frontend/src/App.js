@@ -1005,6 +1005,10 @@ function WellnessValleyApp() {
         console.log('🔍 Weight scale detected, extracting metrics...');
         setImageType('weight');
 
+        // Set current user for token tracking
+        if (user?.id && user?.email) {
+          weightDetectionService.setCurrentUser(user.id, user.email);
+        }
 
         // const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
         // if (FORCE_MANUAL_ENTRY) {
@@ -1058,6 +1062,11 @@ function WellnessValleyApp() {
       // ✅ ANDROID PERFORMANCE: Start food analysis in parallel with preview rendering
       // ✅ AI PERSONALIZATION: Use stored user context for instant personalization
       try {
+        // Set current user for token tracking
+        if (user?.id && user?.email) {
+          geminiService.setCurrentUser(user.id, user.email);
+        }
+        
         // Use pre-loaded user context (no fetch delay!)
         console.log('🎯 [AI Personalization] Using stored context:', {
           available: !!userContext,
