@@ -88,18 +88,8 @@ After logging in, new users go through a complete setup wizard:
     INDEX idx_cocoach (CoCoachId)
   );
   
-  -- team_members_table: Track coach-member relationships
-  CREATE TABLE team_members_table (
-    Id INT PRIMARY KEY AUTO_INCREMENT,
-    CoachId INT NOT NULL,  -- The coach who owns this member
-    MemberId INT NOT NULL,  -- The member (who also has their own team)
-    JoinedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
-    Status ENUM('active', 'removed') DEFAULT 'active',
-    FOREIGN KEY (CoachId) REFERENCES team_table(UserId),
-    FOREIGN KEY (MemberId) REFERENCES team_table(UserId),
-    INDEX idx_coach (CoachId),
-    INDEX idx_member (MemberId)
-  );
+  -- Note: Coach-member relationships tracked via team_table.UplineCoachId (no separate junction table needed)
+  -- Note: Foreign keys shown above are OPTIONAL - app works without them (validation in backend)
   
   -- approval_requests_table: Join requests with OTP
   CREATE TABLE approval_requests_table (
@@ -329,7 +319,7 @@ if (coachCount === 1) {
     - Check if OTP exists and not expired (24 hours)
     - Compare hashed OTP with bcrypt
     - Track attempts (max 5)
-    - On success: Add to team_members_table, update UplineCoachId
+    - On success: Update team_table.UplineCoachId for requester (establishes coach-member relationship)
     - On success: Delete/archive approval request
   - `GET /api/user/status` - Check user's setup completion status
   - `GET /api/upline/my-request-status` - Check if user has pending/expired request
@@ -463,8 +453,7 @@ But for MVP, coaches only need email notifications with OTP.
 - [ ] User redirected to OTP validation page
 - [ ] **Coach shares OTP externally** (simulate via phone/WhatsApp)
 - [ ] User enters OTP → Validation succeeds → Access granted to app
-- [ ] Verify user added to team_members_table
-- [ ] Verify UplineCoachId set in team_table
+- [ ] Verify UplineCoachId set in team_table (coach-member relationship established)
 
 **Flow 2: OTP Expiry (24 Hours)**
 - [ ] User sends request → Coach receives OTP

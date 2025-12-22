@@ -167,6 +167,283 @@ OTP sent      Reason shown    User action     After 7 days
 
 ---
 
+## **User States & Redirect Logic**
+
+### **How We Identify Setup Status:**
+
+The system checks **3 key data points** to determine where the user is in the setup process:
+
+1. **`team_table.TeamId`** - Has user claimed a Team ID?
+2. **`team_table.UplineCoachId`** - Has user joined a coach's team?
+3. **`approval_requests_table`** - Does user have a pending request? Is it expired?
+
+### **State Detection & Auto-Redirect:**
+
+#### **State 1: Brand New User (Incomplete Setup)**
+```
+Database Check:
+  team_table.TeamId = NULL
+  team_table.UplineCoachId = NULL
+  approval_requests_table: No records
+
+User Status: Setup not started
+→ Redirect to: /setup/team
+→ Action Required: User must create or join Team ID
+```
+
+#### **State 2: Has Team ID, No Coach, No Request**
+```
+Database Check:
+  team_table.TeamId = "ABC123XYZ0" ✓
+  team_table.UplineCoachId = NULL
+  approval_requests_table: No records
+
+User Status: Team ID claimed, coach selection pending
+→ Redirect to: /setup/upline
+→ Action Required: User must search for coach and send request
+```
+
+#### **State 3: Has Team ID, Active Request (Waiting for OTP)**
+```
+Database Check:
+  team_table.TeamId = "ABC123XYZ0" ✓
+  team_table.UplineCoachId = NULL
+  approval_requests_table: 
+    - RequesterId = user.UserId
+    - Status = 'pending'
+    - OtpExpiresAt > NOW() (not expired) ✓
+
+User Status: Request sent, waiting for coach to share OTP
+→ Redirect to: /setup/validate-otp
+→ Action Required: User must enter OTP received from coach
+→ Display Message: "Your coach has received a verification code. 
+                    Please ask them to share it with you."
+```
+
+#### **State 4: Has Team ID, Request Expired (24 Hours Passed)**
+```
+Database Check:
+  team_table.TeamId = "ABC123XYZ0" ✓
+  team_table.UplineCoachId = NULL
+  approval_requests_table: 
+    - RequesterId = user.UserId
+    - Status = 'pending'
+    - OtpExpiresAt < NOW() (EXPIRED) ✗
+
+User Status: Request expired, must resend
+→ Backend Action: Delete expired request from database
+→ Redirect to: /setup/upline
+→ Action Required: User must search for coach again and send new request
+→ Display Message: "Your previous request expired. Please select your 
+                    coach again to send a new request."
+```
+
+#### **State 5: Setup Complete ✅**
+```
+Database Check:
+  team_table.TeamId = "ABC123XYZ0" ✓
+  team_table.UplineCoachId = 456 (coach's UserId) ✓
+  approval_requests_table: No pending records (or archived)
+
+User Status: Setup complete, full access granted
+→ Allow access to: /dashboard and all app routes
+→ Action: User can use app normally
+→ No redirects: Route guards allow passage
+```
+
+### **Status Check API:**
+
+**Endpoint:**
+```
+GET /api/user/status
+Authorization: Bearer {JWT_TOKEN}
+```
+
+**Response Structure:**
+```json
+{
+  "success": true,
+  "setupComplete": boolean,
+  "hasTeamId": boolean,
+  "hasUpline": boolean,
+  "pendingRequest": {
+    "id": number,
+    "expiresAt": "ISO timestamp"
+  } | null,
+  "redirectTo": "/setup/team" | "/setup/upline" | "/setup/validate-otp" | "/dashboard"
+}
+```
+
+**Response Examples:**
+
+**Example 1: New User**
+```json
+{
+  "success": true,
+  "setupComplete": false,
+  "hasTeamId": false,
+  "hasUpline": false,
+  "pendingRequest": null,
+  "redirectTo": "/setup/team"
+}
+```
+
+**Example 2: Waiting for OTP**
+```json
+{
+  "success": true,
+  "setupComplete": false,
+  "hasTeamId": true,
+  "hasUpline": false,
+  "pendingRequest": {
+    "id": 123,
+    "expiresAt": "2025-12-23T10:30:00Z"
+  },
+  "redirectTo": "/setup/validate-otp"
+}
+```
+
+**Example 3: Setup Complete**
+```json
+{
+  "success": true,
+  "setupComplete": true,
+  "hasTeamId": true,
+  "hasUpline": true,
+  "pendingRequest": null,
+  "redirectTo": "/dashboard"
+}
+```
+
+### **Backend Implementation Logic:**
+
+**Key Database Queries:**
+```sql
+-- 1. Get user's Team ID and Upline Coach
+SELECT TeamId, UplineCoachId 
+FROM team_table 
+WHERE UserId = ?;
+
+-- 2. Check for active (non-expired) pending request
+SELECT Id, Status, OtpExpiresAt 
+FROM approval_requests_table 
+WHERE RequesterId = ? 
+  AND Status = 'pending'
+  AND OtpExpiresAt > NOW()
+LIMIT 1;
+
+-- 3. Find and clean up expired requests
+DELETE FROM approval_requests_table 
+WHERE RequesterId = ? 
+  AND Status = 'pending'
+  AND OtpExpiresAt < NOW();
+```
+
+**Decision Flow:**
+```
+1. Has TeamId?
+   ├─ NO → Redirect to /setup/team
+   └─ YES → Continue to step 2
+
+2. Has pending non-expired request?
+   ├─ YES → Redirect to /setup/validate-otp
+   └─ NO → Continue to step 3
+
+3. Has expired request?
+   ├─ YES → Delete it, redirect to /setup/upline
+   └─ NO → Continue to step 4
+
+4. Has UplineCoachId?
+   ├─ NO → Redirect to /setup/upline
+   └─ YES → Setup complete, allow app access ✅
+```
+
+### **Frontend Route Guard:**
+
+**Call on:**
+1. **App load** (when user opens app)
+2. **After login** (successful authentication)
+3. **On protected route access** (before rendering dashboard/features)
+4. **After state changes** (Team ID claimed, request sent, OTP validated)
+
+**Implementation Pattern:**
+```javascript
+// On app load or route change
+async function checkSetupStatus() {
+  const response = await fetch('/api/user/status');
+  const status = await response.json();
+
+  if (!status.setupComplete) {
+    // Redirect to appropriate setup page
+    navigate(status.redirectTo);
+  } else {
+    // Allow access to app
+    // User can proceed to requested route
+  }
+}
+```
+
+**Caching Strategy (Optional):**
+- Cache status response for 5 minutes
+- Clear cache after setup state changes:
+  - After Team ID claimed
+  - After request sent
+  - After OTP validated
+- Prevents excessive API calls on route changes
+
+### **Visual State Diagram:**
+
+```
+┌─────────────┐
+│  User Logs  │
+│     In      │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────┐
+│ GET /api/user/status│
+└──────┬──────────────┘
+       │
+       ▼
+   Check Database
+       │
+       ├─────────────────────────────────────────┐
+       │                                         │
+   No TeamId?                               Has TeamId
+       │                                         │
+       ▼                                         ▼
+  /setup/team                          Has pending request?
+                                               │
+                                      ├────────┴────────┐
+                                      │                 │
+                                    YES                NO
+                                      │                 │
+                                      ▼                 ▼
+                                 Expired?         Has UplineCoachId?
+                                      │                 │
+                              ├───────┴────────┐   ├────┴─────┐
+                              │                │   │          │
+                             YES              NO  YES         NO
+                              │                │   │          │
+                              ▼                ▼   ▼          ▼
+                      /setup/upline  /setup/    /dashboard  /setup/
+                      (delete old)   validate-    (DONE)    upline
+                                     otp
+```
+
+### **Key Takeaway:**
+
+**Single Source of Truth:**
+- `team_table.TeamId` + `team_table.UplineCoachId` = Setup completion status
+- Everything else (pending requests, expiry checks) determines the **intermediate redirect path**
+
+**Automatic Cleanup:**
+- Expired requests are deleted when detected
+- No manual intervention needed
+- User can immediately send new request after expiry
+
+---
+
 ## **Page-by-Page Requirements**
 
 ---
@@ -776,8 +1053,7 @@ Verify user's identity through email-based OTP. Final security step before grant
    - Show "Contact Support" button
 
 4. **Backend Actions on Success:**
-   - Add user to `team_members_table`
-   - Update `team_table.UplineCoachId`
+   - Update `team_table.UplineCoachId` (establishes coach-member relationship)
    - Delete approval request (cleanup)
    - Send "Welcome" email to requester
    - Send "New member joined" email to coach
@@ -1049,13 +1325,11 @@ All app routes (except login/signup) require `setupComplete = true`
 - CoCoachId (INT, nullable, FK to UserId)
 - CreatedAt, Status
 
-**3. team_members_table:**
-- Id (PK)
-- CoachId (INT, FK to UserId)
-- MemberId (INT, FK to UserId)
-- JoinedAt, Status
+**Note:** Coach-member relationships are tracked via `team_table.UplineCoachId` field. No separate junction table needed. To query all members of a coach: `SELECT * FROM team_table WHERE UplineCoachId = {coachId}`.
 
-**4. approval_requests_table:**
+**Foreign Keys:** Optional for development. Can be added in production for data integrity. App will work without them, validation handled in backend code.
+
+**3. approval_requests_table:**
 - Id (PK)
 - RequesterId (INT, FK to UserId)
 - UplineCoachId (INT, FK to UserId)

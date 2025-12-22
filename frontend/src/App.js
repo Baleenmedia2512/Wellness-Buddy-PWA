@@ -41,6 +41,8 @@ import {
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const SetupWizard = lazy(() => import('./pages/SetupWizard'));
+const ValidateOTP = lazy(() => import('./pages/ValidateOTP'));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
@@ -98,6 +100,10 @@ function WellnessValleyApp() {
 
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Setup wizard state
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [showValidateOTP, setShowValidateOTP] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -259,7 +265,6 @@ function WellnessValleyApp() {
       if (data.role) {
         setUserRole(data.role);
       }
-      
       
       return true;
     } catch (error) {
@@ -437,6 +442,13 @@ function WellnessValleyApp() {
           }
         }
         
+        // Store user email in localStorage for API calls
+        const userEmail = user.email || user.Email;
+        if (userEmail) {
+          localStorage.setItem('userEmail', userEmail);
+          console.log('✅ [Auth State] Stored user email in localStorage:', userEmail);
+        }
+        
         // Load user context for AI personalization
         if (user.id) {
           console.log('🔄 [Auth State] Loading user context...');
@@ -466,6 +478,39 @@ function WellnessValleyApp() {
             setUser(user); // Keep user state so modal can show user email
             setAuthLoading(false);
             return;
+          }
+          
+          // Check setup wizard status for active users
+          if (isActive && userEmail) {
+            console.log('🔄 [Auth State] Checking setup wizard status...');
+            try {
+              const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
+              
+              if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                console.log('📋 [Auth State] Setup status:', statusData);
+                
+                // Show setup wizard if not complete
+                if (!statusData.setupComplete) {
+                  if (statusData.pendingRequest) {
+                    // User has pending OTP validation
+                    console.log('📧 [Auth State] Pending OTP detected, showing OTP modal');
+                    setShowValidateOTP(true);
+                  } else {
+                    // User needs to complete setup wizard
+                    console.log('🔧 [Auth State] Setup incomplete, showing setup wizard');
+                    setShowSetupWizard(true);
+                  }
+                } else {
+                  console.log('✅ [Auth State] Setup already complete');
+                }
+              } else {
+                console.warn('⚠️ [Auth State] Setup status check failed:', statusResponse.status);
+              }
+            } catch (setupError) {
+              console.warn('⚠️ [Auth State] Failed to check setup status:', setupError);
+              // Continue without blocking - setup check is not critical
+            }
           }
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
@@ -579,6 +624,53 @@ function WellnessValleyApp() {
 
     return () => clearInterval(statusCheckInterval);
   }, [user, checkUserStatus]);
+
+  // Check setup wizard status whenever user is set/updated
+  useEffect(() => {
+    const checkSetupStatus = async () => {
+      if (!user || !isUserActive) return;
+      
+      const userEmail = user.email || user.Email;
+      if (!userEmail) return;
+      
+      console.log('🔄 [Setup Check] Checking setup wizard status for existing user...');
+      
+      try {
+        const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
+        
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          console.log('📋 [Setup Check] Setup status:', statusData);
+          
+          // Show setup wizard if not complete
+          if (!statusData.setupComplete) {
+            if (statusData.pendingRequest) {
+              // User has pending OTP validation
+              console.log('📧 [Setup Check] Pending OTP detected, showing OTP modal');
+              setShowValidateOTP(true);
+            } else {
+              // User needs to complete setup wizard
+              console.log('🔧 [Setup Check] Setup incomplete, showing setup wizard');
+              setShowSetupWizard(true);
+            }
+          } else {
+            console.log('✅ [Setup Check] Setup already complete');
+          }
+        } else {
+          console.warn('⚠️ [Setup Check] Setup status check failed:', statusResponse.status);
+        }
+      } catch (setupError) {
+        console.warn('⚠️ [Setup Check] Failed to check setup status:', setupError);
+      }
+    };
+    
+    // Run check after a short delay to ensure auth is fully complete
+    const timeoutId = setTimeout(() => {
+      checkSetupStatus();
+    }, 1000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [user, isUserActive, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1915,6 +2007,37 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Setup Wizard - Team ID + Coach Selection */}
+      {showSetupWizard && (
+        <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
+          <SetupWizard 
+            onClose={() => setShowSetupWizard(false)}
+            onNavigateToOTP={() => {
+              setShowSetupWizard(false);
+              setShowValidateOTP(true);
+            }}
+            onLogout={handleSignOut}
+          />
+        </Suspense>
+      )}
+
+      {/* OTP Validation Page */}
+      {showValidateOTP && (
+        <Suspense fallback={<LoadingSpinner message="Loading validation..." />}>
+          <ValidateOTP 
+            onClose={() => {
+              setShowValidateOTP(false);
+              setShowSetupWizard(true);
+            }}
+            onSuccess={() => {
+              setShowValidateOTP(false);
+              // Setup complete, user can now access dashboard
+            }}
+            onLogout={handleSignOut}
           />
         </Suspense>
       )}
