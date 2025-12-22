@@ -93,6 +93,10 @@ class GeminiService {
     this.lastPrompt = null;
     this.lastPromptTimestamp = null;
     
+    // USD to INR exchange rate (fetched dynamically)
+    this.usdToInrRate = 89.70; // Default fallback rate
+    this.fetchExchangeRate(); // Fetch on initialization
+    
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
@@ -114,6 +118,23 @@ class GeminiService {
     this.currentUserId = userId;
     this.currentUserEmail = userEmail;
     console.log('📊 [Token Monitor] User set for tracking:', { userId, email: userEmail });
+  }
+
+  // Fetch live USD to INR exchange rate
+  async fetchExchangeRate() {
+    try {
+      const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+      if (response.ok) {
+        const data = await response.json();
+        const rate = data.rates.INR;
+        if (rate && rate > 0) {
+          this.usdToInrRate = rate;
+          console.log('💱 Exchange rate updated: $1 USD = ₹' + rate.toFixed(2));
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch exchange rate, using fallback ₹' + this.usdToInrRate, error);
+    }
   }
 
   getApiInfo() {
@@ -674,10 +695,15 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
         responseLength: response.text ? response.text().length : 0
       };
 
-      // Calculate cost estimate (for gemini-2.5-flash - free tier)
-      const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
-      const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
-      const totalCost = inputCost + outputCost;
+      // Calculate cost estimate in USD (for gemini-2.5-flash - free tier)
+      const inputCostUSD = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
+      const outputCostUSD = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
+      const totalCostUSD = inputCostUSD + outputCostUSD;
+      
+      // Convert to INR for database storage
+      const inputCost = inputCostUSD * this.usdToInrRate;
+      const outputCost = outputCostUSD * this.usdToInrRate;
+      const totalCost = totalCostUSD * this.usdToInrRate;
 
       // Update session metrics
       this.sessionMetrics.totalRequests++;
@@ -692,14 +718,36 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
       }
       this.sessionMetrics.requestsByType[requestType]++;
 
-      // Log to console with nice formatting
-      console.log(`📊 Token Usage [${requestType}]:`, {
-        '🔤 Prompt Tokens': tokenData.promptTokens,
-        '💬 Response Tokens (Output)': tokenData.completionTokens,
-        '📈 Total Tokens': tokenData.totalTokens,
-        '⏱️ Processing Time': `${processingTime}ms`,
-        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
-      });
+      // Log to console with detailed formatting
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(`📊 TOKEN USAGE DETAILS [${requestType}]`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Token counts
+      console.log('🔢 TOKEN COUNTS:');
+      console.log(`   Input Tokens:     ${tokenData.promptTokens.toLocaleString()}`);
+      console.log(`   Output Tokens:    ${tokenData.completionTokens.toLocaleString()}`);
+      console.log(`   Total Tokens:     ${tokenData.totalTokens.toLocaleString()}`);
+      console.log('');
+      
+      // USD costs
+      console.log('💵 COSTS IN USD:');
+      console.log(`   Input Cost:       $${inputCostUSD.toFixed(6)}`);
+      console.log(`   Output Cost:      $${outputCostUSD.toFixed(6)}`);
+      console.log(`   Total Cost:       $${totalCostUSD.toFixed(6)}`);
+      console.log('');
+      
+      // INR costs
+      console.log('💸 COSTS IN INR:');
+      console.log(`   Input Cost:       ₹${inputCost.toFixed(4)}`);
+      console.log(`   Output Cost:      ₹${outputCost.toFixed(4)}`);
+      console.log(`   Total Cost:       ₹${totalCost.toFixed(4)}`);
+      console.log('');
+      
+      // Exchange rate info
+      console.log(`💱 Exchange Rate:    1 USD = ₹${this.usdToInrRate.toFixed(2)}`);
+      console.log(`⏱️  Processing Time:  ${processingTime}ms`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
       // Log response quality
       console.log(`🔍 Response Quality [${requestType}]:`, {
