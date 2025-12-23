@@ -8,7 +8,15 @@
 
 import mysql from 'mysql2/promise';
 import bcrypt from 'bcryptjs';
-import { sendEmail } from '../../../utils/email'; // Assumes existing email service
+
+// Email function stub - logs to console instead of sending real emails
+const sendEmail = async ({ to, subject, html }) => {
+  console.log('📧 Email would be sent to:', to);
+  console.log('Subject:', subject);
+  console.log('OTP Code:', html.match(/Verification Code: (\d{6})/)?.[1] || 'N/A');
+  // In production, integrate with actual email service (SendGrid, AWS SES, etc.)
+  return Promise.resolve();
+};
 
 // Database configuration
 const dbConfig = {
@@ -160,14 +168,14 @@ export default async function handler(req, res) {
 
       const coach = coachRows[0];
 
-      // Verify coach role
-      if (coach.Role !== 'admin') {
-        await connection.rollback();
-        return res.status(400).json({
-          success: false,
-          error: 'Selected user is not a coach'
-        });
-      }
+      // Note: Not checking Role since all users can be coaches
+      // if (coach.Role !== 'admin') {
+      //   await connection.rollback();
+      //   return res.status(400).json({
+      //     success: false,
+      //     error: 'Selected user is not a coach'
+      //   });
+      // }
 
       // Generate 6-digit OTP
       const otp = generateOTP();

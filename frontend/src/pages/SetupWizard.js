@@ -135,20 +135,30 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       const userEmail = localStorage.getItem('userEmail');
       if (!userEmail) {
         setError('Session expired. Please login again.');
+        setClaimingTeamId(false);
+        setSendingRequest(false);
         return;
       }
 
+      console.log('Claiming Team ID:', { teamId, email: userEmail });
+
       // Step 1: Claim Team ID
-      await axios.post(
+      const claimResponse = await axios.post(
         `${API_BASE}/api/team/claim-id`,
         { teamId, email: userEmail }
       );
 
+      console.log('Team ID claimed successfully:', claimResponse.data);
+
+      console.log('Sending approval request:', { coachId: selectedCoach.userId, email: userEmail });
+
       // Step 2: Send approval request to coach
-      await axios.post(
+      const requestResponse = await axios.post(
         `${API_BASE}/api/upline/request`,
         { coachId: selectedCoach.userId, email: userEmail }
       );
+
+      console.log('Approval request sent:', requestResponse.data);
 
       setSuccess(`Request sent!`);
       
@@ -161,7 +171,10 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         }
       }, 1500);
     } catch (err) {
-      setError(err.response?.data?.error || 'Failed to complete setup');
+      console.error('Setup error:', err);
+      console.error('Error response:', err.response?.data);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to complete setup';
+      setError(errorMessage);
       setClaimingTeamId(false);
       setSendingRequest(false);
     }
