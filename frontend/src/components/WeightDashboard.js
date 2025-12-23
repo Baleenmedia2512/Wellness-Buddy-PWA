@@ -18,7 +18,7 @@ const WeightCardModal = lazy(() => import('./WeightCardModal'));
 const UNDO_SECONDS = 10; // undo countdown duration
 
 /**
-//  * ✅ PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
+ * ✅ PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
  */
 const LazyLoadWrapper = ({ children, fallback, rootMargin = '100px' }) => {
   const [isVisible, setIsVisible] = useState(false);
