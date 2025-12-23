@@ -94,7 +94,8 @@ class GeminiService {
     this.lastPromptTimestamp = null;
     
     // USD to INR exchange rate (fetched dynamically)
-    this.usdToInrRate = 89.70; // Default fallback rate
+    // this.usdToInrRate = 89.70; // Default fallback rate
+    this.usdToInrRate = parseFloat(process.env.EXCHANGE_RATE_USD_TO_INR) || 89.70; // Fallback from env
     this.fetchExchangeRate(); // Fetch on initialization
     
     if (this.apiKey) {
@@ -122,8 +123,12 @@ class GeminiService {
 
   // Fetch live USD to INR exchange rate
   async fetchExchangeRate() {
+    // Only fetch in browser environment
+    if (typeof window === 'undefined') return;
+    
     try {
-      const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+      const apiUrl = process.env.REACT_APP_EXCHANGE_RATE_API || 'https://api.exchangerate-api.com/v4/latest/USD';
+      const response = await fetch(apiUrl);
       if (response.ok) {
         const data = await response.json();
         const rate = data.rates.INR;
