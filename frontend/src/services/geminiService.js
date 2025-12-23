@@ -153,7 +153,7 @@ class GeminiService {
       throw new Error('Invalid exchange rate data from API');
       
     } catch (error) {
-      // API failed - use fallback
+      // API failed - use fallback //
       // this.usdToInrRate = this.fallbackRate;
       // console.warn('⚠️ Live exchange rate API failed - using fallback rate');
       console.warn('❌ Error:', error.message);
