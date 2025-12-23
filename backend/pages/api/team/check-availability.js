@@ -91,40 +91,83 @@ export default async function handler(req, res) {
     const userId = currentUserRows[0].UserId;
 
     try {
-      // Check if Team ID exists in database
-      const [rows] = await connection.execute(
+      // Check if Team ID exists in coach_teams_table (only active)
+      const [teamRows] = await connection.execute(
+        'SELECT TeamId, CoachId, CoCoachId FROM coach_teams_table WHERE TeamId = ? AND Status = "active"',
+        [teamId]
+      );
+
+      // Also check if TeamId exists in team_table but inactive
+      const [teamTableCheck] = await connection.execute(
         'SELECT UserId FROM team_table WHERE TeamId = ?',
         [teamId]
       );
 
-      if (rows.length === 0) {
-        // Team ID is available
-        return res.status(200).json({
-          success: true,
-          status: 'available',
-          teamId: teamId,
-          message: 'This Team ID is available to claim'
-        });
+      if (teamRows.length === 0) {
+        // Check if it's truly new or just inactive
+        if (teamTableCheck.length === 0) {
+          // Completely new Team ID
+          return res.status(200).json({
+            success: true,
+            status: 'new',
+            teamId: teamId,
+            coachCount: 0,
+            message: 'This is a new Team ID - you will be the first coach'
+          });
+        } else {
+          // Exists in team_table but inactive in coach_teams_table
+          return res.status(200).json({
+            success: true,
+            status: 'new',
+            teamId: teamId,
+            coachCount: 0,
+            message: 'This Team ID is available - you can reactivate it'
+          });
+        }
       }
 
-      const owner = rows[0];
+      const team = teamRows[0];
 
-      if (owner.UserId === currentUserId) {
-        // Current user already owns this Team ID
+      // Check if current user owns this Team ID
+      if (team.CoachId === currentUserId || team.CoCoachId === currentUserId) {
         return res.status(200).json({
           success: true,
           status: 'taken-by-you',
           teamId: teamId,
-          message: 'You already have this Team ID'
+          message: 'You already own this Team ID'
         });
       }
 
-      // Another user owns this Team ID
+      // Check if team has space (only CoachId, no CoCoachId)
+      if (team.CoachId && !team.CoCoachId) {
+        // Get coach details
+        const [coachRows] = await connection.execute(
+          'SELECT UserName, Email FROM team_table WHERE UserId = ?',
+          [team.CoachId]
+        );
+
+        const coach = coachRows[0];
+
+        return res.status(200).json({
+          success: true,
+          status: 'available',
+          teamId: teamId,
+          coachCount: 1,
+          existingCoach: {
+            name: coach.UserName,
+            email: coach.Email
+          },
+          message: 'This Team ID has 1 coach - you can join as co-coach'
+        });
+      }
+
+      // Both CoachId and CoCoachId are filled - FULL
       return res.status(200).json({
         success: true,
-        status: 'taken-by-other',
+        status: 'taken',
         teamId: teamId,
-        message: 'This Team ID is already taken'
+        coachCount: 2,
+        message: 'This Team ID is full (2 coaches already)'
       });
 
     } finally {

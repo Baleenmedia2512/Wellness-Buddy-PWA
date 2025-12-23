@@ -140,7 +140,16 @@ export default async function handler(req, res) {
       }
 
       // Verify OTP
+      console.log('Verifying OTP:', { 
+        inputOtp: otp, 
+        storedHash: request.OtpHash?.substring(0, 20) + '...',
+        requesterId: requesterId,
+        requestId: request.Id
+      });
+      
       const isValid = await bcrypt.compare(otp, request.OtpHash);
+      
+      console.log('OTP validation result:', isValid);
 
       if (!isValid) {
         // Increment attempts
@@ -162,13 +171,95 @@ export default async function handler(req, res) {
 
       // OTP is valid! Complete setup
 
-      // Update user's UplineCoachId
-      await connection.execute(
-        'UPDATE team_table SET UplineCoachId = ? WHERE UserId = ?',
-        [request.UplineCoachId, requesterId]
+      // Get requester's TeamId first
+      const [requesterData] = await connection.execute(
+        'SELECT TeamId FROM team_table WHERE UserId = ?',
+        [requesterId]
       );
 
-      // Mark request as approved
+      const requesterTeamId = requesterData[0]?.TeamId;
+
+      if (!requesterTeamId) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          error: 'Requester does not have a TeamId assigned'
+        });
+      }
+
+      // STEP 1: Update coach_teams_table FIRST (before team_table)
+      // Check if TeamId exists in coach_teams_table (including inactive)
+      const [existingTeam] = await connection.execute(
+        'SELECT TeamId, CoachId, CoCoachId, Status FROM coach_teams_table WHERE TeamId = ?',
+        [requesterTeamId]
+      );
+
+      if (existingTeam.length > 0) {
+        const team = existingTeam[0];
+        
+        if (team.Status === 'active') {
+          // Team is active, add requester as CoCoachId if slot available
+          if (!team.CoCoachId) {
+            await connection.execute(
+              'UPDATE coach_teams_table SET CoCoachId = ?, UpdatedAt = NOW() WHERE TeamId = ? AND Status = "active"',
+              [requesterId, requesterTeamId]
+            );
+          }
+        } else {
+          // Team is inactive, reactivate with requester as primary coach
+          await connection.execute(
+            'UPDATE coach_teams_table SET CoachId = ?, CoCoachId = NULL, Status = "active", UpdatedAt = NOW() WHERE TeamId = ?',
+            [requesterId, requesterTeamId]
+          );
+        }
+      } else {
+        // Create new entry with requester as primary coach
+        await connection.execute(
+          'INSERT INTO coach_teams_table (TeamId, CoachId, Status) VALUES (?, ?, "active")',
+          [requesterTeamId, requesterId]
+        );
+      }
+
+      // STEP 2: Get coach details for CoachName and CoCoachName
+      const [coachData] = await connection.execute(
+        'SELECT TeamId, UserName FROM team_table WHERE UserId = ?',
+        [request.UplineCoachId]
+      );
+
+      const coachTeamId = coachData[0]?.TeamId;
+      const coachName = coachData[0]?.UserName;
+      let coCoachName = null;
+
+      if (coachTeamId) {
+        // Find the co-coach from coach_teams_table
+        const [coachTeam] = await connection.execute(
+          'SELECT CoachId, CoCoachId FROM coach_teams_table WHERE TeamId = ? AND Status = "active"',
+          [coachTeamId]
+        );
+
+        if (coachTeam.length > 0) {
+          // Determine which is the co-coach (the one that's not our coach)
+          const coCoachId = coachTeam[0].CoachId === request.UplineCoachId 
+            ? coachTeam[0].CoCoachId 
+            : coachTeam[0].CoachId;
+
+          if (coCoachId) {
+            const [coCoachData] = await connection.execute(
+              'SELECT UserName FROM team_table WHERE UserId = ?',
+              [coCoachId]
+            );
+            coCoachName = coCoachData[0]?.UserName || null;
+          }
+        }
+      }
+
+      // STEP 3: NOW update team_table (after coach_teams_table succeeds)
+      await connection.execute(
+        'UPDATE team_table SET UplineCoachId = ?, CoachName = ?, CoCoachName = ? WHERE UserId = ?',
+        [request.UplineCoachId, coachName, coCoachName, requesterId]
+      );
+
+      // STEP 4: Mark request as approved
       await connection.execute(
         'UPDATE approval_requests_table SET Status = ?, ProcessedAt = NOW() WHERE Id = ?',
         ['approved', request.Id]

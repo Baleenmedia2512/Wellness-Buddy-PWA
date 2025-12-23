@@ -60,7 +60,7 @@ export default async function handler(req, res) {
 
     // Get user's UserId from team_table
     const [userRows] = await connection.execute(
-      'SELECT UserId, TeamId, UplineCoachId FROM team_table WHERE Email = ? LIMIT 1',
+      'SELECT UserId, TeamId, UplineCoachId, Role FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
 
@@ -74,8 +74,26 @@ export default async function handler(req, res) {
 
     const user = userRows[0];
     const userId = user.UserId;
+    const userRole = user.Role;
     const hasTeamId = !!user.TeamId;
     const hasUpline = !!user.UplineCoachId;
+
+    // ADMIN/DEVELOPER users bypass coach auth flow
+    if (userRole === 'admin' || userRole === 'developer') {
+      await connection.end();
+      return res.status(200).json({
+        success: true,
+        setupComplete: true,
+        hasTeamId: hasTeamId,
+        hasUpline: hasUpline,
+        teamId: user.TeamId,
+        uplineCoachId: user.UplineCoachId,
+        role: userRole,
+        pendingRequest: null,
+        redirectTo: '/dashboard',
+        message: 'Admin/Developer - setup not required'
+      });
+    }
 
     // STATE 5: Setup complete ✅
     if (hasTeamId && hasUpline) {

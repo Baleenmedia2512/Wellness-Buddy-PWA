@@ -8,6 +8,7 @@ const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [validating, setValidating] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [requestInfo, setRequestInfo] = useState(null);
@@ -136,6 +137,34 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
     }
   }, [otp]);
 
+  // Cancel verification
+  const handleCancel = async () => {
+    try {
+      const userEmail = localStorage.getItem('userEmail');
+      if (!userEmail) {
+        setError('User email not found. Please login again.');
+        return;
+      }
+
+      setCancelling(true);
+      
+      await axios.post(
+        `${API_BASE}/api/upline/cancel-request`,
+        { email: userEmail }
+      );
+
+      // Close modal and refresh setup status
+      if (onClose) {
+        onClose();
+      }
+    } catch (err) {
+      console.error('Cancel error:', err);
+      setError('Failed to cancel request');
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[9999] bg-green-900/40 backdrop-blur-sm flex items-center justify-center sm:p-6 overflow-y-auto">
       <motion.div 
@@ -152,7 +181,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
 
-        <div className="px-8 pt-10 pb-6 text-center">
+        <div className="px-8 pt-10 pb-6 text-center shrink-0">
           <div className="w-20 h-20 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
             <img 
               src={wellnessValleyIcon} 
@@ -171,7 +200,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
           </div>
         </div>
 
-        <div className="px-8 pb-10">
+        <div className="px-8 pb-10 flex-1 overflow-y-auto custom-scrollbar">
           <div className="flex justify-center gap-2 sm:gap-3 mb-8">
             {otp.map((digit, index) => (
               <input
@@ -236,9 +265,22 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
           </button>
           
           <div className="mt-6 text-center">
-            <button onClick={onClose} className="text-gray-400 text-sm hover:text-gray-600 flex items-center justify-center gap-1 mx-auto">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              <span>Cancel Verification</span>
+            <button 
+              onClick={handleCancel} 
+              disabled={validating || cancelling}
+              className="text-gray-400 text-sm hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto transition-colors"
+            >
+              {cancelling ? (
+                <>
+                  <div className="animate-spin h-4 w-4 border-2 border-gray-400 border-t-transparent rounded-full"></div>
+                  <span>Cancelling...</span>
+                </>
+              ) : (
+                <>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                  <span>Cancel Verification</span>
+                </>
+              )}
             </button>
           </div>
         </div>

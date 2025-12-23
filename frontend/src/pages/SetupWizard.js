@@ -17,7 +17,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
   
   // Step 2: Team ID
   const [teamId, setTeamId] = useState('');
-  const [teamIdStatus, setTeamIdStatus] = useState(null); // 'available', 'taken-by-you', 'taken-by-other'
+  const [teamIdStatus, setTeamIdStatus] = useState(null); // 'new', 'available', 'taken', 'taken-by-you'
+  const [teamIdInfo, setTeamIdInfo] = useState(null); // Store additional info like existingCoach
   const [checkingTeamId, setCheckingTeamId] = useState(false);
   const [claimingTeamId, setClaimingTeamId] = useState(false);
   const [sendingRequest, setSendingRequest] = useState(false);
@@ -68,8 +69,9 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     setError('');
 
     try {
+      const userEmail = localStorage.getItem('userEmail');
       const response = await axios.get(
-        `${API_BASE}/api/users/search?q=${encodeURIComponent(query)}`
+        `${API_BASE}/api/users/search?q=${encodeURIComponent(query)}&email=${encodeURIComponent(userEmail || '')}`
       );
 
       setCoaches(response.data.coaches);
@@ -108,6 +110,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       );
 
       setTeamIdStatus(response.data.status);
+      setTeamIdInfo(response.data);
       
       if (response.data.status === 'taken-by-you') {
         setSuccess('You already own this ID.');
@@ -209,38 +212,40 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
         </button>
 
-        {/* Header Icon */}
-        <div className="flex justify-center pt-8 pb-4">
-           <div className="w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden">
-              <img 
-                src={wellnessValleyIcon} 
-                alt="Wellness Valley" 
-                className="w-full h-full object-contain"
-              />
-           </div>
-        </div>
-
-        <div className="px-8 text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Wellness Valley</h1>
-          <p className="text-gray-500 text-sm leading-relaxed">
-            Complete these 2 simple steps to join your team and activate your account.
-          </p>
-        </div>
-
-        {/* Stepper */}
-        <div className="flex justify-center items-center gap-4 mb-8">
-            <div className="flex flex-col items-center gap-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${step >= 1 ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>1</div>
-                <span className={`text-xs font-bold ${step >= 1 ? 'text-green-600' : 'text-gray-400'}`}>Coach</span>
+        <div className="shrink-0">
+            {/* Header Icon */}
+            <div className="flex justify-center pt-8 pb-4">
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center overflow-hidden">
+                <img 
+                    src={wellnessValleyIcon} 
+                    alt="Wellness Valley" 
+                    className="w-full h-full object-contain"
+                />
             </div>
-            <div className={`w-12 h-0.5 ${step >= 2 ? 'bg-green-500' : 'bg-gray-200'} mb-4`} />
-            <div className="flex flex-col items-center gap-1">
-                <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${step >= 2 ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>2</div>
-                <span className={`text-xs font-bold ${step >= 2 ? 'text-green-600' : 'text-gray-400'}`}>Team ID</span>
+            </div>
+
+            <div className="px-8 text-center mb-8">
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">Welcome to Wellness Valley</h1>
+            <p className="text-gray-500 text-sm leading-relaxed">
+                Complete these 2 simple steps to join your team and activate your account.
+            </p>
+            </div>
+
+            {/* Stepper */}
+            <div className="flex justify-center items-center gap-4 mb-8">
+                <div className="flex flex-col items-center gap-1">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${step >= 1 ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>1</div>
+                    <span className={`text-xs font-bold ${step >= 1 ? 'text-green-600' : 'text-gray-400'}`}>Coach</span>
+                </div>
+                <div className={`w-12 h-0.5 ${step >= 2 ? 'bg-green-500' : 'bg-gray-200'} mb-4`} />
+                <div className="flex flex-col items-center gap-1">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold transition-all ${step >= 2 ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-400'}`}>2</div>
+                    <span className={`text-xs font-bold ${step >= 2 ? 'text-green-600' : 'text-gray-400'}`}>Team ID</span>
+                </div>
             </div>
         </div>
 
-        <div className="px-8 pb-8">
+        <div className="px-8 pb-8 flex-1 overflow-y-auto custom-scrollbar">
           <AnimatePresence mode="wait">
             {step === 1 && (
               <motion.div
@@ -291,10 +296,10 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                           <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
                             selectedCoach?.userId === coach.userId ? 'bg-green-500 text-white' : 'bg-gray-100 text-gray-500'
                           }`}>
-                            {coach.coachName.charAt(0).toUpperCase()}
+                            {coach.userName.charAt(0).toUpperCase()}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <div className="font-bold text-gray-900 truncate">{coach.coachName}</div>
+                            <div className="font-bold text-gray-900 truncate">{coach.userName}</div>
                             <div className="text-xs text-gray-500 truncate">{maskEmail(coach.email)}</div>
                           </div>
                           {selectedCoach?.userId === coach.userId && (
@@ -341,11 +346,11 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                 <div className="bg-green-50 rounded-xl p-4 flex items-center justify-between mb-8 border border-green-100">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 bg-green-200 rounded-full flex items-center justify-center text-green-700 font-bold">
-                            {selectedCoach?.coachName.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                            <div className="text-xs text-green-700 font-medium">Selected Coach</div>
-                            <div className="text-sm font-bold text-gray-900">{selectedCoach?.coachName}</div>
+                            {selectedCoach?.userName.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p className="text-xs text-green-600 font-medium">Selected Coach</p>
+                            <div className="text-sm font-bold text-gray-900">{selectedCoach?.userName}</div>
                         </div>
                     </div>
                     <button onClick={() => setStep(1)} className="text-green-600 text-sm font-bold hover:text-green-700">
@@ -361,8 +366,10 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                         <input
                         type="text"
                         className={`w-full py-6 bg-gray-50 rounded-xl text-center text-2xl font-mono tracking-widest border-2 focus:ring-0 transition-all ${
+                            teamIdStatus === 'new' ? 'border-blue-500 text-blue-700' :
                             teamIdStatus === 'available' ? 'border-green-500 text-green-700' :
-                            teamIdStatus === 'taken-by-other' ? 'border-red-300 text-red-600' :
+                            teamIdStatus === 'taken' ? 'border-red-300 text-red-600' :
+                            teamIdStatus === 'taken-by-you' ? 'border-yellow-500 text-yellow-700' :
                             'border-transparent text-gray-500'
                         }`}
                         value={teamId}
@@ -378,17 +385,85 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                         <div className="absolute right-4 top-1/2 -translate-y-1/2">
                         {checkingTeamId ? (
                             <div className="animate-spin h-6 w-6 border-2 border-green-500 border-t-transparent rounded-full"></div>
+                        ) : teamIdStatus === 'new' ? (
+                            <div className="text-blue-500 bg-blue-100 rounded-full p-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                            </div>
                         ) : teamIdStatus === 'available' ? (
                             <div className="text-green-500 bg-green-100 rounded-full p-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                             </div>
-                        ) : teamIdStatus === 'taken-by-other' ? (
+                        ) : teamIdStatus === 'taken' ? (
                             <div className="text-red-500 bg-red-100 rounded-full p-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </div>
+                        ) : teamIdStatus === 'taken-by-you' ? (
+                            <div className="text-yellow-500 bg-yellow-100 rounded-full p-1">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                             </div>
                         ) : null}
                         </div>
                     </div>
+                    
+                    {/* Status Messages */}
+                    {teamIdStatus && !error && (
+                      <div className="mt-4">
+                        {teamIdStatus === 'new' && (
+                          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 flex items-center gap-3 text-left">
+                            <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center shadow-md shadow-blue-200 shrink-0">
+                                 <span className="text-white text-[10px] font-bold tracking-wider">NEW</span>
+                            </div>
+                            <div>
+                                <h4 className="text-blue-900 font-bold text-sm">This is a new Team ID!</h4>
+                                <p className="text-blue-600/80 text-xs font-medium">You'll be the first coach.</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {teamIdStatus === 'available' && teamIdInfo?.existingCoach && (
+                          <div className="bg-green-50 border border-green-100 rounded-xl p-3 text-left">
+                            <div className="flex items-center gap-3 mb-2">
+                                <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center text-green-600 shrink-0">
+                                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+                                </div>
+                                <div>
+                                    <h4 className="text-green-900 font-bold text-sm">Join as Co-Coach</h4>
+                                    <p className="text-green-600/80 text-xs font-medium">There is a coach already.</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2 bg-white px-3 py-1.5 rounded-lg border border-green-100 shadow-sm w-full">
+                                <div className="w-1.5 h-1.5 rounded-full bg-green-500"></div>
+                                <span className="text-green-800 text-xs font-bold truncate">{teamIdInfo.existingCoach.name}</span>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {teamIdStatus === 'taken' && (
+                          <div className="bg-red-50 border border-red-100 rounded-xl p-3 flex items-center gap-3 text-left">
+                            <div className="w-10 h-10 bg-red-100 rounded-lg flex items-center justify-center text-red-500 shrink-0">
+                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" /></svg>
+                            </div>
+                            <div>
+                                <h4 className="text-red-900 font-bold text-sm">This Team ID is full</h4>
+                                <p className="text-red-600/80 text-xs font-medium">Already has 2 coaches.</p>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {teamIdStatus === 'taken-by-you' && (
+                          <div className="bg-yellow-50 border border-yellow-100 rounded-xl p-3 flex items-center gap-3 text-left">
+                            <div className="w-10 h-10 bg-yellow-100 rounded-lg flex items-center justify-center text-yellow-600 shrink-0">
+                                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                            </div>
+                            <div>
+                                <h4 className="text-yellow-900 font-bold text-sm">You own this Team ID</h4>
+                                <p className="text-yellow-600/80 text-xs font-medium">This is your current ID.</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
                     {error && (
                       <p className="text-red-500 text-xs mt-2 text-center">{error}</p>
                     )}
@@ -411,12 +486,12 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </button>
                     <button
                         className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                            teamIdStatus === 'available' && !claimingTeamId
+                            (teamIdStatus === 'new' || teamIdStatus === 'available') && !claimingTeamId
                             ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
                             : 'bg-gray-100 text-gray-400 cursor-not-allowed'
                         }`}
                         onClick={claimTeamIdAndSendRequest}
-                        disabled={teamIdStatus !== 'available' || claimingTeamId}
+                        disabled={(teamIdStatus !== 'new' && teamIdStatus !== 'available') || claimingTeamId}
                     >
                         {claimingTeamId ? (
                             <>

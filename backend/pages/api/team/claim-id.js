@@ -88,28 +88,74 @@ export default async function handler(req, res) {
       const user = userRows[0];
       const currentUserId = user.UserId;
 
-      if (user.TeamId) {
+      // If user already has this same TeamId, just proceed (they're continuing setup)
+      if (user.TeamId && user.TeamId === teamId) {
+        await connection.commit();
+        return res.status(200).json({
+          success: true,
+          message: 'Team ID already assigned to you',
+          teamId: teamId,
+          alreadyOwned: true,
+          nextStep: 'search-coach'
+        });
+      }
+
+      // If user has a different TeamId, reject
+      if (user.TeamId && user.TeamId !== teamId) {
         await connection.rollback();
         return res.status(400).json({
           success: false,
-          error: 'You already have a Team ID',
+          error: 'You already have a different Team ID',
           currentTeamId: user.TeamId
         });
       }
 
-      // Check if Team ID is already taken
-      const [existingTeamId] = await connection.execute(
-        'SELECT UserId FROM team_table WHERE TeamId = ?',
+      // Check Team ID availability in coach_teams_table (both active and inactive)
+      const [allCoachTeams] = await connection.execute(
+        'SELECT CoachId, CoCoachId, Status FROM coach_teams_table WHERE TeamId = ?',
         [teamId]
       );
 
+      // Filter only active teams
+      const activeCoachTeams = allCoachTeams.filter(team => team.Status === 'active');
+
+      // Check if Team ID is used by someone else in team_table
+      const [existingTeamId] = await connection.execute(
+        'SELECT UserId FROM team_table WHERE TeamId = ? AND UserId != ?',
+        [teamId, currentUserId]
+      );
+
+      let isJoiningExistingTeam = false;
+      let isReactivatingTeam = false;
+
       if (existingTeamId.length > 0) {
-        await connection.rollback();
-        return res.status(409).json({
-          success: false,
-          error: 'This Team ID is already taken',
-          status: 'taken-by-other'
-        });
+        // TeamId exists in team_table - check coach_teams_table
+        if (activeCoachTeams.length > 0) {
+          const team = activeCoachTeams[0];
+          
+          // Check if both slots are filled
+          if (team.CoachId && team.CoCoachId) {
+            await connection.rollback();
+            return res.status(409).json({
+              success: false,
+              error: 'This Team ID is already taken (2 coaches)',
+              status: 'taken'
+            });
+          }
+          // If only 1 slot filled, allow joining as co-coach
+          isJoiningExistingTeam = true;
+        } else if (allCoachTeams.length > 0 && allCoachTeams[0].Status === 'inactive') {
+          // Team exists but is inactive - allow reactivation
+          isReactivatingTeam = true;
+        } else {
+          // TeamId exists but not in coach_teams_table at all
+          await connection.rollback();
+          return res.status(409).json({
+            success: false,
+            error: 'This Team ID is already taken',
+            status: 'taken-by-other'
+          });
+        }
       }
 
       // Update user's Team ID
@@ -118,35 +164,36 @@ export default async function handler(req, res) {
         [teamId, currentUserId]
       );
 
-      // If user is a coach (Role=admin), create entry in coach_teams_table
-      const isCoach = user.Role === 'admin';
-      
-      if (isCoach) {
-        await connection.execute(
-          'INSERT INTO coach_teams_table (TeamId, CoachId, CreatedAt) VALUES (?, ?, NOW())',
-          [teamId, currentUserId]
-        );
-      }
-
       await connection.commit();
 
       return res.status(200).json({
         success: true,
-        message: 'Team ID claimed successfully',
+        message: isReactivatingTeam ? 'Team ID claimed (was inactive)' : isJoiningExistingTeam ? 'Team ID claimed (will join as co-coach)' : 'Team ID claimed successfully',
         teamId: teamId,
-        isCoach: isCoach,
-        nextStep: 'search-coach' // User should now search for their upline coach
+        joiningExisting: isJoiningExistingTeam,
+        reactivated: isReactivatingTeam,
+        nextStep: 'search-coach'
       });
 
     } catch (dbError) {
       await connection.rollback();
       
-      // Handle duplicate key error (shouldn't happen due to check above, but just in case)
+      console.error('Database error in claim-id:', dbError);
+      
+      // Handle duplicate key error
       if (dbError.code === 'ER_DUP_ENTRY') {
+        // Check which constraint failed
+        if (dbError.message.includes('TeamId')) {
+          return res.status(409).json({
+            success: false,
+            error: 'This Team ID was just claimed by another user',
+            status: 'taken-by-other'
+          });
+        }
         return res.status(409).json({
           success: false,
-          error: 'This Team ID was just claimed by another user',
-          status: 'taken-by-other'
+          error: 'Duplicate entry error',
+          status: 'error'
         });
       }
 
