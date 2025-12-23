@@ -93,9 +93,11 @@ class GeminiService {
     this.lastPrompt = null;
     this.lastPromptTimestamp = null;
     
-    // USD to INR exchange rate (fetched dynamically)
-    this.usdToInrRate = 89.70; // Default fallback rate
-    this.fetchExchangeRate(); // Fetch on initialization
+    // USD to INR exchange rate
+    // Priority: 1. Live API rate, 2. Fallback if API fails
+    this.usdToInrRate = null; // Will be set by fetchExchangeRate
+    this.fallbackRate = 89.60; // Fallback rate when API fails
+    this.fetchExchangeRate(); // Fetch live rate on initialization
     
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -121,23 +123,41 @@ class GeminiService {
   }
 
   // Fetch live USD to INR exchange rate
+  // Priority: Try live API first, use fallback only if API fails
   async fetchExchangeRate() {
     // Only fetch in browser environment
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') {
+      this.usdToInrRate = this.fallbackRate;
+      console.log('💱 Using fallback exchange rate (non-browser): $1 USD = ₹' + this.fallbackRate.toFixed(2));
+      return;
+    }
     
     try {
-      const apiUrl =  'https://api.exchangerate-api.com/v4/latest/USD';
+      console.log('🔄 Fetching live USD to INR exchange rate...');
+      const apiUrl = 'https://api.exchangerate-api.com/v4/latest/USD';
       const response = await fetch(apiUrl);
+      
       if (response.ok) {
         const data = await response.json();
         const rate = data.rates.INR;
+        
         if (rate && rate > 0) {
           this.usdToInrRate = rate;
-          console.log('💱 Exchange rate updated: $1 USD = ₹' + rate.toFixed(2));
+          console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
+          console.log('📊 Difference from fallback: ₹' + Math.abs(rate - this.fallbackRate).toFixed(4));
+          return; // Success - using live rate
         }
       }
+      
+      // API responded but no valid rate - use fallback
+      throw new Error('Invalid exchange rate data from API');
+      
     } catch (error) {
-      console.warn('⚠️ Failed to fetch exchange rate, using fallback ₹' + this.usdToInrRate, error);
+      // API failed - use fallback
+      this.usdToInrRate = this.fallbackRate;
+      console.warn('⚠️ Live exchange rate API failed - using fallback rate');
+      console.warn('❌ Error:', error.message);
+      console.log('💱 Fallback exchange rate: $1 USD = ₹' + this.fallbackRate.toFixed(2));
     }
   }
 
@@ -698,10 +718,26 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
         candidateCount: candidates.length,
         responseLength: response.text ? response.text().length : 0
       };
-
-      // Calculate cost estimate in USD (for gemini-2.5-flash - free tier)
-      const inputCostUSD = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
-      const outputCostUSD = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
+      // === COST CALCULATION ===
+      // Source: Google AI Pricing - https://ai.google.dev/pricing
+      // Model: gemini-2.5-flash-lite (prompts ≤128K tokens)
+      // Last updated: December 2025
+      // NOTE: Gemini API only provides token counts, NOT cost
+      //       We must calculate cost manually using Google's published rates
+      
+      // Pricing rates (USD per 1 million tokens)
+      const GEMINI_INPUT_RATE_PER_MILLION = 0.075;   // $0.075 per 1M input tokens
+      const GEMINI_OUTPUT_RATE_PER_MILLION = 0.30;   // $0.30 per 1M output tokens
+      
+      // For prompts >128K tokens, rates are doubled:
+      // INPUT: $0.15 per 1M tokens | OUTPUT: $0.60 per 1M tokens
+      // (Not implemented yet - current prompts are well under 128K)
+      
+      // Formula: (tokens / 1,000,000) × price_per_million
+      // Example: 8,450 tokens = (8450 / 1000000) × 0.075 = $0.00063375
+      
+      const inputCostUSD = (tokenData.promptTokens / 1000000) * GEMINI_INPUT_RATE_PER_MILLION;
+      const outputCostUSD = (tokenData.completionTokens / 1000000) * GEMINI_OUTPUT_RATE_PER_MILLION;
       const totalCostUSD = inputCostUSD + outputCostUSD;
       
       // Convert to INR for database storage

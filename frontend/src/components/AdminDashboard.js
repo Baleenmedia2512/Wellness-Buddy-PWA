@@ -22,6 +22,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { App as CapacitorApp } from '@capacitor/app';
 
 // --- Dynamic Demo Data Generator ---
+// COMMENTED OUT - Demo data disabled
+/*
 const generateDemoData = () => {
   const today = new Date();
   
@@ -190,11 +192,13 @@ const generateDemoData = () => {
     userSpending
   };
 };
+*/
 
 // Generate demo data on load
-const DEMO_DATA = generateDemoData();
+// const DEMO_DATA = generateDemoData();
 
 // Filter demo data based on time range
+/*
 const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndDate = null) => {
   const now = new Date();
   let startDateObj;
@@ -291,6 +295,7 @@ const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndD
     userSpending: filteredUserSpending
   };
 };
+*/
 
 // --- Components ---
 
@@ -465,13 +470,11 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
   );
 };
 
-
-
 const AdminDashboard = ({ user, onClose }) => {
   const [timeRange, setTimeRange] = useState('month');
   const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showDemoData, setShowDemoData] = useState(false);
+  // const [showDemoData, setShowDemoData] = useState(false); // COMMENTED OUT - Demo disabled
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -485,6 +488,8 @@ const AdminDashboard = ({ user, onClose }) => {
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
 
   const fetchTokenData = async () => {
+    // DEMO DATA DISABLED
+    /*
     if (showDemoData) {
       // Add delay for demo mode to test loading skeleton
       setLoading(true);
@@ -498,6 +503,7 @@ const AdminDashboard = ({ user, onClose }) => {
       setLastUpdated(new Date());
       return;
     }
+    */
 
     try {
       setRefreshing(true);
@@ -532,7 +538,7 @@ const AdminDashboard = ({ user, onClose }) => {
   useEffect(() => {
     fetchTokenData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRange, showDemoData, customStartDate, customEndDate]);
+  }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
 
   // Android back button handler
   useEffect(() => {
@@ -668,7 +674,8 @@ const AdminDashboard = ({ user, onClose }) => {
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
         
-        {/* Demo Toggle */}
+        {/* Demo Toggle - COMMENTED OUT */}
+        {/*
         <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
           <div className="flex items-center space-x-2 text-sm text-gray-600">
             <Database className="w-4 h-4" />
@@ -687,6 +694,7 @@ const AdminDashboard = ({ user, onClose }) => {
             />
           </button>
         </div>
+        */}
 
         {/* Date Range Filter */}
         <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
