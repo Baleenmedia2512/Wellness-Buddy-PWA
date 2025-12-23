@@ -23,7 +23,7 @@ class WeightDetectionService {
     // USD to INR exchange rate
     // Priority: 1. Live API rate, 2. Fallback if API fails
     this.usdToInrRate = null; // Will be set by fetchExchangeRate
-    this.fallbackRate = 89.60; // Fallback rate when API fails
+    // this.fallbackRate = 89.50; // Fallback rate when API fails (updated Dec 23, 2025) - COMMENTED FOR TESTING
     this.fetchExchangeRate(); // Fetch live rate on initialization
 
     if (this.apiKey) {
@@ -68,8 +68,8 @@ class WeightDetectionService {
         
         if (rate && rate > 0) {
           this.usdToInrRate = rate;
-          console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
-          console.log('📊 Difference from fallback: ₹' + Math.abs(rate - this.fallbackRate).toFixed(4));
+          // console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
+          // console.log('📊 Difference from fallback: ₹' + Math.abs(rate - this.fallbackRate).toFixed(4));
           return; // Success - using live rate
         }
       }
@@ -79,10 +79,10 @@ class WeightDetectionService {
       
     } catch (error) {
       // API failed - use fallback
-      this.usdToInrRate = this.fallbackRate;
-      console.warn('⚠️ Live exchange rate API failed - using fallback rate');
+      // this.usdToInrRate = this.fallbackRate;
+      // console.warn('⚠️ Live exchange rate API failed - using fallback rate');
       console.warn('❌ Error:', error.message);
-      console.log('💱 Fallback exchange rate: $1 USD = ₹' + this.fallbackRate.toFixed(2));
+      // console.log('💱 Fallback exchange rate: $1 USD = ₹' + this.fallbackRate.toFixed(2));
     }
   }
 
