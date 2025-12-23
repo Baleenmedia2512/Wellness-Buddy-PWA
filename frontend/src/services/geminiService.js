@@ -748,6 +748,15 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
       console.log(`💱 Exchange Rate:    1 USD = ₹${this.usdToInrRate.toFixed(2)}`);
       console.log(`⏱️  Processing Time:  ${processingTime}ms`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      // Summary console logs for quick reference
+      console.log('Total Input Cost (USD):', inputCostUSD);
+      console.log('Total Output Cost (USD):', outputCostUSD);
+      console.log('Total Token Cost (USD):', totalCostUSD);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('Total Input Cost (INR):', inputCost);
+      console.log('Total Output Cost (INR):', outputCost);
+      console.log('Total Token Cost (INR):', totalCost);
 
       // Log response quality
       console.log(`🔍 Response Quality [${requestType}]:`, {

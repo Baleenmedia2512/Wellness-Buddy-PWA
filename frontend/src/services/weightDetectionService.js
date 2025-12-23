@@ -19,6 +19,10 @@ class WeightDetectionService {
     // Current user info for token tracking
     this.currentUserId = null;
     this.currentUserEmail = null;
+    
+    // USD to INR exchange rate (fetched dynamically)
+    this.usdToInrRate = 89.70; // Default fallback rate
+    this.fetchExchangeRate(); // Fetch on initialization
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -39,6 +43,23 @@ class WeightDetectionService {
     this.currentUserId = userId;
     this.currentUserEmail = userEmail;
     console.log('📊 [Token Monitor] User set for weight tracking:', { userId, email: userEmail });
+  }
+  
+  // Fetch live USD to INR exchange rate
+  async fetchExchangeRate() {
+    try {
+      const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+      if (response.ok) {
+        const data = await response.json();
+        const rate = data.rates.INR;
+        if (rate && rate > 0) {
+          this.usdToInrRate = rate;
+          console.log('💱 Exchange rate updated: $1 USD = ₹' + rate.toFixed(2));
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Failed to fetch exchange rate, using fallback ₹' + this.usdToInrRate, error);
+    }
   }
 
   /**
@@ -361,18 +382,32 @@ Examples:
         totalTokens: usageMetadata.totalTokenCount || 0,
       };
 
-      // Calculate cost estimate (for gemini-2.5-flash)
-      const inputCost = (tokenData.promptTokens / 1000000) * 0.075;
-      const outputCost = (tokenData.completionTokens / 1000000) * 0.30;
-      const totalCost = inputCost + outputCost;
+      // Calculate cost estimate in USD (for gemini-2.5-flash)
+      const inputCostUSD = (tokenData.promptTokens / 1000000) * 0.075;
+      const outputCostUSD = (tokenData.completionTokens / 1000000) * 0.30;
+      const totalCostUSD = inputCostUSD + outputCostUSD;
+      
+      // Convert to INR for database storage
+      const inputCost = inputCostUSD * this.usdToInrRate;
+      const outputCost = outputCostUSD * this.usdToInrRate;
+      const totalCost = totalCostUSD * this.usdToInrRate;
 
       console.log(`📊 Token Usage [${requestType}]:`, {
         '🔤 Prompt Tokens': tokenData.promptTokens,
         '💬 Response Tokens (Output)': tokenData.completionTokens,
         '📈 Total Tokens': tokenData.totalTokens,
         '⏱️ Processing Time': `${processingTime}ms`,
-        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
+        '💰 Cost Estimate': `$${totalCostUSD.toFixed(6)}`
       });
+      
+      // Summary console logs for quick reference
+      console.log('Total Input Cost (USD):', inputCostUSD);
+      console.log('Total Output Cost (USD):', outputCostUSD);
+      console.log('Total Token Cost (USD):', totalCostUSD);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('Total Input Cost (INR):', inputCost);
+      console.log('Total Output Cost (INR):', outputCost);
+      console.log('Total Token Cost (INR):', totalCost);
 
       // Save token usage to database if user info is available
       if (this.currentUserId && this.currentUserEmail) {
