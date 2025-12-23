@@ -63,7 +63,7 @@ class GeminiService {
     this.model = null;
     
     // API Base URL for backend calls
-    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'https://wellness-buddy-pwa.vercel.app';
+    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
     
     // Current user info for token tracking (set by caller)
     this.currentUserId = null;
@@ -94,8 +94,7 @@ class GeminiService {
     this.lastPromptTimestamp = null;
     
     // USD to INR exchange rate (fetched dynamically)
-    // this.usdToInrRate = 89.70; // Default fallback rate
-    this.usdToInrRate = parseFloat(process.env.EXCHANGE_RATE_USD_TO_INR) || 89.70; // Fallback from env
+    this.usdToInrRate = 89.70; // Default fallback rate
     this.fetchExchangeRate(); // Fetch on initialization
     
     if (this.apiKey) {
@@ -127,7 +126,7 @@ class GeminiService {
     if (typeof window === 'undefined') return;
     
     try {
-      const apiUrl = process.env.REACT_APP_EXCHANGE_RATE_API || 'https://api.exchangerate-api.com/v4/latest/USD';
+      const apiUrl =  'https://api.exchangerate-api.com/v4/latest/USD';
       const response = await fetch(apiUrl);
       if (response.ok) {
         const data = await response.json();
