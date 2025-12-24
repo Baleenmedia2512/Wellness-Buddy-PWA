@@ -21,9 +21,8 @@ class WeightDetectionService {
     this.currentUserEmail = null;
     
     // USD to INR exchange rate
-    // Priority: 1. Live API rate, 2. Fallback if API fails
+    // Using live API rate only (no fallback)
     this.usdToInrRate = null; // Will be set by fetchExchangeRate
-    // this.fallbackRate = 89.50; // Fallback rate when API fails (updated Dec 23, 2025) - COMMENTED FOR TESTING
     this.fetchExchangeRate(); // Fetch live rate on initialization
 
     if (this.apiKey) {
@@ -48,41 +47,45 @@ class WeightDetectionService {
   }
   
   // Fetch live USD to INR exchange rate
-  // Priority: Try live API first, use fallback only if API fails
   async fetchExchangeRate() {
     // Only fetch in browser environment
     if (typeof window === 'undefined') {
-      this.usdToInrRate = this.fallbackRate;
-      console.log('💱 Using fallback exchange rate (non-browser): $1 USD = ₹' + this.fallbackRate.toFixed(2));
+      console.warn('⚠️ Cannot fetch exchange rate in non-browser environment');
       return;
     }
     
     try {
       console.log('🔄 Fetching live USD to INR exchange rate...');
-      const apiUrl = 'https://api.exchangerate-api.com/v4/latest/USD';
-      const response = await fetch(apiUrl);
+      const apiUrl = 'https://api.frankfurter.app/latest?from=USD&to=INR';
+      
+      // Add 10-second timeout protection
+      const fetchWithTimeout = Promise.race([
+        fetch(apiUrl),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Exchange rate API timeout (10s)')), 10000)
+        )
+      ]);
+      
+      const response = await fetchWithTimeout;
       
       if (response.ok) {
         const data = await response.json();
         const rate = data.rates.INR;
         
+        // Accept any valid positive rate
         if (rate && rate > 0) {
           this.usdToInrRate = rate;
-          // console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
-          // console.log('📊 Difference from fallback: ₹' + Math.abs(rate - this.fallbackRate).toFixed(4));
-          return; // Success - using live rate
+          console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
+          return;
         }
       }
       
-      // API responded but no valid rate - use fallback
       throw new Error('Invalid exchange rate data from API');
       
     } catch (error) {
-      // API failed - use fallback
-      // this.usdToInrRate = this.fallbackRate;
-      // console.warn('⚠️ Live exchange rate API failed - using fallback rate');
-      console.warn('❌ Error:', error.message);
-      // console.log('💱 Fallback exchange rate: $1 USD = ₹' + this.fallbackRate.toFixed(2));
+      console.error('❌ Failed to fetch exchange rate:', error.message);
+      console.warn('⚠️ Cost calculations will be unavailable until rate is fetched');
+      // Leave usdToInrRate as null - cost calculations will be skipped
     }
   }
 
@@ -412,8 +415,8 @@ Examples:
       // Last updated: December 2025
       
       // Pricing rates (USD per 1 million tokens)
-      const GEMINI_INPUT_RATE_PER_MILLION = 0.075;   // $0.075 per 1M input tokens
-      const GEMINI_OUTPUT_RATE_PER_MILLION = 0.30;   // $0.30 per 1M output tokens
+      const GEMINI_INPUT_RATE_PER_MILLION = 0.10;   // $0.10 per 1M input tokens
+      const GEMINI_OUTPUT_RATE_PER_MILLION = 0.40;   // $0.40 per 1M output tokens
       
       // Formula: (tokens / 1,000,000) × price_per_million
       // Example: 5,000 tokens = (5000 / 1000000) × 0.075 = $0.000375
@@ -425,7 +428,7 @@ Examples:
       // Convert to INR for database storage
       const inputCost = inputCostUSD * this.usdToInrRate;
       const outputCost = outputCostUSD * this.usdToInrRate;
-      const totalCost = totalCostUSD * this.usdToInrRate;
+      const totalCost = (totalCostUSD * this.usdToInrRate) + 1;
 
       console.log(`📊 Token Usage [${requestType}]:`, {
         '🔤 Prompt Tokens': tokenData.promptTokens,

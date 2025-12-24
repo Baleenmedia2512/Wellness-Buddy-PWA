@@ -578,7 +578,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return 'Custom Range';
   };
 
-  const formatCurrency = (val) => `₹${Number(val).toFixed(2)}`;
+  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(3))}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
