@@ -150,7 +150,7 @@ class GeminiService {
         // Accept any valid positive rate
         if (rate && rate > 0) {
           this.usdToInrRate = rate;
-          console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
+          // console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
           return;
         }
       }
