@@ -2,7 +2,7 @@
 
 **Feature:** Auto-detect and log virtual meeting attendance from screenshots  
 **Date:** December 24, 2025  
-**Estimated Time:** 4-5 hours  
+**Estimated Time:** 5-6 hours  
 **Status:** Ready for Implementation
 
 ---
@@ -56,33 +56,38 @@ Show results and history
 
 -- Database: baleed5_wellness
 
-CREATE TABLE IF NOT EXISTS education_logs (
-  LogId INT PRIMARY KEY AUTO_INCREMENT,
-  UserId INT NOT NULL,
-  ImageUrl VARCHAR(500),
+CREATE TABLE IF NOT EXISTS education_logs_table (
+  Id INT(11) PRIMARY KEY AUTO_INCREMENT,
+  UserId INT(11) NOT NULL,
   Platform VARCHAR(50) NOT NULL,
   Topic VARCHAR(255) NOT NULL,
-  LoggedDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+  CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   Confidence DECIMAL(3,2),
   DeviceInfo TEXT,
+  ImageBase64 LONGTEXT,
+  IsDeleted TINYINT(1) DEFAULT 0,
   
-  FOREIGN KEY (UserId) REFERENCES team_table(UserId) ON DELETE CASCADE,
-  
-  INDEX idx_user_date (UserId, LoggedDate DESC),
-  INDEX idx_platform (Platform)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+  INDEX idx_user_date (UserId, CreatedAt),
+  INDEX idx_platform (Platform),
+  INDEX idx_deleted (IsDeleted)
+) ENGINE=InnoDB DEFAULT CHARSET=latin1 COLLATE=latin1_swedish_ci;
+
+-- Add foreign key separately if needed (after verifying team_table structure)
+-- ALTER TABLE education_logs_table 
+-- ADD CONSTRAINT fk_education_user FOREIGN KEY (UserId) REFERENCES team_table(UserId) ON DELETE CASCADE;
 
 -- Verify table creation
-DESCRIBE education_logs;
+DESCRIBE education_logs_table;
 
 -- Sample query to test
--- SELECT * FROM education_logs WHERE UserId = 1 ORDER BY LoggedDate DESC LIMIT 10;
+-- SELECT * FROM education_logs_table WHERE UserId = 1 ORDER BY LoggedDate DESC LIMIT 10;
 ```
 
 **Testing:**
 - [ ] Run SQL in phpMyAdmin or MySQL client
-- [ ] Verify table exists: `SHOW TABLES LIKE 'education_logs';`
-- [ ] Check structure: `DESCRIBE education_logs;`
+- [ ] Verify table exists: `SHOW TABLES LIKE 'education_logs_table';`
+- [ ] Check structure: `DESCRIBE education_logs_table;`
 
 ---
 
@@ -116,7 +121,7 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') { ... }
   
   // Extract and validate input
-  const { userId, imagePath, imageBase64, platform, topic, confidence, deviceInfo } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, deviceInfo } = req.body;
   
   // Validation
   if (!userId || !platform || !topic) { ... }
@@ -124,17 +129,20 @@ export default async function handler(req, res) {
   // Database connection
   const connection = await mysql.createConnection({ ... });
   
-  // Insert into education_logs
+  // If ImageBase64 is empty string, store as null
+  const imageBase64ToSave = (imageBase64 && imageBase64.trim() !== '') ? imageBase64 : null;
+  
+  // Insert into education_logs_table
   const [result] = await connection.execute(
-    `INSERT INTO education_logs (UserId, ImageUrl, Platform, Topic, Confidence, DeviceInfo)
+    `INSERT INTO education_logs_table (UserId, Platform, Topic, Confidence, DeviceInfo, ImageBase64)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [userId, imagePath, platform, topic, confidence, deviceInfo]
+    [userId, platform, topic, confidence, deviceInfo, imageBase64ToSave]
   );
   
   // Return success
   return res.status(200).json({
     success: true,
-    logId: result.insertId
+    id: result.insertId
   });
 }
 ```
@@ -180,12 +188,12 @@ export default async function handler(req, res) {
   // Database connection
   const connection = await mysql.createConnection({ ... });
   
-  // Fetch education logs
+  // Fetch education logs (exclude soft-deleted)
   const [logs] = await connection.execute(
-    `SELECT LogId, Platform, Topic, LoggedDate, Confidence, ImageUrl
-     FROM education_logs
-     WHERE UserId = ?
-     ORDER BY LoggedDate DESC
+    `SELECT Id, Platform, Topic, CreatedAt, Confidence
+     FROM education_logs_table
+     WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
+     ORDER BY CreatedAt DESC
      LIMIT 100`,
     [userId]
   );
@@ -202,6 +210,190 @@ export default async function handler(req, res) {
 - [ ] Test fetching logs for existing user
 - [ ] Test empty result set
 - [ ] Verify ordering (newest first)
+
+---
+
+### **STEP 2C: Delete Education Log API**
+
+**File:** `backend/pages/api/delete-education-log.js`
+
+**Action:** Create new file
+
+**Purpose:** Soft-delete education log (set IsDeleted = 1 for undo support)
+
+**Code Structure:**
+```javascript
+import mysql from 'mysql2/promise';
+
+export default async function handler(req, res) {
+  // CORS handling
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+  
+  // Only accept DELETE
+  if (req.method !== 'DELETE') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+  
+  const { userId, logId } = req.body;
+  
+  // Validation
+  if (!userId || !logId) {
+    return res.status(400).json({ 
+      message: 'Missing required fields: userId, logId' 
+    });
+  }
+  
+  try {
+    // Database connection
+    const connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME
+    });
+    
+    // Soft delete: set IsDeleted = 1 (allows undo)
+    const [result] = await connection.execute(
+      `UPDATE education_logs_table SET IsDeleted = 1 WHERE Id = ? AND UserId = ?`,
+      [logId, userId]
+    );
+    
+    await connection.end();
+    
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Education log not found or already deleted'
+      });
+    }
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Education log deleted successfully',
+      deletedId: logId
+    });
+    
+  } catch (error) {
+    console.error('Delete education log error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete education log',
+      error: error.message
+    });
+  }
+}
+```
+
+**Testing:**
+- [ ] Test deleting existing log
+- [ ] Test invalid logId
+- [ ] Test unauthorized delete (wrong userId)
+- [ ] Verify IsDeleted set to 1 (not hard deleted)
+
+---
+
+### **STEP 2D: Undo Delete Education Log API**
+
+**File:** `backend/pages/api/undo-deleted-education-log.js`
+
+**Action:** Create new file
+
+**Purpose:** Restore soft-deleted education log (for undo functionality)
+
+**Code Structure:**
+```javascript
+import mysql from 'mysql2/promise';
+
+export default async function handler(req, res) {
+  // CORS
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    return res.status(200).end();
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ message: 'Method not allowed' });
+  }
+
+  const { id, userId } = req.body;
+
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      message: 'Education log ID is required'
+    });
+  }
+
+  let connection;
+  try {
+    connection = await mysql.createConnection({
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME
+    });
+
+    // Optional safety check: ensure row belongs to user
+    if (userId) {
+      const [ownerCheck] = await connection.execute(
+        'SELECT Id FROM education_logs_table WHERE Id = ? AND UserId = ? LIMIT 1',
+        [id, userId]
+      );
+      if (!ownerCheck.length) {
+        await connection.end();
+        return res.status(403).json({
+          success: false,
+          message: 'You do not have permission to restore this item.'
+        });
+      }
+    }
+
+    // Restore: set IsDeleted back to 0
+    const [result] = await connection.execute(
+      'UPDATE education_logs_table SET IsDeleted = 0 WHERE Id = ?',
+      [id]
+    );
+
+    await connection.end();
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Education log not found'
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Education log restored successfully',
+      restoredId: id
+    });
+  } catch (error) {
+    if (connection) {
+      try { await connection.end(); } catch {}
+    }
+    console.error('❌ Database undo error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to restore education log',
+      error: error.message
+    });
+  }
+}
+```
+
+**Testing:**
+- [ ] Test restoring deleted log
+- [ ] Test invalid id
+- [ ] Test unauthorized restore (wrong userId)
+- [ ] Verify IsDeleted set back to 0
 
 ---
 
@@ -465,7 +657,6 @@ const saveEducationLog = async (educationData, imageBase64) => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         userId: actualUserId,
-        imagePath: selectedImage?.name || 'education-screenshot.jpg',
         imageBase64: imageBase64,
         platform: educationData.platform,
         topic: educationData.topic,
@@ -800,21 +991,961 @@ const resetApp = () => {
 
 ---
 
-## **STEP 10: Update Dashboard (Optional - Phase 2)** 📊
+## **STEP 10: Create Education Dashboard Component** 📊
+
+**File:** `frontend/src/components/EducationDashboard.js`
+
+**Action:** Create new file (similar to WeightDashboard.js)
+
+**Purpose:** Display education meeting history with monthly grouping
+
+**Code Structure:**
+```javascript
+import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
+import { BookOpen, Calendar, RotateCcw } from 'lucide-react';
+import { getUserId } from '../services/getUserId';
+
+const UNDO_SECONDS = 10; // undo countdown duration
+
+// Lazy load card component
+const EducationCard = lazy(() => import('./EducationCard'));
+
+/**
+ * UndoRow - Inline undo component with countdown (like WeightDashboard)
+ */
+const UndoRow = ({ pid, originalLog, expiresAt, ttlSeconds = UNDO_SECONDS, onRestore, onExpire }) => {
+  const [now, setNow] = useState(Date.now());
+  const [undoing, setUndoing] = useState(false);
+
+  useEffect(() => {
+    const iv = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(iv);
+  }, []);
+
+  const { total, delayAtMount } = useMemo(() => {
+    const total = Math.max(0, ttlSeconds);
+    const startedAt = expiresAt - total * 1000;
+    const elapsedAtMount = Math.min(total, Math.max(0, (Date.now() - startedAt) / 1000));
+    return { total, delayAtMount: -elapsedAtMount };
+  }, [expiresAt, ttlSeconds]);
+
+  useEffect(() => {
+    const msLeft = Math.max(0, expiresAt - Date.now());
+    const t = setTimeout(() => onExpire(), msLeft);
+    return () => clearTimeout(t);
+  }, [expiresAt, onExpire]);
+
+  const remainingSecs = Math.ceil(Math.max(0, expiresAt - now) / 1000);
+
+  return (
+    <div className="relative bg-white border border-amber-200/70 rounded-xl p-3 flex items-center gap-3 shadow-sm" style={{ height: 84 }}>
+      <div className="h-7 w-7 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center">
+        <BookOpen className="w-4 h-4" />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-gray-800 truncate">
+          <span className="font-medium">Removed:</span> {originalLog.Topic}
+        </p>
+        <p className="text-[11px] text-amber-700/80">Undo available for {remainingSecs}s</p>
+      </div>
+
+      <button
+        disabled={undoing}
+        onClick={async () => {
+          if (undoing) return;
+          setUndoing(true);
+          await onRestore(pid, originalLog);
+          setUndoing(false);
+        }}
+        className={`inline-flex items-center gap-1.5 rounded-full border border-amber-300 px-3 py-1.5 text-sm font-medium
+          ${undoing ? 'text-amber-500 bg-amber-50 cursor-not-allowed' : 'text-amber-800 hover:bg-amber-100/60 active:scale-95 transition'}`}
+      >
+        {undoing ? (
+          <>
+            <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
+            Restoring…
+          </>
+        ) : (
+          <>
+            <RotateCcw className="w-4 h-4" />
+            Undo
+          </>
+        )}
+      </button>
+
+      <span className="absolute left-0 right-0 bottom-0 h-0.5 bg-amber-200/70 overflow-hidden rounded-b-xl">
+        <span
+          key={pid}
+          className="block h-full bg-amber-600 origin-left will-change-transform"
+          style={{
+            transformOrigin: 'left',
+            animation: `countdown-shrink ${total}s linear ${delayAtMount}s forwards`
+          }}
+        />
+      </span>
+    </div>
+  );
+};
+
+const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
+  // State management
+  const [educationLogs, setEducationLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  
+  // Undo state
+  const [undoState, setUndoState] = useState({});
+  
+  // Cache userId
+  const userIdRef = useRef(null);
+
+  /**
+   * Group education logs by month (like WeightDashboard)
+   */
+  const monthlyGroups = useMemo(() => {
+    const grouped = {};
+    
+    educationLogs.forEach(log => {
+      if (!log || !log.CreatedAt) return;
+      
+      const date = new Date(log.CreatedAt.replace('Z', ''));
+      if (isNaN(date.getTime())) return;
+      
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+      
+      if (!grouped[monthKey]) {
+        grouped[monthKey] = {
+          monthKey,
+          monthName,
+          entries: [],
+          sortDate: new Date(date.getFullYear(), date.getMonth(), 1)
+        };
+      }
+      
+      grouped[monthKey].entries.push(log);
+    });
+    
+    return Object.values(grouped).sort((a, b) => b.sortDate - a.sortDate);
+  }, [educationLogs]);
+
+  /**
+   * Get month statistics
+   */
+  const getMonthStats = (entries) => {
+    if (!entries || entries.length === 0) return null;
+    
+    const platforms = {};
+    entries.forEach(log => {
+      platforms[log.Platform] = (platforms[log.Platform] || 0) + 1;
+    });
+    
+    const mostUsedPlatform = Object.keys(platforms).reduce((a, b) => 
+      platforms[a] > platforms[b] ? a : b, Object.keys(platforms)[0]
+    );
+    
+    return {
+      count: entries.length,
+      mostUsedPlatform,
+      platforms: Object.keys(platforms).length
+    };
+  };
+
+  /**
+   * Fetch education logs on mount
+   */
+  useEffect(() => {
+    fetchEducationLogs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * Fetch education logs from API
+   */
+  const fetchEducationLogs = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      if (!userIdRef.current) {
+        userIdRef.current = user?.id || await getUserId(user);
+      }
+      const userId = userIdRef.current;
+      
+      if (!userId) {
+        throw new Error('User not authenticated');
+      }
+      
+      const response = await fetch(`${apiBaseUrl}/api/get-education-logs?userId=${userId}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to fetch education logs');
+      }
+
+      setEducationLogs(data.logs || []);
+
+    } catch (err) {
+      console.error('❌ Fetch education logs error:', err);
+      setError(err.message || 'Failed to load education logs');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Render loading state
+   */
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4">
+        <div className="backdrop-blur-xl bg-white/30 rounded-2xl p-12 border border-white/30 shadow-2xl">
+          <div className="animate-spin rounded-full h-16 w-16 border-4 border-purple-300 border-t-purple-600 mb-6 mx-auto"></div>
+          <p className="text-gray-700 font-semibold text-xl text-center">Loading education logs...</p>
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Render empty state
+   */
+  if (!educationLogs || educationLogs.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4">
+        <div className="bg-white rounded-2xl p-8 shadow-lg text-center max-w-md">
+          <div className="w-20 h-20 bg-gradient-to-br from-purple-100 to-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <BookOpen className="w-10 h-10 text-purple-600" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 mb-2">No Education Logs Yet</h3>
+          <p className="text-gray-600 mb-4">
+            Upload meeting screenshots to automatically track your education sessions
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  /**
+   * Handle delete education log with undo support (like WeightDashboard)
+   */
+  const handleDeleteLog = async (logToDelete) => {
+    const placeholder = {
+      Id: `undo-${logToDelete.Id}`,
+      isUndoPlaceholder: true,
+      CreatedAt: logToDelete.CreatedAt,
+      Platform: logToDelete.Platform,
+      Topic: logToDelete.Topic
+    };
+
+    // Replace entry in-place with placeholder (no flicker)
+    setEducationLogs(prev => {
+      const idx = prev.findIndex(e => e.Id === logToDelete.Id);
+      if (idx === -1) return prev;
+      const next = prev.slice();
+      next.splice(idx, 1, placeholder);
+      return next;
+    });
+
+    // Store undo state
+    setUndoState(prev => ({
+      ...prev,
+      [placeholder.Id]: {
+        originalLog: logToDelete,
+        expiresAt: Date.now() + UNDO_SECONDS * 1000,
+        ttlSeconds: UNDO_SECONDS
+      }
+    }));
+
+    // Immediately soft-delete in backend
+    try {
+      const userId = userIdRef.current || user?.id;
+      
+      const response = await fetch(`${apiBaseUrl}/api/delete-education-log`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          userId,
+          logId: logToDelete.Id
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to delete education log');
+      }
+
+      console.log('✅ Education log soft-deleted:', logToDelete.Id);
+
+    } catch (err) {
+      console.error('❌ Delete error:', err);
+      // Rollback on backend failure
+      setEducationLogs(prev => {
+        const idx = prev.findIndex(e => e.Id === placeholder.Id);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next.splice(idx, 1, logToDelete);
+        return next;
+      });
+      setUndoState(prev => {
+        const next = { ...prev };
+        delete next[placeholder.Id];
+        return next;
+      });
+      alert(err.message || 'Failed to delete. Please try again.');
+    }
+  };
+
+  /**
+   * Handle undo restore
+   */
+  const handleUndoRestore = async (pid, originalLog) => {
+    // Optimistic restore
+    setEducationLogs(prev => {
+      const idx = prev.findIndex(e => e.Id === pid);
+      if (idx === -1) return prev.concat(originalLog);
+      const next = prev.slice();
+      next.splice(idx, 1, originalLog);
+      return next;
+    });
+    setUndoState(prev => {
+      const next = { ...prev };
+      delete next[pid];
+      return next;
+    });
+
+    // Call backend undo API
+    try {
+      const userId = userIdRef.current || user?.id;
+      
+      const response = await fetch(`${apiBaseUrl}/api/undo-deleted-education-log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          id: originalLog.Id,
+          userId
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to restore log');
+      }
+
+      console.log('✅ Education log restored:', originalLog.Id);
+
+    } catch (err) {
+      console.error('❌ Undo restore error:', err);
+      // Rollback - put placeholder back
+      setEducationLogs(prev => {
+        const idx = prev.findIndex(e => e.Id === originalLog.Id);
+        if (idx === -1) return prev;
+        const next = prev.slice();
+        next.splice(idx, 1, { 
+          Id: pid, 
+          isUndoPlaceholder: true, 
+          CreatedAt: originalLog.CreatedAt,
+          Platform: originalLog.Platform,
+          Topic: originalLog.Topic
+        });
+        return next;
+      });
+      setUndoState(prev => ({
+        ...prev,
+        [pid]: {
+          originalLog,
+          expiresAt: Date.now() + UNDO_SECONDS * 1000,
+          ttlSeconds: UNDO_SECONDS
+        }
+      }));
+      alert(err.message || 'Failed to restore. Please try again.');
+    }
+  };
+
+  /**
+   * Handle undo expiration
+   */
+  const handleUndoExpire = async (pid, originalLog) => {
+    // Remove placeholder from UI
+    setEducationLogs(prev => prev.filter(e => e.Id !== pid));
+    setUndoState(prev => {
+      const next = { ...prev };
+      delete next[pid];
+      return next;
+    });
+
+    console.log('⏱️ Undo timer expired, log remains deleted:', originalLog.Id);
+  };
+
+  /**
+   * Render overview
+   */
+  return (
+    <>
+      {/* CSS keyframes for countdown animation */}
+      <style>{`
+        @keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+        @keyframes slideInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+      
+    <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2">
+      <div className="px-4 md:px-6">
+        {/* Latest Education Summary Card */}
+        <div className="mb-6">
+          <div className="w-full max-w-md mx-auto bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl border border-purple-100 shadow-lg p-6">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm text-purple-600 font-medium">Total Sessions</p>
+                <p className="text-3xl font-bold text-purple-900">{educationLogs.length}</p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full p-3">
+                <BookOpen className="w-6 h-6 text-white" />
+              </div>
+            </div>
+            
+            {monthlyGroups.length > 0 && (() => {
+              const currentMonthStats = getMonthStats(monthlyGroups[0].entries);
+              return (
+                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-purple-200">
+                  <div>
+                    <p className="text-xs text-purple-600">This Month</p>
+                    <p className="text-lg font-semibold text-purple-900">{currentMonthStats.count}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-purple-600">Top Platform</p>
+                    <p className="text-lg font-semibold text-purple-900 truncate">{currentMonthStats.mostUsedPlatform}</p>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Monthly Groups */}
+        {monthlyGroups.map((monthGroup, groupIndex) => {
+          const monthStats = getMonthStats(monthGroup.entries);
+          
+          return (
+            <div key={monthGroup.monthKey} className="mb-8">
+              <div className="bg-white rounded-2xl shadow-md overflow-hidden">
+                {/* Month Header */}
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 px-4 py-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-purple-600" />
+                      <span className="text-sm font-semibold text-purple-900">
+                        {monthGroup.monthName}
+                      </span>
+                    </div>
+                    <span className="text-xs text-purple-600">
+                      {monthStats.count} {monthStats.count === 1 ? 'session' : 'sessions'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Month Entries */}
+                <div className="p-4 space-y-3">
+                  {monthGroup.entries
+                    .filter(log => log && log.Id && log.CreatedAt)
+                    .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
+                    .map((log, index) => {
+                      // Show undo row if this is a placeholder
+                      if (log.isUndoPlaceholder) {
+                        const undoEntry = undoState[log.Id];
+                        if (!undoEntry || !undoEntry.originalLog) return null;
+                        return (
+                          <UndoRow
+                            key={log.Id}
+                            pid={log.Id}
+                            originalLog={undoEntry.originalLog}
+                            expiresAt={undoEntry.expiresAt}
+                            ttlSeconds={undoEntry.ttlSeconds ?? UNDO_SECONDS}
+                            onRestore={handleUndoRestore}
+                            onExpire={() => handleUndoExpire(log.Id, undoEntry.originalLog)}
+                          />
+                        );
+                      }
+
+                      const skeleton = (
+                        <div className="bg-gray-50 rounded-xl p-4 animate-pulse">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gray-200 rounded-lg"></div>
+                            <div className="flex-1 space-y-2">
+                              <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                              <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+
+                      return (
+                        <Suspense key={log.Id} fallback={skeleton}>
+                          <EducationCard
+                            data={log}
+                            onDelete={handleDeleteLog}
+                            index={index}
+                          />
+                        </Suspense>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+    </>
+  );
+};
+
+export default EducationDashboard;
+```
+
+**Key Features:**
+- Monthly grouping (like WeightDashboard)
+- Latest stats summary card
+- Lazy loading for performance
+- Empty state handling
+- Loading state
+- Month statistics (count, platforms used)
+
+**Testing:**
+- [ ] Displays education logs correctly
+- [ ] Groups by month properly
+- [ ] Shows empty state when no logs
+- [ ] Loading state works
+- [ ] Stats card shows correct numbers
+
+---
+
+## **STEP 11: Create Education Card Component** 🎴
+
+**File:** `frontend/src/components/EducationCard.js`
+
+**Action:** Create new file (similar to WeightCard.js)
+
+**Purpose:** Display individual education log entry
+
+**Code Structure:**
+```javascript
+import React, { useState, useRef, useEffect } from 'react';
+import { BookOpen, Calendar, Award } from 'lucide-react';
+
+const platformIcons = {
+  'Google Meet': '📱',
+  'Zoom': '💻',
+  'Microsoft Teams': '👥',
+  'WebEx': '🌐',
+  'Skype': '💬',
+  'default': '🎓'
+};
+
+const platformColors = {
+  'Google Meet': 'from-green-500 to-emerald-500',
+  'Zoom': 'from-blue-500 to-indigo-500',
+  'Microsoft Teams': 'from-purple-500 to-pink-500',
+  'WebEx': 'from-orange-500 to-red-500',
+  'Skype': 'from-cyan-500 to-blue-500',
+  'default': 'from-purple-500 to-indigo-500'
+};
+
+/**
+ * EducationCard Component
+ * Card with swipe-to-delete functionality (like WeightCard)
+ */
+const EducationCard = React.memo(({ 
+  data, 
+  onDelete,
+  index = 0 
+}) => {
+  // Swipe-to-delete state
+  const [dx, setDx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [animating, setAnimating] = useState(false);
+  const [armed, setArmed] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [deletedOnce, setDeletedOnce] = useState(false);
+
+  const startXRef = useRef(0);
+  const rafRef = useRef(null);
+  const elRef = useRef(null);
+
+  const SWIPE_DELETE_THRESHOLD = 100;
+  const SWIPE_MAX = 140;
+
+  const cancelRAF = () => {
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+  };
+
+  useEffect(() => () => cancelRAF(), []);
+
+  if (!data) return null;
+
+  const { Platform, Topic, CreatedAt, Confidence } = data;
+  
+  const date = new Date(CreatedAt.replace('Z', ''));
+  const formattedDate = date.toLocaleDateString('en-US', { 
+    month: 'short', 
+    day: 'numeric',
+    year: 'numeric'
+  });
+  const formattedTime = date.toLocaleTimeString('en-US', { 
+    hour: 'numeric', 
+    minute: '2-digit',
+    hour12: true
+  });
+
+  const platformIcon = platformIcons[Platform] || platformIcons.default;
+  const gradientClass = platformColors[Platform] || platformColors.default;
+
+  // Swipe handlers
+  const onPointerDown = (e) => {
+    if (!e.isPrimary || leaving) return;
+    cancelRAF();
+    setDragging(true);
+    setAnimating(false);
+    startXRef.current = e.clientX;
+    elRef.current?.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    if (!dragging || !e.isPrimary || leaving) return;
+    const delta = e.clientX - startXRef.current;
+    const nextDx = Math.max(Math.min(delta, 0), -SWIPE_MAX);
+    if (!rafRef.current) {
+      rafRef.current = requestAnimationFrame(() => {
+        setDx(nextDx);
+        rafRef.current = null;
+        const isNowArmed = Math.abs(nextDx) >= SWIPE_DELETE_THRESHOLD;
+        if (isNowArmed !== armed) {
+          setArmed(isNowArmed);
+          if (isNowArmed && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+            try { navigator.vibrate(10); } catch {}
+          }
+        }
+      });
+    }
+  };
+
+  const finishInteraction = (e) => {
+    if (!dragging) return;
+    setDragging(false);
+    cancelRAF();
+    elRef.current?.releasePointerCapture?.(e?.pointerId);
+
+    if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
+      if (deletedOnce) return;
+      setDeletedOnce(true);
+      setLeaving(true);
+      setAnimating(true);
+
+      requestAnimationFrame(() => {
+        setDx(-window.innerWidth);
+        setTimeout(() => {
+          onDelete(data);
+        }, 180);
+      });
+      return;
+    }
+
+    setAnimating(true);
+    requestAnimationFrame(() => {
+      setDx(0);
+      setTimeout(() => {
+        setAnimating(false);
+        setArmed(false);
+      }, 220);
+    });
+  };
+
+  const onPointerUp = (e) => finishInteraction(e);
+  const onPointerCancel = (e) => finishInteraction(e);
+  const onPointerLeave = (e) => finishInteraction(e);
+
+  const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
+  const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
+
+  return (
+    <div 
+      className="relative w-full"
+      style={{ 
+        touchAction: 'pan-y',
+        minHeight: 72,
+        animation: 'slideInUp 0.2s ease-out both'
+      }}
+    >
+      {/* Background delete reveal */}
+      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+        <div
+          className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
+          style={{
+            opacity: progress,
+            transform: `scale(${0.6 + progress * 0.4})`,
+            transition: dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
+          }}
+        >
+          <svg
+            className="w-6 h-6 text-white"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            style={{
+              transform: `rotate(${armed ? 10 : 0}deg)`,
+              transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)',
+              strokeWidth: armed ? 2.2 : 2,
+            }}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
+          </svg>
+        </div>
+      </div>
+
+      {/* Foreground card */}
+      <div
+        ref={elRef}
+        role="button"
+        aria-label={`Education: ${Topic}`}
+        tabIndex={0}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerCancel}
+        onPointerLeave={onPointerLeave}
+        className={`relative z-10 bg-white border border-purple-100 rounded-xl select-none cursor-pointer overflow-hidden
+          ${leaving ? 'pointer-events-none' : ''}`}
+        style={{
+          transform: `translateX(${dx}px) scale(${scale})`,
+          transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
+          minHeight: 72,
+          willChange: 'transform',
+        }}
+      >
+        {/* Bottom progress bar */}
+        <div
+          className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
+          style={{
+            width: `${progress * 100}%`,
+            transition: dragging ? 'none' : 'width 180ms ease',
+            opacity: progress > 0 ? 1 : 0,
+          }}
+        />
+
+        <div className="p-4 flex items-start gap-3">
+          {/* Platform Icon */}
+          <div className={`w-12 h-12 rounded-lg bg-gradient-to-br ${gradientClass} flex items-center justify-center flex-shrink-0`}>
+            <span className="text-2xl">{platformIcon}</span>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 min-w-0">
+            {/* Topic */}
+            <h3 className="font-semibold text-gray-900 text-base mb-1 truncate">
+              {Topic}
+            </h3>
+
+            {/* Platform */}
+            <div className="flex items-center gap-1.5 text-sm text-purple-600 mb-2">
+              <BookOpen className="w-3.5 h-3.5" />
+              <span className="font-medium">{Platform}</span>
+            </div>
+
+            {/* Date & Time */}
+            <div className="flex items-center gap-3 text-xs text-gray-500">
+              <div className="flex items-center gap-1">
+                <Calendar className="w-3 h-3" />
+                <span>{formattedDate}</span>
+              </div>
+              <span>•</span>
+              <span>{formattedTime}</span>
+            </div>
+
+            {/* Confidence Badge (optional) */}
+            {Confidence && Confidence > 0.8 && (
+              <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 bg-green-50 border border-green-200 rounded-full">
+                <Award className="w-3 h-3 text-green-600" />
+                <span className="text-[10px] font-medium text-green-700">
+                  High Confidence
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+EducationCard.displayName = 'EducationCard';
+
+export default EducationCard;
+```
+
+**Key Features:**
+- ✅ **Swipe-to-delete** functionality (like WeightCard)
+- Platform-specific icons and colors
+- Date and time display
+- Confidence badge (optional)
+- Smooth animations and haptic feedback
+- Touch-optimized gesture handling
+- Progress bar shows delete threshold
+- Visual feedback with red delete icon
+
+**Testing:**
+- [ ] Renders correctly with all data
+- [ ] Shows platform icon
+- [ ] Displays date/time properly
+- [ ] Confidence badge shows when > 0.8
+- [ ] ✅ **Swipe left to reveal delete**
+- [ ] ✅ **Progress bar shows during swipe**
+- [ ] ✅ **Haptic feedback on delete threshold**
+- [ ] ✅ **Smooth delete animation**
+- [ ] ✅ **Card scales slightly during swipe**
+
+---
+
+## **STEP 12: Update Dashboard.js - Add Education Tab** 🔄
 
 **File:** `frontend/src/components/Dashboard.js`
 
-**Action:** Add education log tab (if Dashboard exists)
+**Action:** Modify existing file
 
-**Purpose:** Show history of all education meetings attended
+**Changes Required:**
 
-**Changes:**
-- Add "Education Log" tab
-- Fetch data from `/api/get-education-logs`
-- Display timeline of attended meetings
-- Show total count badge
+### **12A: Import Education Dashboard**
 
-**This can be implemented in Phase 2 after core functionality is working**
+**Location:** Top of file (around line 31)
+
+**Add:**
+```javascript
+const WeightDashboard = lazy(() => import('./WeightDashboard'));
+const EducationDashboard = lazy(() => import('./EducationDashboard')); // ✅ NEW
+```
+
+### **12B: Add Education Icon Component**
+
+**Location:** After WeighingScaleIcon component (around line 28)
+
+**Add:**
+```javascript
+// Education icon component
+const EducationIcon = ({ className }) => (
+  <svg 
+    className={className} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    <path d="M8 7h8" />
+    <path d="M8 11h8" />
+    <path d="M8 15h6" />
+  </svg>
+);
+```
+
+### **12C: Update State to Support Education Tab**
+
+**Location:** Around line 44
+
+**Find:**
+```javascript
+const [activeTab, setActiveTab] = useState(() => {
+  if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight')) {
+    localStorage.setItem('dashboard_activeTab', initialTab);
+    return initialTab;
+  }
+  return localStorage.getItem('dashboard_activeTab') || 'nutrition';
+});
+```
+
+**Update to:**
+```javascript
+const [activeTab, setActiveTab] = useState(() => {
+  if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
+    localStorage.setItem('dashboard_activeTab', initialTab);
+    return initialTab;
+  }
+  return localStorage.getItem('dashboard_activeTab') || 'nutrition';
+});
+```
+
+### **12D: Update Calendar Visibility Logic**
+
+**Location:** Around line 95
+
+**Find:**
+```javascript
+{activeTab === 'weight' && (
+  <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
+)}
+```
+
+**Update to:**
+```javascript
+{(activeTab === 'weight' || activeTab === 'education') && (
+  <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
+)}
+```
+
+### **12E: Add Education Tab Button**
+
+**Location:** After weight tab button (around line 134)
+
+**Add:**
+```javascript
+<button
+  onClick={() => handleTabChange('education')}
+  className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+    activeTab === 'education'
+      ? 'border-purple-600 text-purple-700'
+      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+  }`}
+>
+  <EducationIcon className="h-4 w-4" />
+  <span>Education</span>
+</button>
+```
+
+### **12F: Add Education Dashboard Content**
+
+**Location:** After WeightDashboard render (around line 325)
+
+**Add:**
+```javascript
+{activeTab === 'education' && (
+  <EducationDashboard
+    user={user}
+    onBack={onBack}
+    apiBaseUrl={apiBaseUrl}
+    hideHeader={true}
+  />
+)}
+```
+
+**Testing:**
+- [ ] Education tab appears in dashboard
+- [ ] Clicking education tab switches view
+- [ ] Education dashboard loads correctly
+- [ ] Tab state persists in localStorage
+- [ ] Calendar button hidden on education tab
+- [ ] Other tabs still work (nutrition, weight)
+
+---
 
 ---
 
@@ -826,7 +1957,12 @@ const resetApp = () => {
 - [ ] Can query education logs
 - [ ] Foreign key constraint works
 - [ ] API POST `/api/save-education-log` works
-- [ ] API GET `/api/get-education-logs` works
+- [ ] API GET `/api/get-education-logs` works (excludes deleted)
+- [ ] API DELETE `/api/delete-education-log` works (soft delete)
+- [ ] API POST `/api/undo-deleted-education-log` works
+- [ ] ✅ **Swipe delete sets IsDeleted = 1**
+- [ ] ✅ **Undo restores deleted log (IsDeleted = 0)**
+- [ ] ✅ **Undo timer expires after 10 seconds**
 
 ### **AI Detection Testing:**
 - [ ] Google Meet screenshot detected correctly
@@ -852,6 +1988,14 @@ const resetApp = () => {
 - [ ] Close button works
 - [ ] No visual glitches
 - [ ] Mobile responsive
+- [ ] ✅ **Swipe gesture smooth on mobile**
+- [ ] ✅ **Delete animation plays correctly**
+- [ ] ✅ **Can't swipe while card is leaving**
+- [ ] ✅ **Undo row appears after swipe delete**
+- [ ] ✅ **Undo button restores log**
+- [ ] ✅ **Countdown timer shows remaining seconds**
+- [ ] ✅ **Progress bar shrinks over 10 seconds**
+- [ ] ✅ **Placeholder removed after timer expires**
 
 ### **Error Handling:**
 - [ ] Network error handled gracefully
@@ -863,18 +2007,21 @@ const resetApp = () => {
 
 ## 📦 **Files Summary**
 
-### **New Files (6):**
-1. ✅ `sql/create_education_logs_table.sql`
+### **New Files (10):**
+1. ✅ `sql/create_education_logs_table.sql` - Includes IsDeleted column
 2. ✅ `backend/pages/api/save-education-log.js`
-3. ✅ `backend/pages/api/get-education-logs.js`
-4. ✅ `frontend/src/services/educationDetectionService.js`
-5. ✅ `frontend/src/components/EducationLogCard.js`
-6. ⏳ `frontend/src/components/EducationLogHistory.js` (Phase 2)
+3. ✅ `backend/pages/api/get-education-logs.js` - Excludes deleted records
+4. ✅ `backend/pages/api/delete-education-log.js` - Soft delete (IsDeleted = 1)
+5. ✅ `backend/pages/api/undo-deleted-education-log.js` - Restore deleted logs
+6. ✅ `frontend/src/services/educationDetectionService.js`
+7. ✅ `frontend/src/components/EducationLogCard.js` - Result display after upload
+8. ✅ `frontend/src/components/EducationDashboard.js` - Dashboard with undo support
+9. ✅ `frontend/src/components/EducationCard.js` - Individual log card with swipe-to-delete
 
 ### **Modified Files (3):**
 1. ✅ `frontend/src/services/imageTypeDetector.js`
 2. ✅ `frontend/src/App.js`
-3. ⏳ `frontend/src/components/Dashboard.js` (Phase 2)
+3. ✅ `frontend/src/components/Dashboard.js`
 
 ---
 
@@ -898,17 +2045,16 @@ const resetApp = () => {
 3. Add imports (Step 6)
 4. Test end-to-end flow
 
-### **Phase 4 - UI (60 minutes):**
+### **Phase 4 - UI (120 minutes):**
 1. Create EducationLogCard (Step 7)
 2. Add display logic to App.js (Step 8)
 3. Add reset logic (Step 9)
-4. Test UI rendering
+4. Create EducationDashboard (Step 10)
+5. Create EducationCard (Step 11)
+6. Update Dashboard tabs (Step 12)
+7. Test all UI components
 
-### **Phase 5 - Dashboard (Phase 2, 60 minutes):**
-1. Add education tab to Dashboard
-2. Create history view
-3. Add filters/search
-4. Test pagination
+**Total Estimated Time: 5-6 hours**
 
 ---
 

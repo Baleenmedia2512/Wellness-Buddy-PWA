@@ -1,9 +1,11 @@
 // src/services/imageTypeDetector.js
 import { weightDetectionService } from './weightDetectionService';
+import { educationDetectionService } from './educationDetectionService';
 
 /**
  * Image Type Detector Service using Gemini AI
- * Detects whether an image contains food or a weight scale
+ * Detects whether an image contains education meeting, weight scale, or food
+ * Priority: education > weight > food (default)
  */
 class ImageTypeDetector {
   constructor() {
@@ -29,10 +31,11 @@ class ImageTypeDetector {
   }
 
   /**
-   * Detect image type: 'food' or 'weight' using Gemini AI
+   * Detect image type: 'education', 'weight', or 'food' using Gemini AI
+   * Detection priority: education > weight > food (default)
    * @param {string|File} image - Image data URL or File object
    * @param {File} imageFile - Optional: File object for additional analysis
-   * @returns {Promise<{type: 'food'|'weight', confidence: number, details: object}>}
+   * @returns {Promise<{type: 'education'|'weight'|'food', confidence: number, details: object}>}
    */
   async detectImageType(image, imageFile = null) {
     try {
@@ -49,7 +52,23 @@ class ImageTypeDetector {
         imgFile = this.dataURLToFile(image);
       }
 
-      // Use Gemini AI to detect if it's a weight scale
+      // ✅ PRIORITY 1: Check for education/meeting first (highest priority)
+      const meetingCheck = await educationDetectionService.detectMeetingType(imgFile);
+      if (meetingCheck.isMeeting && meetingCheck.confidence > 0.7) {
+        console.log('✅ Detected EDUCATION MEETING with Gemini AI');
+        return {
+          type: 'education',
+          confidence: meetingCheck.confidence,
+          details: {
+            isMeeting: true,
+            platform: meetingCheck.platform,
+            reason: meetingCheck.reason,
+            aiAnalysis: true
+          }
+        };
+      }
+
+      // ✅ PRIORITY 2: Check for weight scale
       const detection = await weightDetectionService.detectImageType(imgFile);
       
       let type = 'food'; // Default to food
