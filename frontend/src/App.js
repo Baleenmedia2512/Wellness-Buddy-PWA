@@ -7,6 +7,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Bug } from 'lucide-react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
+import EducationLogCard from './components/EducationLogCard';
 import TestImageGuide from './components/TestImageGuide';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
@@ -21,6 +22,7 @@ import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutri
 import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
 import { weightDetectionService } from './services/weightDetectionService';
+import { educationDetectionService } from './services/educationDetectionService';
 import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
@@ -71,8 +73,9 @@ function WellnessValleyApp() {
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
-  const [imageType, setImageType] = useState(null); // 'food' | 'weight'
+  const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
+  const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
   
   // Duplicate food detection state
@@ -297,6 +300,8 @@ function WellnessValleyApp() {
       setDashboardInitialTab('weight');
     } else if (imageType === 'food') {
       setDashboardInitialTab('nutrition');
+    } else if (imageType === 'education') {
+      setDashboardInitialTab('education');
     } else {
       setDashboardInitialTab(null); // Use default/last used tab
     }
@@ -888,6 +893,56 @@ function WellnessValleyApp() {
     }
   };
 
+  /**
+   * Save education meeting log to database (AUTO-SAVE)
+   * @param {Object} educationData - { platform, topic, confidence, participantCount }
+   * @param {string} imageBase64 - Base64 encoded image
+   */
+  const saveEducationLog = async (educationData, imageBase64) => {
+    try {
+      console.log('💾 Auto-saving education log:', educationData);
+      
+      // Get the actual database UserId
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId,
+          imageBase64: imageBase64,
+          platform: educationData.platform,
+          topic: educationData.topic,
+          confidence: educationData.confidence,
+          deviceInfo: window.navigator.userAgent
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save education log');
+      }
+
+      console.log('✅ Education log auto-saved successfully:', data.id);
+      setSaveLoading(false);
+      setLoadingState('idle');
+
+    } catch (error) {
+      console.error('❌ Failed to auto-save education log:', error);
+      setError(error.message || 'Failed to save education log. Please try again.');
+      setSaveLoading(false);
+      setLoadingState('idle');
+    }
+  };
+
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
     try {
@@ -1089,9 +1144,44 @@ function WellnessValleyApp() {
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
-      // ✅ NEW: Detect if image is weight scale or food using Gemini AI
+      // ✅ Detect image type using Gemini AI (education > weight > food)
       const detectedType = await imageTypeDetector.detectImageType(file);
       
+      // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
+      if (detectedType.type === 'education' && detectedType.confidence > 0.7) {
+        console.log('🎓 Education meeting detected, analyzing...');
+        setImageType('education');
+        
+        try {
+          const educationData = await educationDetectionService.analyzeMeetingImage(file);
+          
+          if (educationData.success) {
+            console.log('✅ Education data extracted:', educationData);
+            
+            setEducationResult({
+              platform: educationData.platform,
+              topic: educationData.topic, // Already has fallback to "Education Meeting"
+              confidence: educationData.confidence,
+              participantCount: educationData.participantCount
+            });
+            
+            // AUTO-SAVE to database immediately
+            setLoadingState('saving');
+            setSaveLoading(true);
+            await saveEducationLog(educationData, processedImage);
+          } else {
+            setError('Unable to analyze meeting screenshot. Please try again.');
+          }
+        } catch (err) {
+          console.error('❌ Education analysis failed:', err);
+          setError('Failed to analyze meeting screenshot: ' + err.message);
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // ✅ PRIORITY 2: Check for weight scale
       if (detectedType.type === 'weight' && detectedType.confidence > 0.6) {
         // It's a weight scale - try to extract weight
         console.log('🔍 Weight scale detected, extracting metrics...');
@@ -1350,6 +1440,7 @@ function WellnessValleyApp() {
     
     // Clear weight-related states
     setWeightResult(null);
+    setEducationResult(null); // Clear education results
     setImageType(null);
     setCurrentWeightImage(null);
     setShowManualWeightModal(false);
@@ -1832,6 +1923,18 @@ function WellnessValleyApp() {
             setSavedNutritionMealId(null);
           }}
         />}
+        
+        {/* Education Meeting Result */}
+        {imageType === 'education' && educationResult && (
+          <EducationLogCard 
+            educationData={educationResult}
+            onClose={() => {
+              setEducationResult(null);
+              setImagePreview(null);
+              setSelectedImage(null);
+            }}
+          />
+        )}
         
         {imageType === 'weight' && weightResult && (
           <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
