@@ -428,7 +428,7 @@ Examples:
       // Convert to INR for database storage
       const inputCost = inputCostUSD * this.usdToInrRate;
       const outputCost = outputCostUSD * this.usdToInrRate;
-      const totalCost = (totalCostUSD * this.usdToInrRate) + 1;
+      const totalCost = (totalCostUSD * this.usdToInrRate);
 
       console.log(`📊 Token Usage [${requestType}]:`, {
         '🔤 Prompt Tokens': tokenData.promptTokens,
