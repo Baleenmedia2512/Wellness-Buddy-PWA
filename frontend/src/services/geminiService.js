@@ -745,9 +745,9 @@ console.log('📊 [Token Monitor] Calculating costs for token usage:', tokenData
       const totalCostUSD = inputCostUSD + outputCostUSD;
       
       // Convert to INR for database storage
-      const inputCost = inputCostUSD * this.usdToInrRate;
-      const outputCost = outputCostUSD * this.usdToInrRate;
-      const totalCost = (totalCostUSD * this.usdToInrRate);
+      const inputCost = parseFloat((inputCostUSD * this.usdToInrRate).toFixed(2));
+      const outputCost = parseFloat((outputCostUSD * this.usdToInrRate).toFixed(2));
+      const totalCost = parseFloat((totalCostUSD * this.usdToInrRate).toFixed(2));
 
       // Update session metrics
       this.sessionMetrics.totalRequests++;

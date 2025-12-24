@@ -426,9 +426,9 @@ Examples:
       const totalCostUSD = inputCostUSD + outputCostUSD;
       
       // Convert to INR for database storage
-      const inputCost = inputCostUSD * this.usdToInrRate;
-      const outputCost = outputCostUSD * this.usdToInrRate;
-      const totalCost = (totalCostUSD * this.usdToInrRate);
+      const inputCost = parseFloat((inputCostUSD * this.usdToInrRate).toFixed(2));
+      const outputCost = parseFloat((outputCostUSD * this.usdToInrRate).toFixed(2));
+      const totalCost = parseFloat((totalCostUSD * this.usdToInrRate).toFixed(2));
 
       console.log(`📊 Token Usage [${requestType}]:`, {
         '🔤 Prompt Tokens': tokenData.promptTokens,
@@ -443,9 +443,11 @@ Examples:
       console.log('Total Output Cost (USD):', outputCostUSD);
       console.log('Total Token Cost (USD):', totalCostUSD);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('Total Input Cost (INR):', inputCost);
-      console.log('Total Output Cost (INR):', outputCost);
-      console.log('Total Token Cost (INR):', totalCost);
+      console.log('round off to 3 decimal places for INR display')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log('Total Input Cost (INR):', inputCost.toFixed(3));
+      console.log('Total Output Cost (INR):', outputCost.toFixed(3));
+      console.log('Total Token Cost (INR):', totalCost.toFixed(3));
 
       // Save token usage to database if user info is available
       if (this.currentUserId && this.currentUserEmail) {
