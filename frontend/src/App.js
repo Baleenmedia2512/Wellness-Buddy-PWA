@@ -43,6 +43,7 @@ import {
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const DisciplineReport = lazy(() => import('./components/DisciplineReport'));
 const SetupWizard = lazy(() => import('./pages/SetupWizard'));
 const ValidateOTP = lazy(() => import('./pages/ValidateOTP'));
 
@@ -103,6 +104,9 @@ function WellnessValleyApp() {
 
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Discipline report state (for coaches)
+  const [showDisciplineReport, setShowDisciplineReport] = useState(false);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1863,6 +1867,19 @@ function WellnessValleyApp() {
     );
   }
 
+  // Discipline Report for coaches
+  if (showDisciplineReport && (userRole === 'coach' || userRole === 'admin' || userRole === 'developer')) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
+        <DisciplineReport
+          user={user}
+          onBack={() => setShowDisciplineReport(false)}
+          apiBaseUrl={apiBaseUrl}
+        />
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
@@ -1870,6 +1887,7 @@ function WellnessValleyApp() {
         user={user}
         onShowBackgroundHistory={showDashboardPage}
         onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
+        onShowDisciplineReport={(userRole === 'coach' || userRole === 'admin' || userRole === 'developer') ? () => setShowDisciplineReport(true) : null}
         onSignOut={handleSignOut}
       />
       
