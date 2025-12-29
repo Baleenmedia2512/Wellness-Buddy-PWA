@@ -70,16 +70,96 @@ export default async function handler(req, res) {
         database: process.env.DB_NAME
       });
     
-      // Step 1: Get team members (Note: ProfileImage column doesn't exist in team_table)
+      // Step 1: Get ALL team members (recursive) + logged-in coach
       const [members] = await connection.execute(`
-        SELECT UserId, UserName, Email, EntryDateTime
-        FROM team_table
-        WHERE UplineCoachId = ?
-          AND Status = 'active'
-        ORDER BY UserName
-      `, [coachId]);
+        WITH RECURSIVE team_hierarchy AS (
+          -- Base case: The logged-in coach themselves
+          SELECT 
+            UserId,
+            UserName,
+            Email,
+            Role,
+            EntryDateTime,
+            UplineCoachId,
+            0 as HierarchyLevel,
+            CAST(UserId AS CHAR(500)) as HierarchyPath,
+            TRUE as IsLoggedInCoach
+          FROM team_table
+          WHERE UserId = ?
+            AND Status = 'active'
+          
+          UNION ALL
+          
+          -- Direct team members (Level 1)
+          SELECT 
+            t.UserId,
+            t.UserName,
+            t.Email,
+            t.Role,
+            t.EntryDateTime,
+            t.UplineCoachId,
+            1 as HierarchyLevel,
+            CAST(t.UserId AS CHAR(500)) as HierarchyPath,
+            FALSE as IsLoggedInCoach
+          FROM team_table t
+          WHERE t.UplineCoachId = ?
+            AND t.Status = 'active'
+          
+          UNION ALL
+          
+          -- Recursive case: Sub-coaches' team members (Level 2+)
+          SELECT 
+            t.UserId,
+            t.UserName,
+            t.Email,
+            t.Role,
+            t.EntryDateTime,
+            t.UplineCoachId,
+            th.HierarchyLevel + 1,
+            CONCAT(th.HierarchyPath, '>', t.UserId),
+            FALSE as IsLoggedInCoach
+          FROM team_table t
+          INNER JOIN team_hierarchy th ON t.UplineCoachId = th.UserId
+          WHERE t.Status = 'active'
+            AND th.HierarchyLevel < 10
+            AND th.HierarchyLevel > 0
+            AND FIND_IN_SET(t.UserId, REPLACE(th.HierarchyPath, '>', ',')) = 0
+        )
+        SELECT 
+          th.UserId,
+          th.UserName,
+          th.Email,
+          th.Role,
+          th.EntryDateTime,
+          th.UplineCoachId,
+          COALESCE(coach.UserName, NULL) as UplineCoachName,
+          th.HierarchyLevel,
+          th.HierarchyPath,
+          th.IsLoggedInCoach
+        FROM team_hierarchy th
+        LEFT JOIN team_table coach ON th.UplineCoachId = coach.UserId
+        ORDER BY th.HierarchyLevel, th.UserName
+      `, [coachId, coachId]);
       
-      if (members.length === 0) {
+      // Step 2: Deduplicate members (keep lowest hierarchy level for each user)
+      const uniqueMembers = [];
+      const seenUserIds = new Set();
+      
+      // Sort by HierarchyLevel to keep the closest relationship
+      const sortedMembers = [...members].sort((a, b) => a.HierarchyLevel - b.HierarchyLevel);
+      
+      for (const member of sortedMembers) {
+        if (!seenUserIds.has(member.UserId)) {
+          seenUserIds.add(member.UserId);
+          uniqueMembers.push(member);
+        }
+      }
+      
+      // Step 3: Separate logged-in coach from team members
+      const loggedInCoach = uniqueMembers.find(m => m.IsLoggedInCoach);
+      const teamMembers = uniqueMembers.filter(m => !m.IsLoggedInCoach);
+      
+      if (uniqueMembers.length === 0) {
         await connection.end();
         return res.status(200).json({
           success: true,
@@ -89,15 +169,55 @@ export default async function handler(req, res) {
           dateRange,
           startDate: dates.start.toISOString().split('T')[0],
           endDate: dates.end.toISOString().split('T')[0],
+          coachPerformance: null,
           teamMembers: [],
+          coachFilters: [],
           teamSummary: {
             totalMembers: 0,
+            totalTeamMembers: 0,
+            totalCoaches: 0,
             averagePeriodDiscipline: 0,
             topPerformer: null,
             needsAttention: []
           }
         });
       }
+      
+      // Helper function to build coach filter options
+      const buildCoachFilters = (allMembers, loggedInCoachId) => {
+        const filters = [];
+        
+        // Add "My Team" filter (logged-in coach's direct members)
+        const myTeamCount = allMembers.filter(m => 
+          m.UplineCoachId === loggedInCoachId && !m.IsLoggedInCoach
+        ).length;
+        
+        if (myTeamCount > 0) {
+          filters.push({
+            coachId: loggedInCoachId,
+            coachName: 'My Team',
+            memberCount: myTeamCount,
+            isMyTeam: true
+          });
+        }
+        
+        // Add other sub-coaches' teams
+        allMembers.forEach(member => {
+          if (member.Role === 'coach' && !member.IsLoggedInCoach) {
+            const teamCount = allMembers.filter(m => m.UplineCoachId === member.UserId).length;
+            if (teamCount > 0) {
+              filters.push({
+                coachId: member.UserId,
+                coachName: `${member.UserName}'s Team`,
+                memberCount: teamCount,
+                isMyTeam: false
+              });
+            }
+          }
+        });
+        
+        return filters;
+      };
       
       // Step 1.5: Get current time windows for display
       const [currentTimeWindows] = await connection.execute(`
@@ -126,89 +246,203 @@ export default async function handler(req, res) {
         return `${displayHour}:${minutes} ${ampm}`;
       };
       
-      // Step 2: Calculate discipline for all members
-      const memberIds = members.map(m => m.UserId);
+      // Step 2: Calculate discipline for coach + all team members
+      const allUserIds = uniqueMembers.map(m => m.UserId);  // Includes coach
       const disciplineData = await calculateTeamDiscipline(
         connection,
-        memberIds,
+        allUserIds,
         dates.start,
         dates.end
       );
       
-      // Step 3: Format response data
-      const teamMembers = members.map(member => {
+      // Step 3: Build coach filters
+      const coachFilters = buildCoachFilters(uniqueMembers, parseInt(coachId));
+      
+      // Step 4: Format logged-in coach's performance data
+      let coachPerformanceData = null;
+      if (loggedInCoach) {
+        const coachDiscipline = disciplineData.find(d => d.userId === loggedInCoach.UserId);
+        
+        if (coachDiscipline) {
+          // Validate discipline data structure
+          if (!coachDiscipline.weight || !coachDiscipline.education || 
+              !coachDiscipline.breakfast || !coachDiscipline.lunch || !coachDiscipline.dinner) {
+            console.warn('⚠️ Incomplete discipline data for coach:', loggedInCoach.UserId);
+          }
+          
+          // Calculate period discipline with null safety
+          const coachTotalOnTimePosts = 
+            (coachDiscipline.weight?.onTimePosts || 0) +
+            (coachDiscipline.education?.onTimePosts || 0) +
+            (coachDiscipline.breakfast?.onTimePosts || 0) +
+            (coachDiscipline.lunch?.onTimePosts || 0) +
+            (coachDiscipline.dinner?.onTimePosts || 0);
+          
+          const coachTotalExpectedPosts = calculateExpectedPosts(dates.start, dates.end);
+          
+          coachPerformanceData = {
+            userId: loggedInCoach.UserId,
+            userName: loggedInCoach.UserName,
+            email: loggedInCoach.Email,
+            role: loggedInCoach.Role,
+            isLoggedInCoach: true,
+            uplineCoachId: loggedInCoach.UplineCoachId,
+            uplineCoachName: loggedInCoach.UplineCoachName,
+            periodDiscipline: {
+              percentage: calculateDisciplinePercentage(
+                coachTotalOnTimePosts,
+                coachTotalExpectedPosts
+              ),
+              onTimePosts: coachTotalOnTimePosts,
+              expectedPosts: coachTotalExpectedPosts
+            },
+            activities: {
+              weight: {
+                percentage: calculateDisciplinePercentage(
+                  coachDiscipline.weight?.onTimePosts || 0,
+                  coachDiscipline.weight?.expectedPosts || 0
+                ),
+                onTimePosts: coachDiscipline.weight?.onTimePosts || 0,
+                expectedPosts: coachDiscipline.weight?.expectedPosts || 0,
+                targetWindow: timeWindowMap.weight 
+                  ? `${formatTimeForDisplay(timeWindowMap.weight.start)} - ${formatTimeForDisplay(timeWindowMap.weight.end)}`
+                  : 'Not Set'
+              },
+              education: {
+                percentage: calculateDisciplinePercentage(
+                  coachDiscipline.education?.onTimePosts || 0,
+                  coachDiscipline.education?.expectedPosts || 0
+                ),
+                onTimePosts: coachDiscipline.education?.onTimePosts || 0,
+                expectedPosts: coachDiscipline.education?.expectedPosts || 0,
+                targetWindow: timeWindowMap.education 
+                  ? `${formatTimeForDisplay(timeWindowMap.education.start)} - ${formatTimeForDisplay(timeWindowMap.education.end)}`
+                  : 'Not Set'
+              },
+              breakfast: {
+                percentage: calculateDisciplinePercentage(
+                  coachDiscipline.breakfast?.onTimePosts || 0,
+                  coachDiscipline.breakfast?.expectedPosts || 0
+                ),
+                onTimePosts: coachDiscipline.breakfast?.onTimePosts || 0,
+                expectedPosts: coachDiscipline.breakfast?.expectedPosts || 0,
+                targetWindow: timeWindowMap.breakfast 
+                  ? `${formatTimeForDisplay(timeWindowMap.breakfast.start)} - ${formatTimeForDisplay(timeWindowMap.breakfast.end)}`
+                  : 'Not Set'
+              },
+              lunch: {
+                percentage: calculateDisciplinePercentage(
+                  coachDiscipline.lunch?.onTimePosts || 0,
+                  coachDiscipline.lunch?.expectedPosts || 0
+                ),
+                onTimePosts: coachDiscipline.lunch?.onTimePosts || 0,
+                expectedPosts: coachDiscipline.lunch?.expectedPosts || 0,
+                targetWindow: timeWindowMap.lunch 
+                  ? `${formatTimeForDisplay(timeWindowMap.lunch.start)} - ${formatTimeForDisplay(timeWindowMap.lunch.end)}`
+                  : 'Not Set'
+              },
+              dinner: {
+                percentage: calculateDisciplinePercentage(
+                  coachDiscipline.dinner?.onTimePosts || 0,
+                  coachDiscipline.dinner?.expectedPosts || 0
+                ),
+                onTimePosts: coachDiscipline.dinner?.onTimePosts || 0,
+                expectedPosts: coachDiscipline.dinner?.expectedPosts || 0,
+                targetWindow: timeWindowMap.dinner 
+                  ? `${formatTimeForDisplay(timeWindowMap.dinner.start)} - ${formatTimeForDisplay(timeWindowMap.dinner.end)}`
+                  : 'Not Set'
+              }
+            }
+          };
+        }
+      }
+      
+      // Step 5: Format response data (team members only, exclude coach)
+      const formattedTeamMembers = teamMembers.map(member => {
         const discipline = disciplineData.find(d => d.userId === member.UserId);
         
         if (!discipline) {
           return null; // Skip members with no data
         }
         
-        // Calculate percentages for each activity
+        // Validate discipline data structure (same as coach validation)
+        if (!discipline.weight || !discipline.education || 
+            !discipline.breakfast || !discipline.lunch || !discipline.dinner) {
+          console.warn('⚠️ Incomplete discipline data for team member:', member.UserId);
+        }
+        
+        // Check if this member is also a coach
+        const isCoach = member.Role === 'coach';
+        const subTeamCount = isCoach 
+          ? uniqueMembers.filter(m => m.UplineCoachId === member.UserId).length 
+          : 0;
+        
+        // Calculate percentages for each activity with null safety
         const activities = {
           weight: {
             percentage: calculateDisciplinePercentage(
-              discipline.weight.onTimePosts,
-              discipline.weight.expectedPosts
+              discipline.weight?.onTimePosts || 0,
+              discipline.weight?.expectedPosts || 0
             ),
-            onTimePosts: discipline.weight.onTimePosts,
-            expectedPosts: discipline.weight.expectedPosts,
+            onTimePosts: discipline.weight?.onTimePosts || 0,
+            expectedPosts: discipline.weight?.expectedPosts || 0,
             targetWindow: timeWindowMap.weight 
               ? `${formatTimeForDisplay(timeWindowMap.weight.start)} - ${formatTimeForDisplay(timeWindowMap.weight.end)}`
               : 'Not Set'
           },
           education: {
             percentage: calculateDisciplinePercentage(
-              discipline.education.onTimePosts,
-              discipline.education.expectedPosts
+              discipline.education?.onTimePosts || 0,
+              discipline.education?.expectedPosts || 0
             ),
-            onTimePosts: discipline.education.onTimePosts,
-            expectedPosts: discipline.education.expectedPosts,
+            onTimePosts: discipline.education?.onTimePosts || 0,
+            expectedPosts: discipline.education?.expectedPosts || 0,
             targetWindow: timeWindowMap.education 
               ? `${formatTimeForDisplay(timeWindowMap.education.start)} - ${formatTimeForDisplay(timeWindowMap.education.end)}`
               : 'Not Set'
           },
           breakfast: {
             percentage: calculateDisciplinePercentage(
-              discipline.breakfast.onTimePosts,
-              discipline.breakfast.expectedPosts
+              discipline.breakfast?.onTimePosts || 0,
+              discipline.breakfast?.expectedPosts || 0
             ),
-            onTimePosts: discipline.breakfast.onTimePosts,
-            expectedPosts: discipline.breakfast.expectedPosts,
+            onTimePosts: discipline.breakfast?.onTimePosts || 0,
+            expectedPosts: discipline.breakfast?.expectedPosts || 0,
             targetWindow: timeWindowMap.breakfast 
               ? `${formatTimeForDisplay(timeWindowMap.breakfast.start)} - ${formatTimeForDisplay(timeWindowMap.breakfast.end)}`
               : 'Not Set'
           },
           lunch: {
             percentage: calculateDisciplinePercentage(
-              discipline.lunch.onTimePosts,
-              discipline.lunch.expectedPosts
+              discipline.lunch?.onTimePosts || 0,
+              discipline.lunch?.expectedPosts || 0
             ),
-            onTimePosts: discipline.lunch.onTimePosts,
-            expectedPosts: discipline.lunch.expectedPosts,
+            onTimePosts: discipline.lunch?.onTimePosts || 0,
+            expectedPosts: discipline.lunch?.expectedPosts || 0,
             targetWindow: timeWindowMap.lunch 
               ? `${formatTimeForDisplay(timeWindowMap.lunch.start)} - ${formatTimeForDisplay(timeWindowMap.lunch.end)}`
               : 'Not Set'
           },
           dinner: {
             percentage: calculateDisciplinePercentage(
-              discipline.dinner.onTimePosts,
-              discipline.dinner.expectedPosts
+              discipline.dinner?.onTimePosts || 0,
+              discipline.dinner?.expectedPosts || 0
             ),
-            onTimePosts: discipline.dinner.onTimePosts,
-            expectedPosts: discipline.dinner.expectedPosts,
+            onTimePosts: discipline.dinner?.onTimePosts || 0,
+            expectedPosts: discipline.dinner?.expectedPosts || 0,
             targetWindow: timeWindowMap.dinner 
               ? `${formatTimeForDisplay(timeWindowMap.dinner.start)} - ${formatTimeForDisplay(timeWindowMap.dinner.end)}`
               : 'Not Set'
           }
         };
         
-        // Calculate period discipline
+        // Calculate period discipline with null safety
         const totalOnTimePosts = 
-          discipline.weight.onTimePosts +
-          discipline.education.onTimePosts +
-          discipline.breakfast.onTimePosts +
-          discipline.lunch.onTimePosts +
-          discipline.dinner.onTimePosts;
+          (discipline.weight?.onTimePosts || 0) +
+          (discipline.education?.onTimePosts || 0) +
+          (discipline.breakfast?.onTimePosts || 0) +
+          (discipline.lunch?.onTimePosts || 0) +
+          (discipline.dinner?.onTimePosts || 0);
         
         const totalExpectedPosts = calculateExpectedPosts(dates.start, dates.end);
         const periodDisciplinePercentage = calculateDisciplinePercentage(
@@ -220,6 +454,13 @@ export default async function handler(req, res) {
           userId: member.UserId,
           userName: member.UserName,
           email: member.Email,
+          role: member.Role,
+          isCoach: isCoach,
+          isLoggedInCoach: false,
+          subTeamCount: subTeamCount,
+          uplineCoachId: member.UplineCoachId,
+          uplineCoachName: member.UplineCoachName,
+          hierarchyLevel: member.HierarchyLevel,
           profileImage: null, // Column doesn't exist in database
           joinedDate: member.EntryDateTime,
           periodDiscipline: {
@@ -232,20 +473,26 @@ export default async function handler(req, res) {
         };
       }).filter(m => m !== null);
       
-      // Step 4: Calculate team summary
-      const avgPeriodDiscipline = teamMembers.length > 0
-        ? teamMembers.reduce((sum, m) => sum + m.periodDiscipline.percentage, 0) / teamMembers.length
+      // Step 6: Calculate team summary (including coach)
+      const allMembersForStats = [];
+      if (coachPerformanceData) {
+        allMembersForStats.push(coachPerformanceData);
+      }
+      allMembersForStats.push(...formattedTeamMembers);
+      
+      const avgPeriodDiscipline = allMembersForStats.length > 0
+        ? allMembersForStats.reduce((sum, m) => sum + m.periodDiscipline.percentage, 0) / allMembersForStats.length
         : 0;
       
-      const topPerformer = teamMembers.length > 0
-        ? teamMembers.reduce((max, m) => 
+      const topPerformer = allMembersForStats.length > 0
+        ? allMembersForStats.reduce((max, m) => 
             m.periodDiscipline.percentage > max.periodDiscipline.percentage ? m : max
           )
         : null;
       
-      const needsAttention = teamMembers.filter(m => m.periodDiscipline.percentage < 60);
+      const needsAttention = allMembersForStats.filter(m => m.periodDiscipline.percentage < 60);
       
-      // Step 5: Close connection and return response
+      // Step 7: Close connection and return response
       await connection.end();
       connection = null; // Mark as closed
       
@@ -257,9 +504,13 @@ export default async function handler(req, res) {
         dateRange,
         startDate: dates.start.toISOString().split('T')[0],
         endDate: dates.end.toISOString().split('T')[0],
-        teamMembers,
+        coachPerformance: coachPerformanceData,
+        teamMembers: formattedTeamMembers,
+        coachFilters: coachFilters,
         teamSummary: {
-          totalMembers: teamMembers.length,
+          totalMembers: uniqueMembers.length,
+          totalTeamMembers: formattedTeamMembers.length,
+          totalCoaches: coachFilters.length,
           averagePeriodDiscipline: Math.round(avgPeriodDiscipline * 10) / 10,
           topPerformer: topPerformer ? {
             userId: topPerformer.userId,

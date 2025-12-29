@@ -17,7 +17,10 @@ import {
   Settings,
   Calendar as CalendarIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  ArrowUp,
+  ArrowDown,
+  Target
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { disciplineReportService } from '../services/disciplineReportService';
@@ -60,12 +63,12 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
         setTempEnd(tempStart);
         setTempStart(clickedDate);
       } else {
-        setTempEnd(clickedDate);
+        const finalEnd = clickedDate < tempStart ? tempStart : clickedDate;
+        const finalStart = clickedDate < tempStart ? clickedDate : tempStart;
+        setTempEnd(finalEnd);
+        // Auto-confirm immediately after selecting both dates
+        onSelect(finalStart, finalEnd);
       }
-      // Auto-confirm after selecting both dates
-      setTimeout(() => {
-        onSelect(tempStart, clickedDate < tempStart ? tempStart : clickedDate);
-      }, 200);
     }
   };
 
@@ -181,18 +184,39 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
         >
           Cancel
         </button>
-        <button
-          onClick={() => {
-            setTempStart(null);
-            setTempEnd(null);
-            setSelectingStart(true);
-          }}
-          className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-        >
-          Clear
-        </button>
       </div>
     </motion.div>
+  );
+};
+
+// --- TeamFilterPills Component ---
+const TeamFilterPills = ({ filters, activeFilter, onChange }) => {
+  return (
+    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+      <button
+        onClick={() => onChange('all')}
+        className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
+          activeFilter === 'all'
+            ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
+            : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+        }`}
+      >
+        All Teams
+      </button>
+      {filters.map(filter => (
+        <button
+          key={filter.coachId}
+          onClick={() => onChange(filter.isMyTeam ? 'myTeam' : filter.coachId.toString())}
+          className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
+            activeFilter === (filter.isMyTeam ? 'myTeam' : filter.coachId.toString())
+              ? 'bg-blue-600 text-white border-blue-600 shadow-md shadow-blue-100'
+              : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+          }`}
+        >
+          {filter.coachName} ({filter.memberCount})
+        </button>
+      ))}
+    </div>
   );
 };
 
@@ -288,6 +312,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [teamFilter, setTeamFilter] = useState('all');
+  const [sortOrder, setSortOrder] = useState('desc');
   const filterRef = useRef(null);
 
   // Close filter dropdown when clicking outside
@@ -302,16 +328,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }, []);
 
   // Load discipline report
-  useEffect(() => {
-    if (user?.id) {
-      loadDisciplineReport();
-    } else {
+  const loadDisciplineReportCallback = React.useCallback(async (isBackground = false) => {
+    if (!user?.id) {
       setLoading(false);
       setError('User ID not found. Please login again.');
+      return;
     }
-  }, [user?.id, dateRange, customStartDate, customEndDate]);
-
-  async function loadDisciplineReport(isBackground = false) {
+    
     if (!isBackground) {
       setLoading(true);
     } else {
@@ -344,7 +367,24 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         setRefreshing(false);
       }
     }
-  }
+  }, [user?.id, dateRange, customStartDate, customEndDate]);
+
+  useEffect(() => {
+    loadDisciplineReportCallback();
+  }, [loadDisciplineReportCallback]);
+
+  // Scroll active date range button into view after data loads
+  useEffect(() => {
+    if (!loading && dateRange) {
+      const buttonId = dateRange === 'custom' ? 'date-range-custom' : `date-range-${dateRange}`;
+      const button = document.getElementById(buttonId);
+      if (button) {
+        setTimeout(() => {
+          button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+        }, 100);
+      }
+    }
+  }, [loading, dateRange]);
 
   const handleDateRangeSelect = (start, end) => {
     setCustomStartDate(start);
@@ -379,19 +419,66 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     return 'text-red-700';
   };
 
-  // Filter team members
-  const filteredMembers = teamData?.teamMembers.filter(member => {
-    const matchesSearch = member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      member.email.toLowerCase().includes(searchQuery.toLowerCase());
+  // Filter and sort team members (including coach)
+  const allMembers = React.useMemo(() => {
+    if (!teamData) return [];
     
-    const discipline = member.periodDiscipline.percentage;
-    let matchesDiscipline = true;
-    if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
-    if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
-    if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
+    // Combine coach and team members
+    const combined = [];
+    if (teamData.coachPerformance) {
+      combined.push(teamData.coachPerformance);
+    }
+    if (teamData.teamMembers) {
+      combined.push(...teamData.teamMembers);
+    }
+    return combined;
+  }, [teamData]);
 
-    return matchesSearch && matchesDiscipline;
-  }) || [];
+  const filteredAndSortedMembers = React.useMemo(() => {
+    return allMembers
+      .filter(member => {
+        // Search filter
+        const matchesSearch = member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          member.email.toLowerCase().includes(searchQuery.toLowerCase());
+        
+        // Discipline score filter
+        const discipline = member.periodDiscipline.percentage;
+        let matchesDiscipline = true;
+        if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
+        if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
+        if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
+        
+        // Team filter
+        let matchesTeam = true;
+        if (teamFilter === 'myTeam') {
+          // For coach, they manage their own team
+          if (member.isLoggedInCoach) {
+            matchesTeam = true;
+          } else {
+            matchesTeam = member.uplineCoachId === user.id;
+          }
+        } else if (teamFilter !== 'all') {
+          // For specific coach filter
+          if (member.isLoggedInCoach) {
+            matchesTeam = false; // Don't show logged-in coach in other coach filters
+          } else {
+            matchesTeam = member.uplineCoachId === parseInt(teamFilter);
+          }
+        }
+
+        return matchesSearch && matchesDiscipline && matchesTeam;
+      })
+      .sort((a, b) => {
+        // Keep logged-in coach at the top always
+        if (a.isLoggedInCoach) return -1;
+        if (b.isLoggedInCoach) return 1;
+        
+        // Sort by discipline score
+        const scoreA = a.periodDiscipline.percentage;
+        const scoreB = b.periodDiscipline.percentage;
+        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+      });
+  }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, user.id]);
 
   // Activity Icons Map
   const activityIcons = {
@@ -420,7 +507,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           <div className="text-red-500 text-5xl mb-4">⚠️</div>
           <p className="text-gray-800 mb-6 font-medium">{error}</p>
           <button
-            onClick={loadDisciplineReport}
+            onClick={() => loadDisciplineReportCallback()}
             className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold hover:bg-green-700 transition-colors shadow-lg shadow-green-200"
           >
             Retry
@@ -454,7 +541,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={() => loadDisciplineReport(true)}
+                onClick={() => loadDisciplineReportCallback(true)}
                 disabled={refreshing}
                 className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600 disabled:opacity-50"
                 title="Refresh"
@@ -481,7 +568,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
 
           {/* Date Range Selector (Scrollable Pills) */}
-          <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1">
+          <div className="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1" id="date-range-container">
             {[
               { id: 'today', label: 'Today' },
               { id: 'yesterday', label: 'Yesterday' },
@@ -490,6 +577,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             ].map((range) => (
               <button
                 key={range.id}
+                id={`date-range-${range.id}`}
                 onClick={() => {
                   setDateRange(range.id);
                   setShowDatePicker(false);
@@ -506,7 +594,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </button>
             ))}
             <button
-              onClick={() => setShowDatePicker(!showDatePicker)}
+              id="date-range-custom"
+              onClick={() => {
+                setShowDatePicker(!showDatePicker);
+              }}
               className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border flex items-center space-x-1 ${
                 dateRange === 'custom'
                   ? 'bg-green-600 text-white border-green-600 shadow-md shadow-green-100'
@@ -534,9 +625,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 relative z-10 space-y-6">
+      <div className="max-w-3xl mx-auto px-4 py-6 relative z-10">
         {/* Summary Stats - Compact Dashboard Strip */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
           <div className="grid grid-cols-3 divide-x divide-gray-50">
             {/* Average & Posts */}
             <div className="p-4 flex flex-col items-center justify-center text-center">
@@ -548,7 +639,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 <span className="text-xs text-gray-400">%</span>
               </div>
               <div className="text-[10px] text-green-600 font-medium mt-1 bg-green-50 px-2 py-0.5 rounded-full">
-                {Math.round((teamData?.teamMembers.reduce((acc, m) => acc + m.periodDiscipline.onTimePosts, 0) / Math.max(1, teamData?.teamMembers.reduce((acc, m) => acc + m.periodDiscipline.expectedPosts, 0))) * 100)}% Posts
+                {(() => {
+                  const allMembers = [...(teamData?.teamMembers || [])];
+                  if (teamData?.coachPerformance) {
+                    allMembers.push(teamData.coachPerformance);
+                  }
+                  const totalOnTime = allMembers.reduce((acc, m) => acc + m.periodDiscipline.onTimePosts, 0);
+                  const totalExpected = allMembers.reduce((acc, m) => acc + m.periodDiscipline.expectedPosts, 0);
+                  return Math.round((totalOnTime / Math.max(1, totalExpected)) * 100);
+                })()}% Posts
               </div>
             </div>
 
@@ -596,7 +695,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="flex gap-3 items-center z-30 relative">
+        <div className="flex gap-3 items-center z-30 relative mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
             <input
@@ -653,12 +752,36 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               )}
             </AnimatePresence>
           </div>
+          
+          {/* Sort Button */}
+          <button
+            onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+            className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+            title={sortOrder === 'desc' ? 'Highest First' : 'Lowest First'}
+          >
+            {sortOrder === 'desc' ? (
+              <ArrowDown className="h-4 w-4" />
+            ) : (
+              <ArrowUp className="h-4 w-4" />
+            )}
+          </button>
         </div>
+        
+        {/* Team Filter Pills */}
+        {teamData?.coachFilters && teamData.coachFilters.length > 0 && (
+          <div className="mb-4">
+            <TeamFilterPills
+              filters={teamData.coachFilters}
+              activeFilter={teamFilter}
+              onChange={setTeamFilter}
+            />
+          </div>
+        )}
 
         {/* Member List */}
         <div className="space-y-3">
           <AnimatePresence>
-            {filteredMembers.map((member) => (
+            {filteredAndSortedMembers.map((member) => (
               <motion.div
                 key={member.userId}
                 initial={{ opacity: 0, y: 10 }}
@@ -678,8 +801,29 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       {member.userName.charAt(0).toUpperCase()}
                     </div>
                     <div>
-                      <h3 className="font-bold text-gray-900 text-base">{member.userName}</h3>
-                      <p className="text-xs text-gray-500">{member.email}</p>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-gray-900 text-[15px]">{member.userName}</h3>
+                        {member.isLoggedInCoach && (
+                          <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                            YOU
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-0.5">{member.email}</p>
+                      
+                      {/* Coach Badge - Don't show for logged-in coach */}
+                      {!member.isLoggedInCoach && member.uplineCoachName && (
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          Coach: <span className="text-gray-600 font-medium">{member.uplineCoachName}{member.uplineCoachId === user.id ? ' (You)' : ''}</span>
+                        </p>
+                      )}
+                      
+                      {member.isLoggedInCoach && (
+                        <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          My Performance
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -747,11 +891,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         <TimeWindowSettingsModal
           isOpen={showTimeWindowModal}
           onClose={() => setShowTimeWindowModal(false)}
-          onUpdate={loadDisciplineReport}
+          onUpdate={loadDisciplineReportCallback}
           userEmail={user?.email}
         />
 
-          {filteredMembers.length === 0 && (
+          {filteredAndSortedMembers.length === 0 && (
             <div className="text-center py-12">
               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="h-8 w-8 text-gray-300" />

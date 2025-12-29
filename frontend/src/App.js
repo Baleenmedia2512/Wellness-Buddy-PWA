@@ -14,7 +14,6 @@ import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
-import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
 import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
@@ -91,9 +90,6 @@ function WellnessValleyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
-  
-  // Debug panel state
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
   
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
@@ -1874,8 +1870,8 @@ function WellnessValleyApp() {
     );
   }
 
-  // Discipline Report for coaches
-  if (showDisciplineReport && (userRole === 'coach' || userRole === 'admin' || userRole === 'developer')) {
+  // Discipline Report for all users
+  if (showDisciplineReport) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
         <DisciplineReport
@@ -1898,22 +1894,12 @@ function WellnessValleyApp() {
         user={user}
         onShowBackgroundHistory={showDashboardPage}
         onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
-        onShowDisciplineReport={(userRole === 'coach' || userRole === 'admin' || userRole === 'developer') ? () => {
+        onShowDisciplineReport={() => {
           setShowDisciplineReport(true);
           localStorage.setItem('currentPage', 'discipline-report');
-        } : null}
+        }}
         onSignOut={handleSignOut}
       />
-      
-      {/* Debug Panel Button */}
-      <button
-        onClick={() => setShowDebugPanel(true)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
-        title="Open Food Corrections Debug Panel"
-        aria-label="Open Food Corrections Debug Panel"
-      >
-        <Bug className="h-5 w-5 md:h-6 md:w-6" />
-      </button>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
         {/* Back button toast message */}
@@ -2127,13 +2113,6 @@ function WellnessValleyApp() {
         onProfileUpdate={() => {
           console.log('✅ [NewUserProfile] Profile updated successfully');
         }}
-      />
-      
-      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
-      <FoodCorrectionsDebugPanel
-        userId={user?.id}
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
       />
 
       {/* Admin Dashboard */}
