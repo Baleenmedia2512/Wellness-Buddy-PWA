@@ -67,11 +67,13 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
             <img 
               src={wellnessValleyIcon} 
               alt="Wellness Valley" 
-              className="h-7 w-7 sm:h-8 sm:w-8 object-contain"
+              className="h-12 w-12 sm:h-12 sm:w-12 object-contain"
+              // className="h-11.5 w-11.5 sm:h-11.5 sm:w-11.5 object-contain"
             />
             <span className="truncate">Wellness Valley</span>
           </h1>
-          <p className="text-xs sm:text-sm text-green-600 mt-1 ml-9 sm:ml-10 truncate">
+          {/* <p className="text-xs sm:text-sm text-green-600 mt-1 ml-9 sm:ml-10 truncate"> */}
+          <p className="text-xs sm:text-sm text-green-600 mt-0 ml-9 sm:ml-10 truncate">
             Track your meals effortlessly
           </p>
         </div>
