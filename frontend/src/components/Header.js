@@ -67,7 +67,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
             <img 
               src={wellnessValleyIcon} 
               alt="Wellness Valley" 
-              className="h-12 w-12 sm:h-12 sm:w-12 object-contain"
+              className="h-12 w-12 sm:h-12 sm:w-12   object-contain"
               // className="h-11.5 w-11.5 sm:h-11.5 sm:w-11.5 object-contain"
             />
             <span className="truncate">Wellness Valley</span>
