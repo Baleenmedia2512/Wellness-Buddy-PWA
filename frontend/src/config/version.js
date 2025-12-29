@@ -72,20 +72,28 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.3.0',
+  VERSION: '1.4.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 9,
+  VERSION_CODE: 10,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'New Features and Improvements',
+  RELEASE_NAME: 'Discipline Report & UI Improvements',
   
   // Build date
-  BUILD_DATE: '2025-11-24',
+  BUILD_DATE: '2025-12-29',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.4.0 (Code 10) - 2025-12-29
+ *   ✨ Made Discipline Report accessible to all users (not just coaches)
+ *   🗑️ Removed debug panel from production app
+ *   🔧 Enhanced team hierarchy display with coach performance tracking
+ *   🐛 Fixed null safety issues in activity data calculations
+ *   📊 Improved discipline report with recursive team queries
+ *   🎨 UI/UX improvements across dashboard components
  * 
  * Version 1.3.0 (Code 9) - 2025-11-24
  *   ✨ New features and improvements

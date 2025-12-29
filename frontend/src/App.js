@@ -14,7 +14,6 @@ import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
-import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
 import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
@@ -43,6 +42,7 @@ import {
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const DisciplineReport = lazy(() => import('./components/DisciplineReport'));
 const SetupWizard = lazy(() => import('./pages/SetupWizard'));
 const ValidateOTP = lazy(() => import('./pages/ValidateOTP'));
 
@@ -91,9 +91,6 @@ function WellnessValleyApp() {
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
   
-  // Debug panel state
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-  
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
@@ -103,6 +100,11 @@ function WellnessValleyApp() {
 
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Discipline report state (for coaches) - with localStorage persistence
+  const [showDisciplineReport, setShowDisciplineReport] = useState(
+    localStorage.getItem('currentPage') === 'discipline-report'
+  );
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -185,6 +187,10 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
+      if (showDisciplineReport) {
+        showMainPage();
+        return true;
+      }
       if (showDashboard) {
         showMainPage();
         return true;
@@ -192,9 +198,9 @@ function WellnessValleyApp() {
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showDashboard);
+    initializeBackButton(goBack, showToast, !showDashboard && !showDisciplineReport);
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard]);
+  }, [ionRouter, showDashboard, showDisciplineReport]);
 
 
 
@@ -311,6 +317,7 @@ function WellnessValleyApp() {
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
     localStorage.setItem('currentPage', 'main');
   };
@@ -1863,6 +1870,23 @@ function WellnessValleyApp() {
     );
   }
 
+  // Discipline Report for all users
+  if (showDisciplineReport) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
+        <DisciplineReport
+          user={user}
+          onBack={() => {
+            setShowDisciplineReport(false);
+            localStorage.setItem('currentPage', 'main');
+          }}
+          apiBaseUrl={apiBaseUrl}
+          userRole={userRole}
+        />
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
@@ -1870,18 +1894,12 @@ function WellnessValleyApp() {
         user={user}
         onShowBackgroundHistory={showDashboardPage}
         onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
+        onShowDisciplineReport={() => {
+          setShowDisciplineReport(true);
+          localStorage.setItem('currentPage', 'discipline-report');
+        }}
         onSignOut={handleSignOut}
       />
-      
-      {/* Debug Panel Button */}
-      <button
-        onClick={() => setShowDebugPanel(true)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
-        title="Open Food Corrections Debug Panel"
-        aria-label="Open Food Corrections Debug Panel"
-      >
-        <Bug className="h-5 w-5 md:h-6 md:w-6" />
-      </button>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
         {/* Back button toast message */}
@@ -2095,13 +2113,6 @@ function WellnessValleyApp() {
         onProfileUpdate={() => {
           console.log('✅ [NewUserProfile] Profile updated successfully');
         }}
-      />
-      
-      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
-      <FoodCorrectionsDebugPanel
-        userId={user?.id}
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
       />
 
       {/* Admin Dashboard */}
