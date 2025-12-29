@@ -131,7 +131,7 @@ class GeminiService {
     
     try {
       console.log('🔄 Fetching live USD to INR exchange rate...');
-      const apiUrl = 'https://api.frankfurter.app/latest?from=USD&to=INR';
+      const apiUrl = 'https://open.er-api.com/v6/latest/USD';
       
       // Add 10-second timeout protection
       const fetchWithTimeout = Promise.race([
@@ -745,9 +745,10 @@ console.log('📊 [Token Monitor] Calculating costs for token usage:', tokenData
       const totalCostUSD = inputCostUSD + outputCostUSD;
       
       // Convert to INR for database storage
-      const inputCost = parseFloat((inputCostUSD * this.usdToInrRate).toFixed(2));
-      const outputCost = parseFloat((outputCostUSD * this.usdToInrRate).toFixed(2));
-      const totalCost = parseFloat((totalCostUSD * this.usdToInrRate).toFixed(2));
+      // Save actual INR values (not rounded) for DB
+      const inputCost = inputCostUSD * this.usdToInrRate;
+      const outputCost = outputCostUSD * this.usdToInrRate;
+      const totalCost = totalCostUSD * this.usdToInrRate;
 
       // Update session metrics
       this.sessionMetrics.totalRequests++;

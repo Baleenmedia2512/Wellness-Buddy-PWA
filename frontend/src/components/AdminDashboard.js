@@ -762,6 +762,9 @@ const AdminDashboard = ({ user, onClose }) => {
             >
               <Edit3 className="w-5 h-5" />
             </button>
+            {showSuccessMessage && (
+              <div className="text-green-600 text-sm mr-2">Saved!</div>
+            )}
             <button 
               onClick={fetchTokenData}
               className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
@@ -773,28 +776,6 @@ const AdminDashboard = ({ user, onClose }) => {
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
-        
-        {/* Demo Toggle - COMMENTED OUT */}
-        {/*
-        <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <Database className="w-4 h-4" />
-            <span>Demo Data</span>
-          </div>
-          <button
-            onClick={() => setShowDemoData(!showDemoData)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              showDemoData ? 'bg-green-500' : 'bg-gray-200'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                showDemoData ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
-        */}
 
         {/* Date Range Filter */}
         <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
