@@ -13,11 +13,188 @@ import {
   Coffee,
   Utensils,
   Moon,
-  Check
+  Check,
+  Settings,
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { disciplineReportService } from '../services/disciplineReportService';
+import TimeWindowSettingsModal from './TimeWindowSettingsModal';
 // Removed LoadingSpinner import as we are using custom skeleton
+
+// --- DateRangePicker Component (Exact Copy from AI Token Monitor) ---
+const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(new Date());
+  const [selectingStart, setSelectingStart] = useState(true);
+  const [tempStart, setTempStart] = useState(startDate);
+  const [tempEnd, setTempEnd] = useState(endDate);
+
+  const daysInMonth = (date) => {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    return new Date(year, month + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const handleDateClick = (day) => {
+    const clickedDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    
+    // Prevent selecting future dates
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    if (clickedDate > today) {
+      return;
+    }
+    
+    if (selectingStart) {
+      setTempStart(clickedDate);
+      setTempEnd(null);
+      setSelectingStart(false);
+    } else {
+      if (clickedDate < tempStart) {
+        setTempEnd(tempStart);
+        setTempStart(clickedDate);
+      } else {
+        setTempEnd(clickedDate);
+      }
+      // Auto-confirm after selecting both dates
+      setTimeout(() => {
+        onSelect(tempStart, clickedDate < tempStart ? tempStart : clickedDate);
+      }, 200);
+    }
+  };
+
+  const isInRange = (day) => {
+    if (!tempStart || !tempEnd) return false;
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return date >= tempStart && date <= tempEnd;
+  };
+
+  const isStartDate = (day) => {
+    if (!tempStart) return false;
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return date.toDateString() === tempStart.toDateString();
+  };
+
+  const isEndDate = (day) => {
+    if (!tempEnd) return false;
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return date.toDateString() === tempEnd.toDateString();
+  };
+
+  const isFutureDate = (day) => {
+    const date = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    const today = new Date();
+    today.setHours(23, 59, 59, 999);
+    return date > today;
+  };
+
+  const prevMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  const days = daysInMonth(currentMonth);
+  const firstDay = getFirstDayOfMonth(currentMonth);
+  const blanks = Array(firstDay).fill(null);
+  const dayNumbers = Array.from({ length: days }, (_, i) => i + 1);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -20 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -20 }}
+      className="bg-white rounded-2xl shadow-lg border border-gray-100 p-4 mb-4"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={prevMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <ChevronLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        <div className="text-center">
+          <h3 className="font-semibold text-gray-800">
+            {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h3>
+          <p className="text-xs text-gray-500 mt-1">
+            {selectingStart ? 'Select start date' : 'Select end date'}
+          </p>
+        </div>
+        <button onClick={nextMonth} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
+          <ChevronRight className="w-5 h-5 text-gray-600" />
+        </button>
+      </div>
+
+      {/* Weekday Headers */}
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
+          <div key={day} className="text-center text-xs font-medium text-gray-500 py-2">
+            {day}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar Grid */}
+      <div className="grid grid-cols-7 gap-1">
+        {blanks.map((_, i) => (
+          <div key={`blank-${i}`} className="aspect-square" />
+        ))}
+        {dayNumbers.map((day) => {
+          const isStart = isStartDate(day);
+          const isEnd = isEndDate(day);
+          const inRange = isInRange(day);
+          const isFuture = isFutureDate(day);
+          
+          return (
+            <button
+              key={day}
+              onClick={() => handleDateClick(day)}
+              disabled={isFuture}
+              className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all ${
+                isFuture
+                  ? 'text-gray-300 cursor-not-allowed'
+                  : isStart || isEnd
+                  ? 'bg-green-600 text-white font-bold shadow-md'
+                  : inRange
+                  ? 'bg-green-100 text-green-700'
+                  : 'hover:bg-gray-100 text-gray-700'
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Footer */}
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-gray-100">
+        <button
+          onClick={onClose}
+          className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Cancel
+        </button>
+        <button
+          onClick={() => {
+            setTempStart(null);
+            setTempEnd(null);
+            setSelectingStart(true);
+          }}
+          className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        >
+          Clear
+        </button>
+      </div>
+    </motion.div>
+  );
+};
 
 const LoadingSkeleton = () => {
   return (
@@ -97,15 +274,20 @@ const LoadingSkeleton = () => {
  * Mobile-first, clean, modern UI
  * Theme: Light Green & White (No Gradients)
  */
-const DisciplineReport = ({ user, onBack }) => {
+const DisciplineReport = ({ user, onBack, userRole }) => {
   const [teamData, setTeamData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [dateRange, setDateRange] = useState('last7days');
+  const [dateRange, setDateRange] = useState('today');
   const [searchQuery, setSearchQuery] = useState('');
   const [disciplineFilter, setDisciplineFilter] = useState('all');
   const [expandedMemberId, setExpandedMemberId] = useState(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [showTimeWindowModal, setShowTimeWindowModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
   const filterRef = useRef(null);
 
   // Close filter dropdown when clicking outside
@@ -127,21 +309,56 @@ const DisciplineReport = ({ user, onBack }) => {
       setLoading(false);
       setError('User ID not found. Please login again.');
     }
-  }, [user?.id, dateRange]);
+  }, [user?.id, dateRange, customStartDate, customEndDate]);
 
-  async function loadDisciplineReport() {
-    setLoading(true);
+  async function loadDisciplineReport(isBackground = false) {
+    if (!isBackground) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
     try {
-      const data = await disciplineReportService.getDisciplineReport(user.id, dateRange);
+      // Format custom dates if available
+      let customRange = null;
+      if (dateRange === 'custom' && customStartDate && customEndDate) {
+        customRange = {
+          start: customStartDate.toISOString().split('T')[0],
+          end: customEndDate.toISOString().split('T')[0]
+        };
+      }
+      
+      const data = await disciplineReportService.getDisciplineReport(
+        user.id, 
+        dateRange,
+        customRange
+      );
       setTeamData(data);
     } catch (err) {
       console.error('Failed to load discipline report:', err);
       setError(`Failed to load report: ${err.response?.data?.message || err.message}`);
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      } else {
+        setRefreshing(false);
+      }
     }
   }
+
+  const handleDateRangeSelect = (start, end) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setDateRange('custom');
+    setShowDatePicker(false);
+  };
+
+  const getDateRangeLabel = () => {
+    if (dateRange === 'custom' && customStartDate && customEndDate) {
+      return `${customStartDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${customEndDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+    }
+    return 'Custom';
+  };
 
   function handleExportCSV() {
     if (teamData) {
@@ -237,17 +454,29 @@ const DisciplineReport = ({ user, onBack }) => {
             </div>
             <div className="flex items-center gap-2">
               <button
-                onClick={loadDisciplineReport}
-                className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
+                onClick={() => loadDisciplineReport(true)}
+                disabled={refreshing}
+                className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600 disabled:opacity-50"
+                title="Refresh"
               >
-                <RefreshCw className="h-5 w-5" />
+                <RefreshCw className={`h-5 w-5 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
               <button
                 onClick={handleExportCSV}
                 className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
+                title="Export CSV"
               >
                 <Download className="h-5 w-5" />
               </button>
+              {(userRole === 'admin' || userRole === 'developer') && (
+                <button
+                  onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
+                  className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
+                  title="Configure Time Windows"
+                >
+                  <Settings className="h-5 w-5" />
+                </button>
+              )}
             </div>
           </div>
 
@@ -261,7 +490,12 @@ const DisciplineReport = ({ user, onBack }) => {
             ].map((range) => (
               <button
                 key={range.id}
-                onClick={() => setDateRange(range.id)}
+                onClick={() => {
+                  setDateRange(range.id);
+                  setShowDatePicker(false);
+                  setCustomStartDate(null);
+                  setCustomEndDate(null);
+                }}
                 className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
                   dateRange === range.id
                     ? 'bg-green-600 text-white border-green-600 shadow-md shadow-green-100'
@@ -271,7 +505,32 @@ const DisciplineReport = ({ user, onBack }) => {
                 {range.label}
               </button>
             ))}
+            <button
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border flex items-center space-x-1 ${
+                dateRange === 'custom'
+                  ? 'bg-green-600 text-white border-green-600 shadow-md shadow-green-100'
+                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarIcon className="w-4 h-4" />
+              <span>{dateRange === 'custom' ? getDateRangeLabel() : 'Custom'}</span>
+            </button>
           </div>
+
+          {/* Date Range Picker */}
+          <AnimatePresence>
+            {showDatePicker && (
+              <div className="mt-3">
+                <DateRangePicker
+                  startDate={customStartDate}
+                  endDate={customEndDate}
+                  onSelect={handleDateRangeSelect}
+                  onClose={() => setShowDatePicker(false)}
+                />
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -483,6 +742,14 @@ const DisciplineReport = ({ user, onBack }) => {
               </motion.div>
             ))}
           </AnimatePresence>
+
+        {/* Time Window Settings Modal - Admin Only */}
+        <TimeWindowSettingsModal
+          isOpen={showTimeWindowModal}
+          onClose={() => setShowTimeWindowModal(false)}
+          onUpdate={loadDisciplineReport}
+          userEmail={user?.email}
+        />
 
           {filteredMembers.length === 0 && (
             <div className="text-center py-12">

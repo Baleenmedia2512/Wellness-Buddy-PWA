@@ -43,15 +43,33 @@ export default async function handler(req, res) {
       dateRange === 'custom' ? endDate : null
     );
     
-    // Connect to database
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    // Validate custom date range
+    if (dateRange === 'custom') {
+      if (!startDate || !endDate) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Custom date range requires both startDate and endDate' 
+        });
+      }
+      if (dates.start > dates.end) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Start date must be before or equal to end date' 
+        });
+      }
+    }
+    
+    // Connect to database (declared here for proper cleanup in finally block)
+    let connection;
     
     try {
+      connection = await mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASS,
+        database: process.env.DB_NAME
+      });
+    
       // Step 1: Get team members (Note: ProfileImage column doesn't exist in team_table)
       const [members] = await connection.execute(`
         SELECT UserId, UserName, Email, EntryDateTime
@@ -74,10 +92,39 @@ export default async function handler(req, res) {
           teamMembers: [],
           teamSummary: {
             totalMembers: 0,
-            averagePeriodDiscipline: 0
+            averagePeriodDiscipline: 0,
+            topPerformer: null,
+            needsAttention: []
           }
         });
       }
+      
+      // Step 1.5: Get current time windows for display
+      const [currentTimeWindows] = await connection.execute(`
+        SELECT ActivityType, WindowStartTime, WindowEndTime
+        FROM activity_time_windows_table
+        WHERE EffectiveToDate IS NULL
+        ORDER BY FIELD(ActivityType, 'weight', 'education', 'breakfast', 'lunch', 'dinner')
+      `);
+      
+      // Create a map for quick lookup
+      const timeWindowMap = {};
+      currentTimeWindows.forEach(tw => {
+        timeWindowMap[tw.ActivityType] = {
+          start: tw.WindowStartTime,
+          end: tw.WindowEndTime
+        };
+      });
+      
+      // Helper function to format time for display (HH:MM:SS -> h:MM AM/PM)
+      const formatTimeForDisplay = (timeStr) => {
+        if (!timeStr) return '';
+        const [hours, minutes] = timeStr.split(':');
+        const hour = parseInt(hours);
+        const ampm = hour >= 12 ? 'PM' : 'AM';
+        const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+        return `${displayHour}:${minutes} ${ampm}`;
+      };
       
       // Step 2: Calculate discipline for all members
       const memberIds = members.map(m => m.UserId);
@@ -105,7 +152,9 @@ export default async function handler(req, res) {
             ),
             onTimePosts: discipline.weight.onTimePosts,
             expectedPosts: discipline.weight.expectedPosts,
-            targetWindow: '3:00 AM - 6:30 AM'
+            targetWindow: timeWindowMap.weight 
+              ? `${formatTimeForDisplay(timeWindowMap.weight.start)} - ${formatTimeForDisplay(timeWindowMap.weight.end)}`
+              : 'Not Set'
           },
           education: {
             percentage: calculateDisciplinePercentage(
@@ -114,7 +163,9 @@ export default async function handler(req, res) {
             ),
             onTimePosts: discipline.education.onTimePosts,
             expectedPosts: discipline.education.expectedPosts,
-            targetWindow: '7:15 AM - 8:45 AM'
+            targetWindow: timeWindowMap.education 
+              ? `${formatTimeForDisplay(timeWindowMap.education.start)} - ${formatTimeForDisplay(timeWindowMap.education.end)}`
+              : 'Not Set'
           },
           breakfast: {
             percentage: calculateDisciplinePercentage(
@@ -123,7 +174,9 @@ export default async function handler(req, res) {
             ),
             onTimePosts: discipline.breakfast.onTimePosts,
             expectedPosts: discipline.breakfast.expectedPosts,
-            targetWindow: '5:30 AM - 8:30 AM'
+            targetWindow: timeWindowMap.breakfast 
+              ? `${formatTimeForDisplay(timeWindowMap.breakfast.start)} - ${formatTimeForDisplay(timeWindowMap.breakfast.end)}`
+              : 'Not Set'
           },
           lunch: {
             percentage: calculateDisciplinePercentage(
@@ -132,7 +185,9 @@ export default async function handler(req, res) {
             ),
             onTimePosts: discipline.lunch.onTimePosts,
             expectedPosts: discipline.lunch.expectedPosts,
-            targetWindow: '12:00 PM - 4:00 PM'
+            targetWindow: timeWindowMap.lunch 
+              ? `${formatTimeForDisplay(timeWindowMap.lunch.start)} - ${formatTimeForDisplay(timeWindowMap.lunch.end)}`
+              : 'Not Set'
           },
           dinner: {
             percentage: calculateDisciplinePercentage(
@@ -141,7 +196,9 @@ export default async function handler(req, res) {
             ),
             onTimePosts: discipline.dinner.onTimePosts,
             expectedPosts: discipline.dinner.expectedPosts,
-            targetWindow: '5:30 PM - 8:30 PM'
+            targetWindow: timeWindowMap.dinner 
+              ? `${formatTimeForDisplay(timeWindowMap.dinner.start)} - ${formatTimeForDisplay(timeWindowMap.dinner.end)}`
+              : 'Not Set'
           }
         };
         
@@ -190,6 +247,7 @@ export default async function handler(req, res) {
       
       // Step 5: Close connection and return response
       await connection.end();
+      connection = null; // Mark as closed
       
       return res.status(200).json({
         success: true,
@@ -217,10 +275,17 @@ export default async function handler(req, res) {
         }
       });
       
+    } catch (innerError) {
+      console.error('❌ Discipline report query error:', innerError);
+      throw innerError; // Re-throw to be caught by outer catch
     } finally {
       // Ensure connection is closed even if there's an error
       if (connection) {
-        await connection.end();
+        try {
+          await connection.end();
+        } catch (closeError) {
+          console.error('❌ Error closing connection:', closeError);
+        }
       }
     }
     

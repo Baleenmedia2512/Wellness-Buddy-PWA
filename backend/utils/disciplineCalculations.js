@@ -11,20 +11,52 @@ import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
  * @param {number} userId - User ID
  * @param {Date} startDate - Start date
  * @param {Date} endDate - End date
+ * @param {Object} mealWindows - Pre-fetched meal time windows {breakfast, lunch, dinner}
  * @returns {Object} Discipline data for all activities
  */
-export async function calculateMemberDiscipline(connection, userId, startDate, endDate) {
+export async function calculateMemberDiscipline(connection, userId, startDate, endDate, mealWindows = null) {
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
   
+  // Use provided meal windows or fetch if not provided (backward compatibility)
+  let breakfastWindow, lunchWindow, dinnerWindow;
+  
+  if (mealWindows) {
+    // Use pre-fetched windows (optimized path)
+    breakfastWindow = mealWindows.breakfast || { start: '05:30:00', end: '08:30:00' };
+    lunchWindow = mealWindows.lunch || { start: '12:00:00', end: '16:00:00' };
+    dinnerWindow = mealWindows.dinner || { start: '17:30:00', end: '20:30:00' };
+  } else {
+    // Fetch windows (legacy path for backward compatibility)
+    const [timeWindows] = await connection.execute(`
+      SELECT ActivityType, WindowStartTime, WindowEndTime
+      FROM activity_time_windows_table
+      WHERE EffectiveToDate IS NULL
+        AND ActivityType IN ('breakfast', 'lunch', 'dinner')
+    `);
+    
+    const mealWindowsMap = {};
+    timeWindows.forEach(tw => {
+      mealWindowsMap[tw.ActivityType] = {
+        start: tw.WindowStartTime,
+        end: tw.WindowEndTime
+      };
+    });
+    
+    breakfastWindow = mealWindowsMap.breakfast || { start: '05:30:00', end: '08:30:00' };
+    lunchWindow = mealWindowsMap.lunch || { start: '12:00:00', end: '16:00:00' };
+    dinnerWindow = mealWindowsMap.dinner || { start: '17:30:00', end: '20:30:00' };
+  }
+  
   // Query 1: Weight posts
+  // Count distinct DAYS with at least one on-time post (not total posts)
   const [weightRows] = await connection.execute(`
     SELECT 
-      COUNT(*) as totalPosts,
-      COUNT(CASE 
+      COUNT(DISTINCT DATE(w.CreatedAt)) as daysWithPosts,
+      COUNT(DISTINCT CASE 
         WHEN TIME(w.CreatedAt) BETWEEN tw.WindowStartTime AND tw.WindowEndTime 
-        THEN 1 
-      END) as onTimePosts
+        THEN DATE(w.CreatedAt)
+      END) as daysWithOnTimePosts
     FROM weight_records_table w
     LEFT JOIN activity_time_windows_table tw ON (
       tw.ActivityType = 'weight'
@@ -37,13 +69,14 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
   `, [userId, startDateStr, endDateStr]);
   
   // Query 2: Education posts
+  // Count distinct DAYS with at least one on-time post (not total posts)
   const [educationRows] = await connection.execute(`
     SELECT 
-      COUNT(*) as totalPosts,
-      COUNT(CASE 
+      COUNT(DISTINCT DATE(e.CreatedAt)) as daysWithPosts,
+      COUNT(DISTINCT CASE 
         WHEN TIME(e.CreatedAt) BETWEEN tw.WindowStartTime AND tw.WindowEndTime 
-        THEN 1 
-      END) as onTimePosts
+        THEN DATE(e.CreatedAt)
+      END) as daysWithOnTimePosts
     FROM education_logs_table e
     LEFT JOIN activity_time_windows_table tw ON (
       tw.ActivityType = 'education'
@@ -56,25 +89,27 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
   `, [userId, startDateStr, endDateStr]);
   
   // Query 3: Meal posts (breakfast, lunch, dinner)
+  // Count distinct DAYS with at least one on-time post per meal type
   // Note: food_nutrition_data_table.UserID is VARCHAR, must cast to UNSIGNED
+  // Uses dynamic time windows from database (not hardcoded)
   const [mealRows] = await connection.execute(`
     SELECT 
       CASE
-        WHEN TIME(f.CreatedAt) BETWEEN '05:30:00' AND '08:30:00' THEN 'breakfast'
-        WHEN TIME(f.CreatedAt) BETWEEN '12:00:00' AND '16:00:00' THEN 'lunch'
-        WHEN TIME(f.CreatedAt) BETWEEN '17:30:00' AND '20:30:00' THEN 'dinner'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'breakfast'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'lunch'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'dinner'
       END as MealType,
-      COUNT(*) as totalPosts,
-      COUNT(CASE 
+      COUNT(DISTINCT DATE(f.CreatedAt)) as daysWithPosts,
+      COUNT(DISTINCT CASE 
         WHEN TIME(f.CreatedAt) BETWEEN tw.WindowStartTime AND tw.WindowEndTime 
-        THEN 1 
-      END) as onTimePosts
+        THEN DATE(f.CreatedAt)
+      END) as daysWithOnTimePosts
     FROM food_nutrition_data_table f
     LEFT JOIN activity_time_windows_table tw ON (
       tw.ActivityType = CASE
-        WHEN TIME(f.CreatedAt) BETWEEN '05:30:00' AND '08:30:00' THEN 'breakfast'
-        WHEN TIME(f.CreatedAt) BETWEEN '12:00:00' AND '16:00:00' THEN 'lunch'
-        WHEN TIME(f.CreatedAt) BETWEEN '17:30:00' AND '20:30:00' THEN 'dinner'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'breakfast'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'lunch'
+        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'dinner'
       END
       AND f.CreatedAt >= tw.EffectiveFromDate
       AND (f.CreatedAt < tw.EffectiveToDate OR tw.EffectiveToDate IS NULL)
@@ -82,22 +117,38 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
     WHERE CAST(f.UserID AS UNSIGNED) = ?
       AND DATE(f.CreatedAt) BETWEEN ? AND ?
       AND f.IsDeleted = 0
-      AND TIME(f.CreatedAt) BETWEEN '05:30:00' AND '20:30:00'
+      AND (
+        TIME(f.CreatedAt) BETWEEN ? AND ?
+        OR TIME(f.CreatedAt) BETWEEN ? AND ?
+        OR TIME(f.CreatedAt) BETWEEN ? AND ?
+      )
     GROUP BY MealType
-  `, [userId, startDateStr, endDateStr]);
+  `, [
+    breakfastWindow.start, breakfastWindow.end,
+    lunchWindow.start, lunchWindow.end,
+    dinnerWindow.start, dinnerWindow.end,
+    breakfastWindow.start, breakfastWindow.end,
+    lunchWindow.start, lunchWindow.end,
+    dinnerWindow.start, dinnerWindow.end,
+    userId,
+    startDateStr, endDateStr,
+    breakfastWindow.start, breakfastWindow.end,
+    lunchWindow.start, lunchWindow.end,
+    dinnerWindow.start, dinnerWindow.end
+  ]);
   
   // Organize meal data
   const mealData = {
-    breakfast: { totalPosts: 0, onTimePosts: 0 },
-    lunch: { totalPosts: 0, onTimePosts: 0 },
-    dinner: { totalPosts: 0, onTimePosts: 0 }
+    breakfast: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
+    lunch: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
+    dinner: { daysWithPosts: 0, daysWithOnTimePosts: 0 }
   };
   
   mealRows.forEach(row => {
     if (row.MealType) {
       mealData[row.MealType] = {
-        totalPosts: row.totalPosts,
-        onTimePosts: row.onTimePosts
+        daysWithPosts: row.daysWithPosts,
+        daysWithOnTimePosts: row.daysWithOnTimePosts
       };
     }
   });
@@ -106,28 +157,34 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
   const daysInPeriod = getDaysBetween(startDate, endDate);
   const expectedPostsPerActivity = daysInPeriod;
   
-  // Return structured data
+  // Return structured data (using daysWithOnTimePosts as onTimePosts for backward compatibility)
   return {
     weight: {
-      totalPosts: weightRows[0].totalPosts,
-      onTimePosts: weightRows[0].onTimePosts,
+      totalPosts: weightRows[0].daysWithPosts,
+      onTimePosts: weightRows[0].daysWithOnTimePosts,
       expectedPosts: expectedPostsPerActivity
     },
     education: {
-      totalPosts: educationRows[0].totalPosts,
-      onTimePosts: educationRows[0].onTimePosts,
+      totalPosts: educationRows[0].daysWithPosts,
+      onTimePosts: educationRows[0].daysWithOnTimePosts,
       expectedPosts: expectedPostsPerActivity
     },
     breakfast: {
       ...mealData.breakfast,
+      totalPosts: mealData.breakfast.daysWithPosts,
+      onTimePosts: mealData.breakfast.daysWithOnTimePosts,
       expectedPosts: expectedPostsPerActivity
     },
     lunch: {
       ...mealData.lunch,
+      totalPosts: mealData.lunch.daysWithPosts,
+      onTimePosts: mealData.lunch.daysWithOnTimePosts,
       expectedPosts: expectedPostsPerActivity
     },
     dinner: {
       ...mealData.dinner,
+      totalPosts: mealData.dinner.daysWithPosts,
+      onTimePosts: mealData.dinner.daysWithOnTimePosts,
       expectedPosts: expectedPostsPerActivity
     }
   };
@@ -144,14 +201,32 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
 export async function calculateTeamDiscipline(connection, memberIds, startDate, endDate) {
   const results = [];
   
-  // Process all members
+  // Fetch time windows ONCE for all members (optimization)
+  const [timeWindows] = await connection.execute(`
+    SELECT ActivityType, WindowStartTime, WindowEndTime
+    FROM activity_time_windows_table
+    WHERE EffectiveToDate IS NULL
+      AND ActivityType IN ('breakfast', 'lunch', 'dinner')
+  `);
+  
+  // Build meal windows map
+  const mealWindows = {};
+  timeWindows.forEach(tw => {
+    mealWindows[tw.ActivityType] = {
+      start: tw.WindowStartTime,
+      end: tw.WindowEndTime
+    };
+  });
+  
+  // Process all members with pre-fetched time windows
   for (const memberId of memberIds) {
     try {
       const disciplineData = await calculateMemberDiscipline(
         connection, 
         memberId, 
         startDate, 
-        endDate
+        endDate,
+        mealWindows  // ← Pass pre-fetched windows
       );
       
       results.push({

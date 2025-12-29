@@ -1263,6 +1263,13 @@ export default TeamSummaryStats;
 
 ## 🎯 PHASE 4: ADMIN TIME WINDOW MODAL (Day 7)
 
+**Architecture Decision**: Time Window Settings integrated directly into Discipline Report module
+- Icon button in header (⚙️) next to refresh and download buttons
+- Only visible to admin/developer roles
+- Opens modal overlay showing current time windows
+- Displays last updated timestamp for each activity
+- Allows inline editing with effective date and reason
+
 ### Step 4.1: Create Admin API Endpoints
 
 **File**: `backend/pages/api/admin/time-windows.js`
@@ -1289,7 +1296,8 @@ export default async function handler(req, res) {
           EffectiveFromDate,
           EffectiveToDate,
           ChangedBy,
-          ChangeReason
+          ChangeReason,
+          CreatedAt as LastUpdated
         FROM activity_time_windows_table
         WHERE EffectiveToDate IS NULL
         ORDER BY ActivityType
@@ -1391,16 +1399,32 @@ export default async function handler(req, res) {
 ```
 
 ---
+Integrate Time Window Settings into Discipline Report
 
-### Step 4.2: Create Time Window Modal Component
+**Update File**: `frontend/src/components/DisciplineReport.js`
 
-**File**: `frontend/src/components/admin/TimeWindowSettingsModal.js`
+Add settings icon button in header (only for admin/developer):
+```javascript
+// In header section, add after download button:
+{(userRole === 'admin' || userRole === 'developer') && (
+  <button
+    onClick={() => setShowTimeWindowModal(true)}
+    className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
+    title="Configure Time Windows"
+  >
+    <Settings className="h-5 w-5" />
+  </button>
+)}
+```
+
+**Create Modal Component**: `frontend/src/components/TimeWindowSettingsModal.js`
 
 ```javascript
 import React, { useState, useEffect } from 'react';
+import { X, Clock, Save } from 'lucide-react';
 import axios from 'axios';
-import './TimeWindowSettingsModal.css';
 
+function TimeWindowSettingsModal({ isOpen, onClose, userRol
 function TimeWindowSettingsModal({ isOpen, onClose }) {
   const [timeWindows, setTimeWindows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -1449,52 +1473,65 @@ function TimeWindowSettingsModal({ isOpen, onClose }) {
         windowEndTime: formData.windowEndTime,
         effectiveFromDate: formData.effectiveFromDate,
         changedBy: 'admin@wellness.com', // TODO: Get from auth
-        changeReason: formData.changeReason
-      });
-      
-      alert('Time window updated successfully!');
-      setSelectedActivity(null);
-      loadTimeWindows();
-      
-    } catch (error) {
-      console.error('Error saving time window:', error);
-      alert('Failed to update time window');
-    }
-  }
-  
-  if (!isOpen) return null;
-  
-  return (
-    <div className="modal-overlay">
-      <div className="modal-content time-window-modal">
-        <div className="modal-header">
-          <h2>⚙️ Activity Time Windows Configuration</h2>
-          <button onClick={onClose} className="btn-close">✕</button>
+        changeReasonfixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-gray-100">
+          <div>
+            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+              <Clock className="h-5 w-5 text-green-600" />
+              Activity Time Windows
+            </h2>
+            <p className="text-xs text-gray-500 mt-1">Configure on-time posting windows</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
         </div>
         
-        <div className="modal-body">
-          <div className="warning-box">
-            ⚠️ Warning: Changing time windows will only affect future activity logs.
-            Historical discipline % will remain calculated with original windows.
-          </div>
-          
-          <div className="time-windows-list">
-            <h3>Current Time Windows</h3>
-            <table>
-              <thead>
-                <tr>
-                  <th>Activity</th>
-                  <th>Time Window</th>
-                  <th>Active Since</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {timeWindows.map(window => (
-                  <tr key={window.ActivityType}>
-                    <td>{window.ActivityType}</td>
-                    <td>
-                      {window.WindowStartTime} - {window.WindowEndTime}
+        {/* Warning */}
+        <div className="mx-6 mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl">
+          <p className="text-xs text-amber-800">
+            ⚠️ <strong>Note:</strong> Changes only affect future calculations. Historical discipline scores remain accurate with original windows.
+          </p>
+        </div>
+        
+        {/* Body - Scrollable */}
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-200px)]">
+          <div className="space-y-4">
+            {timeWindows.map(window => (
+              <div key={window.ActivityType} className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="font-bold text-gray-900 capitalize">{window.ActivityType}</h3>
+                    <p className="text-xs text-gray-500 mt-0.5">
+                      Last updated: {new Date(window.LastUpdated).toLocaleDateString()} at {new Date(window.LastUpdated).toLocaleTimeString()}
+                    </p>
+                  </div>
+                  <button 
+                    onClick={() => handleEditWindow(window)}
+                    className="px-3 py-1.5 text-sm font-medium text-green-700 hover:bg-green-100 rounded-lg transition-colors"
+                  >
+                    Edit
+                  </button>
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-500">Window:</span>
+                    <span className="ml-2 font-semibold text-gray-900">
+                      {window.WindowStartTime.slice(0, 5)} - {window.WindowEndTime.slice(0, 5)}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Active Since:</span>
+                    <span className="ml-2 font-semibold text-gray-900">
+                      {new Date(window.EffectiveFromDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))}  {window.WindowStartTime} - {window.WindowEndTime}
                     </td>
                     <td>
                       {new Date(window.EffectiveFromDate).toLocaleDateString()}

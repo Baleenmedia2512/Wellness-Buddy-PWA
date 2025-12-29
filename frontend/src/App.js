@@ -105,8 +105,10 @@ function WellnessValleyApp() {
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
-  // Discipline report state (for coaches)
-  const [showDisciplineReport, setShowDisciplineReport] = useState(false);
+  // Discipline report state (for coaches) - with localStorage persistence
+  const [showDisciplineReport, setShowDisciplineReport] = useState(
+    localStorage.getItem('currentPage') === 'discipline-report'
+  );
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -189,6 +191,10 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
+      if (showDisciplineReport) {
+        showMainPage();
+        return true;
+      }
       if (showDashboard) {
         showMainPage();
         return true;
@@ -196,9 +202,9 @@ function WellnessValleyApp() {
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showDashboard);
+    initializeBackButton(goBack, showToast, !showDashboard && !showDisciplineReport);
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard]);
+  }, [ionRouter, showDashboard, showDisciplineReport]);
 
 
 
@@ -315,6 +321,7 @@ function WellnessValleyApp() {
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
     localStorage.setItem('currentPage', 'main');
   };
@@ -1873,8 +1880,12 @@ function WellnessValleyApp() {
       <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
         <DisciplineReport
           user={user}
-          onBack={() => setShowDisciplineReport(false)}
+          onBack={() => {
+            setShowDisciplineReport(false);
+            localStorage.setItem('currentPage', 'main');
+          }}
           apiBaseUrl={apiBaseUrl}
+          userRole={userRole}
         />
       </Suspense>
     );
@@ -1887,7 +1898,10 @@ function WellnessValleyApp() {
         user={user}
         onShowBackgroundHistory={showDashboardPage}
         onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
-        onShowDisciplineReport={(userRole === 'coach' || userRole === 'admin' || userRole === 'developer') ? () => setShowDisciplineReport(true) : null}
+        onShowDisciplineReport={(userRole === 'coach' || userRole === 'admin' || userRole === 'developer') ? () => {
+          setShowDisciplineReport(true);
+          localStorage.setItem('currentPage', 'discipline-report');
+        } : null}
         onSignOut={handleSignOut}
       />
       
