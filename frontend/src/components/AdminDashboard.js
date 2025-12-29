@@ -491,6 +491,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
   const [originalTokenCosts, setOriginalTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
   const [savingCorrection, setSavingCorrection] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   const fetchTokenData = async () => {
     // DEMO DATA DISABLED
@@ -565,10 +566,25 @@ const AdminDashboard = ({ user, onClose }) => {
               setTokenCosts(costs);
               setOriginalTokenCosts(costs); // Store original values
             }
+          } else {
+            // If no record exists (404) or other error, default to 0
+            const defaultCosts = { inputCost: 0, outputCost: 0 };
+            setTokenCosts(defaultCosts);
+            setOriginalTokenCosts(defaultCosts);
+            console.log('No token cost records found for user, defaulting to 0');
           }
         } catch (error) {
           console.error('Error fetching latest token costs:', error);
+          // On error, also default to 0
+          const defaultCosts = { inputCost: 0, outputCost: 0 };
+          setTokenCosts(defaultCosts);
+          setOriginalTokenCosts(defaultCosts);
         }
+      } else {
+        // Reset to 0 when popup closes
+        const defaultCosts = { inputCost: 0, outputCost: 0 };
+        setTokenCosts(defaultCosts);
+        setOriginalTokenCosts(defaultCosts);
       }
     };
 
@@ -598,8 +614,11 @@ const AdminDashboard = ({ user, onClose }) => {
         const data = await response.json();
         if (data.success) {
           console.log('✅ Token correction saved successfully:', data.data);
-          alert('Token costs saved successfully!');
-          setShowEditPopup(false);
+          setShowSuccessMessage(true);
+          setTimeout(() => {
+            setShowSuccessMessage(false);
+            setShowEditPopup(false);
+          }, 5000);
         }
       } else {
         console.error('Failed to save token correction');
@@ -1182,6 +1201,21 @@ const AdminDashboard = ({ user, onClose }) => {
                   <X className="w-5 h-5 text-gray-500" />
                 </button>
               </div>
+
+              {/* Success Message */}
+              <AnimatePresence>
+                {showSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-4 p-4 bg-green-500 text-white rounded-lg flex items-center gap-3"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">Token costs saved successfully!</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <div className="space-y-4">
                 <div>

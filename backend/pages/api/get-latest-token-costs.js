@@ -35,10 +35,10 @@ export default async function handler(req, res) {
   try {
     // Create database connection
     connection = await mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME,
     });
 
     console.log('📊 [get-latest-token-costs] Database connected');

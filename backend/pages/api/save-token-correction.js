@@ -41,13 +41,20 @@ export default async function handler(req, res) {
   try {
     // Create database connection
     connection = await mysql.createConnection({
-      host: process.env.MYSQL_HOST,
-      user: process.env.MYSQL_USER,
-      password: process.env.MYSQL_PASSWORD,
-      database: process.env.MYSQL_DATABASE,
+      host: process.env.DB_HOST,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASS,
+      database: process.env.DB_NAME,
     });
 
+    console.log('💾 [save-token-correction] Database connected');
     console.log('💾 [save-token-correction] Saving token correction for:', email);
+    console.log('💾 [save-token-correction] Request data:', {
+      originalInputCost,
+      originalOutputCost,
+      correctedInputCost,
+      correctedOutputCost
+    });
 
     // Get UserId from team_table
     const [userRows] = await connection.execute(
@@ -55,7 +62,10 @@ export default async function handler(req, res) {
       [email]
     );
 
+    console.log('💾 [save-token-correction] User lookup result:', userRows);
+
     if (userRows.length === 0) {
+      console.log('❌ [save-token-correction] User not found in team_table');
       return res.status(404).json({
         success: false,
         message: 'User not found'
@@ -63,83 +73,44 @@ export default async function handler(req, res) {
     }
 
     const userId = userRows[0].UserId;
+    console.log('💾 [save-token-correction] Found UserId:', userId);
 
-    // Calculate totals
-    const originalTotal = (parseFloat(originalInputCost) || 0) + (parseFloat(originalOutputCost) || 0);
-    const correctedTotal = parseFloat(correctedInputCost) + parseFloat(correctedOutputCost);
+    // Calculate total cost
+    const totalCost = parseFloat(correctedInputCost) + parseFloat(correctedOutputCost);
 
-    // Check if a record exists for this user
-    const [existingRows] = await connection.execute(
-      'SELECT ID, TimesCorrected FROM token_correction_table WHERE UserId = ? ORDER BY CreatedAt DESC LIMIT 1',
-      [userId]
+    console.log('💾 [save-token-correction] Calculated values:', {
+      userId,
+      inputTokenCost: correctedInputCost,
+      outputTokenCost: correctedOutputCost,
+      totalTokenCost: totalCost
+    });
+
+    // Always insert a new record (no update - track all changes)
+    await connection.execute(
+      `INSERT INTO token_correction_table 
+       (UserId, InputTokenCost, OutputTokenCost, TotalTokenCost)
+       VALUES (?, ?, ?, ?)`,
+      [
+        userId,
+        correctedInputCost,
+        correctedOutputCost,
+        totalCost
+      ]
     );
 
-    if (existingRows.length > 0) {
-      // Update existing record
-      const timesCorrected = (existingRows[0].TimesCorrected || 0) + 1;
-      
-      await connection.execute(
-        `UPDATE token_correction_table 
-         SET InputCost = ?,
-             OutputCost = ?,
-             TotalCost = ?,
-             CorrectedInputCost = ?,
-             CorrectedOutputCost = ?,
-             CorrectedTotalCost = ?,
-             TimesCorrected = ?,
-             LastCorrected = NOW()
-         WHERE ID = ?`,
-        [
-          originalInputCost || 0,
-          originalOutputCost || 0,
-          originalTotal,
-          correctedInputCost,
-          correctedOutputCost,
-          correctedTotal,
-          timesCorrected,
-          existingRows[0].ID
-        ]
-      );
-
-      console.log('✅ [save-token-correction] Updated existing record:', {
-        userId,
-        timesCorrected,
-        correctedTotal
-      });
-    } else {
-      // Insert new record
-      await connection.execute(
-        `INSERT INTO token_correction_table 
-         (UserId, InputCost, OutputCost, TotalCost, CorrectedInputCost, CorrectedOutputCost, CorrectedTotalCost, TimesCorrected)
-         VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
-        [
-          userId,
-          originalInputCost || 0,
-          originalOutputCost || 0,
-          originalTotal,
-          correctedInputCost,
-          correctedOutputCost,
-          correctedTotal
-        ]
-      );
-
-      console.log('✅ [save-token-correction] Inserted new record:', {
-        userId,
-        correctedTotal
-      });
-    }
+    console.log('✅ [save-token-correction] Inserted new record:', {
+      userId,
+      totalCost
+    });
 
     return res.status(200).json({
       success: true,
       message: 'Token correction saved successfully',
       data: {
         userId,
-        originalInputCost: originalInputCost || 0,
-        originalOutputCost: originalOutputCost || 0,
-        originalTotalCost: originalTotal,
-        correctedInputCost,
-        correctedOutputCost,
-        correctedTotalCost: correctedTotal
+        inputTokenCost: correctedInputCost,
+        outputTokenCost: correctedOutputCost,
+        totalTokenCost: totalCost
       }
     });
 
