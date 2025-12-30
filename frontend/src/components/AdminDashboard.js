@@ -630,11 +630,11 @@ const AdminDashboard = ({ user, onClose }) => {
         }
       } else {
         console.error('Failed to save token correction');
-        alert('Failed to save token costs. Please try again.');
+        // Silently fail - no alert
       }
     } catch (error) {
       console.error('Error saving token correction:', error);
-      alert('An error occurred while saving. Please try again.');
+      // Silently fail - no alert
     } finally {
       setSavingCorrection(false);
     }

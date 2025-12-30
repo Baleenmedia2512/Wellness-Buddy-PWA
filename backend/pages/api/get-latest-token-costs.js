@@ -44,8 +44,20 @@ export default async function handler(req, res) {
     console.log('📊 [get-latest-token-costs] Database connected');
     console.log('📊 [get-latest-token-costs] Fetching latest token costs for:', email);
 
-    // Get the most recent token usage record
-    const [rows] = await connection.execute(
+    // First, get the UserId from team_table
+    const [userRows] = await connection.execute(
+      'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
+      [email]
+    );
+
+    let userId = null;
+    if (userRows.length > 0) {
+      userId = userRows[0].UserId;
+      console.log('📊 [get-latest-token-costs] Found UserId:', userId);
+    }
+
+    // Get the latest original record from ai_token_usage_table
+    const [originalRows] = await connection.execute(
       `SELECT 
         InputTokenCost,
         OutputTokenCost,
@@ -58,9 +70,9 @@ export default async function handler(req, res) {
       [email]
     );
 
-    console.log('📊 [get-latest-token-costs] Query result:', rows);
+    console.log('📊 [get-latest-token-costs] Original token usage query result:', originalRows);
 
-    if (rows.length === 0) {
+    if (originalRows.length === 0) {
       console.log('⚠️ [get-latest-token-costs] No token usage records found');
       return res.status(404).json({
         success: false,
@@ -68,22 +80,81 @@ export default async function handler(req, res) {
       });
     }
 
-    const latestRecord = rows[0];
+    const latestOriginalRecord = originalRows[0];
+    const latestOriginalTimestamp = new Date(latestOriginalRecord.CreatedAt);
 
-    console.log('✅ [get-latest-token-costs] Latest costs fetched:', {
-      inputCost: latestRecord.InputTokenCost,
-      outputCost: latestRecord.OutputTokenCost,
-      totalCost: latestRecord.TotalTokenCost,
-      createdAt: latestRecord.CreatedAt
+    // Check for corrected costs in token_correction_table
+    let correctedRecord = null;
+
+    if (userId) {
+      const [correctionRows] = await connection.execute(
+        `SELECT 
+          InputTokenCost,
+          OutputTokenCost,
+          TotalTokenCost,
+          CreatedAt
+        FROM token_correction_table 
+        WHERE UserId = ?
+        ORDER BY CreatedAt DESC 
+        LIMIT 1`,
+        [userId]
+      );
+
+      if (correctionRows.length > 0) {
+        correctedRecord = correctionRows[0];
+        console.log('📊 [get-latest-token-costs] Found corrected costs:', correctedRecord);
+      }
+    }
+
+    // Compare timestamps: use corrected costs ONLY if correction was made AFTER the latest original record
+    if (correctedRecord) {
+      const correctionTimestamp = new Date(correctedRecord.CreatedAt);
+      
+      console.log('📊 [get-latest-token-costs] Comparing timestamps:', {
+        originalTimestamp: latestOriginalTimestamp,
+        correctionTimestamp: correctionTimestamp
+      });
+
+      if (correctionTimestamp > latestOriginalTimestamp) {
+        // Correction is newer than latest original - return corrected costs
+        console.log('✅ [get-latest-token-costs] Returning corrected costs (correction is newer):', {
+          inputCost: correctedRecord.InputTokenCost,
+          outputCost: correctedRecord.OutputTokenCost,
+          totalCost: correctedRecord.TotalTokenCost,
+          createdAt: correctedRecord.CreatedAt
+        });
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            inputTokenCost: correctedRecord.InputTokenCost,
+            outputTokenCost: correctedRecord.OutputTokenCost,
+            totalTokenCost: correctedRecord.TotalTokenCost,
+            createdAt: correctedRecord.CreatedAt,
+            isCorrected: true
+          }
+        });
+      } else {
+        console.log('📊 [get-latest-token-costs] Original record is newer than correction - returning original costs');
+      }
+    }
+
+    // Return original costs (either no correction exists or original is newer)
+    console.log('✅ [get-latest-token-costs] Returning original costs:', {
+      inputCost: latestOriginalRecord.InputTokenCost,
+      outputCost: latestOriginalRecord.OutputTokenCost,
+      totalCost: latestOriginalRecord.TotalTokenCost,
+      createdAt: latestOriginalRecord.CreatedAt
     });
 
     return res.status(200).json({
       success: true,
       data: {
-        inputTokenCost: latestRecord.InputTokenCost,
-        outputTokenCost: latestRecord.OutputTokenCost,
-        totalTokenCost: latestRecord.TotalTokenCost,
-        createdAt: latestRecord.CreatedAt
+        inputTokenCost: latestOriginalRecord.InputTokenCost,
+        outputTokenCost: latestOriginalRecord.OutputTokenCost,
+        totalTokenCost: latestOriginalRecord.TotalTokenCost,
+        createdAt: latestOriginalRecord.CreatedAt,
+        isCorrected: false
       }
     });
 
