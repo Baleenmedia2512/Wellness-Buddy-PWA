@@ -7,13 +7,13 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { Bug } from 'lucide-react';
 import ImageUpload from './components/ImageUpload';
 import NutritionCard from './components/NutritionCard';
+import EducationLogCard from './components/EducationLogCard';
 import TestImageGuide from './components/TestImageGuide';
 import LoadingSpinner from './components/LoadingSpinner';
 import Login from './components/Login';
 import InactiveUserModal from './components/InactiveUserModal';
 import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
-import FoodCorrectionsDebugPanel from './components/FoodCorrectionsDebugPanel';
 import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId } from './services/getUserId';
@@ -21,6 +21,7 @@ import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutri
 import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
 import { weightDetectionService } from './services/weightDetectionService';
+import { educationDetectionService } from './services/educationDetectionService';
 import { duplicateDetectionService } from './services/duplicateDetectionService';
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
@@ -41,6 +42,9 @@ import {
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import('./components/Dashboard'));
 const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
+const DisciplineReport = lazy(() => import('./components/DisciplineReport'));
+const SetupWizard = lazy(() => import('./pages/SetupWizard'));
+const ValidateOTP = lazy(() => import('./pages/ValidateOTP'));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
@@ -69,8 +73,9 @@ function WellnessValleyApp() {
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
-  const [imageType, setImageType] = useState(null); // 'food' | 'weight'
+  const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
+  const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
   
   // Duplicate food detection state
@@ -86,9 +91,6 @@ function WellnessValleyApp() {
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
   
-  // Debug panel state
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
-  
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
@@ -98,6 +100,15 @@ function WellnessValleyApp() {
 
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
+
+  // Discipline report state (for coaches) - with localStorage persistence
+  const [showDisciplineReport, setShowDisciplineReport] = useState(
+    localStorage.getItem('currentPage') === 'discipline-report'
+  );
+
+  // Setup wizard state
+  const [showSetupWizard, setShowSetupWizard] = useState(false);
+  const [showValidateOTP, setShowValidateOTP] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -176,6 +187,10 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
+      if (showDisciplineReport) {
+        showMainPage();
+        return true;
+      }
       if (showDashboard) {
         showMainPage();
         return true;
@@ -183,9 +198,9 @@ function WellnessValleyApp() {
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
     
-    initializeBackButton(goBack, showToast, !showDashboard);
+    initializeBackButton(goBack, showToast, !showDashboard && !showDisciplineReport);
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard]);
+  }, [ionRouter, showDashboard, showDisciplineReport]);
 
 
 
@@ -260,7 +275,6 @@ function WellnessValleyApp() {
         setUserRole(data.role);
       }
       
-      
       return true;
     } catch (error) {
       console.error('Error checking user status:', error);
@@ -292,6 +306,8 @@ function WellnessValleyApp() {
       setDashboardInitialTab('weight');
     } else if (imageType === 'food') {
       setDashboardInitialTab('nutrition');
+    } else if (imageType === 'education') {
+      setDashboardInitialTab('education');
     } else {
       setDashboardInitialTab(null); // Use default/last used tab
     }
@@ -301,6 +317,7 @@ function WellnessValleyApp() {
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
     localStorage.setItem('currentPage', 'main');
   };
@@ -437,6 +454,13 @@ function WellnessValleyApp() {
           }
         }
         
+        // Store user email in localStorage for API calls
+        const userEmail = user.email || user.Email;
+        if (userEmail) {
+          localStorage.setItem('userEmail', userEmail);
+          console.log('✅ [Auth State] Stored user email in localStorage:', userEmail);
+        }
+        
         // Load user context for AI personalization
         if (user.id) {
           console.log('🔄 [Auth State] Loading user context...');
@@ -466,6 +490,39 @@ function WellnessValleyApp() {
             setUser(user); // Keep user state so modal can show user email
             setAuthLoading(false);
             return;
+          }
+          
+          // Check setup wizard status for active users
+          if (isActive && userEmail) {
+            console.log('🔄 [Auth State] Checking setup wizard status...');
+            try {
+              const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
+              
+              if (statusResponse.ok) {
+                const statusData = await statusResponse.json();
+                console.log('📋 [Auth State] Setup status:', statusData);
+                
+                // Show setup wizard if not complete
+                if (!statusData.setupComplete) {
+                  if (statusData.pendingRequest) {
+                    // User has pending OTP validation
+                    console.log('📧 [Auth State] Pending OTP detected, showing OTP modal');
+                    setShowValidateOTP(true);
+                  } else {
+                    // User needs to complete setup wizard
+                    console.log('🔧 [Auth State] Setup incomplete, showing setup wizard');
+                    setShowSetupWizard(true);
+                  }
+                } else {
+                  console.log('✅ [Auth State] Setup already complete');
+                }
+              } else {
+                console.warn('⚠️ [Auth State] Setup status check failed:', statusResponse.status);
+              }
+            } catch (setupError) {
+              console.warn('⚠️ [Auth State] Failed to check setup status:', setupError);
+              // Continue without blocking - setup check is not critical
+            }
           }
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
@@ -579,6 +636,53 @@ function WellnessValleyApp() {
 
     return () => clearInterval(statusCheckInterval);
   }, [user, checkUserStatus]);
+
+  // Check setup wizard status whenever user is set/updated
+  useEffect(() => {
+    const checkSetupStatus = async () => {
+      if (!user || !isUserActive) return;
+      
+      const userEmail = user.email || user.Email;
+      if (!userEmail) return;
+      
+      console.log('🔄 [Setup Check] Checking setup wizard status for existing user...');
+      
+      try {
+        const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
+        
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json();
+          console.log('📋 [Setup Check] Setup status:', statusData);
+          
+          // Show setup wizard if not complete
+          if (!statusData.setupComplete) {
+            if (statusData.pendingRequest) {
+              // User has pending OTP validation
+              console.log('📧 [Setup Check] Pending OTP detected, showing OTP modal');
+              setShowValidateOTP(true);
+            } else {
+              // User needs to complete setup wizard
+              console.log('🔧 [Setup Check] Setup incomplete, showing setup wizard');
+              setShowSetupWizard(true);
+            }
+          } else {
+            console.log('✅ [Setup Check] Setup already complete');
+          }
+        } else {
+          console.warn('⚠️ [Setup Check] Setup status check failed:', statusResponse.status);
+        }
+      } catch (setupError) {
+        console.warn('⚠️ [Setup Check] Failed to check setup status:', setupError);
+      }
+    };
+    
+    // Run check after a short delay to ensure auth is fully complete
+    const timeoutId = setTimeout(() => {
+      checkSetupStatus();
+    }, 1000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [user, isUserActive, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -796,6 +900,56 @@ function WellnessValleyApp() {
     }
   };
 
+  /**
+   * Save education meeting log to database (AUTO-SAVE)
+   * @param {Object} educationData - { platform, topic, confidence, participantCount }
+   * @param {string} imageBase64 - Base64 encoded image
+   */
+  const saveEducationLog = async (educationData, imageBase64) => {
+    try {
+      console.log('💾 Auto-saving education log:', educationData);
+      
+      // Get the actual database UserId
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+
+      const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: userId,
+          imageBase64: imageBase64,
+          platform: educationData.platform,
+          topic: educationData.topic,
+          confidence: educationData.confidence,
+          deviceInfo: window.navigator.userAgent
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Failed to save education log');
+      }
+
+      console.log('✅ Education log auto-saved successfully:', data.id);
+      setSaveLoading(false);
+      setLoadingState('idle');
+
+    } catch (error) {
+      console.error('❌ Failed to auto-save education log:', error);
+      setError(error.message || 'Failed to save education log. Please try again.');
+      setSaveLoading(false);
+      setLoadingState('idle');
+    }
+  };
+
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
     try {
@@ -997,9 +1151,44 @@ function WellnessValleyApp() {
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
-      // ✅ NEW: Detect if image is weight scale or food using Gemini AI
+      // ✅ Detect image type using Gemini AI (education > weight > food)
       const detectedType = await imageTypeDetector.detectImageType(file);
       
+      // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
+      if (detectedType.type === 'education' && detectedType.confidence > 0.7) {
+        console.log('🎓 Education meeting detected, analyzing...');
+        setImageType('education');
+        
+        try {
+          const educationData = await educationDetectionService.analyzeMeetingImage(file);
+          
+          if (educationData.success) {
+            console.log('✅ Education data extracted:', educationData);
+            
+            setEducationResult({
+              platform: educationData.platform,
+              topic: educationData.topic, // Already has fallback to "Education Meeting"
+              confidence: educationData.confidence,
+              participantCount: educationData.participantCount
+            });
+            
+            // AUTO-SAVE to database immediately
+            setLoadingState('saving');
+            setSaveLoading(true);
+            await saveEducationLog(educationData, processedImage);
+          } else {
+            setError('Unable to analyze meeting screenshot. Please try again.');
+          }
+        } catch (err) {
+          console.error('❌ Education analysis failed:', err);
+          setError('Failed to analyze meeting screenshot: ' + err.message);
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      // ✅ PRIORITY 2: Check for weight scale
       if (detectedType.type === 'weight' && detectedType.confidence > 0.6) {
         // It's a weight scale - try to extract weight
         console.log('🔍 Weight scale detected, extracting metrics...');
@@ -1267,6 +1456,7 @@ function WellnessValleyApp() {
     
     // Clear weight-related states
     setWeightResult(null);
+    setEducationResult(null); // Clear education results
     setImageType(null);
     setCurrentWeightImage(null);
     setShowManualWeightModal(false);
@@ -1689,6 +1879,23 @@ function WellnessValleyApp() {
     );
   }
 
+  // Discipline Report for all users
+  if (showDisciplineReport) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
+        <DisciplineReport
+          user={user}
+          onBack={() => {
+            setShowDisciplineReport(false);
+            localStorage.setItem('currentPage', 'main');
+          }}
+          apiBaseUrl={apiBaseUrl}
+          userRole={userRole}
+        />
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
@@ -1696,18 +1903,12 @@ function WellnessValleyApp() {
         user={user}
         onShowBackgroundHistory={showDashboardPage}
         onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
+        onShowDisciplineReport={() => {
+          setShowDisciplineReport(true);
+          localStorage.setItem('currentPage', 'discipline-report');
+        }}
         onSignOut={handleSignOut}
       />
-      
-      {/* Debug Panel Button */}
-      <button
-        onClick={() => setShowDebugPanel(true)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
-        title="Open Food Corrections Debug Panel"
-        aria-label="Open Food Corrections Debug Panel"
-      >
-        <Bug className="h-5 w-5 md:h-6 md:w-6" />
-      </button>
 
       <div className="max-w-md mx-auto px-4 py-6 space-y-6">
         {/* Back button toast message */}
@@ -1749,6 +1950,18 @@ function WellnessValleyApp() {
             setSavedNutritionMealId(null);
           }}
         />}
+        
+        {/* Education Meeting Result */}
+        {imageType === 'education' && educationResult && (
+          <EducationLogCard 
+            educationData={educationResult}
+            onClose={() => {
+              setEducationResult(null);
+              setImagePreview(null);
+              setSelectedImage(null);
+            }}
+          />
+        )}
         
         {imageType === 'weight' && weightResult && (
           <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
@@ -1910,13 +2123,6 @@ function WellnessValleyApp() {
           console.log('✅ [NewUserProfile] Profile updated successfully');
         }}
       />
-      
-      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
-      <FoodCorrectionsDebugPanel
-        userId={user?.id}
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-      />
 
       {/* Admin Dashboard */}
       {showAdminDashboard && (
@@ -1924,6 +2130,37 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Setup Wizard - Team ID + Coach Selection */}
+      {showSetupWizard && (
+        <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
+          <SetupWizard 
+            onClose={() => setShowSetupWizard(false)}
+            onNavigateToOTP={() => {
+              setShowSetupWizard(false);
+              setShowValidateOTP(true);
+            }}
+            onLogout={handleSignOut}
+          />
+        </Suspense>
+      )}
+
+      {/* OTP Validation Page */}
+      {showValidateOTP && (
+        <Suspense fallback={<LoadingSpinner message="Loading validation..." />}>
+          <ValidateOTP 
+            onClose={() => {
+              setShowValidateOTP(false);
+              setShowSetupWizard(true);
+            }}
+            onSuccess={() => {
+              setShowValidateOTP(false);
+              // Setup complete, user can now access dashboard
+            }}
+            onLogout={handleSignOut}
           />
         </Suspense>
       )}

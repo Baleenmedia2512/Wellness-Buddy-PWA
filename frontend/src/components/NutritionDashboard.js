@@ -14,7 +14,6 @@ import {
 } from 'lucide-react';
 import '../LazyLoadStyles.css';
 import EditableFoodItem from './EditableFoodItem';
-import FoodCorrectionsDebugPanel from './FoodCorrectionsDebugPanel';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -38,9 +37,6 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
-
-  // Debug panel state
-  const [showDebugPanel, setShowDebugPanel] = useState(false);
 
   // Editable food items state
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
@@ -1170,12 +1166,47 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
       {/* Content */}
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-4 md:pb-6">
         {loading ? (
-          /* loading state ... (unchanged) */
-          <div className="flex flex-col items-center justify-center py-12 md:py-20 px-4 md:px-6">
-            <div className="backdrop-blur-xl bg-white/30 rounded-2xl md:rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl">
-              <div className="animate-spin rounded-full h-12 w-12 md:h-16 md:w-16 border-4 border-emerald-300 border-t-emerald-600 mb-4 md:mb-6 mx-auto"></div>
-              <p className="text-gray-700 font-semibold text-lg md:text-xl text-center">Loading nutrition data...</p>
-              <p className="text-gray-600 text-sm mt-2 text-center">Please wait</p>
+          <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
+            <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
+              {/* Summary Card Skeleton */}
+              <div className="w-full max-w-md mx-auto bg-white rounded-2xl shadow-sm border border-gray-200/60 p-4 md:p-5">
+                <div className="flex justify-between items-start mb-6">
+                  <div>
+                    <div className="h-3 w-24 bg-gray-200 rounded mb-2 animate-pulse"></div>
+                    <div className="h-8 w-32 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                  <div className="h-6 w-20 bg-gray-200 rounded-full animate-pulse"></div>
+                </div>
+                <div className="h-2 w-full bg-gray-200 rounded-full mb-4 animate-pulse"></div>
+                <div className="flex justify-between gap-2">
+                  {[...Array(4)].map((_, i) => (
+                    <div key={i} className="flex-1 h-16 bg-gray-200 rounded-lg animate-pulse"></div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Meal List Skeletons */}
+            <div className="px-4 md:px-6 space-y-6">
+              {[...Array(3)].map((_, i) => (
+                <div key={i}>
+                  <div className="flex justify-between items-center mb-3 px-2">
+                    <div className="h-4 w-32 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-4 w-16 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                  <div className="space-y-3">
+                    {[...Array(2)].map((_, j) => (
+                      <div key={j} className="bg-white rounded-xl p-3 flex items-center gap-3 shadow-sm border border-gray-100">
+                        <div className="w-12 h-12 bg-gray-200 rounded-lg animate-pulse"></div>
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 w-3/4 bg-gray-200 rounded animate-pulse"></div>
+                          <div className="h-3 w-1/2 bg-gray-200 rounded animate-pulse"></div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : error ? (
@@ -1736,23 +1767,6 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
           </div>
         </div>
       )}
-      
-      {/* Debug Panel Button (Bottom Right - Consistent with Main Page) */}
-      <button
-        onClick={() => setShowDebugPanel(true)}
-        className="fixed bottom-20 right-4 md:bottom-6 md:right-6 z-50 bg-yellow-500 hover:bg-yellow-600 text-white p-3 md:p-4 rounded-full shadow-lg transition-all duration-200 hover:scale-110 active:scale-95"
-        title="Open Food Corrections Debug Panel"
-        aria-label="Open Food Corrections Debug Panel"
-      >
-        <Bug className="h-5 w-5 md:h-6 md:w-6" />
-      </button>
-      
-      {/* Food Corrections Debug Panel (Always Visible for Testing) */}
-      <FoodCorrectionsDebugPanel
-        userId={user?.id}
-        isOpen={showDebugPanel}
-        onClose={() => setShowDebugPanel(false)}
-      />
     </div>
   );
 };

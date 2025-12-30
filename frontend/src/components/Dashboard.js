@@ -26,9 +26,31 @@ const WeighingScaleIcon = ({ className }) => (
   </svg>
 );
 
+// Custom education icon component
+const EducationIcon = ({ className }) => (
+  <svg 
+    className={className} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2.5" 
+    strokeLinecap="round" 
+    strokeLinejoin="round"
+  >
+    {/* Book cover */}
+    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+    {/* Book pages */}
+    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+    {/* Bookmark */}
+    <path d="M12 6v7" />
+    <path d="M10 11l2 2 2-2" />
+  </svg>
+);
+
 // ✅ LAZY LOADING: Load tab components on-demand (only one visible at a time)
 const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
 const WeightDashboard = lazy(() => import('./WeightDashboard'));
+const EducationDashboard = lazy(() => import('./EducationDashboard'));
 
 /**
  * Unified Dashboard with tabs for Nutrition and Weight tracking
@@ -38,7 +60,7 @@ const WeightDashboard = lazy(() => import('./WeightDashboard'));
 const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
-    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight')) {
+    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
       localStorage.setItem('dashboard_activeTab', initialTab);
       return initialTab;
     }
@@ -92,8 +114,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                 <Calendar className="h-5 w-5 text-gray-700" />
               </button>
             )}
-            {/* Empty space for weight tab to maintain layout */}
-            {activeTab === 'weight' && (
+            {/* Empty space for weight and education tabs to maintain layout */}
+            {(activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
@@ -123,12 +145,24 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
               onClick={() => handleTabChange('weight')}
               className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'weight'
-                  ? ' border-emerald-300  text-emerald-700'
+                  ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <WeighingScaleIcon className="h-4 w-4" />
               <span>Weight</span>
+            </button>
+
+            <button
+              onClick={() => handleTabChange('education')}
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'education'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <EducationIcon className="h-4 w-4" />
+              <span>Education</span>
             </button>
           </div>
         </div>
@@ -317,6 +351,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
             <WeightDashboard
               user={user}
               onBack={onBack}
+              apiBaseUrl={apiBaseUrl}
+              hideHeader={true}
+            />
+          )}
+
+          {activeTab === 'education' && (
+            <EducationDashboard
+              user={user}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
             />

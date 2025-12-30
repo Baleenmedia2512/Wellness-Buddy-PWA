@@ -472,10 +472,29 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const renderOverview = () => {
     if (loading) {
       return (
-        <div className="flex flex-col items-center justify-center py-20 px-4">
-          <div className="backdrop-blur-xl bg-white/30 rounded-2xl md:rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl">
-            <div className="animate-spin rounded-full h-12 w-12 md:h-16 md:w-16 border-4 border-emerald-300 border-t-emerald-600 mb-4 md:mb-6 mx-auto"></div>
-            <p className="text-gray-700 font-semibold text-lg md:text-xl text-center">Loading weight data...</p>
+        <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
+          <div className="px-4 md:px-6">
+            {/* Chart Skeleton */}
+            <div className="mb-6 mt-2">
+              <div className="w-full h-64 bg-white rounded-2xl shadow-sm border border-gray-200/60 p-5 flex items-end justify-between gap-2">
+                {[...Array(7)].map((_, i) => (
+                  <div key={i} className="w-full bg-gray-200 rounded-t-lg animate-pulse" style={{ height: `${Math.random() * 60 + 20}%` }}></div>
+                ))}
+              </div>
+            </div>
+
+            {/* List Skeletons */}
+            <div className="space-y-4">
+              {[...Array(5)].map((_, i) => (
+                <div key={i} className="bg-white rounded-xl p-4 flex justify-between items-center shadow-sm border border-gray-100">
+                  <div className="space-y-2">
+                    <div className="h-4 w-24 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 w-16 bg-gray-200 rounded animate-pulse"></div>
+                  </div>
+                  <div className="h-8 w-16 bg-gray-200 rounded animate-pulse"></div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       );
