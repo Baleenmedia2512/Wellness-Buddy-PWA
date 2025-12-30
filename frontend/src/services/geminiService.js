@@ -123,7 +123,7 @@ class GeminiService {
 
   // Fetch live USD to INR exchange rate
   async fetchExchangeRate() {
-    // Only fetch in browser environment
+    // Only fetch in browser environment // 
     if (typeof window === 'undefined') {
       console.warn('⚠️ Cannot fetch exchange rate in non-browser environment');
       return;
