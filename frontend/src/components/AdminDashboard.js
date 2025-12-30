@@ -489,6 +489,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
   const [showEditPopup, setShowEditPopup] = useState(false);
   const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
+  const [tokenCostInputs, setTokenCostInputs] = useState({ inputCost: '', outputCost: '' });
   const [originalTokenCosts, setOriginalTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
@@ -564,12 +565,17 @@ const AdminDashboard = ({ user, onClose }) => {
                 outputCost: parseFloat(data.data.outputTokenCost || 0)
               };
               setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+              });
               setOriginalTokenCosts(costs); // Store original values
             }
           } else {
             // If no record exists (404) or other error, default to 0
             const defaultCosts = { inputCost: 0, outputCost: 0 };
             setTokenCosts(defaultCosts);
+            setTokenCostInputs({ inputCost: '0', outputCost: '0' });
             setOriginalTokenCosts(defaultCosts);
             console.log('No token cost records found for user, defaulting to 0');
           }
@@ -578,12 +584,14 @@ const AdminDashboard = ({ user, onClose }) => {
           // On error, also default to 0
           const defaultCosts = { inputCost: 0, outputCost: 0 };
           setTokenCosts(defaultCosts);
+          setTokenCostInputs({ inputCost: '0', outputCost: '0' });
           setOriginalTokenCosts(defaultCosts);
         }
       } else {
         // Reset to 0 when popup closes
         const defaultCosts = { inputCost: 0, outputCost: 0 };
         setTokenCosts(defaultCosts);
+        setTokenCostInputs({ inputCost: '0', outputCost: '0' });
         setOriginalTokenCosts(defaultCosts);
       }
     };
@@ -618,7 +626,7 @@ const AdminDashboard = ({ user, onClose }) => {
           setTimeout(() => {
             setShowSuccessMessage(false);
             setShowEditPopup(false);
-          }, 5000);
+          }, 7000);
         }
       } else {
         console.error('Failed to save token correction');
@@ -670,7 +678,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return 'Custom Range';
   };
 
-  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(3))}`;
+  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(4))}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -878,10 +886,10 @@ const AdminDashboard = ({ user, onClose }) => {
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.requestCount || 0)}</p>
+                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.totalTokens || 0)}</p>
                   <div className="flex items-center space-x-2">
                     <Zap className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400">Total Requests</span>
+                    <span className="text-xs text-gray-400">Total Tokens</span>
                   </div>
                 </div>
                 <div>
@@ -970,15 +978,6 @@ const AdminDashboard = ({ user, onClose }) => {
                       </div>
                     </th>
                     <th 
-                      onClick={() => handleSort('requestCount')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Requests</span>
-                        <SortIcon field="requestCount" />
-                      </div>
-                    </th>
-                    <th 
                       onClick={() => handleSort('totalCost')}
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
@@ -1006,9 +1005,6 @@ const AdminDashboard = ({ user, onClose }) => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-medium text-gray-800">{formatNumber(user.totalTokens)}</p>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.requestCount)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
@@ -1164,7 +1160,6 @@ const AdminDashboard = ({ user, onClose }) => {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
-            onClick={() => setShowEditPopup(false)}
           >
             <motion.div
               initial={{ scale: 0.9, opacity: 0 }}
@@ -1207,9 +1202,12 @@ const AdminDashboard = ({ user, onClose }) => {
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
                       type="number"
-                      step="0.0001"
-                      value={tokenCosts.inputCost}
-                      onChange={(e) => setTokenCosts(prev => ({ ...prev, inputCost: parseFloat(e.target.value) || 0 }))}
+                      value={tokenCostInputs.inputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, inputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, inputCost: parseFloat(val) || 0 }));
+                      }}
                       className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
                       placeholder="0.001"
                     />
@@ -1223,10 +1221,13 @@ const AdminDashboard = ({ user, onClose }) => {
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
-                      type="number"
-                      step="0.0001"
-                      value={tokenCosts.outputCost}
-                      onChange={(e) => setTokenCosts(prev => ({ ...prev, outputCost: parseFloat(e.target.value) || 0 }))}
+                      type="text"
+                      value={tokenCostInputs.outputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, outputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, outputCost: parseFloat(val) || 0 }));
+                      }}
                       className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
                       placeholder="0.004"
                     />
@@ -1243,25 +1244,32 @@ const AdminDashboard = ({ user, onClose }) => {
                 </div>
               </div>
 
-              <div className="flex gap-3 mt-6">
-                <button
-                  onClick={() => setShowEditPopup(false)}
-                  className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={handleSaveTokenCorrection}
-                  disabled={savingCorrection}
-                  className={`flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium ${
-                    savingCorrection 
-                      ? 'bg-gray-400 cursor-not-allowed' 
-                      : 'bg-green-600 hover:bg-green-700'
-                  }`}
-                >
-                  {savingCorrection ? 'Saving...' : 'Save'}
-                </button>
-              </div>
+              {!savingCorrection ? (
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowEditPopup(false)}
+                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleSaveTokenCorrection}
+                    className="flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium bg-green-600 hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-center mt-6">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Saving...</span>
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}
