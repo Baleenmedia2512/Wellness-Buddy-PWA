@@ -1151,6 +1151,11 @@ function WellnessValleyApp() {
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
+      // Ensure education service knows current user for token tracking
+      if (user?.id && user?.email) {
+        educationDetectionService.setCurrentUser(user.id, user.email);
+      }
+
       // ✅ Detect image type using Gemini AI (education > weight > food)
       const detectedType = await imageTypeDetector.detectImageType(file);
       
@@ -1160,9 +1165,29 @@ function WellnessValleyApp() {
         setImageType('education');
         
         try {
-          const educationData = await educationDetectionService.analyzeMeetingImage(file);
-          
-          if (educationData.success) {
+          // If the detector already returned a full analysis, use it directly to avoid a second API call
+          let educationData;
+
+          if (detectedType.details && detectedType.details.aiAnalysis) {
+            // console.log('ℹ️ Using analysis result returned by imageTypeDetector');
+            educationData = {
+              success: true,
+              platform: detectedType.details.platform || null,
+              topic: detectedType.details.topic || 'Education Meeting',
+              confidence: detectedType.confidence || 0,
+              participantCount: detectedType.details.participantCount || null,
+              raw: detectedType.details.raw || null
+            };
+          } else {
+            // Set current user for token tracking (so we can save token usage)
+            if (user?.id && user?.email) {
+              educationDetectionService.setCurrentUser(user.id, user.email);
+            }
+
+            educationData = await educationDetectionService.analyzeMeetingImage(file, { userId: user?.id, userEmail: user?.email });
+          }
+
+          if (educationData && educationData.success) {
             console.log('✅ Education data extracted:', educationData);
             
             setEducationResult({

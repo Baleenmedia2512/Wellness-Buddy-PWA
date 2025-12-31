@@ -56,7 +56,7 @@ class WeightDetectionService {
     
     try {
       console.log('🔄 Fetching live USD to INR exchange rate...');
-      const apiUrl = 'https://api.frankfurter.app/latest?from=USD&to=INR';
+      const apiUrl = 'https://open.er-api.com/v6/latest/USD';
       
       // Add 10-second timeout protection
       const fetchWithTimeout = Promise.race([

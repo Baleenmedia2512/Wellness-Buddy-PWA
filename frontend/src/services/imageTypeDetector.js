@@ -53,19 +53,26 @@ class ImageTypeDetector {
       }
 
       // ✅ PRIORITY 1: Check for education/meeting first (highest priority)
-      const meetingCheck = await educationDetectionService.detectMeetingType(imgFile);
-      if (meetingCheck.isMeeting && meetingCheck.confidence > 0.7) {
-        console.log('✅ Detected EDUCATION MEETING with Gemini AI');
-        return {
-          type: 'education',
-          confidence: meetingCheck.confidence,
-          details: {
-            isMeeting: true,
-            platform: meetingCheck.platform,
-            reason: meetingCheck.reason,
-            aiAnalysis: true
-          }
-        };
+      // Use a single full analysis call (faster to persist once and avoid double token usage)
+      try {
+        const analysis = await educationDetectionService.analyzeMeetingImage(imgFile);
+        if (analysis && analysis.success && analysis.confidence > 0.7) {
+          console.log('✅ Detected EDUCATION MEETING with Gemini AI');
+          return {
+            type: 'education',
+            confidence: analysis.confidence,
+            details: {
+              isMeeting: true,
+              platform: analysis.platform,
+              topic: analysis.topic,
+              participantCount: analysis.participantCount,
+              aiAnalysis: true,
+              raw: analysis.raw
+            }
+          };
+        }
+      } catch (err) {
+        console.warn('⚠️ Education analysis (single-call) failed, falling back to weight/food detection:', err.message);
       }
 
       // ✅ PRIORITY 2: Check for weight scale
