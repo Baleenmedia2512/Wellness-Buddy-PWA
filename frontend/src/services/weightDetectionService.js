@@ -449,6 +449,16 @@ Examples:
       console.log('Total Output Cost (INR):', outputCost.toFixed(3));
       console.log('Total Token Cost (INR):', totalCost.toFixed(3));
 
+      // Print a summary object for easy inspection
+      console.log('Token Usage Summary:', {
+        inputTokens: tokenData.promptTokens,
+        outputTokens: tokenData.completionTokens,
+        totalTokens: tokenData.totalTokens,
+        inputTokenCost: inputCost,
+        outputTokenCost: outputCost,
+        totalTokenCost: totalCost
+      });
+
       // Save token usage to database if user info is available
       if (this.currentUserId && this.currentUserEmail) {
         this.saveTokenUsageToDatabase({
