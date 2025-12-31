@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 
 import { useIonRouter } from '@ionic/react';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { PushNotifications } from '@capacitor/push-notifications';
 import { Bug } from 'lucide-react';
 import ImageUpload from './components/ImageUpload';
@@ -26,6 +27,7 @@ import { duplicateDetectionService } from './services/duplicateDetectionService'
 import ManualWeightEntryModal from './components/ManualWeightEntryModal';
 import DuplicateFoodModal from './components/DuplicateFoodModal';
 import UserProfileModal from './components/UserProfileModal';
+import html2canvas from 'html2canvas';
 
 import GalleryMonitor from './services/galleryMonitor';
 import {
@@ -206,6 +208,7 @@ function WellnessValleyApp() {
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
+  const [sharing, setSharing] = useState(false); // for WhatsApp screenshot sharing
   
   // Add a ref to track if status check is in progress
   const statusCheckInProgress = useRef(false);
@@ -1432,6 +1435,167 @@ function WellnessValleyApp() {
     }
   };
 
+  // Capture visible viewport as PNG blob (exactly as user sees it)
+  const captureViewportScreenshot = async () => {
+    // html2canvas set to capture current viewport (x/y = scroll positions, width/height = inner window)
+    const canvas = await html2canvas(document.documentElement, {
+      x: window.scrollX,
+      y: window.scrollY,
+      width: window.innerWidth,
+      height: window.innerHeight,
+      windowWidth: document.documentElement.clientWidth,
+      windowHeight: document.documentElement.clientHeight,
+      useCORS: true,
+      backgroundColor: null,
+      scale: Math.min(2, window.devicePixelRatio || 1)
+    });
+    // Convert to blob
+    return await new Promise((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), 'image/png', 0.95);
+    });
+  };
+
+  const fileToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result;
+        // dataUrl = "data:image/png;base64,...." - extract base64
+        const base64 = dataUrl.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+
+  const tryOpenWhatsAppUrl = (text = '') => {
+    // Try app url scheme first
+    const appUrl = `whatsapp://send?text=${encodeURIComponent(text)}`;
+    const win = window.open(appUrl, '_self');
+    // If it fails silently, also try web URL
+    setTimeout(() => {
+      // If still on the page, open web as fallback
+      try {
+        window.open('https://web.whatsapp.com/', '_blank');
+      } catch (e) {
+        // ignore
+      }
+    }, 800);
+  };
+
+  const handleShareToWhatsApp = async () => {
+    try {
+      if (sharing) return;
+      setSharing(true);
+
+      // Capture screenshot
+      const blob = await captureViewportScreenshot();
+      if (!blob) throw new Error('Failed to capture screenshot');
+
+      // If running inside Capacitor native app, write to cache and use native Share (prefer targetting WhatsApp)
+      if (Capacitor.isNativePlatform()) {
+        try {
+          const base64 = await fileToBase64(blob);
+          const fileName = `wellness-screenshot-${Date.now()}.png`;
+          const writeResult = await Filesystem.writeFile({
+            path: fileName,
+            data: base64,
+            directory: Directory.Cache
+          });
+
+          // The returned uri is platform-specific. On Android it's a file URI, on iOS it's a base file URL.
+          const fileUri = writeResult.uri || writeResult.uri;
+
+          // Try share via Capacitor Share with files (many native platforms allow choosing WhatsApp directly)
+          try {
+            // Use dynamic import for @capacitor/share to avoid build-time dependency errors
+            try {
+              const ShareModule = await import('@capacitor/share');
+              if (ShareModule && ShareModule.Share && ShareModule.Share.share) {
+                await ShareModule.Share.share({
+                  title: 'My food analysis',
+                  text: 'Sharing my food analysis from Wellness Valley',
+                  files: [fileUri]
+                });
+                showToast('If prompted, choose WhatsApp to send the screenshot.');
+                return;
+              }
+            } catch (dynErr) {
+              console.warn('Dynamic import of @capacitor/share failed:', dynErr);
+            }
+
+            // If dynamic import or share failed, continue to other fallbacks
+          } catch (shareErr) {
+            console.warn('Capacitor Share failed or does not support files:', shareErr);
+          }
+
+          // As a stronger fallback on Android, try to open intent URL that targets WhatsApp directly
+          if (navigator.userAgent.toLowerCase().includes('android')) {
+            // Construct an intent URL to launch WhatsApp. This is best-effort — Android may still require a content:// URI.
+            const intentUrl = `intent://send/#Intent;action=android.intent.action.SEND;type=image/png;S.android.intent.extra.STREAM=${encodeURIComponent(fileUri)};package=com.whatsapp;end`;
+            try {
+              window.location.href = intentUrl;
+              return;
+            } catch (intentErr) {
+              console.warn('Intent open failed:', intentErr);
+            }
+          }
+
+          // Otherwise, fallback to opening WhatsApp app link (without image) and prompt user
+          tryOpenWhatsAppUrl('Sharing my food analysis from Wellness Valley');
+          showToast('Opened WhatsApp — attach the downloaded screenshot from your app cache if needed.');
+          return;
+        } catch (nativeErr) {
+          console.warn('Native share path failed, falling back to web path:', nativeErr);
+        }
+      }
+
+      // Web path: try navigator.share with files first (mobile browsers often allow sharing straight to WhatsApp app)
+      const webFile = new File([blob], `wellness-screenshot-${Date.now()}.png`, { type: 'image/png' });
+      if (navigator.canShare && navigator.canShare({ files: [webFile] })) {
+        try {
+          await navigator.share({ files: [webFile], title: 'My food analysis', text: 'Sharing my food analysis from Wellness Valley' });
+          // Usually will open native share sheet; the user can select WhatsApp and send directly
+          return;
+        } catch (err) {
+          console.warn('navigator.share with files failed:', err);
+        }
+      }
+
+      // Try clipboard + open WhatsApp app (user can paste into chat). Clipboard write of image may not be supported on all browsers
+      if (navigator.clipboard && navigator.clipboard.write) {
+        try {
+          const clipboardItem = new ClipboardItem({ [webFile.type]: blob });
+          await navigator.clipboard.write([clipboardItem]);
+          showToast('Screenshot copied to clipboard. Opening WhatsApp — paste to send.');
+          // Attempt to open WhatsApp app (this cannot attach the image automatically on web)
+          tryOpenWhatsAppUrl('');
+          return;
+        } catch (clipboardErr) {
+          console.warn('Clipboard write failed:', clipboardErr);
+        }
+      }
+
+      // Final fallback: download and open WhatsApp Web
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = webFile.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast('Screenshot downloaded. Opening WhatsApp Web — attach the image to send.');
+      window.open('https://web.whatsapp.com/', '_blank');
+    } catch (err) {
+      console.error('❌ Share to WhatsApp failed:', err);
+      setError('Failed to share screenshot: ' + (err.message || err));
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || '';
     
@@ -1951,6 +2115,17 @@ function WellnessValleyApp() {
           imageType={imageType}
           ref={fileInputRef}
         />
+
+        <div className="flex justify-end">
+          <button
+            onClick={handleShareToWhatsApp}
+            disabled={sharing || loading}
+            className={`bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-full font-semibold shadow ${sharing || loading ? 'opacity-60 cursor-not-allowed' : ''}`}
+            aria-label="Send screenshot to WhatsApp"
+          >
+            {sharing ? 'Preparing…' : 'Send to WhatsApp'}
+          </button>
+        </div>
 
         {error && (
           <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm flex items-start space-x-3">
