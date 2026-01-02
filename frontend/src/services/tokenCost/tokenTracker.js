@@ -55,7 +55,7 @@ export async function trackTokenUsage({
     // Deduplication: Skip if this exact response has already been tracked
     // This prevents React StrictMode double-invocations from causing duplicate DB entries
     if (processedResponses.has(response)) {
-      console.log('ℹ️ Token tracking skipped - response already processed');
+      console.log('Token tracking skipped - response already processed');
       return;
     }
     processedResponses.add(response);
@@ -140,7 +140,7 @@ export async function trackCombinedTokenUsage({
     // Check for duplicate processing
     for (const { response } of responses) {
       if (processedResponses.has(response)) {
-        console.log('ℹ️ Combined token tracking skipped - responses already processed');
+        console.log('Combined token tracking skipped - responses already processed');
         return;
       }
     }
@@ -259,7 +259,7 @@ function logCombinedTotalsToConsole(operationType, costs, processingTime) {
     console.log(`   📥 Input:  ₹${costs.inputCostInr.toFixed(4)}`);
     console.log(`   💬 Output: ₹${costs.outputCostInr.toFixed(4)}`);
     console.log(`   💰 Total:  ₹${costs.totalCostInr.toFixed(4)}`);
-    console.log(`   💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
+    // console.log(`   💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
   } else {
     console.log('💰 INR: ⚠️ Exchange rate unavailable');
   }
