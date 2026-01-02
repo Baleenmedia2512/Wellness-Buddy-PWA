@@ -12,15 +12,6 @@ export const MODEL_PRICING = {
   'gemini-2.5-flash-lite': {
     inputPerMillion: 0.10,   // $0.10 per 1M input tokens
     outputPerMillion: 0.40   // $0.40 per 1M output tokens
-  },
-  'gemini-2.0-flash': {
-    inputPerMillion: 0.10,   // $0.10 per 1M input tokens
-    outputPerMillion: 0.40   // $0.40 per 1M output tokens
-  },
-  // Add new models here as needed
-  'default': {
-    inputPerMillion: 0.10,
-    outputPerMillion: 0.40
   }
 };
 
@@ -90,5 +81,5 @@ export async function getUsdToInrRate() {
  * @returns {object} Pricing rates { inputPerMillion, outputPerMillion }
  */
 export function getModelPricing(modelName) {
-  return MODEL_PRICING[modelName] || MODEL_PRICING['default'];
+  return MODEL_PRICING[modelName] || MODEL_PRICING['gemini-2.5-flash-lite'];
 }
