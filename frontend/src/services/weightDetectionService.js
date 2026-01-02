@@ -1,5 +1,6 @@
 // src/services/weightDetectionService.js
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createTokenTracker } from './tokenCost';
 
 /**
  * Weight Detection Service using Google Gemini AI
@@ -16,14 +17,8 @@ class WeightDetectionService {
     // API Base URL for backend calls
     this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
     
-    // Current user info for token tracking
-    this.currentUserId = null;
-    this.currentUserEmail = null;
-    
-    // USD to INR exchange rate
-    // Using live API rate only (no fallback)
-    this.usdToInrRate = null; // Will be set by fetchExchangeRate
-    this.fetchExchangeRate(); // Fetch live rate on initialization
+    // Token tracking via centralized module
+    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -41,54 +36,9 @@ class WeightDetectionService {
 
   // Method to set current user info for token tracking
   setCurrentUser(userId, userEmail) {
-    this.currentUserId = userId;
-    this.currentUserEmail = userEmail;
-    console.log('📊 [Token Monitor] User set for weight tracking:', { userId, email: userEmail });
+    this.tokenTracker.setCurrentUser(userId, userEmail);
   }
   
-  // Fetch live USD to INR exchange rate
-  async fetchExchangeRate() {
-    // Only fetch in browser environment
-    if (typeof window === 'undefined') {
-      console.warn('⚠️ Cannot fetch exchange rate in non-browser environment');
-      return;
-    }
-    
-    try {
-      console.log('🔄 Fetching live USD to INR exchange rate...');
-      const apiUrl = 'https://open.er-api.com/v6/latest/USD';
-      
-      // Add 10-second timeout protection
-      const fetchWithTimeout = Promise.race([
-        fetch(apiUrl),
-        new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Exchange rate API timeout (10s)')), 10000)
-        )
-      ]);
-      
-      const response = await fetchWithTimeout;
-      
-      if (response.ok) {
-        const data = await response.json();
-        const rate = data.rates.INR;
-        
-        // Accept any valid positive rate
-        if (rate && rate > 0) {
-          this.usdToInrRate = rate;
-          // console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
-          return;
-        }
-      }
-      
-      throw new Error('Invalid exchange rate data from API');
-      
-    } catch (error) {
-      console.error('❌ Failed to fetch exchange rate:', error.message);
-      console.warn('⚠️ Cost calculations will be unavailable until rate is fetched');
-      // Leave usdToInrRate as null - cost calculations will be skipped
-    }
-  }
-
   /**
    * Detect if image is a weight scale
    * @param {File} imageFile - Image file to analyze
@@ -235,8 +185,8 @@ Examples:
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
-      // Log token usage for weight detection
-      this.logTokenUsage(response, 'weight_detection', processingTime);
+      // Track token usage via centralized module
+      this.tokenTracker.track(response, 'weight_detection', processingTime);
 
       // console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
 
@@ -394,132 +344,6 @@ Examples:
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
-  }
-
-  /**
-   * Log token usage and save to database
-   */
-  logTokenUsage(response, requestType, processingTime) {
-    try {
-      const usageMetadata = response.usageMetadata || {};
-      
-      const tokenData = {
-        promptTokens: usageMetadata.promptTokenCount || 0,
-        completionTokens: usageMetadata.candidatesTokenCount || 0,
-        totalTokens: usageMetadata.totalTokenCount || 0,
-      };
-
-      // === COST CALCULATION ===
-      // Source: Google AI Pricing - https://ai.google.dev/pricing
-      // Model: gemini-2.5-flash-lite (prompts ≤128K tokens)
-      // Last updated: December 2025
-      
-      // Pricing rates (USD per 1 million tokens)
-      const GEMINI_INPUT_RATE_PER_MILLION = 0.10;   // $0.10 per 1M input tokens
-      const GEMINI_OUTPUT_RATE_PER_MILLION = 0.40;   // $0.40 per 1M output tokens
-      
-      // Formula: (tokens / 1,000,000) × price_per_million
-      // Example: 5,000 tokens = (5000 / 1000000) × 0.075 = $0.000375
-      
-      const inputCostUSD = (tokenData.promptTokens / 1000000) * GEMINI_INPUT_RATE_PER_MILLION;
-      const outputCostUSD = (tokenData.completionTokens / 1000000) * GEMINI_OUTPUT_RATE_PER_MILLION;
-      const totalCostUSD = inputCostUSD + outputCostUSD;
-      
-      // Convert to INR for database storage
-      const inputCost = parseFloat((inputCostUSD * this.usdToInrRate).toFixed(2));
-      const outputCost = parseFloat((outputCostUSD * this.usdToInrRate).toFixed(2));
-      const totalCost = parseFloat((totalCostUSD * this.usdToInrRate).toFixed(2));
-
-      console.log(`📊 Token Usage [${requestType}]:`, {
-        '🔤 Prompt Tokens': tokenData.promptTokens,
-        '💬 Response Tokens (Output)': tokenData.completionTokens,
-        '📈 Total Tokens': tokenData.totalTokens,
-        '⏱️ Processing Time': `${processingTime}ms`,
-        '💰 Cost Estimate': `$${totalCostUSD.toFixed(6)}`
-      });
-      
-      // Summary console logs for quick reference
-      console.log('Total Input Cost (USD):', inputCostUSD);
-      console.log('Total Output Cost (USD):', outputCostUSD);
-      console.log('Total Token Cost (USD):', totalCostUSD);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('round off to 3 decimal places for INR display')
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('Total Input Cost (INR):', inputCost.toFixed(3));
-      console.log('Total Output Cost (INR):', outputCost.toFixed(3));
-      console.log('Total Token Cost (INR):', totalCost.toFixed(3));
-
-      // Print a summary object for easy inspection
-      console.log('Token Usage Summary:', {
-        inputTokens: tokenData.promptTokens,
-        outputTokens: tokenData.completionTokens,
-        totalTokens: tokenData.totalTokens,
-        inputTokenCost: inputCost,
-        outputTokenCost: outputCost,
-        totalTokenCost: totalCost
-      });
-
-      // Save token usage to database if user info is available
-      if (this.currentUserId && this.currentUserEmail) {
-        this.saveTokenUsageToDatabase({
-          userId: this.currentUserId,
-          email: this.currentUserEmail,
-          operationType: requestType,
-          modelName: 'gemini-2.5-flash-lite',
-          inputTokens: tokenData.promptTokens,
-          outputTokens: tokenData.completionTokens,
-          totalTokens: tokenData.totalTokens,
-          inputTokenCost: inputCost,
-          outputTokenCost: outputCost,
-          totalTokenCost: totalCost
-        }).catch(err => {
-          console.warn('⚠️ Failed to save token usage to database:', err.message);
-        });
-      } else {
-        console.warn('⚠️ Token usage not saved - user info not set. Call setCurrentUser() first.');
-      }
-    } catch (error) {
-      console.warn('⚠️ Could not extract token usage:', error.message);
-    }
-  }
-
-  /**
-   * Save token usage data to backend database
-   */
-  async saveTokenUsageToDatabase(tokenData) {
-    try {
-      console.log('📤 Sending token data to:', `${this.apiBaseUrl}/api/save-token-usage`);
-      console.log('📦 Token data payload:', tokenData);
-      
-      const response = await fetch(`${this.apiBaseUrl}/api/save-token-usage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tokenData)
-      });
-
-      console.log('📥 Response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API Error Response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-      }
-
-      const result = await response.json();
-      
-      if (result.success) {
-        console.log('✅ Token usage saved to database:', result.id);
-      } else {
-        throw new Error(result.message || 'Failed to save token usage');
-      }
-
-      return result;
-    } catch (error) {
-      console.error('❌ Error saving token usage to database:', error);
-      throw error;
-    }
   }
 
   /**

@@ -1,15 +1,18 @@
 // src/services/imageTypeDetector.js
 import { weightDetectionService } from './weightDetectionService';
-import { educationDetectionService } from './educationDetectionService';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
 
 /**
  * Image Type Detector Service using Gemini AI
- * Detects whether an image contains education meeting, weight scale, or food
- * Priority: education > weight > food (default)
+ * Uses TWO calls: Detection + Analysis for accurate token tracking
+ * Types: education (meeting), weight (scale), or food (default)
  */
 class ImageTypeDetector {
   constructor() {
     this.initialized = false;
+    this.model = null;
+    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
   }
 
   /**
@@ -21,6 +24,14 @@ class ImageTypeDetector {
     console.log('🔧 Initializing Image Type Detector (Gemini AI)...');
     
     try {
+      // Initialize own Gemini model for detection
+      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      if (apiKey) {
+        const genAI = new GoogleGenerativeAI(apiKey);
+        this.model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+      }
+      
+      // Also initialize sub-services for detailed analysis
       await weightDetectionService.initialize();
       this.initialized = true;
       console.log('✅ Image Type Detector initialized with Gemini AI');
@@ -31,15 +42,22 @@ class ImageTypeDetector {
   }
 
   /**
-   * Detect image type: 'education', 'weight', or 'food' using Gemini AI
-   * Detection priority: education > weight > food (default)
-   * @param {string|File} image - Image data URL or File object
-   * @param {File} imageFile - Optional: File object for additional analysis
-   * @returns {Promise<{type: 'education'|'weight'|'food', confidence: number, details: object}>}
+   * Set current user for token tracking
+   */
+  setCurrentUser(userId, userEmail) {
+    this.tokenTracker.setCurrentUser(userId, userEmail);
+  }
+
+  /**
+   * Detect image type using TWO Gemini calls:
+   * 1. Detection call - Identify image type (short prompt)
+   * 2. Analysis call - Extract detailed data (type-specific prompt)
    */
   async detectImageType(image, imageFile = null) {
+    const startTime = Date.now();
+    
     try {
-      console.log('🔍 Analyzing image type with Gemini AI...');
+      console.log('🔍 Analyzing image with Gemini AI (2-call approach)...');
 
       // Initialize if not already done
       if (!this.initialized) {
@@ -52,55 +70,182 @@ class ImageTypeDetector {
         imgFile = this.dataURLToFile(image);
       }
 
-      // ✅ PRIORITY 1: Check for education/meeting first (highest priority)
-      // Use a single full analysis call (faster to persist once and avoid double token usage)
-      try {
-        const analysis = await educationDetectionService.analyzeMeetingImage(imgFile);
-        if (analysis && analysis.success && analysis.confidence > 0.7) {
-          console.log('✅ Detected EDUCATION MEETING with Gemini AI');
-          return {
-            type: 'education',
-            confidence: analysis.confidence,
-            details: {
-              isMeeting: true,
-              platform: analysis.platform,
-              topic: analysis.topic,
-              participantCount: analysis.participantCount,
-              aiAnalysis: true,
-              raw: analysis.raw
-            }
-          };
+      const imageBase64 = await this.fileToBase64(imgFile);
+      const imagePart = {
+        inlineData: {
+          data: imageBase64.split(',')[1] || imageBase64,
+          mimeType: imgFile.type || 'image/jpeg'
         }
-      } catch (err) {
-        console.warn('⚠️ Education analysis (single-call) failed, falling back to weight/food detection:', err.message);
-      }
+      };
 
-      // ✅ PRIORITY 2: Check for weight scale
-      const detection = await weightDetectionService.detectImageType(imgFile);
+      // ═══════════════════════════════════════════════════════════════════════
+      // CALL 1: DETECTION - Short prompt to identify image type
+      // ═══════════════════════════════════════════════════════════════════════
+      const detectionPrompt = `Classify this image into ONE of these categories:
+
+1. "education" - Virtual meeting screenshot (Google Meet, Zoom, MS Teams, WebEx)
+2. "weight" - Weighing scale (bathroom scale, digital/analog scale showing weight)
+3. "food" - Food, meal, or drink (default if not education or weight)
+
+Return ONLY this JSON:
+{
+  "type": "education" or "weight" or "food",
+  "confidence": 0.0 to 1.0,
+  "reason": "brief 5-word explanation"
+}`;
+
       
-      let type = 'food'; // Default to food
-      let confidence = 0.5;
+      const detectionResult = await this.model.generateContent([detectionPrompt, imagePart]);
+      const detectionResponse = await detectionResult.response;
+      const detectionText = detectionResponse.text();
+      const detectionData = this.parseJsonResponse(detectionText);
+      const detectionTime = Date.now() - startTime;
 
-      if (detection.isWeightScale && detection.confidence > 0.6) {
-        type = 'weight';
-        confidence = detection.confidence;
-        console.log('✅ Detected WEIGHT SCALE with Gemini AI');
-      } else if (!detection.isWeightScale && detection.confidence > 0.6) {
-        type = 'food';
-        confidence = detection.confidence;
-        console.log('✅ Detected FOOD IMAGE with Gemini AI');
+      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // CALL 2: ANALYSIS - Type-specific prompt for data extraction
+      // ═══════════════════════════════════════════════════════════════════════
+      const analysisStartTime = Date.now();
+      let analysisPrompt;
+      let operationType;
+
+      if (detectionData.type === 'weight') {
+        operationType = 'weight_detection';
+        analysisPrompt = `Extract weight data from this weighing scale image.
+
+Return ONLY this JSON:
+{
+  "weight": number (the weight reading),
+  "unit": "kg" or "lbs",
+  "bmi": number or null,
+  "bodyFat": number or null,
+  "muscleMass": number or null,
+  "bmr": number or null
+}
+
+RULES:
+- Weight range: 20-300 kg or 44-660 lbs
+- Set null for values not visible`;
+
+      } else if (detectionData.type === 'education') {
+        operationType = 'education_detection';
+        analysisPrompt = `Extract meeting details from this virtual meeting screenshot.
+
+Return ONLY this JSON:
+{
+  "platform": "Google Meet" or "Zoom" or "MS Teams" or "WebEx" or "Online Meeting",
+  "topic": "meeting title if visible, or null"
+}`;
+
+      } else {
+        operationType = 'image_analysis';
+        analysisPrompt = `Analyze this food image and extract nutrition data.
+
+Return ONLY this JSON:
+{
+  "foods": [
+    {
+      "name": "food item name",
+      "portion": "e.g. 2 idlis or 250ml juice",
+      "weight_g": number (for solids),
+      "volume_ml": number (for liquids),
+      "unit": "g" or "ml",
+      "isLiquid": boolean,
+      "nutrition": {
+        "calories": number,
+        "protein": number,
+        "carbs": number,
+        "fat": number,
+        "fiber": number
+      }
+    }
+  ],
+  "total": {
+    "calories": number,
+    "protein": number,
+    "carbs": number,
+    "fat": number,
+    "fiber": number
+  }
+}
+
+RULES:
+- Identify ALL visible food items
+- Estimate portions based on plate/container size
+- Use standard nutrition values
+- Liquids (juice, soup) use volume_ml, solids use weight_g`;
       }
 
-      // console.log(`📊 Image type: ${type.toUpperCase()} (confidence: ${(confidence * 100).toFixed(1)}%)`);
+      
+      const analysisResult = await this.model.generateContent([analysisPrompt, imagePart]);
+      const analysisResponse = await analysisResult.response;
+      const analysisText = analysisResponse.text();
+      const analysisData = this.parseJsonResponse(analysisText);
+      const analysisTime = Date.now() - analysisStartTime;
+      const totalTime = Date.now() - startTime;
 
+      
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Track COMBINED token usage (both calls)
+      // ═══════════════════════════════════════════════════════════════════════
+      await trackCombinedTokenUsage({
+        responses: [
+          { response: detectionResponse, label: 'Detection' },
+          { response: analysisResponse, label: 'Analysis' }
+        ],
+        operationType,
+        modelName: 'gemini-2.5-flash-lite',
+        userId: this.tokenTracker.getCurrentUserId(),
+        userEmail: this.tokenTracker.getCurrentUserEmail(),
+        processingTime: totalTime
+      });
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // Return result based on detected type
+      // ═══════════════════════════════════════════════════════════════════════
+      if (detectionData.type === 'education' && detectionData.confidence > 0.7) {
+        return {
+          type: 'education',
+          confidence: detectionData.confidence,
+          details: {
+            isMeeting: true,
+            platform: analysisData.platform || 'Online Meeting',
+            topic: analysisData.topic || 'Education Meeting',
+            aiAnalysis: true,
+            reason: detectionData.reason
+          }
+        };
+      }
+
+      if (detectionData.type === 'weight' && detectionData.confidence > 0.6) {
+        return {
+          type: 'weight',
+          confidence: detectionData.confidence,
+          details: {
+            isWeightScale: true,
+            reason: detectionData.reason,
+            aiAnalysis: true,
+            weightValue: analysisData.weight || null,
+            unit: analysisData.unit || 'kg',
+            bmi: analysisData.bmi || null,
+            bodyFat: analysisData.bodyFat || null,
+            muscleMass: analysisData.muscleMass || null,
+            bmr: analysisData.bmr || null
+          }
+        };
+      }
+
+      // Default to food
       return {
-        type,
-        confidence,
+        type: 'food',
+        confidence: detectionData.confidence || 0.5,
         details: {
-          isWeightScale: detection.isWeightScale,
-          geminiConfidence: detection.confidence,
-          reason: detection.reason,
-          aiAnalysis: true
+          reason: detectionData.reason || 'Default classification',
+          aiAnalysis: true,
+          foods: analysisData.foods || [],
+          total: analysisData.total || null
         }
       };
 
@@ -116,6 +261,31 @@ class ImageTypeDetector {
           defaulted: true
         }
       };
+    }
+  }
+
+  /**
+   * Convert file to base64
+   */
+  async fileToBase64(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  /**
+   * Parse JSON response safely
+   */
+  parseJsonResponse(text) {
+    try {
+      let cleanText = text.replace(/```json\n?|\n?```/g, '').trim();
+      return JSON.parse(cleanText);
+    } catch (e) {
+      console.warn('⚠️ Failed to parse JSON response:', e.message);
+      return { type: 'food', confidence: 0.3 };
     }
   }
 
@@ -137,8 +307,7 @@ class ImageTypeDetector {
   }
 
   /**
-   * Quick check - same as detectImageType but with AI
-   * Kept for backward compatibility
+   * Quick check - same as detectImageType
    */
   async quickCheck(image) {
     const result = await this.detectImageType(image);
@@ -155,7 +324,6 @@ class ImageTypeDetector {
     if (this.initialized) {
       await weightDetectionService.terminate();
       this.initialized = false;
-      // console.log('🔚 Image Type Detector terminated');
     }
   }
 }

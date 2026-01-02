@@ -1,4 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createTokenTracker } from './tokenCost';
 
 // Network interception/overrides removed — no global fetch/XHR blocking in production or development.
 // If you need to block or audit external APIs, add a dev-only diagnostic wrapper that returns a rejected Promise instead of throwing.
@@ -12,9 +13,8 @@ class EducationDetectionService {
     // API Base URL for backend calls
     this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
-    // Current user info for token tracking (set by caller)
-    this.currentUserId = null;
-    this.currentUserEmail = null;
+    // Token tracking via centralized module
+    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
 
     // Timeout configuration
     this.timeout = 30000; // 30 second timeout
@@ -26,17 +26,11 @@ class EducationDetectionService {
       totalTokens: 0,
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
-      totalCost: 0,
       totalProcessingTime: 0,
       requestsByType: {},
       errors: 0,
       startTime: new Date().toISOString()
     };
-
-    // USD to INR exchange rate
-    // Using live API rate only (no fallback)
-    this.usdToInrRate = null; // Will be set by fetchExchangeRate
-    this.fetchExchangeRate(); // Fetch live rate on initialization
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -56,52 +50,7 @@ class EducationDetectionService {
 
   // Method to set current user info for token tracking
   setCurrentUser(userId, userEmail) {
-    this.currentUserId = userId;
-    this.currentUserEmail = userEmail;
-    console.log('📊 [Token Monitor] User set for tracking:', { userId, email: userEmail });
-  }
-
-  // Fetch live USD to INR exchange rate
-  async fetchExchangeRate() {
-    // Only fetch in browser environment //
-    if (typeof window === 'undefined') {
-      console.warn('⚠️ Cannot fetch exchange rate in non-browser environment');
-      return;
-    }
-
-    try {
-      console.log('🔄 Fetching live USD to INR exchange rate...');
-      const apiUrl = 'https://open.er-api.com/v6/latest/USD';
-
-      // Add 10-second timeout protection
-      const fetchWithTimeout = Promise.race([
-        fetch(apiUrl),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Exchange rate API timeout (10s)')), 10000)
-        )
-      ]);
-
-      const response = await fetchWithTimeout;
-
-      if (response.ok) {
-        const data = await response.json();
-        const rate = data.rates.INR;
-
-        // Accept any valid positive rate
-        if (rate && rate > 0) {
-          this.usdToInrRate = rate;
-          // console.log('✅ Live exchange rate fetched: $1 USD = ₹' + rate.toFixed(2));
-          return;
-        }
-      }
-
-      throw new Error('Invalid exchange rate data from API');
-
-    } catch (error) {
-      console.error('❌ Failed to fetch exchange rate:', error.message);
-      console.warn('⚠️ Cost calculations will be unavailable until rate is fetched');
-      // Leave usdToInrRate as null - cost calculations will be skipped
-    }
+    this.tokenTracker.setCurrentUser(userId, userEmail);
   }
 
   getSessionMetrics() {
@@ -109,16 +58,12 @@ class EducationDetectionService {
     const avgTokensPerRequest = this.sessionMetrics.totalRequests > 0
       ? Math.round(this.sessionMetrics.totalTokens / this.sessionMetrics.totalRequests)
       : 0;
-    const avgCostPerRequest = this.sessionMetrics.totalRequests > 0
-      ? this.sessionMetrics.totalCost / this.sessionMetrics.totalRequests
-      : 0;
 
     return {
       ...this.sessionMetrics,
       sessionDuration: sessionDuration,
       sessionDurationFormatted: `${Math.round(sessionDuration / 1000)}s`,
       avgTokensPerRequest: avgTokensPerRequest,
-      avgCostPerRequest: avgCostPerRequest,
       errorRate: this.sessionMetrics.totalRequests > 0
         ? ((this.sessionMetrics.errors / this.sessionMetrics.totalRequests) * 100).toFixed(2) + '%'
         : '0%'
@@ -139,225 +84,6 @@ class EducationDetectionService {
     return new Promise((_, reject) => {
       setTimeout(() => reject(new Error(message)), ms);
     });
-  }
-
-
-
-  logTokenUsage(response, requestType, processingTime, options = {}) {
-    try {
-      // Persist to DB by default; set options.persist = false to skip saving
-      const persist = options.persist !== false;
-
-      // Extract usage metadata from Gemini API response
-      const usageMetadata = response.usageMetadata || {};
-
-      // Extract all available response data
-      const candidates = response.candidates || [];
-      const firstCandidate = candidates[0] || {};
-
-      const tokenData = {
-        // Token metrics
-        promptTokens: usageMetadata.promptTokenCount || 0,
-        completionTokens: usageMetadata.candidatesTokenCount || 0,
-        totalTokens: usageMetadata.totalTokenCount || 0,
-
-        // Request metadata
-        requestType: requestType,
-        timestamp: new Date().toISOString(),
-        processingTime: processingTime,
-
-        // Response quality metrics
-        finishReason: firstCandidate.finishReason || 'unknown',
-        safetyRatings: firstCandidate.safetyRatings || [],
-
-        // Model info
-        modelUsed: 'gemini-2.5-flash-lite',
-
-        // Additional metadata
-        candidateCount: candidates.length,
-        responseLength: response.text ? response.text().length : 0
-      };
-      // === COST CALCULATION ===
-      // Source: Google AI Pricing - https://ai.google.dev/pricing
-      // Model: gemini-2.5-flash-lite (prompts ≤128K tokens)
-      // Last updated: December 2025
-      // NOTE: Gemini API only provides token counts, NOT cost
-      //       We must calculate cost manually using Google's published rates
-
-      // Pricing rates (USD per 1 million tokens)
-      const GEMINI_INPUT_RATE_PER_MILLION = 0.10;   // $0.10 per 1M input tokens
-      const GEMINI_OUTPUT_RATE_PER_MILLION = 0.40;   // $0.40 per 1M output tokens
-
-      // For prompts >128K tokens, rates are doubled:
-      // INPUT: $0.15 per 1M tokens | OUTPUT: $0.60 per 1M tokens
-      // (Not implemented yet - current prompts are well under 128K)
-
-      // Formula: (tokens / 1,000,000) × price_per_million
-      // Example: 8,450 tokens = (8450 / 1000000) × 0.075 = $0.00063375
-      // console.log('📊 [Token Monitor] Calculating costs for token usage:', tokenData.promptTokens);
-// console.log('📊 [Token Monitor] Calculating costs for token usage:', tokenData.completionTokens);
-      const inputCostUSD = (tokenData.promptTokens / 1000000) * GEMINI_INPUT_RATE_PER_MILLION;
-      const outputCostUSD = (tokenData.completionTokens / 1000000) * GEMINI_OUTPUT_RATE_PER_MILLION;
-      const totalCostUSD = inputCostUSD + outputCostUSD;
-
-      // Convert to INR for database storage
-      // Save actual INR values (not rounded) for DB
-      const inputCost = inputCostUSD * this.usdToInrRate;
-      const outputCost = outputCostUSD * this.usdToInrRate;
-      const totalCost = totalCostUSD * this.usdToInrRate;
-
-      // Update session metrics
-      this.sessionMetrics.totalRequests++;
-      this.sessionMetrics.totalTokens += tokenData.totalTokens;
-      this.sessionMetrics.totalPromptTokens += tokenData.promptTokens;
-      this.sessionMetrics.totalCompletionTokens += tokenData.completionTokens;
-      this.sessionMetrics.totalCost += totalCost;
-      this.sessionMetrics.totalProcessingTime += processingTime;
-
-      if (!this.sessionMetrics.requestsByType[requestType]) {
-        this.sessionMetrics.requestsByType[requestType] = 0;
-      }
-      this.sessionMetrics.requestsByType[requestType]++;
-
-      // Log to console with detailed formatting
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`📊 TOKEN USAGE DETAILS [${requestType}]`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Token counts
-      console.log('🔢 TOKEN COUNTS:');
-      console.log(`   Input Tokens:     ${tokenData.promptTokens.toLocaleString()}`);
-      console.log(`   Output Tokens:    ${tokenData.completionTokens.toLocaleString()}`);
-      console.log(`   Total Tokens:     ${tokenData.totalTokens.toLocaleString()}`);
-      console.log('');
-
-      // USD costs
-      console.log('💵 COSTS IN USD:');
-      console.log(`   Input Cost:       $${inputCostUSD.toFixed(6)}`);
-      console.log(`   Output Cost:      $${outputCostUSD.toFixed(6)}`);
-      console.log(`   Total Cost:       $${totalCostUSD.toFixed(6)}`);
-      console.log('');
-
-      // INR costs
-      console.log('💸 COSTS IN INR:');
-      console.log(`   Input Cost:       ₹${inputCost.toFixed(4)}`);
-      console.log(`   Output Cost:      ₹${outputCost.toFixed(4)}`);
-      console.log(`   Total Cost:       ₹${totalCost.toFixed(4)}`);
-      console.log('');
-
-      // Exchange rate info
-      // console.log(`💱 Exchange Rate:    1 USD = ₹${this.usdToInrRate.toFixed(2)}`);
-      // console.log(`⏱️  Processing Time:  ${processingTime}ms`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-      // Summary console logs for quick reference
-      console.log('Total Input Cost (USD):', inputCostUSD);
-      console.log('Total Output Cost (USD):', outputCostUSD);
-      console.log('Total Token Cost (USD):', totalCostUSD);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('Total Input Cost (INR):', inputCost);
-      console.log('Total Output Cost (INR):', outputCost);
-      console.log('Total Token Cost (INR):', totalCost);
-
-      // Log response quality
-      console.log(`🔍 Response Quality [${requestType}]:`, {
-        '✅ Finish Reason': tokenData.finishReason,
-        '🛡️ Safety Ratings': tokenData.safetyRatings.length > 0 ? 'Passed' : 'N/A',
-        '📝 Response Length': `${tokenData.responseLength} chars`,
-        '🎯 Candidates': tokenData.candidateCount
-      });
-
-      // Save token usage to database if user info is available and persist is true
-      if (!persist) {
-        console.log('ℹ️ Token usage persistence skipped (persist=false) for', requestType);
-      } else if (this.currentUserId && this.currentUserEmail) {
-        this.saveTokenUsageToDatabase({
-          userId: this.currentUserId,
-          email: this.currentUserEmail,
-          operationType: requestType,
-          modelName: tokenData.modelUsed,
-          inputTokens: tokenData.promptTokens,
-          outputTokens: tokenData.completionTokens,
-          totalTokens: tokenData.totalTokens,
-          inputTokenCost: inputCost,
-          outputTokenCost: outputCost,
-          totalTokenCost: totalCost
-        }).catch(err => {
-          // Don't throw - just log the error so it doesn't interrupt the flow
-          console.warn('⚠️ Failed to save token usage to database:', err.message);
-        });
-      } else {
-        console.warn('⚠️ Token usage not saved - user info not set. Call setCurrentUser() first.');
-      }
-
-      // // Log safety ratings detail
-      // if (tokenData.safetyRatings.length > 0) {
-      //   console.log('🛡️ Safety Details:', tokenData.safetyRatings);
-      // }
-
-      // // Log session summary
-      // console.log(`📈 Session Summary:`, {
-      //   'Total Requests': this.sessionMetrics.totalRequests,
-      //   'Total Tokens': this.sessionMetrics.totalTokens,
-      //   'Total Cost': `$${this.sessionMetrics.totalCost.toFixed(6)}`,
-      //   'Avg Processing Time': `${Math.round(this.sessionMetrics.totalProcessingTime / this.sessionMetrics.totalRequests)}ms`,
-      //   'Requests by Type': this.sessionMetrics.requestsByType
-      // });
-
-      // Log structured data for Cloud Logging compatibility
-      // const structuredLog = {
-      //   ...tokenData,
-      //   costEstimate: {
-      //     inputCost: inputCost,
-      //     outputCost: outputCost,
-      //     totalCost: totalCost,
-      //     currency: 'USD'
-      //   },
-      //   session: this.sessionMetrics
-      // };
-
-      // console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
-
-    } catch (error) {
-      console.warn('⚠️ Could not extract token usage:', error.message);
-    }
-  }
-
-  // Save token usage data to backend database
-  async saveTokenUsageToDatabase(tokenData) {
-    try {
-      console.log('📤 Sending token data to:', `${this.apiBaseUrl}/api/save-token-usage`);
-      console.log('📦 Token data payload:', tokenData);
-
-      const response = await fetch(`${this.apiBaseUrl}/api/save-token-usage`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(tokenData)
-      });
-
-      console.log('📥 Response status:', response.status, response.statusText);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('❌ API Error Response:', errorText);
-        throw new Error(`HTTP error! status: ${response.status} - ${errorText}`);
-      }
-
-      const result = await response.json();
-
-      if (result.success) {
-        console.log('✅ Token usage saved to database:', result.id);
-      } else {
-        throw new Error(result.message || 'Failed to save token usage');
-      }
-
-      return result;
-    } catch (error) {
-      console.error('❌ Error saving token usage to database:', error);
-      throw error;
-    }
   }
 
   // Optimized image preprocessing
@@ -489,8 +215,8 @@ class EducationDetectionService {
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
 
-      // Log token usage (optionally skip persistence)
-      this.logTokenUsage(response, 'education_detection', processingTime, { persist: options.persist !== false });
+      // Log token usage via centralized tracker
+      this.tokenTracker.track(response, 'education_detection', processingTime);
 
       console.log(`✅ Meeting detection completed in ${processingTime}ms`);
 
@@ -584,8 +310,8 @@ IMPORTANT:
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
 
-      // Log token usage
-      this.logTokenUsage(response, 'education_analysis', processingTime);
+      // Log token usage via centralized tracker
+      this.tokenTracker.track(response, 'education_analysis', processingTime);
 
       // Apply fallback for topic
       const topic = data.detectedTitle || data.title || 'Education Meeting';
