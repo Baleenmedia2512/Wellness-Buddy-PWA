@@ -116,9 +116,6 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }
       }
 
-      // Add 5 second delay before saving
-      await new Promise(resolve => setTimeout(resolve, 3000));
-
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: 'POST',
         headers: {
@@ -133,11 +130,11 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }),
       });
 
-      if (!response.ok) {
-        throw new Error('Failed to update profile');
-      }
-
       const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Failed to update profile');
+      }
 
       if (data.success) {
         // Update BMR if it was recalculated
