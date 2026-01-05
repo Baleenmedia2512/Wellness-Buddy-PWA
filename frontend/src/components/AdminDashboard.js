@@ -16,12 +16,15 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronDown,
-  Check
+  Check,
+  Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { App as CapacitorApp } from '@capacitor/app';
 
 // --- Dynamic Demo Data Generator ---
+// COMMENTED OUT - Demo data disabled
+/*
 const generateDemoData = () => {
   const today = new Date();
   
@@ -190,11 +193,13 @@ const generateDemoData = () => {
     userSpending
   };
 };
+*/
 
 // Generate demo data on load
-const DEMO_DATA = generateDemoData();
+// const DEMO_DATA = generateDemoData();
 
 // Filter demo data based on time range
+/*
 const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndDate = null) => {
   const now = new Date();
   let startDateObj;
@@ -291,6 +296,7 @@ const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndD
     userSpending: filteredUserSpending
   };
 };
+*/
 
 // --- Components ---
 
@@ -465,13 +471,11 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
   );
 };
 
-
-
 const AdminDashboard = ({ user, onClose }) => {
   const [timeRange, setTimeRange] = useState('month');
   const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showDemoData, setShowDemoData] = useState(false);
+  // const [showDemoData, setShowDemoData] = useState(false); // COMMENTED OUT - Demo disabled
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -483,8 +487,16 @@ const AdminDashboard = ({ user, onClose }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
+  const [showEditPopup, setShowEditPopup] = useState(false);
+  const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
+  const [tokenCostInputs, setTokenCostInputs] = useState({ inputCost: '', outputCost: '' });
+  const [originalTokenCosts, setOriginalTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   const fetchTokenData = async () => {
+    // DEMO DATA DISABLED
+    /*
     if (showDemoData) {
       // Add delay for demo mode to test loading skeleton
       setLoading(true);
@@ -498,6 +510,7 @@ const AdminDashboard = ({ user, onClose }) => {
       setLastUpdated(new Date());
       return;
     }
+    */
 
     try {
       setRefreshing(true);
@@ -532,7 +545,100 @@ const AdminDashboard = ({ user, onClose }) => {
   useEffect(() => {
     fetchTokenData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRange, showDemoData, customStartDate, customEndDate]);
+  }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
+
+  // Fetch token costs when edit popup opens
+  useEffect(() => {
+    const fetchLatestTokenCosts = async () => {
+      if (showEditPopup) {
+        try {
+          const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+          const response = await fetch(
+            `${apiBaseUrl}/api/get-latest-token-costs?email=${encodeURIComponent(user?.email)}`
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data) {
+              const costs = {
+                inputCost: parseFloat(data.data.inputTokenCost || 0),
+                outputCost: parseFloat(data.data.outputTokenCost || 0)
+              };
+              setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+              });
+              setOriginalTokenCosts(costs); // Store original values
+            }
+          } else {
+            // If no record exists (404) or other error, default to 0
+            const defaultCosts = { inputCost: 0, outputCost: 0 };
+            setTokenCosts(defaultCosts);
+            setTokenCostInputs({ inputCost: '0', outputCost: '0' });
+            setOriginalTokenCosts(defaultCosts);
+            console.log('No token cost records found for user, defaulting to 0');
+          }
+        } catch (error) {
+          console.error('Error fetching latest token costs:', error);
+          // On error, also default to 0
+          const defaultCosts = { inputCost: 0, outputCost: 0 };
+          setTokenCosts(defaultCosts);
+          setTokenCostInputs({ inputCost: '0', outputCost: '0' });
+          setOriginalTokenCosts(defaultCosts);
+        }
+      } else {
+        // Reset to 0 when popup closes
+        const defaultCosts = { inputCost: 0, outputCost: 0 };
+        setTokenCosts(defaultCosts);
+        setTokenCostInputs({ inputCost: '0', outputCost: '0' });
+        setOriginalTokenCosts(defaultCosts);
+      }
+    };
+
+    fetchLatestTokenCosts();
+  }, [showEditPopup, user?.email]);
+
+  // Save token correction
+  const handleSaveTokenCorrection = async () => {
+    setSavingCorrection(true);
+    try {
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: user?.email,
+          originalInputCost: originalTokenCosts.inputCost,
+          originalOutputCost: originalTokenCosts.outputCost,
+          correctedInputCost: tokenCosts.inputCost,
+          correctedOutputCost: tokenCosts.outputCost
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log('✅ Token correction saved successfully:', data.data);
+          setShowSuccessMessage(true);
+          setTimeout(() => {
+            setShowSuccessMessage(false);
+            setShowEditPopup(false);
+          }, 7000);
+        }
+      } else {
+        console.error('Failed to save token correction');
+        // Silently fail - no alert
+      }
+    } catch (error) {
+      console.error('Error saving token correction:', error);
+      // Silently fail - no alert
+    } finally {
+      setSavingCorrection(false);
+    }
+  };
 
   // Android back button handler
   useEffect(() => {
@@ -572,7 +678,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return 'Custom Range';
   };
 
-  const formatCurrency = (val) => `₹${Number(val).toFixed(2)}`;
+  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(4))}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -657,36 +763,27 @@ const AdminDashboard = ({ user, onClose }) => {
             <p className="text-xs text-gray-500 mt-0.5">Track token usage and spending</p>
           </div>
           
-          <button 
-            onClick={fetchTokenData}
-            className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => setShowEditPopup(true)}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+            >
+              <Edit3 className="w-5 h-5" />
+            </button>
+            {showSuccessMessage && (
+              <div className="text-green-600 text-sm mr-2">Saved!</div>
+            )}
+            <button 
+              onClick={fetchTokenData}
+              className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
-        
-        {/* Demo Toggle */}
-        <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <Database className="w-4 h-4" />
-            <span>Demo Data</span>
-          </div>
-          <button
-            onClick={() => setShowDemoData(!showDemoData)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              showDemoData ? 'bg-green-500' : 'bg-gray-200'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                showDemoData ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
 
         {/* Date Range Filter */}
         <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
@@ -789,10 +886,10 @@ const AdminDashboard = ({ user, onClose }) => {
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
               <div className="grid grid-cols-2 gap-8">
                 <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.requestCount || 0)}</p>
+                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.totalTokens || 0)}</p>
                   <div className="flex items-center space-x-2">
                     <Zap className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400">Total Requests</span>
+                    <span className="text-xs text-gray-400">Total Tokens</span>
                   </div>
                 </div>
                 <div>
@@ -881,15 +978,6 @@ const AdminDashboard = ({ user, onClose }) => {
                       </div>
                     </th>
                     <th 
-                      onClick={() => handleSort('requestCount')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Requests</span>
-                        <SortIcon field="requestCount" />
-                      </div>
-                    </th>
-                    <th 
                       onClick={() => handleSort('totalCost')}
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
@@ -917,9 +1005,6 @@ const AdminDashboard = ({ user, onClose }) => {
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-medium text-gray-800">{formatNumber(user.totalTokens)}</p>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.requestCount)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
@@ -1066,6 +1151,129 @@ const AdminDashboard = ({ user, onClose }) => {
         )}
 
       </div>
+
+      {/* Edit Token Cost Popup */}
+      <AnimatePresence>
+        {showEditPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
+                <button
+                  onClick={() => setShowEditPopup(false)}
+                  className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Success Message */}
+              <AnimatePresence>
+                {showSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-4 p-4 bg-green-500 text-white rounded-lg flex items-center gap-3"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">Token costs saved successfully!</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Input Token Cost (INR)
+                  </label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="number"
+                      value={tokenCostInputs.inputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, inputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, inputCost: parseFloat(val) || 0 }));
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      placeholder="0.001"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Output Token Cost (INR)
+                  </label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="text"
+                      value={tokenCostInputs.outputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, outputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, outputCost: parseFloat(val) || 0 }));
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      placeholder="0.004"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm text-gray-600">Total Cost</span>
+                    <span className="text-2xl font-bold text-green-600">
+                      ₹{(tokenCosts.inputCost + tokenCosts.outputCost).toFixed(4)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {!savingCorrection ? (
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowEditPopup(false)}
+                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleSaveTokenCorrection}
+                    className="flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium bg-green-600 hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-center mt-6">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Saving...</span>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

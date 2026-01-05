@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-12-05T11:16:16.529Z",
+  "ready": true,
+  "duration": "43.6s",
+  "passed": [
+    "environment-check",
+    "api-tests",
+    "coverage-check",
+    "build-validation"
+  ],
+  "failed": [],
+  "warnings": [
+    "no-env-example",
+    "no-env-local",
+    "integration-tests-empty"
+  ],
+  "thresholds": {
+    "lines": 70,
+    "branches": 60,
+    "functions": 70,
+    "statements": 70
+  }
+}
