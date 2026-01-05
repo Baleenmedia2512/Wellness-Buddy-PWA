@@ -2123,7 +2123,7 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {/* <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
+        <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
           <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3>
           <div className="space-y-3">
             <div>
@@ -2145,7 +2145,7 @@ function WellnessValleyApp() {
               <li>• For text queries, be specific about preparation methods </li>
             </ul>
           </div>
-        </div> */}
+        </div>
 
         <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
       </div>
