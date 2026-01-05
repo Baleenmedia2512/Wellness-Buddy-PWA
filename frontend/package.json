@@ -19,7 +19,7 @@
     "@ionic/react-router": "^8.6.4",
     "@southdevs/capacitor-google-auth": "^7.0.0",
     "axios": "^1.13.2",
-    "date-fns": "^4.1.0",
+    "date-fns": "^2.30.0",
     "firebase": "^11.10.0",
     "framer-motion": "^12.23.3",
     "html2canvas": "^1.4.1",
