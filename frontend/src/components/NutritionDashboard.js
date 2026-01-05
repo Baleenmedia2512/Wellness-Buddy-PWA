@@ -1230,7 +1230,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
               <div className="w-full max-w-md mx-auto bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-xs md:text-sm text-gray-500">Calories Eaten</p>
+                    <p className="text-xs md:text-sm text-gray-500">Calories Consumed</p>
                     <p className="text-xl md:text-2xl font-bold text-gray-900">
                       {dailyStats.totalCalories || 0}
                       <span className="text-xs md:text-sm font-normal text-gray-500"> / 2100 kcal</span>
