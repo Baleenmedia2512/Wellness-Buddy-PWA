@@ -820,7 +820,7 @@ const AdminDashboard = ({ user, onClose }) => {
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
 
         {/* Date Range Filter */}
-        <div className="flex flex-wrap gap-2">
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {['today', 'yesterday', 'week', 'month', 'all'].map((range) => (
             <button
               key={range}
@@ -918,26 +918,26 @@ const AdminDashboard = ({ user, onClose }) => {
               className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
             >
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
-              <div className="grid grid-cols-3 gap-4">
-                <div>
-                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalInputCost || 0)}</p>
-                  <div className="flex items-center space-x-1">
-                    <IndianRupee className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400">Input Cost</span>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalInputCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Input Cost</span>
                   </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalOutputCost || 0)}</p>
-                  <div className="flex items-center space-x-1">
-                    <IndianRupee className="w-4 h-4 text-purple-500" />
-                    <span className="text-xs text-gray-400">Output Cost</span>
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalOutputCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Output Cost</span>
                   </div>
                 </div>
-                <div>
-                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalCost || 0)}</p>
-                  <div className="flex items-center space-x-1">
-                    <IndianRupee className="w-4 h-4 text-green-500" />
-                    <span className="text-xs text-gray-400">Total Cost</span>
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Total Cost</span>
                   </div>
                 </div>
               </div>
