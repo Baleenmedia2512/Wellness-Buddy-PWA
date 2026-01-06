@@ -61,19 +61,17 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
 
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500">
-      <div className="max-w-md mx-auto px-4 py-4 flex justify-between items-start">
+      <div className="max-w-md mx-auto px-4 py-3 flex justify-between items-start">
         <div className="flex-1 min-w-0">
           <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 flex items-center space-x-2">
             <img 
               src={wellnessValleyIcon} 
               alt="Wellness Valley" 
-              className="h-12 w-12 sm:h-12 sm:w-12   object-contain"
-              // className="h-11.5 w-11.5 sm:h-11.5 sm:w-11.5 object-contain"
+              className="h-12 w-12 sm:h-12 sm:w-12 object-contain"
             />
             <span className="truncate">Wellness Valley</span>
           </h1>
-          {/* <p className="text-xs sm:text-sm text-green-600 mt-1 ml-9 sm:ml-10 truncate"> */}
-          <p className="text-xs sm:text-sm text-green-600 mt-0 ml-9 sm:ml-10 truncate">
+          <p className="text-xs sm:text-sm text-green-600 -mt-2 ml-14 sm:ml-14 truncate">
             Track your meals effortlessly
           </p>
         </div>
