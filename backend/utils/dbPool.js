@@ -21,10 +21,13 @@ const dbConfig = {
   queueLimit: 0, // Unlimited queue
   enableKeepAlive: true,
   keepAliveInitialDelay: 0,
-  // Connection timeout settings
-  connectTimeout: 10000, // 10 seconds
+  // Connection timeout settings - increased for remote databases
+  connectTimeout: 30000, // 30 seconds (was 10)
+  acquireTimeout: 30000, // 30 seconds to acquire connection from pool
   // Query timeout
   timeout: 60000, // 60 seconds
+  // Retry logic
+  retryLimit: 3, // Retry failed connections
 };
 
 // Create the connection pool (singleton)

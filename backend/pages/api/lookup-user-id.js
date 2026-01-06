@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -24,14 +25,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    // Check cache first (2 minute TTL for user lookup)
+    const cacheKey = `user:lookup:${email}`;
+    const cached = cache.get(cacheKey);
+    
+    if (cached) {
+      console.log('✅ [lookup-user-id] Cache HIT for:', email);
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
 
-    console.log('📊 [lookup-user-id] Database connection established');
+    // Use connection pool to avoid ETIMEDOUT errors
+    const pool = getPool();
+    console.log('📊 [lookup-user-id] Using connection pool');
 
     // Try to find user by email first (most reliable)
     let query = 'SELECT UserId, UserName, Email, Status, Role FROM team_table WHERE Email = ?';
@@ -39,17 +45,7 @@ export default async function handler(req, res) {
     
     console.log('🔎 [lookup-user-id] Executing query:', query, 'with params:', params);
 
-    // If no email provided, we could extend this to support other lookup methods
-    if (!email) {
-      // For now, we'll return an error since we need email to match with team_table
-      await connection.end();
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Email is required to lookup database UserId' 
-      });
-    }
-
-    const [rows] = await connection.execute(query, params);
+    const [rows] = await pool.execute(query, params);
     await connection.end();
 
     console.log('📋 [lookup-user-id] Query results:', { rowCount: rows.length, rows });
@@ -92,18 +88,24 @@ export default async function handler(req, res) {
 
     console.log('📤 [lookup-user-id] Sending response:', response);
 
+    // Cache for 2 minutes
+    cache.set(cacheKey, response, 120000);
+    res.setHeader('X-Cache', 'MISS');
+    
     res.status(200).json(response);
 
   } catch (error) {
     console.error('❌ [lookup-user-id] Error occurred:', error);
     console.error('❌ [lookup-user-id] Error details:', {
       message: error.message,
+      code: error.code,
+      errno: error.errno,
       stack: error.stack,
       email: email
     });
     res.status(500).json({ 
       success: false, 
-      error: error.message 
+      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message 
     });
   }
 }
