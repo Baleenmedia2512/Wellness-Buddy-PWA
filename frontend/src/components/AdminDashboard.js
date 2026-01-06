@@ -547,48 +547,82 @@ const AdminDashboard = ({ user, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
 
+  // Track if popup was just opened to load initial values
+  const [popupJustOpened, setPopupJustOpened] = useState(false);
+
   // Fetch token costs when edit popup opens
+  // Logic: Show edited values UNLESS new usage was added after the last edit
   useEffect(() => {
-    const fetchLatestTokenCosts = async () => {
-      if (showEditPopup) {
+    const fetchTokenCosts = async () => {
+      if (showEditPopup && !popupJustOpened) {
+        setPopupJustOpened(true);
+        
         try {
           const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+          
+          // Fetch correction data (includes latest usage timestamp for comparison)
+          const correctionResponse = await fetch(
+            `${apiBaseUrl}/api/get-token-correction`
+          );
+          
+          if (correctionResponse.ok) {
+            const correctionData = await correctionResponse.json();
+            
+            // Check if we have a saved correction AND it's more recent than latest usage
+            if (correctionData.success && correctionData.data) {
+              const correctionTimestamp = new Date(correctionData.data.correctionTimestamp);
+              const latestUsageTimestamp = correctionData.latestUsageTimestamp 
+                ? new Date(correctionData.latestUsageTimestamp) 
+                : null;
+              
+              // If correction is MORE RECENT than latest usage, show edited values
+              // If new usage was added after correction, show calculated totals instead
+              if (!latestUsageTimestamp || correctionTimestamp >= latestUsageTimestamp) {
+                const costs = {
+                  inputCost: parseFloat(correctionData.data.inputCost || 0),
+                  outputCost: parseFloat(correctionData.data.outputCost || 0)
+                };
+                setTokenCosts(costs);
+                setTokenCostInputs({
+                  inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                  outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+                });
+                setOriginalTokenCosts(costs);
+                console.log('📖 Using saved correction (no new usage since last edit)');
+                return; // Exit early, we have saved values that are still current
+              } else {
+                console.log('📖 New usage detected after last correction, fetching fresh totals');
+              }
+            }
+          }
+          
+          // No valid saved correction OR new usage was added - fetch calculated totals
           const response = await fetch(
-            `${apiBaseUrl}/api/get-latest-token-costs?email=${encodeURIComponent(user?.email)}`
+            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}&timeRange=all`
           );
           
           if (response.ok) {
             const data = await response.json();
-            if (data.success && data.data) {
+            if (data.success && data.data?.summary) {
+              const summaryData = data.data.summary;
               const costs = {
-                inputCost: parseFloat(data.data.inputTokenCost || 0),
-                outputCost: parseFloat(data.data.outputTokenCost || 0)
+                inputCost: parseFloat(summaryData.totalInputCost || 0),
+                outputCost: parseFloat(summaryData.totalOutputCost || 0)
               };
               setTokenCosts(costs);
               setTokenCostInputs({
                 inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
                 outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
               });
-              setOriginalTokenCosts(costs); // Store original values
+              setOriginalTokenCosts(costs);
             }
-          } else {
-            // If no record exists (404) or other error, default to 0
-            const defaultCosts = { inputCost: 0, outputCost: 0 };
-            setTokenCosts(defaultCosts);
-            setTokenCostInputs({ inputCost: '0', outputCost: '0' });
-            setOriginalTokenCosts(defaultCosts);
-            console.log('No token cost records found for user, defaulting to 0');
           }
         } catch (error) {
-          console.error('Error fetching latest token costs:', error);
-          // On error, also default to 0
-          const defaultCosts = { inputCost: 0, outputCost: 0 };
-          setTokenCosts(defaultCosts);
-          setTokenCostInputs({ inputCost: '0', outputCost: '0' });
-          setOriginalTokenCosts(defaultCosts);
+          console.error('Error fetching token costs:', error);
         }
-      } else {
-        // Reset to 0 when popup closes
+      } else if (!showEditPopup && popupJustOpened) {
+        // Reset when popup closes
+        setPopupJustOpened(false);
         const defaultCosts = { inputCost: 0, outputCost: 0 };
         setTokenCosts(defaultCosts);
         setTokenCostInputs({ inputCost: '0', outputCost: '0' });
@@ -596,8 +630,8 @@ const AdminDashboard = ({ user, onClose }) => {
       }
     };
 
-    fetchLatestTokenCosts();
-  }, [showEditPopup, user?.email]);
+    fetchTokenCosts();
+  }, [showEditPopup, popupJustOpened, user?.email]);
 
   // Save token correction
   const handleSaveTokenCorrection = async () => {
@@ -786,8 +820,8 @@ const AdminDashboard = ({ user, onClose }) => {
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
 
         {/* Date Range Filter */}
-        <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
-          {['today', 'week', 'month', 'all'].map((range) => (
+        <div className="flex flex-wrap gap-2">
+          {['today', 'yesterday', 'week', 'month', 'all'].map((range) => (
             <button
               key={range}
               onClick={() => {
@@ -796,7 +830,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 setCustomEndDate(null);
                 setShowDatePicker(false);
               }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 timeRange === range
                   ? 'bg-green-600 text-white shadow-md shadow-green-200'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -807,7 +841,7 @@ const AdminDashboard = ({ user, onClose }) => {
           ))}
           <button
             onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
               timeRange === 'custom'
                 ? 'bg-green-600 text-white shadow-md shadow-green-200'
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -884,17 +918,24 @@ const AdminDashboard = ({ user, onClose }) => {
               className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
             >
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-3 gap-4">
                 <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.totalTokens || 0)}</p>
-                  <div className="flex items-center space-x-2">
-                    <Zap className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400">Total Tokens</span>
+                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalInputCost || 0)}</p>
+                  <div className="flex items-center space-x-1">
+                    <IndianRupee className="w-4 h-4 text-blue-500" />
+                    <span className="text-xs text-gray-400">Input Cost</span>
                   </div>
                 </div>
                 <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalCost || 0)}</p>
-                  <div className="flex items-center space-x-2">
+                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalOutputCost || 0)}</p>
+                  <div className="flex items-center space-x-1">
+                    <IndianRupee className="w-4 h-4 text-purple-500" />
+                    <span className="text-xs text-gray-400">Output Cost</span>
+                  </div>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalCost || 0)}</p>
+                  <div className="flex items-center space-x-1">
                     <IndianRupee className="w-4 h-4 text-green-500" />
                     <span className="text-xs text-gray-400">Total Cost</span>
                   </div>
@@ -1196,7 +1237,7 @@ const AdminDashboard = ({ user, onClose }) => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Input Token Cost (INR)
+                    Total Input Cost (INR)
                   </label>
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -1216,12 +1257,12 @@ const AdminDashboard = ({ user, onClose }) => {
 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Output Token Cost (INR)
+                    Total Output Cost (INR)
                   </label>
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
-                      type="text"
+                      type="number"
                       value={tokenCostInputs.outputCost}
                       onChange={(e) => {
                         const val = e.target.value;
@@ -1231,15 +1272,6 @@ const AdminDashboard = ({ user, onClose }) => {
                       className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
                       placeholder="0.004"
                     />
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-600">Total Cost</span>
-                    <span className="text-2xl font-bold text-green-600">
-                      ₹{(tokenCosts.inputCost + tokenCosts.outputCost).toFixed(4)}
-                    </span>
                   </div>
                 </div>
               </div>

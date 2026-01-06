@@ -81,6 +81,13 @@ export default async function handler(req, res) {
           const todayIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
           startDateObj = new Date(todayIST.getTime() - IST_OFFSET_MS);
           break;
+        case 'yesterday':
+          // Yesterday in IST (start of yesterday to end of yesterday)
+          const yesterdayStartIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate() - 1);
+          const yesterdayEndIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate() - 1, 23, 59, 59, 999);
+          startDateObj = new Date(yesterdayStartIST.getTime() - IST_OFFSET_MS);
+          endDateObj = new Date(yesterdayEndIST.getTime() - IST_OFFSET_MS);
+          break;
         case 'week':
           startDateObj = new Date(nowUTC.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;
