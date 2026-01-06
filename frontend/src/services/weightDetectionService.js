@@ -1,5 +1,6 @@
 // src/services/weightDetectionService.js
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { createTokenTracker } from './tokenCost';
 
 /**
  * Weight Detection Service using Google Gemini AI
@@ -12,6 +13,12 @@ class WeightDetectionService {
     this.model = null;
     this.timeout = 60000; // 60 second timeout
     this.maxRetries = 2;
+    
+    // API Base URL for backend calls
+    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+    
+    // Token tracking via centralized module
+    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
 
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
@@ -21,12 +28,17 @@ class WeightDetectionService {
           temperature: 0.1, // Low temperature for accurate number detection
           topK: 1,
           topP: 0.8,
-          maxOutputTokens: 2048,
+          maxOutputTokens: 2048, // Increased for gemini-2.5-flash reliability
         }
       });
     }
   }
 
+  // Method to set current user info for token tracking
+  setCurrentUser(userId, userEmail) {
+    this.tokenTracker.setCurrentUser(userId, userEmail);
+  }
+  
   /**
    * Detect if image is a weight scale
    * @param {File} imageFile - Image file to analyze
@@ -172,6 +184,9 @@ Examples:
       // Parse the JSON response
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
+      
+      // Track token usage via centralized module
+      this.tokenTracker.track(response, 'weight_detection', processingTime);
 
       // console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
 

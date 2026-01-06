@@ -1,6 +1,6 @@
 {
   "name": "wellness-valley-pwa-frontend",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "private": true,
   "homepage": ".",
   "dependencies": {
@@ -9,7 +9,7 @@
     "@capacitor/camera": "^7.0.1",
     "@capacitor/cli": "^7.4.2",
     "@capacitor/core": "^7.4.2",
-    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/filesystem": "^6.0.0",
     "@capacitor/push-notifications": "^7.0.1",
     "@capacitor/status-bar": "^7.0.3",
     "@capawesome/capacitor-android-edge-to-edge-support": "^7.2.3",
@@ -19,9 +19,10 @@
     "@ionic/react-router": "^8.6.4",
     "@southdevs/capacitor-google-auth": "^7.0.0",
     "axios": "^1.13.2",
-    "date-fns": "^4.1.0",
+    "date-fns": "^2.30.0",
     "firebase": "^11.10.0",
     "framer-motion": "^12.23.3",
+    "html2canvas": "^1.4.1",
     "ionicons": "^8.0.13",
     "lucide-react": "^0.525.0",
     "react": "^18.3.1",
