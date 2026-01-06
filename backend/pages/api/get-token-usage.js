@@ -58,11 +58,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Calculate date range using IST (UTC+5:30) for consistency across local and production
-    // This ensures Vercel (UTC) and local (IST) servers calculate the same date ranges
-    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
-    const nowUTC = new Date();
-    const nowIST = new Date(nowUTC.getTime() + IST_OFFSET_MS);
+    // Calculate date range using server's local timezone
+    const now = new Date();
     
     // Helper function to parse date string in local timezone (prevents date shifting)
     const parseLocalDate = (dateStr) => {
@@ -82,17 +79,28 @@ export default async function handler(req, res) {
       return new Date(dateStr);
     };
     
+    // Helper to get start of day in local timezone
+    const getStartOfDay = (date) => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      return d;
+    };
+    
+    // Helper to get end of day in local timezone
+    const getEndOfDay = (date) => {
+      const d = new Date(date);
+      d.setHours(23, 59, 59, 999);
+      return d;
+    };
+    
     let startDateObj;
-    let endDateObj = nowUTC; // Use UTC for database queries
+    let endDateObj = now;
     
     // If custom date range provided, use it
     if (startDate && endDate) {
       // Parse dates in local timezone to prevent date shifting
-      startDateObj = parseLocalDate(startDate);
-      startDateObj.setHours(0, 0, 0, 0); // Start of day
-      
-      endDateObj = parseLocalDate(endDate);
-      endDateObj.setHours(23, 59, 59, 999); // End of day
+      startDateObj = getStartOfDay(parseLocalDate(startDate));
+      endDateObj = getEndOfDay(parseLocalDate(endDate));
       
       console.log('[Token Usage] Custom date range:', {
         inputStart: startDate,
@@ -101,26 +109,29 @@ export default async function handler(req, res) {
         parsedEnd: endDateObj.toISOString()
       });
     } else {
-      // Use predefined time ranges based on IST
+      // Use predefined time ranges based on server's local timezone
+      const today = getStartOfDay(now);
+      
       switch (timeRange) {
         case 'today':
-          // Start of today in IST (midnight IST = 18:30 previous day UTC)
-          const todayIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
-          startDateObj = new Date(todayIST.getTime() - IST_OFFSET_MS);
+          startDateObj = today;
+          endDateObj = now;
           break;
         case 'yesterday':
-          // Yesterday in IST (start of yesterday to end of yesterday)
-          const yesterdayStartIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate() - 1);
-          const yesterdayEndIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate() - 1, 23, 59, 59, 999);
-          startDateObj = new Date(yesterdayStartIST.getTime() - IST_OFFSET_MS);
-          endDateObj = new Date(yesterdayEndIST.getTime() - IST_OFFSET_MS);
+          const yesterday = new Date(today);
+          yesterday.setDate(yesterday.getDate() - 1);
+          startDateObj = yesterday;
+          endDateObj = getEndOfDay(yesterday);
           break;
         case 'week':
-          startDateObj = new Date(nowUTC.getTime() - 7 * 24 * 60 * 60 * 1000);
+          const weekStart = new Date(today);
+          weekStart.setDate(weekStart.getDate() - 6);
+          startDateObj = weekStart;
           break;
         case 'month':
-          // Rolling 30-day range from now
-          startDateObj = new Date(nowUTC.getTime() - 30 * 24 * 60 * 60 * 1000);
+          const monthStart = new Date(today);
+          monthStart.setDate(monthStart.getDate() - 29);
+          startDateObj = monthStart;
           break;
         case 'all':
         default:
@@ -240,7 +251,7 @@ export default async function handler(req, res) {
     );
 
     // Query 7: Daily statistics (last 30 days)
-    const thirtyDaysAgo = new Date(nowUTC.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyParams = [...queryParams];
     dailyParams[0] = thirtyDaysAgo > startDateObj ? thirtyDaysAgo : startDateObj;
 
