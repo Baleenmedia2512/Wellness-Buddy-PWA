@@ -16,12 +16,12 @@ class WeightDetectionService {
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: {
           temperature: 0.1, // Low temperature for accurate number detection
           topK: 1,
           topP: 0.8,
-          maxOutputTokens: 2048, // Increased for gemini-2.5-flash reliability
+          maxOutputTokens: 2048,
         }
       });
     }

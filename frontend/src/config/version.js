@@ -72,20 +72,25 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.4.0',
+  VERSION: '1.4.1',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 10,
+  VERSION_CODE: 11,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Discipline Report & UI Improvements',
+  RELEASE_NAME: 'Discipline Report Date Fix',
   
   // Build date
-  BUILD_DATE: '2025-12-29',
+  BUILD_DATE: '2026-01-06',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.4.1 (Code 11) - 2026-01-06
+ *   🐛 Fixed timezone bug causing incorrect date ranges in discipline reports
+ *   🔧 Custom date ranges now query correct dates (e.g., Jan 4-5 instead of Jan 3-4)
+ *   ✅ Discipline percentages calculate accurately across all date ranges
  * 
  * Version 1.4.0 (Code 10) - 2025-12-29
  *   ✨ Made Discipline Report accessible to all users (not just coaches)

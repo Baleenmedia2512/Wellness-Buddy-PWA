@@ -89,12 +89,12 @@ class GeminiService {
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash",
+        model: "gemini-2.5-flash-lite",
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
           topP: 0.95,
-          maxOutputTokens: 8192, // Increased for gemini-2.5-flash to prevent truncation
+          maxOutputTokens: 8192,
           candidateCount: 1,
           responseMimeType: 'application/json'
         }
@@ -655,14 +655,14 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
         safetyRatings: firstCandidate.safetyRatings || [],
         
         // Model info
-        modelUsed: 'gemini-2.5-flash',
+        modelUsed: 'gemini-2.5-flash-lite',
         
         // Additional metadata
         candidateCount: candidates.length,
         responseLength: response.text ? response.text().length : 0
       };
 
-      // Calculate cost estimate (for gemini-2.5-flash - free tier)
+      // Calculate cost estimate (for gemini-2.5-flash-lite - free tier)
       const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
       const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
       const totalCost = inputCost + outputCost;
