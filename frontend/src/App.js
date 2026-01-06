@@ -56,6 +56,7 @@ function WellnessValleyApp() {
   const [loadingState, setLoadingState] = useState('analyzing'); // 'analyzing' | 'saving'
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
+  const [showHelpView, setShowHelpView] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
     localStorage.getItem('currentPage') === 'dashboard' || 
     localStorage.getItem('currentPage') === 'nutrition-dashboard' ||
@@ -2004,6 +2005,7 @@ function WellnessValleyApp() {
           </div>
         )}
 
+        {/* Upload Module */}
         <ImageUpload
           onImageSelect={handleImageSelect}
           imagePreview={imagePreview}
@@ -2012,6 +2014,51 @@ function WellnessValleyApp() {
           imageType={imageType}
           ref={fileInputRef}
         />
+
+        {/* Help Button - Below Upload */}
+        <div className="flex justify-end">
+          <button
+            onClick={() => setShowHelpView(!showHelpView)}
+            className="bg-gradient-to-r from-green-500 to-green-600 text-white text-xs font-semibold px-4 py-2 rounded-full hover:from-green-600 hover:to-green-700 transition-all shadow-md hover:shadow-lg flex items-center gap-2"
+          >
+            
+            <span>{showHelpView ? 'Hide Help' : 'Need Help?'}</span>
+          </button>
+        </div>
+
+        {/* How to Use Section - Shows below upload when Help is clicked */}
+        {showHelpView && (
+          <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-semibold text-green-700">📋 How to use:</h3>
+              <button
+                onClick={() => setShowHelpView(false)}
+                className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <h4 className="font-medium text-green-600 mb-1">📸 Image Analysis:</h4>
+                <ol className="text-sm text-gray-600 space-y-1 ml-4">
+                  <li>1. Take a clear photo of your food or weight</li>
+                  <li>2. Make sure the food or weight are well-lit and visible</li>
+                  <li>3. View detailed nutrition breakdown for detected foods or weights</li>
+                </ol>
+              </div>
+            </div>
+            <div className="mt-3 pt-3 border-t border-gray-200">
+              <h4 className="font-semibold text-green-700 mb-2">💡 Tips for better results:</h4>
+              <ul className="text-xs text-gray-600 space-y-1">
+                <li>• Take photos in good lighting conditions</li>
+                <li>• Ensure food items or weights are clearly visible</li>
+                <li>• Avoid cluttered backgrounds</li>
+                <li>• For text queries, be specific about preparation methods</li>
+              </ul>
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm flex items-start space-x-3">
@@ -2122,30 +2169,6 @@ function WellnessValleyApp() {
             </div>
           </div>
         )}
-
-        <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
-          <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3>
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium text-green-600 mb-1">📸 Image Analysis:</h4>
-              <ol className="text-sm text-gray-600 space-y-1 ml-4">
-                <li>1. Take a clear photo of your food or weight</li>
-                <li>2. Make sure the food or weight are well-lit and visible</li>
-                <li>3. View detailed nutrition breakdown for detected foods or weights</li>
-              </ol>
-            </div>
-          </div>
-
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <h4 className="font-semibold text-green-700 mb-2">💡 Tips for better results:</h4>
-            <ul className="text-xs text-gray-600 space-y-1">
-              <li>• Take photos in good lighting conditions </li>
-              <li>• Ensure food items or weights are clearly visible</li>
-              <li>• Avoid cluttered backgrounds </li>
-              <li>• For text queries, be specific about preparation methods </li>
-            </ul>
-          </div>
-        </div>
 
         <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
       </div>
