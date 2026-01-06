@@ -5,7 +5,7 @@
  * Cancels pending approval request, clears TeamId, updates status to 'cancelled'
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {

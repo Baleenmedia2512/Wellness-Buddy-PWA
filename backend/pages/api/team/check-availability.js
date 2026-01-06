@@ -8,7 +8,7 @@
  * - taken-by-other: Another user owns this Team ID
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {

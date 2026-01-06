@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getPool } from '../../../utils/dbPool.js';
 
 /**
  * API: Admin Time Windows Management
@@ -104,17 +104,15 @@ return res.status(200).json({
       
       // Validate meal time windows don't overlap (only for meals)
       if (['breakfast', 'lunch', 'dinner'].includes(activityType)) {
-        const checkconst pool = getPool();
+        const pool = getPool();
         
-        const [existingWindows] = await checkConnection.query(`
+        const [existingWindows] = await pool.query(`
           SELECT ActivityType, WindowStartTime, WindowEndTime
           FROM activity_time_windows_table
           WHERE EffectiveToDate IS NULL
             AND ActivityType IN ('breakfast', 'lunch', 'dinner')
             AND ActivityType != ?
         `, [activityType]);
-        
-        await checkConnection.end();
         
         // Check for overlaps with other meal windows
         for (const existing of existingWindows) {

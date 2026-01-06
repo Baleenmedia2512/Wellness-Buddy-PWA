@@ -6,7 +6,7 @@
  * Completes the setup process
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 
 // Database configuration

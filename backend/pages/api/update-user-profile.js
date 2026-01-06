@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -29,27 +29,19 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
-
   try {
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-    });
+    const pool = getPool();
 
-    console.log('📊 [update-user-profile] Database connection established');
+    console.log('📊 [update-user-profile] Using connection pool');
 
     // First, get the user to verify they exist and get their UserId
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       `SELECT UserId FROM team_table WHERE Email = ? LIMIT 1`,
       [email]
     );
 
     if (userRows.length === 0) {
       console.log('❌ [update-user-profile] User not found:', email);
-      await connection.end();
       return res.status(404).json({
         success: false,
         message: 'User not found',
@@ -90,7 +82,7 @@ export default async function handler(req, res) {
       const updateQuery = `UPDATE team_table SET ${updateFields.join(', ')} WHERE Email = ?`;
       
       console.log('📝 [update-user-profile] Updating team_table:', { updateFields });
-      await connection.execute(updateQuery, updateValues);
+      await pool.execute(updateQuery, updateValues);
       console.log('✅ [update-user-profile] team_table updated successfully');
     }
 
@@ -100,14 +92,14 @@ export default async function handler(req, res) {
       const bmrValue = parseFloat(bmr);
       if (!isNaN(bmrValue) && bmrValue >= 1100 && bmrValue <= 2200) {
         // Check if user has any weight records
-        const [weightRecords] = await connection.execute(
+        const [weightRecords] = await pool.execute(
           `SELECT ID FROM weight_records_table WHERE UserId = ? ORDER BY CreatedAt DESC LIMIT 1`,
           [userId]
         );
 
         if (weightRecords.length > 0) {
           // Update the latest weight record with BMR
-          await connection.execute(
+          await pool.execute(
             `UPDATE weight_records_table SET Bmr = ? WHERE ID = ?`,
             [bmrValue, weightRecords[0].ID]
           );
@@ -121,8 +113,6 @@ export default async function handler(req, res) {
         }
       }
     }
-
-    await connection.end();
 
     console.log('✅ [update-user-profile] Profile updated successfully');
 
@@ -153,14 +143,6 @@ export default async function handler(req, res) {
     res.status(200).json(responseData);
   } catch (error) {
     console.error('❌ [update-user-profile] Database error:', error);
-    
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (closeError) {
-        console.error('❌ [update-user-profile] Error closing connection:', closeError);
-      }
-    }
 
     res.status(500).json({
       success: false,

@@ -46,7 +46,6 @@ export default async function handler(req, res) {
     console.log('🔎 [lookup-user-id] Executing query:', query, 'with params:', params);
 
     const [rows] = await pool.execute(query, params);
-    await connection.end();
 
     console.log('📋 [lookup-user-id] Query results:', { rowCount: rows.length, rows });
 

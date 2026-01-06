@@ -7,7 +7,7 @@
  * Used in upline coach selection
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {

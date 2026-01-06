@@ -7,7 +7,7 @@
  * Also creates entry in coach_teams_table if user is a coach (Role=admin)
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {

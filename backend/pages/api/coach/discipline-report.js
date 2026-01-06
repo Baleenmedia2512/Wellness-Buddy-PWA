@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getPool } from '../../../utils/dbPool.js';
 import { calculateTeamDiscipline } from '../../../utils/disciplineCalculations.js';
 import { 
   parseDateRange, 

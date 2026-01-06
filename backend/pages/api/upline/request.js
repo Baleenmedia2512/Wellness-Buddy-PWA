@@ -6,7 +6,7 @@
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 

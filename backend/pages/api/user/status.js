@@ -13,7 +13,7 @@
  * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
  */
 
-import { getPool } from '../../utils/dbPool.js';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
