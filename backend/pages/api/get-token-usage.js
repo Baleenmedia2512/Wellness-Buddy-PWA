@@ -58,29 +58,35 @@ export default async function handler(req, res) {
       });
     }
 
-    // Calculate date range
-    const now = new Date();
+    // Calculate date range using IST (UTC+5:30) for consistency across local and production
+    // This ensures Vercel (UTC) and local (IST) servers calculate the same date ranges
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // 5 hours 30 minutes in milliseconds
+    const nowUTC = new Date();
+    const nowIST = new Date(nowUTC.getTime() + IST_OFFSET_MS);
+    
     let startDateObj;
-    let endDateObj = now;
+    let endDateObj = nowUTC; // Use UTC for database queries
     
     // If custom date range provided, use it
     if (startDate && endDate) {
       startDateObj = new Date(startDate);
       endDateObj = new Date(endDate);
-      // Set end date to end of day
+      // Set end date to end of day in IST, then convert to UTC
       endDateObj.setHours(23, 59, 59, 999);
     } else {
-      // Use predefined time ranges
+      // Use predefined time ranges based on IST
       switch (timeRange) {
         case 'today':
-          startDateObj = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+          // Start of today in IST (midnight IST = 18:30 previous day UTC)
+          const todayIST = new Date(nowIST.getFullYear(), nowIST.getMonth(), nowIST.getDate());
+          startDateObj = new Date(todayIST.getTime() - IST_OFFSET_MS);
           break;
         case 'week':
-          startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          startDateObj = new Date(nowUTC.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;
         case 'month':
-          // Rolling 30-day range (e.g., Jan 5 → Dec 5 to Jan 5)
-          startDateObj = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          // Rolling 30-day range from now
+          startDateObj = new Date(nowUTC.getTime() - 30 * 24 * 60 * 60 * 1000);
           break;
         case 'all':
         default:
@@ -200,7 +206,7 @@ export default async function handler(req, res) {
     );
 
     // Query 7: Daily statistics (last 30 days)
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(nowUTC.getTime() - 30 * 24 * 60 * 60 * 1000);
     const dailyParams = [...queryParams];
     dailyParams[0] = thirtyDaysAgo > startDateObj ? thirtyDaysAgo : startDateObj;
 
