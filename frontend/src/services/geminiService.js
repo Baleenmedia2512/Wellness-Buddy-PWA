@@ -89,7 +89,7 @@ class GeminiService {
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash",
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
@@ -655,7 +655,7 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
         safetyRatings: firstCandidate.safetyRatings || [],
         
         // Model info
-        modelUsed: 'gemini-2.5-flash-lite',
+        modelUsed: 'gemini-2.5-flash',
         
         // Additional metadata
         candidateCount: candidates.length,

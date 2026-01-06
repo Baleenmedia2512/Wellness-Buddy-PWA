@@ -16,7 +16,7 @@ class WeightDetectionService {
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({
-        model: "gemini-2.5-flash-lite",
+        model: "gemini-2.5-flash",
         generationConfig: {
           temperature: 0.1, // Low temperature for accurate number detection
           topK: 1,
