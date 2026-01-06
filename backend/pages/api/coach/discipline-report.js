@@ -4,7 +4,8 @@ import {
   parseDateRange, 
   calculateExpectedPosts,
   calculateDisciplinePercentage,
-  getDaysBetween 
+  getDaysBetween,
+  formatDateForMySQL
 } from '../../../utils/disciplineHelpers.js';
 
 /**
@@ -42,6 +43,17 @@ export default async function handler(req, res) {
       dateRange === 'custom' ? startDate : null,
       dateRange === 'custom' ? endDate : null
     );
+    
+    // DEBUG: Log dates for troubleshooting
+    console.log('📅 Discipline Report Date Debug:', {
+      dateRange,
+      startDate,
+      endDate,
+      parsedStart: dates.start,
+      parsedEnd: dates.end,
+      formattedStart: formatDateForMySQL(dates.start),
+      formattedEnd: formatDateForMySQL(dates.end)
+    });
     
     // Validate custom date range
     if (dateRange === 'custom') {

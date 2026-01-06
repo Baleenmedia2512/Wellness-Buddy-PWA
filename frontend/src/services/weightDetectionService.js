@@ -21,7 +21,7 @@ class WeightDetectionService {
           temperature: 0.1, // Low temperature for accurate number detection
           topK: 1,
           topP: 0.8,
-          maxOutputTokens: 2048, // Increased for gemini-2.5-flash reliability
+          maxOutputTokens: 2048,
         }
       });
     }
