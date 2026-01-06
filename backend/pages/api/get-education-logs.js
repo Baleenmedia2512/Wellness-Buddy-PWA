@@ -48,10 +48,7 @@ return res.status(200).json({
     });
 
   } catch (error) {
-    if (connection) {
-      try {
-} catch {}
-    }
+
     console.error('❌ Fetch education logs error:', error);
     return res.status(500).json({
       success: false,

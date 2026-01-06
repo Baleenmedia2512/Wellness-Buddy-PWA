@@ -58,10 +58,6 @@ if (result.affectedRows === 0) {
       restoredId: id
     });
   } catch (error) {
-    if (connection) {
-      try {
-} catch {}
-    }
     console.error('❌ Database undo error:', error);
     return res.status(500).json({
       success: false,

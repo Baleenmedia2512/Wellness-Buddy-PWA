@@ -6,7 +6,7 @@
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import { getPool } from '../../../utils/dbPool.js';
+import { getPool, getConnection } from '../../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -91,6 +91,7 @@ export default async function handler(req, res) {
 
     // Connect to database
     const pool = getPool();
+    const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();
@@ -299,6 +300,7 @@ return res.status(400).json({
       }
 
       await connection.commit();
+      connection.release();
 
       return res.status(200).json({
         success: true,
@@ -313,10 +315,9 @@ return res.status(400).json({
 
     } catch (dbError) {
       await connection.rollback();
+      connection.release();
       throw dbError;
-
-    } finally {
-}
+    }
 
   } catch (error) {
     console.error('Error creating approval request:', error);

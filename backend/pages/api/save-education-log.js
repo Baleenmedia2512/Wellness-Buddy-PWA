@@ -53,10 +53,6 @@ return res.status(200).json({
     });
 
   } catch (error) {
-    if (connection) {
-      try {
-} catch {}
-    }
     console.error('❌ Save education log error:', error);
     return res.status(500).json({
       success: false,

@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../../utils/dbPool.js';
+﻿import { getPool, getConnection } from '../../../utils/dbPool.js';
 
 /**
  * API: Admin Time Windows Management
@@ -19,7 +19,7 @@ export default async function handler(req, res) {
     try {
       const pool = getPool();
 
-      const [rows] = await connection.query(`
+      const [rows] = await pool.query(`
         SELECT 
           ActivityType,
           WindowStartTime,
@@ -136,10 +136,11 @@ return res.status(200).json({
       }
 
       const pool = getPool();
-
-      await connection.beginTransaction();
+      const connection = await pool.getConnection();
 
       try {
+        await connection.beginTransaction();
+
         // Close previous window by setting EffectiveToDate
         await connection.query(`
           UPDATE activity_time_windows_table
@@ -163,7 +164,9 @@ return res.status(200).json({
         ]);
 
         await connection.commit();
-return res.status(200).json({
+        connection.release();
+        
+        return res.status(200).json({
           success: true,
           message: 'Time window updated successfully',
           newWindowId: result.insertId
@@ -171,11 +174,16 @@ return res.status(200).json({
 
       } catch (error) {
         await connection.rollback();
-throw error;
+        connection.release();
+        console.error('Error updating time window:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Internal server error',
+          message: error.message
+        });
       }
-
     } catch (error) {
-      console.error('Error updating time window:', error);
+      console.error('Error in time windows:', error);
       return res.status(500).json({
         success: false,
         error: 'Internal server error',

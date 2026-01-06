@@ -6,7 +6,7 @@
  * Completes the setup process
  */
 
-import { getPool } from '../../../utils/dbPool.js';
+import { getPool, getConnection } from '../../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 
 // Database configuration
@@ -76,6 +76,7 @@ return res.status(404).json({
     }
 
     const requesterId = userRows[0].UserId;
+    const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();
@@ -278,6 +279,7 @@ return res.status(404).json({
       );
 
       await connection.commit();
+      connection.release();
 
       return res.status(200).json({
         success: true,
@@ -291,10 +293,9 @@ return res.status(404).json({
 
     } catch (dbError) {
       await connection.rollback();
+      connection.release();
       throw dbError;
-
-    } finally {
-}
+    }
 
   } catch (error) {
     console.error('Error validating OTP:', error);

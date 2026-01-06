@@ -48,10 +48,6 @@ if (result.affectedRows === 0) {
     });
 
   } catch (error) {
-    if (connection) {
-      try {
-} catch {}
-    }
     console.error('❌ Delete education log error:', error);
     return res.status(500).json({
       success: false,

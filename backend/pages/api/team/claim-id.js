@@ -7,7 +7,7 @@
  * Also creates entry in coach_teams_table if user is a coach (Role=admin)
  */
 
-import { getPool } from '../../../utils/dbPool.js';
+import { getPool, getConnection } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -67,6 +67,7 @@ export default async function handler(req, res) {
 
     // Connect to database
     const pool = getPool();
+    const connection = await pool.getConnection();
 
     try {
       await connection.beginTransaction();
@@ -165,6 +166,7 @@ export default async function handler(req, res) {
       );
 
       await connection.commit();
+      connection.release();
 
       return res.status(200).json({
         success: true,
@@ -177,6 +179,7 @@ export default async function handler(req, res) {
 
     } catch (dbError) {
       await connection.rollback();
+      connection.release();
       
       console.error('Database error in claim-id:', dbError);
       

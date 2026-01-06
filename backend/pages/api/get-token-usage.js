@@ -312,8 +312,5 @@ return res.status(403).json({
       message: 'Failed to fetch token usage data',
       error: error.message 
     });
-  } finally {
-    if (connection) {
-}
   }
 }

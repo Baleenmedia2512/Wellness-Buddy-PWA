@@ -255,7 +255,7 @@ return res.status(200).json({
       // Step 2: Calculate discipline for coach + all team members
       const allUserIds = uniqueMembers.map(m => m.UserId);  // Includes coach
       const disciplineData = await calculateTeamDiscipline(
-        connection,
+        pool,
         allUserIds,
         dates.start,
         dates.end
@@ -498,8 +498,7 @@ return res.status(200).json({
       
       const needsAttention = allMembersForStats.filter(m => m.periodDiscipline.percentage < 60);
       
-      // Step 7: Close connection and return response
-connection = null; // Mark as closed
+      // Step 7: Return response
       
       return res.status(200).json({
         success: true,
@@ -534,14 +533,6 @@ connection = null; // Mark as closed
     } catch (innerError) {
       console.error('❌ Discipline report query error:', innerError);
       throw innerError; // Re-throw to be caught by outer catch
-    } finally {
-      // Ensure connection is closed even if there's an error
-      if (connection) {
-        try {
-} catch (closeError) {
-          console.error('❌ Error closing connection:', closeError);
-        }
-      }
     }
     
   } catch (error) {

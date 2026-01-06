@@ -5,7 +5,7 @@
  * Cancels pending approval request, clears TeamId, updates status to 'cancelled'
  */
 
-import { getPool } from '../../../utils/dbPool.js';
+import { getPool, getConnection } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -45,7 +45,10 @@ export default async function handler(req, res) {
 
   try {
     const pool = getPool();
-    await connection.beginTransaction();
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
 
     // Get user ID
     const [userRows] = await pool.execute(
@@ -78,6 +81,7 @@ export default async function handler(req, res) {
     );
 
     await connection.commit();
+    connection.release();
 
     return res.status(200).json({
       success: true,
@@ -85,18 +89,21 @@ export default async function handler(req, res) {
       redirectTo: '/setup'
     });
 
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
+    } catch (error) {
+      try {
+        await connection.rollback();
+        connection.release();
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+      throw error;
     }
-    
+
+  } catch (error) {
     console.error('Cancel request error:', error);
     return res.status(500).json({ 
       success: false, 
       error: 'Failed to cancel request' 
     });
-  } finally {
-    if (connection) {
-}
   }
 }
