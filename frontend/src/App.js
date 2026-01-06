@@ -214,9 +214,6 @@ function WellnessValleyApp() {
   // Add a ref to track if sign-out is in progress
   const signOutInProgress = useRef(false);
 
-  // Add a ref to track if image processing is in progress (prevents React StrictMode double-calls)
-  const imageProcessingInProgress = useRef(false);
-
   // Check user status (Active/Inactive) using lookup-user-id API
   const checkUserStatus = useCallback(async (user) => {
     if (!user) {
@@ -1086,16 +1083,8 @@ function WellnessValleyApp() {
   };
 
   const handleImageSelect = async (file) => {
-    
-    if (imageProcessingInProgress.current) {
-      console.log('Image processing already in progress, skipping duplicate call');
-      return;
-    }
-    imageProcessingInProgress.current = true;
-
     if (!user) {
       setError('Please sign in to analyze food images');
-      imageProcessingInProgress.current = false;
       return;
     }
 
@@ -1103,14 +1092,12 @@ function WellnessValleyApp() {
     const isActive = await checkUserStatus(user);
     if (!isActive) {
       setError('Your account is inactive. Please contact support to reactivate.');
-      imageProcessingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
       setError('📸 Image file is too large. Please choose a smaller image (max 10MB).');
-      imageProcessingInProgress.current = false;
       return;
     }
 
@@ -1165,12 +1152,7 @@ function WellnessValleyApp() {
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
-      // Set current user for token tracking on imageTypeDetector (unified detection)
-      if (user?.id && user?.email) {
-        imageTypeDetector.setCurrentUser(user.id, user.email);
-      }
-
-      // ✅ Detect image type using Gemini AI (single unified call)
+      // ✅ Detect image type using Gemini AI (education > weight > food)
       const detectedType = await imageTypeDetector.detectImageType(file);
       
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
@@ -1179,16 +1161,9 @@ function WellnessValleyApp() {
         setImageType('education');
         
         try {
-          // Use data from unified detection (no second API call needed)
-          const educationData = {
-            success: true,
-            platform: detectedType.details.platform || 'Online Meeting',
-            topic: detectedType.details.topic || 'Education Meeting',
-            confidence: detectedType.confidence || 0,
-            participantCount: detectedType.details.participantCount || null
-          };
-
-          if (educationData && educationData.success) {
+          const educationData = await educationDetectionService.analyzeMeetingImage(file);
+          
+          if (educationData.success) {
             console.log('✅ Education data extracted:', educationData);
             
             setEducationResult({
@@ -1220,30 +1195,17 @@ function WellnessValleyApp() {
         console.log('🔍 Weight scale detected, extracting metrics...');
         setImageType('weight');
 
-        // Use weight data from unified detection (no second API call needed)
-        let detectedWeight;
+
+        // const FORCE_MANUAL_ENTRY = true; // Set to false to restore normal behavior
+        // if (FORCE_MANUAL_ENTRY) {
+        //   console.log('🧪 TEST MODE: Forcing manual weight entry modal');
+        //   setCurrentWeightImage(processedImage);
+        //   setShowManualWeightModal(true);
+        //   setLoading(false);
+        //   return;
+        // }
         
-        if (detectedType.details?.weightValue) {
-          // Weight was already extracted in the unified detection call
-          console.log('✅ Using weight data from unified detection');
-          detectedWeight = {
-            success: true,
-            weightValue: detectedType.details.weightValue,
-            unit: detectedType.details.unit || 'kg',
-            confidence: detectedType.confidence,
-            bmi: detectedType.details.bmi,
-            bodyFat: detectedType.details.bodyFat,
-            muscleMass: detectedType.details.muscleMass,
-            bmr: detectedType.details.bmr
-          };
-        } else {
-          // Fallback: Weight value not extracted, need manual entry
-          console.log('⚠️ Weight value not detected in unified call, opening manual entry');
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
-          setLoading(false);
-          return;
-        }
+        const detectedWeight = await weightDetectionService.extractWeightFromImage(file);
         
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
@@ -1280,79 +1242,23 @@ function WellnessValleyApp() {
         return;
       }
       
-      // It's a food image - use nutrition data from unified detection
+      // It's a food image
       setImageType('food');
 
+      // ✅ ANDROID PERFORMANCE: Start food analysis in parallel with preview rendering
+      // ✅ AI PERSONALIZATION: Use stored user context for instant personalization
       try {
-        // Use nutrition data already extracted from unified detection (no second API call)
-        let result;
+        // Use pre-loaded user context (no fetch delay!)
+        console.log('🎯 [AI Personalization] Using stored context:', {
+          available: !!userContext,
+          corrections: userContext?.personalCorrections?.length || 0,
+          diet: userContext?.dietPreference
+        });
         
-        if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
-          console.log('✅ Using nutrition data from unified detection');
-          
-          const foods = detectedType.details.foods;
-          const total = detectedType.details.total || foods.reduce((acc, food) => ({
-            calories: acc.calories + (food.nutrition?.calories || 0),
-            protein: acc.protein + (food.nutrition?.protein || 0),
-            carbs: acc.carbs + (food.nutrition?.carbs || 0),
-            fat: acc.fat + (food.nutrition?.fat || 0),
-            fiber: acc.fiber + (food.nutrition?.fiber || 0)
-          }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
-          
-          // Generate category name from food items
-          let categoryName = '';
-          const count = foods.length;
-          if (count === 0) {
-            categoryName = 'Unknown Food';
-          } else if (count === 1) {
-            categoryName = (foods[0]?.name || 'Unknown Food').trim();
-          } else if (count === 2) {
-            const first = (foods[0]?.name || 'Unknown Food').trim();
-            const second = (foods[1]?.name || 'another item').trim();
-            categoryName = `${first} & ${second}`;
-          } else {
-            const first = (foods[0]?.name || 'Unknown Food').trim();
-            const others = count - 1;
-            categoryName = `${first} + ${others} more`;
-          }
-          
-          // Transform to format expected by NutritionCard
-          result = {
-            nutrition: {
-              calories: Math.round(total.calories || 0),
-              protein: Math.round(total.protein || 0),
-              carbs: Math.round(total.carbs || 0),
-              fat: Math.round(total.fat || 0),
-              fiber: Math.round(total.fiber || 0)
-            },
-            category: {
-              name: categoryName
-            },
-            source: 'Google Gemini AI - Unified Analysis',
-            isRealData: true,
-            itemCount: foods.length,
-            confidence: detectedType.confidence > 0.8 ? 'high' : detectedType.confidence > 0.5 ? 'medium' : 'low',
-            detailedItems: foods.map(food => ({
-              name: food.name,
-              portionDescription: food.portion || 'Unknown portion',
-              estimatedWeight: food.weight_g || food.volume_ml || 'Unknown',
-              unit: food.unit || (food.volume_ml ? 'ml' : 'g'),
-              isLiquid: food.isLiquid || false,
-              calories: Math.round(food.nutrition?.calories || 0),
-              protein: Math.round(food.nutrition?.protein || 0),
-              carbs: Math.round(food.nutrition?.carbs || 0),
-              fat: Math.round(food.nutrition?.fat || 0),
-              fiber: Math.round(food.nutrition?.fiber || 0)
-            }))
-          };
-        } else {
-          // Fallback: No food data extracted, show error
-          console.warn('⚠️ No food data extracted from image');
-          setError('Could not detect any food items in the image. Please try again with a clearer photo.');
-          setLoading(false);
-          return;
-        }
+        // Show rate limiting message if needed
+        setLoadingState('analyzing'); // Ensure we show "Analyzing..." state
         
+        const result = await geminiService.analyzeImageForNutrition(file, user?.id, userContext);
         setNutritionData(result);
 
         // Check for duplicate food before saving
@@ -1490,7 +1396,6 @@ function WellnessValleyApp() {
       console.error('❌ Image processing error:', err);
     } finally {
       setLoading(false);
-      imageProcessingInProgress.current = false;
     }
   };
 

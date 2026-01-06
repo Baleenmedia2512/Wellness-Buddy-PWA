@@ -1,6 +1,5 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { getUserContext, formatContextForAI } from './userContextService';
-import { createTokenTracker } from './tokenCost';
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -63,12 +62,6 @@ class GeminiService {
     this.genAI = null;
     this.model = null;
     
-    // API Base URL for backend calls
-    this.apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-    
-    // Token tracking via centralized module
-    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
-    
     // Timeout configuration
     this.timeout = 30000; // 30 second timeout
     
@@ -82,6 +75,7 @@ class GeminiService {
       totalTokens: 0,
       totalPromptTokens: 0,
       totalCompletionTokens: 0,
+      totalCost: 0,
       totalProcessingTime: 0,
       requestsByType: {},
       errors: 0,
@@ -100,7 +94,7 @@ class GeminiService {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
           topP: 0.95,
-          maxOutputTokens: 8192, // Increased for gemini-2.5-flash to prevent truncation
+          maxOutputTokens: 8192,
           candidateCount: 1,
           responseMimeType: 'application/json'
         }
@@ -108,10 +102,7 @@ class GeminiService {
     }
   }
 
-  // Method to set current user info for token tracking
-  setCurrentUser(userId, userEmail) {
-    this.tokenTracker.setCurrentUser(userId, userEmail);
-  }
+
 
   getApiInfo() {
     return {
@@ -127,12 +118,16 @@ class GeminiService {
     const avgTokensPerRequest = this.sessionMetrics.totalRequests > 0 
       ? Math.round(this.sessionMetrics.totalTokens / this.sessionMetrics.totalRequests) 
       : 0;
+    const avgCostPerRequest = this.sessionMetrics.totalRequests > 0
+      ? this.sessionMetrics.totalCost / this.sessionMetrics.totalRequests
+      : 0;
 
     return {
       ...this.sessionMetrics,
       sessionDuration: sessionDuration,
       sessionDurationFormatted: `${Math.round(sessionDuration / 1000)}s`,
       avgTokensPerRequest: avgTokensPerRequest,
+      avgCostPerRequest: avgCostPerRequest,
       errorRate: this.sessionMetrics.totalRequests > 0 
         ? ((this.sessionMetrics.errors / this.sessionMetrics.totalRequests) * 100).toFixed(2) + '%'
         : '0%'
@@ -368,8 +363,8 @@ class GeminiService {
       const nutritionData = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
-      // Track token usage via centralized module
-      this.tokenTracker.track(response, 'image_analysis', processingTime);
+      // Log token usage
+      this.logTokenUsage(response, 'image_analysis', processingTime);
       
       // console.log(`✅ Analysis completed in ${processingTime}ms`);
       
@@ -427,8 +422,8 @@ Use USDA values. Return valid JSON only, no markdown.`;
       const nutritionData = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
-      // Track token usage via centralized module
-      this.tokenTracker.track(response, 'text_analysis', processingTime);
+      // Log token usage
+      this.logTokenUsage(response, 'text_analysis', processingTime);
       
       // console.log(`✅ Text analysis completed in ${processingTime}ms`);
       
@@ -516,8 +511,8 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
       const searchResults = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
       
-      // Track token usage via centralized module
-      this.tokenTracker.track(response, 'food_search', processingTime);
+      // Log token usage
+      this.logTokenUsage(response, 'food_search', processingTime);
       
       console.log(`✅ Food search completed in ${processingTime}ms`);
       console.log(`📊 Found ${searchResults.results?.length || 0} results for "${foodQuery}"`);
@@ -633,6 +628,106 @@ NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For soli
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  logTokenUsage(response, requestType, processingTime) {
+    try {
+      // Extract usage metadata from Gemini API response
+      const usageMetadata = response.usageMetadata || {};
+      
+      // Extract all available response data
+      const candidates = response.candidates || [];
+      const firstCandidate = candidates[0] || {};
+      
+      const tokenData = {
+        // Token metrics
+        promptTokens: usageMetadata.promptTokenCount || 0,
+        completionTokens: usageMetadata.candidatesTokenCount || 0,
+        totalTokens: usageMetadata.totalTokenCount || 0,
+        
+        // Request metadata
+        requestType: requestType,
+        timestamp: new Date().toISOString(),
+        processingTime: processingTime,
+        
+        // Response quality metrics
+        finishReason: firstCandidate.finishReason || 'unknown',
+        safetyRatings: firstCandidate.safetyRatings || [],
+        
+        // Model info
+        modelUsed: 'gemini-2.5-flash-lite',
+        
+        // Additional metadata
+        candidateCount: candidates.length,
+        responseLength: response.text ? response.text().length : 0
+      };
+
+      // Calculate cost estimate (for gemini-2.5-flash-lite - free tier)
+      const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
+      const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
+      const totalCost = inputCost + outputCost;
+
+      // Update session metrics
+      this.sessionMetrics.totalRequests++;
+      this.sessionMetrics.totalTokens += tokenData.totalTokens;
+      this.sessionMetrics.totalPromptTokens += tokenData.promptTokens;
+      this.sessionMetrics.totalCompletionTokens += tokenData.completionTokens;
+      this.sessionMetrics.totalCost += totalCost;
+      this.sessionMetrics.totalProcessingTime += processingTime;
+      
+      if (!this.sessionMetrics.requestsByType[requestType]) {
+        this.sessionMetrics.requestsByType[requestType] = 0;
+      }
+      this.sessionMetrics.requestsByType[requestType]++;
+
+      // Log to console with nice formatting
+      console.log(`📊 Token Usage [${requestType}]:`, {
+        '🔤 Prompt Tokens': tokenData.promptTokens,
+        '💬 Response Tokens (Output)': tokenData.completionTokens,
+        '📈 Total Tokens': tokenData.totalTokens,
+        '⏱️ Processing Time': `${processingTime}ms`,
+        '💰 Cost Estimate': `$${totalCost.toFixed(6)}`
+      });
+
+      // Log response quality
+      console.log(`🔍 Response Quality [${requestType}]:`, {
+        '✅ Finish Reason': tokenData.finishReason,
+        '🛡️ Safety Ratings': tokenData.safetyRatings.length > 0 ? 'Passed' : 'N/A',
+        '📝 Response Length': `${tokenData.responseLength} chars`,
+        '🎯 Candidates': tokenData.candidateCount
+      });
+
+      // // Log safety ratings detail
+      // if (tokenData.safetyRatings.length > 0) {
+      //   console.log('🛡️ Safety Details:', tokenData.safetyRatings);
+      // }
+
+      // // Log session summary
+      // console.log(`📈 Session Summary:`, {
+      //   'Total Requests': this.sessionMetrics.totalRequests,
+      //   'Total Tokens': this.sessionMetrics.totalTokens,
+      //   'Total Cost': `$${this.sessionMetrics.totalCost.toFixed(6)}`,
+      //   'Avg Processing Time': `${Math.round(this.sessionMetrics.totalProcessingTime / this.sessionMetrics.totalRequests)}ms`,
+      //   'Requests by Type': this.sessionMetrics.requestsByType
+      // });
+
+      // Log structured data for Cloud Logging compatibility
+      // const structuredLog = {
+      //   ...tokenData,
+      //   costEstimate: {
+      //     inputCost: inputCost,
+      //     outputCost: outputCost,
+      //     totalCost: totalCost,
+      //     currency: 'USD'
+      //   },
+      //   session: this.sessionMetrics
+      // };
+      
+      // console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
+
+    } catch (error) {
+      console.warn('⚠️ Could not extract token usage:', error.message);
+    }
   }
 
   transformOptimizedResponse(data, type) {
