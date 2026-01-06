@@ -79,8 +79,7 @@ export default async function handler(req, res) {
           startDateObj = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
           break;
         case 'month':
-          // Rolling 30-day range (e.g., Jan 5 → Dec 5 to Jan 5)
-          startDateObj = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          startDateObj = new Date(now.getFullYear(), now.getMonth(), 1);
           break;
         case 'all':
         default:
