@@ -14,12 +14,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { id } = req.body;
+  const { id, userId } = req.body;
 
-  if (!id) {
+  if (!id || !userId) {
     return res.status(400).json({ 
       success: false,
-      message: 'Analysis ID is required' 
+      message: 'Analysis ID and userId are required' 
     });
   }
 
@@ -27,28 +27,22 @@ export default async function handler(req, res) {
     // Database connection
     const pool = getPool();
 
-    // Delete the analysis record
+    // Delete the analysis record WITH ownership validation (SECURITY FIX)
     const [result] = await pool.execute(
-      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ?',
-      [id]
+      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ? AND UserID = ?',
+      [id, userId]
     );
     
 if (result.affectedRows === 0) {
-      return res.status(404).json({
+      return res.status(403).json({
         success: false,
-        message: 'Analysis not found'
+        message: 'Unauthorized or analysis not found'
       });
     }
 
-    // Clear cache - try to find userId from the record
-    const [record] = await pool.execute(
-      'SELECT UserID FROM food_nutrition_data_table WHERE ID = ?',
-      [id]
-    );
-    if (record.length > 0 && record[0].UserID) {
-      cache.delete(cacheKeys.educationSummary(record[0].UserID));
-      console.log('🗑️ [delete-background-analysis] Cache cleared for user:', record[0].UserID);
-    }
+    // Clear nutrition cache only (no extra query needed - PERFORMANCE FIX)
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    console.log('🗑️ [delete-background-analysis] Nutrition cache cleared for user:', userId);
 
     res.status(200).json({
       success: true,

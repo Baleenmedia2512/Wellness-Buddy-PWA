@@ -151,9 +151,9 @@ res.status(200).json({
       }
     });
     
-    // Clear education summary cache for this user (since background analysis affects nutrition stats)
-    cache.delete(cacheKeys.educationSummary(userId));
-    console.log('🗑️ [save-background-analysis] Cache cleared for user:', userId);
+    // Clear nutrition cache only (education is separate domain)
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    console.log('🗑️ [save-background-analysis] Nutrition cache cleared for user:', userId);
 
   } catch (error) {
     console.error('❌ Database save error:', error);

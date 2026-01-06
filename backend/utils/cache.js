@@ -153,6 +153,7 @@ export const cacheKeys = {
   userContext: (userId) => `user:context:${userId}`,
   teamMembers: (coachId) => `team:members:${coachId}`,
   nutritionStats: (userId, date) => `nutrition:stats:${userId}:${date}`,
+  nutritionMeals: (userId) => `nutrition:meals:${userId}`,
   educationSummary: (userId) => `education:summary:${userId}`,
   disciplineReport: (coachId, range) => `discipline:${coachId}:${range}`,
 };

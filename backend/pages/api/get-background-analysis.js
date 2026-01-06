@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -20,38 +21,42 @@ export default async function handler(req, res) {
 
   try {
     const pool = getPool();
-
-    // Get background analysis results for the user
+    
+    // Get pagination params
     const limitInt = parseInt(limit) || 50;
     const offsetInt = parseInt(offset) || 0;
     
-    // First, try a simple query without LIMIT/OFFSET to test
+    // Note: Removed caching for paginated responses since cache hit rate is low
+    // Users rarely request the same page twice, making caching ineffective
+    
+    // Use proper SQL pagination (CRITICAL FIX: was fetching all rows and slicing)
     const [rows] = await pool.execute(
       `SELECT *
        FROM food_nutrition_data_table 
        WHERE UserID = ? AND IsDeleted = 0
-       ORDER BY CreatedAt DESC`,
-      [userId]
+       ORDER BY CreatedAt DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limitInt, offsetInt]
     );
-    
-    // Manually apply limit and offset to the results
-    const paginatedRows = rows.slice(offsetInt, offsetInt + limitInt);
 
     // Get total count for pagination
     const [countResult] = await pool.execute(
       'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
-res.status(200).json({
+    
+    const response = {
       success: true,
-      data: paginatedRows,
+      data: rows,
       pagination: {
         total: countResult[0].total,
         limit: limitInt,
         offset: offsetInt,
         hasMore: (offsetInt + limitInt) < countResult[0].total
       }
-    });
+    };
+    
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Failed to fetch background analysis:', error);

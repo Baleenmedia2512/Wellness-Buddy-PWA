@@ -54,10 +54,10 @@ if (result.affectedRows === 0) {
       });
     }
 
-    // Clear cache if userId provided
+    // Clear nutrition cache only (education is separate domain)
     if (userId) {
-      cache.delete(cacheKeys.educationSummary(userId));
-      console.log('🗑️ [undo-deleted-analysis] Cache cleared for user:', userId);
+      cache.delete(cacheKeys.nutritionMeals(userId));
+      console.log('🗑️ [undo-deleted-analysis] Nutrition cache cleared for user:', userId);
     }
 
     return res.status(200).json({

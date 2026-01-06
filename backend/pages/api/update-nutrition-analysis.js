@@ -16,10 +16,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { id, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
+    const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
 
-    if (!id) {
-      return res.status(400).json({ success: false, message: 'Missing meal ID' });
+    if (!id || !userId) {
+      return res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
     }
 
     if (!analysisData || !analysisData.foods || !Array.isArray(analysisData.foods)) {
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     // Database connection
     const pool = getPool();
 
-    // Update the meal in the database
+    // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
     const query = `
       UPDATE food_nutrition_data_table
       SET AnalysisData = ?,
@@ -38,7 +38,7 @@ export default async function handler(req, res) {
           TotalCarbs = ?,
           TotalFat = ?,
           TotalFiber = ?
-      WHERE ID = ?
+      WHERE ID = ? AND UserID = ?
     `;
 
     const [result] = await pool.execute(query, [
@@ -48,22 +48,17 @@ export default async function handler(req, res) {
       totalCarbs || 0,
       totalFat || 0,
       totalFiber || 0,
-      id
+      id,
+      userId
     ]);
     
 if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Meal not found' });
+      return res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
     }
 
-    // Get userId from the record and clear cache
-    const [record] = await pool.execute(
-      'SELECT UserID FROM food_nutrition_data_table WHERE ID = ?',
-      [id]
-    );
-    if (record.length > 0 && record[0].UserID) {
-      cache.delete(cacheKeys.educationSummary(record[0].UserID));
-      console.log('🗑️ [update-nutrition-analysis] Cache cleared for user:', record[0].UserID);
-    }
+    // Clear nutrition cache only (no extra query - PERFORMANCE FIX)
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    console.log('🗑️ [update-nutrition-analysis] Nutrition cache cleared for user:', userId);
 
     res.status(200).json({
       success: true,
