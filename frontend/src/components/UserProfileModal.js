@@ -48,16 +48,15 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
     }
   }, [isOpen, user?.email]);
 
-  // Auto-dismiss success message and close modal after 5 seconds
+  // Auto-dismiss success message after 10 seconds
   useEffect(() => {
     if (successMessage) {
       const timer = setTimeout(() => {
         setSuccessMessage('');
-        onClose();
-      }, 2000);
+      }, 5000);
       return () => clearTimeout(timer);
     }
-  }, [successMessage, onClose]);
+  }, [successMessage]);
 
   const fetchUserProfile = async () => {
     try {
@@ -116,6 +115,9 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }
       }
 
+      // Add 5 second delay before saving
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: 'POST',
         headers: {
@@ -130,11 +132,11 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.message || data.error || 'Failed to update profile');
+        throw new Error('Failed to update profile');
       }
+
+      const data = await response.json();
 
       if (data.success) {
         // Update BMR if it was recalculated

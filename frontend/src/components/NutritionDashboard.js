@@ -59,9 +59,6 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   // Track when update is from auto-save to prevent UI reset
   const isAutoSaveUpdateRef = useRef(false);
 
-  // Calorie target from user's BMR (fallback to 1500 if not set)
-  const [calorieTarget, setCalorieTarget] = useState(1500);
-
   // Initialize local editable data when meal changes
   useEffect(() => {
     if (selectedMeal) {
@@ -506,36 +503,6 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
   useEffect(() => {
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
-
-  // Fetch user's BMR from profile for calorie target
-  useEffect(() => {
-    const fetchUserBmr = async () => {
-      if (!user?.email) return;
-      
-      try {
-        const response = await fetch(
-          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.latestBmr) {
-            // Use BMR from profile, fallback to 1500 if not available
-            setCalorieTarget(Math.round(data.data.latestBmr));
-            console.log('🔥 [NutritionDashboard] BMR loaded from profile:', data.data.latestBmr);
-          } else {
-            console.log('⚠️ [NutritionDashboard] No BMR in profile, using default 1500');
-            setCalorieTarget(1500);
-          }
-        }
-      } catch (err) {
-        console.error('❌ [NutritionDashboard] Failed to fetch BMR:', err);
-        // Keep default fallback of 1500
-      }
-    };
-
-    fetchUserBmr();
-  }, [user?.email, apiBaseUrl]);
 
   // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {
@@ -1263,10 +1230,10 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
               <div className="w-full max-w-md mx-auto bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 p-4 md:p-5">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-xs md:text-sm text-gray-500">Calories Consumed</p>
+                    <p className="text-xs md:text-sm text-gray-500">Calories Eaten</p>
                     <p className="text-xl md:text-2xl font-bold text-gray-900">
                       {dailyStats.totalCalories || 0}
-                      <span className="text-xs md:text-sm font-normal text-gray-500"> / {calorieTarget} kcal</span>
+                      <span className="text-xs md:text-sm font-normal text-gray-500"> / 2100 kcal</span>
                     </p>
                   </div>
                   <div className="flex items-center space-x-1.5 bg-emerald-50 px-2 py-0.5 rounded-full">
@@ -1278,7 +1245,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                 <div className="w-full bg-gray-200/70 rounded-full h-2 mb-4 overflow-hidden">
                   <div
                     className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-500 h-2 rounded-full transition-all duration-500 ease-out"
-                    style={{ width: `${Math.min(100, ((dailyStats.totalCalories || 0) / calorieTarget) * 100)}%` }}
+                    style={{ width: `${Math.min(100, ((dailyStats.totalCalories || 0) / 2100) * 100)}%` }}
                   />
                 </div>
 
