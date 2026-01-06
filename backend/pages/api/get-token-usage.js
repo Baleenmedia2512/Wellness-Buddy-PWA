@@ -1,10 +1,10 @@
 import mysql from 'mysql2/promise';
 
 const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'wellness_buddy',
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASS,
+  database: process.env.DB_NAME,
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0,
@@ -64,15 +64,42 @@ export default async function handler(req, res) {
     const nowUTC = new Date();
     const nowIST = new Date(nowUTC.getTime() + IST_OFFSET_MS);
     
+    // Helper function to parse date string in local timezone (prevents date shifting)
+    const parseLocalDate = (dateStr) => {
+      // If already a Date object, return it
+      if (dateStr instanceof Date) return dateStr;
+      
+      // Parse YYYY-MM-DD format in local timezone
+      const parts = dateStr.split('-');
+      if (parts.length === 3) {
+        return new Date(
+          parseInt(parts[0], 10),      // year
+          parseInt(parts[1], 10) - 1,  // month (0-indexed)
+          parseInt(parts[2], 10)       // day
+        );
+      }
+      // Fallback to standard parsing
+      return new Date(dateStr);
+    };
+    
     let startDateObj;
     let endDateObj = nowUTC; // Use UTC for database queries
     
     // If custom date range provided, use it
     if (startDate && endDate) {
-      startDateObj = new Date(startDate);
-      endDateObj = new Date(endDate);
-      // Set end date to end of day in IST, then convert to UTC
-      endDateObj.setHours(23, 59, 59, 999);
+      // Parse dates in local timezone to prevent date shifting
+      startDateObj = parseLocalDate(startDate);
+      startDateObj.setHours(0, 0, 0, 0); // Start of day
+      
+      endDateObj = parseLocalDate(endDate);
+      endDateObj.setHours(23, 59, 59, 999); // End of day
+      
+      console.log('[Token Usage] Custom date range:', {
+        inputStart: startDate,
+        inputEnd: endDate,
+        parsedStart: startDateObj.toISOString(),
+        parsedEnd: endDateObj.toISOString()
+      });
     } else {
       // Use predefined time ranges based on IST
       switch (timeRange) {

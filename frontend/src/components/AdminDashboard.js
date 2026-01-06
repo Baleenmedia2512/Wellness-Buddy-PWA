@@ -520,7 +520,14 @@ const AdminDashboard = ({ user, onClose }) => {
       let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}`;
       
       if (timeRange === 'custom' && customStartDate && customEndDate) {
-        url += `&startDate=${customStartDate.toISOString()}&endDate=${customEndDate.toISOString()}`;
+        // Format dates in local timezone to prevent date shifting (YYYY-MM-DD)
+        const formatLocalDate = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        url += `&startDate=${formatLocalDate(customStartDate)}&endDate=${formatLocalDate(customEndDate)}`;
       } else {
         url += `&timeRange=${timeRange}`;
       }
