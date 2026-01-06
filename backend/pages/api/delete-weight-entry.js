@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -33,11 +34,22 @@ export default async function handler(req, res) {
     `;
 
     const [result] = await pool.execute(deleteQuery, [entryId, userId]);
+    
 if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Weight entry not found or unauthorized'
       });
+    }
+
+    // Clear profile cache
+    const [user] = await pool.execute(
+      'SELECT Email FROM team_table WHERE UserId = ?',
+      [userId]
+    );
+    if (user.length > 0 && user[0].Email) {
+      cache.delete(cacheKeys.userProfile(user[0].Email));
+      console.log('🗑️ [delete-weight-entry] Cache cleared for user:', user[0].Email);
     }
 
     res.status(200).json({

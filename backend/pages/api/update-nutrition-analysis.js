@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
    // Handle CORS
@@ -49,8 +50,19 @@ export default async function handler(req, res) {
       totalFiber || 0,
       id
     ]);
+    
 if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'Meal not found' });
+    }
+
+    // Get userId from the record and clear cache
+    const [record] = await pool.execute(
+      'SELECT UserID FROM food_nutrition_data_table WHERE ID = ?',
+      [id]
+    );
+    if (record.length > 0 && record[0].UserID) {
+      cache.delete(cacheKeys.educationSummary(record[0].UserID));
+      console.log('🗑️ [update-nutrition-analysis] Cache cleared for user:', record[0].UserID);
     }
 
     res.status(200).json({

@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export const config = {
   api: {
@@ -46,7 +47,12 @@ export default async function handler(req, res) {
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, platform, topic, confidence || null, deviceInfo || null, imageBase64ToSave]
     );
-return res.status(200).json({
+    
+    // Clear education summary cache for this user
+    cache.delete(cacheKeys.educationSummary(userId));
+    console.log('🗑️ [save-education-log] Cache cleared for user:', userId);
+    
+    return res.status(200).json({
       success: true,
       message: 'Education log saved successfully',
       id: result.insertId

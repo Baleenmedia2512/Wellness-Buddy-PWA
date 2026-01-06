@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // CORS
@@ -45,11 +46,24 @@ return res.status(403).json({
       'UPDATE weight_records_table SET IsDeleted = 0 WHERE ID = ?',
       [id]
     );
+    
 if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Weight entry not found'
       });
+    }
+
+    // Clear profile cache if userId provided
+    if (userId) {
+      const [user] = await pool.execute(
+        'SELECT Email FROM team_table WHERE UserId = ?',
+        [userId]
+      );
+      if (user.length > 0 && user[0].Email) {
+        cache.delete(cacheKeys.userProfile(user[0].Email));
+        console.log('🗑️ [undo-deleted-weight-entry] Cache cleared for user:', user[0].Email);
+      }
     }
 
     return res.status(200).json({

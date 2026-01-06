@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -95,7 +96,18 @@ export default async function handler(req, res) {
       bmrValue,
       imageBase64ToSave,
     ]);
-res.status(200).json({
+    
+    // Get user email to clear profile cache
+    const [user] = await pool.execute(
+      'SELECT Email FROM team_table WHERE UserId = ?',
+      [userId]
+    );
+    if (user.length > 0 && user[0].Email) {
+      cache.delete(cacheKeys.userProfile(user[0].Email));
+      console.log('🗑️ [save-weight-entry] Cache cleared for user:', user[0].Email);
+    }
+    
+    res.status(200).json({
       success: true,
       id: result.insertId,
       message: 'Weight entry saved successfully',

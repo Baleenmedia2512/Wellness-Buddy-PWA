@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -149,6 +150,10 @@ res.status(200).json({
         timestamp: new Date().toISOString()
       }
     });
+    
+    // Clear education summary cache for this user (since background analysis affects nutrition stats)
+    cache.delete(cacheKeys.educationSummary(userId));
+    console.log('🗑️ [save-background-analysis] Cache cleared for user:', userId);
 
   } catch (error) {
     console.error('❌ Database save error:', error);

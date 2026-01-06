@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // CORS handling
@@ -34,12 +35,17 @@ export default async function handler(req, res) {
       `UPDATE education_logs_table SET IsDeleted = 1 WHERE Id = ? AND UserId = ?`,
       [logId, userId]
     );
+    
 if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Education log not found or already deleted'
       });
     }
+
+    // Clear cache
+    cache.delete(cacheKeys.educationSummary(userId));
+    console.log('🗑️ [delete-education-log] Cache cleared for user:', userId);
 
     return res.status(200).json({
       success: true,

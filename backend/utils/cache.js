@@ -65,6 +65,22 @@ class SimpleCache {
   }
 
   /**
+   * Delete all cache entries matching a pattern
+   * @param {string} pattern Pattern to match (e.g., 'user:123:')
+   */
+  deletePattern(pattern) {
+    const keys = Array.from(this.cache.keys());
+    let deleted = 0;
+    keys.forEach(key => {
+      if (key.includes(pattern)) {
+        this.delete(key);
+        deleted++;
+      }
+    });
+    return deleted;
+  }
+
+  /**
    * Clear all cache entries
    */
   clear() {

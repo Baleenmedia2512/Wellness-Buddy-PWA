@@ -1,4 +1,5 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // CORS
@@ -45,11 +46,18 @@ return res.status(403).json({
       'UPDATE food_nutrition_data_table SET IsDeleted = 0 WHERE ID = ?',
       [id]
     );
+    
 if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
-        message: 'Analysis not found'
+        message: 'Analysis not found or already active'
       });
+    }
+
+    // Clear cache if userId provided
+    if (userId) {
+      cache.delete(cacheKeys.educationSummary(userId));
+      console.log('🗑️ [undo-deleted-analysis] Cache cleared for user:', userId);
     }
 
     return res.status(200).json({
