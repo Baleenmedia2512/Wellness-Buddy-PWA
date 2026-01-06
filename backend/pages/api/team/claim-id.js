@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Claim Team ID
  * POST /api/team/claim-id
  * 
@@ -7,7 +7,7 @@
  * Also creates entry in coach_teams_table if user is a coach (Role=admin)
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -66,13 +66,13 @@ export default async function handler(req, res) {
     }
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     try {
       await connection.beginTransaction();
 
       // Check if user already has a Team ID
-      const [userRows] = await connection.execute(
+      const [userRows] = await pool.execute(
         'SELECT UserId, TeamId, Role FROM team_table WHERE Email = ?',
         [email]
       );
@@ -111,7 +111,7 @@ export default async function handler(req, res) {
       }
 
       // Check Team ID availability in coach_teams_table (both active and inactive)
-      const [allCoachTeams] = await connection.execute(
+      const [allCoachTeams] = await pool.execute(
         'SELECT CoachId, CoCoachId, Status FROM coach_teams_table WHERE TeamId = ?',
         [teamId]
       );
@@ -120,7 +120,7 @@ export default async function handler(req, res) {
       const activeCoachTeams = allCoachTeams.filter(team => team.Status === 'active');
 
       // Check if Team ID is used by someone else in team_table
-      const [existingTeamId] = await connection.execute(
+      const [existingTeamId] = await pool.execute(
         'SELECT UserId FROM team_table WHERE TeamId = ? AND UserId != ?',
         [teamId, currentUserId]
       );
@@ -159,7 +159,7 @@ export default async function handler(req, res) {
       }
 
       // Update user's Team ID
-      await connection.execute(
+      await pool.execute(
         'UPDATE team_table SET TeamId = ? WHERE UserId = ?',
         [teamId, currentUserId]
       );
@@ -200,8 +200,7 @@ export default async function handler(req, res) {
       throw dbError;
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error claiming Team ID:', error);

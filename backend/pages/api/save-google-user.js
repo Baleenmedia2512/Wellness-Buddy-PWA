@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -22,16 +22,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
-    console.log('📊 [save-google-user] Database connection established');
-
-    const [existingRows] = await connection.execute(
+    const [existingRows] = await pool.execute(
       'SELECT UserId, UserName, Email, Status FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
@@ -51,7 +44,7 @@ export default async function handler(req, res) {
       const maxAttempts = 10;
       
       while (usernameExists && attempts < maxAttempts) {
-        const [usernameRows] = await connection.execute(
+        const [usernameRows] = await pool.execute(
           'SELECT UserId FROM team_table WHERE UserName = ? LIMIT 1',
           [username]
         );
@@ -73,7 +66,7 @@ export default async function handler(req, res) {
       }
       
       try {
-        await connection.execute(
+        await pool.execute(
           `INSERT INTO team_table
               (EntryDateTime, EntryUser, UserName, Password, \`TargetWeight(in_kg)\`, CoachName, CoCoachName, Status, CoachApproved, Email)
           VALUES (NOW(), 'Google Sign-In', ?, 'User@123#', 0, '', '', 'Active', 0, ?)`,
@@ -81,9 +74,7 @@ export default async function handler(req, res) {
         );
         
         console.log('✅ [save-google-user] New user created successfully:', { email, username });
-        await connection.end();
-        
-        res.json({ 
+res.json({ 
           success: true, 
           message: 'User created successfully',
           isNewUser: true,
@@ -95,14 +86,11 @@ export default async function handler(req, res) {
           console.log('⚠️ [save-google-user] Duplicate entry detected, checking if user exists by email again...');
           
           // Check one more time if user was created by another concurrent request
-          const [recheckRows] = await connection.execute(
+          const [recheckRows] = await pool.execute(
             'SELECT UserId, UserName, Email, Status FROM team_table WHERE Email = ? LIMIT 1',
             [email]
           );
-          
-          await connection.end();
-          
-          if (recheckRows.length > 0) {
+if (recheckRows.length > 0) {
             console.log('ℹ️ [save-google-user] User was created by concurrent request:', email);
             res.json({ 
               success: true, 
@@ -131,9 +119,7 @@ export default async function handler(req, res) {
       }
     } else {
       console.log('ℹ️ [save-google-user] User already exists:', email);
-      await connection.end();
-      
-      res.json({ 
+res.json({ 
         success: true, 
         message: 'User already exists',
         isNewUser: false,

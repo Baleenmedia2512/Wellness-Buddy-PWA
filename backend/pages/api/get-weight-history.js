@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -24,12 +24,7 @@ export default async function handler(req, res) {
 
   try {
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST ,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-    });
+    const pool = getPool();
 
     // ✅ Get ALL weight history for user (no pagination - load everything)
     // Optionally exclude WeightImageBase64 for faster queries (duplicate check doesn't need images)
@@ -65,7 +60,7 @@ export default async function handler(req, res) {
         ORDER BY CreatedAt DESC
       `;
 
-    const [rows] = await connection.execute(historyQuery, [userId]);
+    const [rows] = await pool.execute(historyQuery, [userId]);
 
     // ✅ Format CreatedAt as local time string (without UTC conversion)
     // MySQL stores local time, but mysql2 returns Date objects which get serialized as UTC
@@ -114,10 +109,7 @@ export default async function handler(req, res) {
           parseFloat(formattedRows[0].Weight) - parseFloat(formattedRows[1].Weight);
       }
     }
-
-    await connection.end();
-
-    res.status(200).json({
+res.status(200).json({
       success: true,
       data: formattedRows,
       stats,

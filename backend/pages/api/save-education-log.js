@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export const config = {
   api: {
@@ -32,29 +32,21 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
   try {
     // Database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // If ImageBase64 is empty string, store as null
     const imageBase64ToSave = (imageBase64 && imageBase64.trim() !== '') ? imageBase64 : null;
 
     // Insert into education_logs_table
-    const [result] = await connection.execute(
+    const [result] = await pool.execute(
       `INSERT INTO education_logs_table (UserId, Platform, Topic, Confidence, DeviceInfo, ImageBase64)
        VALUES (?, ?, ?, ?, ?, ?)`,
       [userId, platform, topic, confidence || null, deviceInfo || null, imageBase64ToSave]
     );
-
-    await connection.end();
-
-    return res.status(200).json({
+return res.status(200).json({
       success: true,
       message: 'Education log saved successfully',
       id: result.insertId
@@ -62,7 +54,8 @@ export default async function handler(req, res) {
 
   } catch (error) {
     if (connection) {
-      try { await connection.end(); } catch {}
+      try {
+} catch {}
     }
     console.error('❌ Save education log error:', error);
     return res.status(500).json({

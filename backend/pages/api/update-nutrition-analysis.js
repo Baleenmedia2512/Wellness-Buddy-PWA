@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
    // Handle CORS
@@ -26,12 +26,7 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Update the meal in the database
     const query = `
@@ -45,7 +40,7 @@ export default async function handler(req, res) {
       WHERE ID = ?
     `;
 
-    const [result] = await connection.execute(query, [
+    const [result] = await pool.execute(query, [
       JSON.stringify(analysisData),
       totalCalories || 0,
       totalProtein || 0,
@@ -54,10 +49,7 @@ export default async function handler(req, res) {
       totalFiber || 0,
       id
     ]);
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
+if (result.affectedRows === 0) {
       return res.status(404).json({ success: false, message: 'Meal not found' });
     }
 

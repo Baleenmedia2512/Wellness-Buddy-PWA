@@ -1,11 +1,11 @@
-/**
+﻿/**
  * Cancel Upline Coach Approval Request
  * POST /api/upline/cancel-request
  * 
  * Cancels pending approval request, clears TeamId, updates status to 'cancelled'
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -41,14 +41,14 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
 
   try {
-    connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
     await connection.beginTransaction();
 
     // Get user ID
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId, TeamId FROM team_table WHERE Email = ?',
       [email]
     );
@@ -64,7 +64,7 @@ export default async function handler(req, res) {
     const userId = userRows[0].UserId;
 
     // Update approval request status to 'cancelled'
-    await connection.execute(
+    await pool.execute(
       `UPDATE approval_requests_table 
        SET Status = 'cancelled', ProcessedAt = NOW()
        WHERE RequesterId = ? AND Status = 'pending'`,
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
     );
 
     // Clear TeamId and UplineCoachId from team_table
-    await connection.execute(
+    await pool.execute(
       'UPDATE team_table SET TeamId = NULL, UplineCoachId = NULL WHERE UserId = ?',
       [userId]
     );
@@ -97,7 +97,6 @@ export default async function handler(req, res) {
     });
   } finally {
     if (connection) {
-      await connection.end();
-    }
+}
   }
 }

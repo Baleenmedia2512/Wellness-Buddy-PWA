@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // CORS handling
@@ -25,18 +25,13 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
   try {
     // Database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Fetch education logs (exclude soft-deleted)
-    const [logs] = await connection.execute(
+    const [logs] = await pool.execute(
       `SELECT Id, Platform, Topic, 
        DATE_FORMAT(CreatedAt, '%Y-%m-%dT%H:%i:%s') as CreatedAt,
        Confidence, ImageBase64
@@ -46,10 +41,7 @@ export default async function handler(req, res) {
        LIMIT 100`,
       [userId]
     );
-
-    await connection.end();
-
-    return res.status(200).json({
+return res.status(200).json({
       success: true,
       count: logs.length,
       logs: logs
@@ -57,7 +49,8 @@ export default async function handler(req, res) {
 
   } catch (error) {
     if (connection) {
-      try { await connection.end(); } catch {}
+      try {
+} catch {}
     }
     console.error('❌ Fetch education logs error:', error);
     return res.status(500).json({

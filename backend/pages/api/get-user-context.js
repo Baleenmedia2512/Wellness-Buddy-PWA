@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 /**
  * Get User Context API
@@ -34,12 +34,7 @@ export default async function handler(req, res) {
     const startTime = Date.now();
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Execute all queries in parallel for performance
     const [
@@ -49,7 +44,7 @@ export default async function handler(req, res) {
       recentMealsResult
     ] = await Promise.all([
       // 1. User's personal corrections (TOP 10 by frequency)
-      connection.execute(
+      pool.execute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -62,7 +57,7 @@ export default async function handler(req, res) {
       ),
 
       // 2. Global correction patterns (TOP 5 by total users)
-      connection.execute(
+      pool.execute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -76,7 +71,7 @@ export default async function handler(req, res) {
       ),
 
       // 3. User profile (diet preference)
-      connection.execute(
+      pool.execute(
         `SELECT DietType as diet_type
          FROM team_table 
          WHERE UserId = ? 
@@ -85,7 +80,7 @@ export default async function handler(req, res) {
       ),
 
       // 4. Recent meals (last 3 meals for context)
-      connection.execute(
+      pool.execute(
         `SELECT 
           AnalysisData as analysis_data,
           CreatedAt as created_at
@@ -96,10 +91,7 @@ export default async function handler(req, res) {
         [userId]
       )
     ]);
-
-    await connection.end();
-
-    // Parse recent meals to extract food names
+// Parse recent meals to extract food names
     const recentMeals = recentMealsResult[0].map(meal => {
       try {
         const analysisData = typeof meal.analysis_data === 'string' 

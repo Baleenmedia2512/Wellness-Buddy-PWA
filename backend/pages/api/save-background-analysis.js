@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -100,12 +100,7 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
 
     // Insert into the new table structure, now including ImageBase64
@@ -122,7 +117,7 @@ export default async function handler(req, res) {
     // If ImageBase64 is empty string, store as null
     const imageBase64ToSave = (ImageBase64 && ImageBase64.trim() !== '') ? ImageBase64 : null;
 
-    const [result] = await connection.execute(insertQuery, [
+    const [result] = await pool.execute(insertQuery, [
       userId,
       imagePath,
       analysisDataJson,
@@ -136,10 +131,7 @@ export default async function handler(req, res) {
       deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
       imageBase64ToSave
     ]);
-
-    await connection.end();
-
-    res.status(200).json({
+res.status(200).json({
       success: true,
       id: result.insertId,
       message: 'Analysis saved successfully',

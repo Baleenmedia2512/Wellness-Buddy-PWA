@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -20,14 +20,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
-    const [rows] = await connection.execute(
+    const [rows] = await pool.execute(
       'SELECT ID, OTPHash, ExpiresAt FROM otp_tokens_table WHERE Recipient = ? AND ContactType = ? AND IsActive = TRUE ORDER BY ID DESC LIMIT 1',
       [recipient, contactType]
     );
@@ -48,13 +43,13 @@ export default async function handler(req, res) {
     }
 
     // OTP verified - deactivate token
-    await connection.execute(
+    await pool.execute(
       'UPDATE otp_tokens_table SET Verified = TRUE, IsActive = FALSE WHERE ID = ?',
       [otpData.ID]
     );
 
     // Check & insert user if not exists.
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT * FROM team_table WHERE Email = ? LIMIT 1',
       [recipient]
     );
@@ -70,14 +65,14 @@ export default async function handler(req, res) {
       const defaultPassword = 'User@123#';
       const hashedPassword = defaultPassword; // You can hash it later if you want
       
-      await connection.execute(
+      await pool.execute(
         `INSERT INTO team_table
           (EntryDateTime, EntryUser, UserName, Password, \`TargetWeight(in_kg)\`, CoachName, CoCoachName, Status, CoachApproved, Email)
           VALUES (NOW(), 'Wellness Valley', ?, ?, 0, '', '', 'Active', 0, ?)`,
         [username, hashedPassword, recipient]
       );
 
-      const [newUserRows] = await connection.execute(
+      const [newUserRows] = await pool.execute(
         'SELECT * FROM team_table WHERE Email = ? LIMIT 1',
         [recipient]
       );

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -19,19 +19,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Get background analysis results for the user
     const limitInt = parseInt(limit) || 50;
     const offsetInt = parseInt(offset) || 0;
     
     // First, try a simple query without LIMIT/OFFSET to test
-    const [rows] = await connection.execute(
+    const [rows] = await pool.execute(
       `SELECT *
        FROM food_nutrition_data_table 
        WHERE UserID = ? AND IsDeleted = 0
@@ -43,14 +38,11 @@ export default async function handler(req, res) {
     const paginatedRows = rows.slice(offsetInt, offsetInt + limitInt);
 
     // Get total count for pagination
-    const [countResult] = await connection.execute(
+    const [countResult] = await pool.execute(
       'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
-
-    await connection.end();
-
-    res.status(200).json({
+res.status(200).json({
       success: true,
       data: paginatedRows,
       pagination: {

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -27,15 +27,10 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Fetch user's corrections ordered by frequency
-    const [corrections] = await connection.execute(
+    const [corrections] = await pool.execute(
       `SELECT 
         Id as id,
         AiDetected as ai_detected,
@@ -48,10 +43,7 @@ export default async function handler(req, res) {
        ORDER BY TimesCorrected DESC, LastCorrected DESC`,
       [userId]
     );
-
-    await connection.end();
-
-    return res.status(200).json({
+return res.status(200).json({
       success: true,
       data: corrections,
       count: corrections.length

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -67,12 +67,7 @@ export default async function handler(req, res) {
 
   try {
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Insert weight entry into database
     const insertQuery = `
@@ -91,7 +86,7 @@ export default async function handler(req, res) {
     // Use provided BMR (manually entered)
     const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
 
-    const [result] = await connection.execute(insertQuery, [
+    const [result] = await pool.execute(insertQuery, [
       userId,
       weight,
       bmiValue,
@@ -100,10 +95,7 @@ export default async function handler(req, res) {
       bmrValue,
       imageBase64ToSave,
     ]);
-
-    await connection.end();
-
-    res.status(200).json({
+res.status(200).json({
       success: true,
       id: result.insertId,
       message: 'Weight entry saved successfully',

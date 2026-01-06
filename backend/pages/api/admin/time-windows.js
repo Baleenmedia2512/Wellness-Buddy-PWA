@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 /**
  * API: Admin Time Windows Management
@@ -17,12 +17,7 @@ export default async function handler(req, res) {
   // GET: Fetch current time windows
   if (req.method === 'GET') {
     try {
-      const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-      });
+      const pool = getPool();
 
       const [rows] = await connection.query(`
         SELECT 
@@ -39,10 +34,7 @@ export default async function handler(req, res) {
         ORDER BY 
           FIELD(ActivityType, 'weight', 'education', 'breakfast', 'lunch', 'dinner')
       `);
-
-      await connection.end();
-
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         timeWindows: rows
       });
@@ -112,12 +104,7 @@ export default async function handler(req, res) {
       
       // Validate meal time windows don't overlap (only for meals)
       if (['breakfast', 'lunch', 'dinner'].includes(activityType)) {
-        const checkConnection = await mysql.createConnection({
-          host: process.env.DB_HOST,
-          user: process.env.DB_USER,
-          password: process.env.DB_PASS,
-          database: process.env.DB_NAME
-        });
+        const checkconst pool = getPool();
         
         const [existingWindows] = await checkConnection.query(`
           SELECT ActivityType, WindowStartTime, WindowEndTime
@@ -150,12 +137,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-      });
+      const pool = getPool();
 
       await connection.beginTransaction();
 
@@ -183,9 +165,7 @@ export default async function handler(req, res) {
         ]);
 
         await connection.commit();
-        await connection.end();
-
-        return res.status(200).json({
+return res.status(200).json({
           success: true,
           message: 'Time window updated successfully',
           newWindowId: result.insertId
@@ -193,8 +173,7 @@ export default async function handler(req, res) {
 
       } catch (error) {
         await connection.rollback();
-        await connection.end();
-        throw error;
+throw error;
       }
 
     } catch (error) {

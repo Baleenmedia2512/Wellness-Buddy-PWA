@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Send Upline Coach Approval Request
  * POST /api/upline/request
  * 
@@ -6,7 +6,7 @@
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -90,21 +90,20 @@ export default async function handler(req, res) {
     }
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     try {
       await connection.beginTransaction();
 
       // Get requester's UserId and details
-      const [requesterRows] = await connection.execute(
+      const [requesterRows] = await pool.execute(
         'SELECT UserId, UserName, Email, TeamId, UplineCoachId FROM team_table WHERE Email = ? LIMIT 1',
         [email]
       );
 
       if (requesterRows.length === 0) {
         await connection.rollback();
-        await connection.end();
-        return res.status(404).json({
+return res.status(404).json({
           success: false,
           error: 'User not found'
         });
@@ -115,8 +114,7 @@ export default async function handler(req, res) {
       // Prevent self-approval
       if (coachId === requesterId) {
         await connection.rollback();
-        await connection.end();
-        return res.status(400).json({
+return res.status(400).json({
           success: false,
           error: 'You cannot select yourself as your coach'
         });
@@ -145,7 +143,7 @@ export default async function handler(req, res) {
       }
 
       // Cancel any existing pending requests for this user
-      await connection.execute(
+      await pool.execute(
         `UPDATE approval_requests_table 
          SET Status = 'cancelled', ProcessedAt = NOW()
          WHERE RequesterId = ? AND Status = 'pending'`,
@@ -153,7 +151,7 @@ export default async function handler(req, res) {
       );
 
       // Get coach details
-      const [coachRows] = await connection.execute(
+      const [coachRows] = await pool.execute(
         'SELECT UserId, UserName, Email, CoachName, Role FROM team_table WHERE UserId = ?',
         [coachId]
       );
@@ -182,7 +180,7 @@ export default async function handler(req, res) {
       const otpHash = await bcrypt.hash(otp, 10);
 
       // Create approval request with 24-hour expiry
-      const [result] = await connection.execute(
+      const [result] = await pool.execute(
         `INSERT INTO approval_requests_table 
         (RequesterId, UplineCoachId, Status, OtpHash, OtpExpiresAt, OtpSentAt, OtpAttempts, RequestedAt)
         VALUES (?, ?, 'pending', ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW(), 0, NOW())`,
@@ -318,8 +316,7 @@ export default async function handler(req, res) {
       throw dbError;
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error creating approval request:', error);

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Search Coaches
  * GET /api/users/search?q={query}
  * 
@@ -7,7 +7,7 @@
  * Used in upline coach selection
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -68,11 +68,11 @@ export default async function handler(req, res) {
     };
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     try {
       // Search for coaches by name or email, excluding current user
-      const [coaches] = await connection.execute(
+      const [coaches] = await pool.execute(
         `SELECT 
           UserId,
           UserName,
@@ -111,8 +111,7 @@ export default async function handler(req, res) {
       });
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error searching coaches:', error);

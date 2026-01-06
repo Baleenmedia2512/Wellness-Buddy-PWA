@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Validate OTP
  * POST /api/upline/validate-otp
  * 
@@ -6,7 +6,7 @@
  * Completes the setup process
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 
 // Database configuration
@@ -60,17 +60,16 @@ export default async function handler(req, res) {
     }
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     // Get requester's UserId
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
 
     if (userRows.length === 0) {
-      await connection.end();
-      return res.status(404).json({
+return res.status(404).json({
         success: false,
         error: 'User not found'
       });
@@ -82,7 +81,7 @@ export default async function handler(req, res) {
       await connection.beginTransaction();
 
       // Get pending request
-      const [requestRows] = await connection.execute(
+      const [requestRows] = await pool.execute(
         `SELECT Id, RequesterId, UplineCoachId, OtpHash, OtpExpiresAt, OtpAttempts, Status
          FROM approval_requests_table
          WHERE RequesterId = ?
@@ -108,7 +107,7 @@ export default async function handler(req, res) {
 
       if (now > expiresAt) {
         // Mark as expired and delete
-        await connection.execute(
+        await pool.execute(
           'UPDATE approval_requests_table SET Status = ? WHERE Id = ?',
           ['expired', request.Id]
         );
@@ -125,7 +124,7 @@ export default async function handler(req, res) {
       // Check max attempts
       if (request.OtpAttempts >= MAX_OTP_ATTEMPTS) {
         // Delete request after max attempts
-        await connection.execute(
+        await pool.execute(
           'DELETE FROM approval_requests_table WHERE Id = ?',
           [request.Id]
         );
@@ -155,7 +154,7 @@ export default async function handler(req, res) {
         // Increment attempts
         const newAttempts = request.OtpAttempts + 1;
         
-        await connection.execute(
+        await pool.execute(
           'UPDATE approval_requests_table SET OtpAttempts = ? WHERE Id = ?',
           [newAttempts, request.Id]
         );
@@ -172,7 +171,7 @@ export default async function handler(req, res) {
       // OTP is valid! Complete setup
 
       // Get requester's TeamId first
-      const [requesterData] = await connection.execute(
+      const [requesterData] = await pool.execute(
         'SELECT TeamId FROM team_table WHERE UserId = ?',
         [requesterId]
       );
@@ -189,7 +188,7 @@ export default async function handler(req, res) {
 
       // STEP 1: Update coach_teams_table FIRST (before team_table)
       // Check if TeamId exists in coach_teams_table (including inactive)
-      const [existingTeam] = await connection.execute(
+      const [existingTeam] = await pool.execute(
         'SELECT TeamId, CoachId, CoCoachId, Status FROM coach_teams_table WHERE TeamId = ?',
         [requesterTeamId]
       );
@@ -200,28 +199,28 @@ export default async function handler(req, res) {
         if (team.Status === 'active') {
           // Team is active, add requester as CoCoachId if slot available
           if (!team.CoCoachId) {
-            await connection.execute(
+            await pool.execute(
               'UPDATE coach_teams_table SET CoCoachId = ?, UpdatedAt = NOW() WHERE TeamId = ? AND Status = "active"',
               [requesterId, requesterTeamId]
             );
           }
         } else {
           // Team is inactive, reactivate with requester as primary coach
-          await connection.execute(
+          await pool.execute(
             'UPDATE coach_teams_table SET CoachId = ?, CoCoachId = NULL, Status = "active", UpdatedAt = NOW() WHERE TeamId = ?',
             [requesterId, requesterTeamId]
           );
         }
       } else {
         // Create new entry with requester as primary coach
-        await connection.execute(
+        await pool.execute(
           'INSERT INTO coach_teams_table (TeamId, CoachId, Status) VALUES (?, ?, "active")',
           [requesterTeamId, requesterId]
         );
       }
 
       // STEP 2: Get coach details for CoachName and CoCoachName
-      const [coachData] = await connection.execute(
+      const [coachData] = await pool.execute(
         'SELECT TeamId, UserName FROM team_table WHERE UserId = ?',
         [request.UplineCoachId]
       );
@@ -232,7 +231,7 @@ export default async function handler(req, res) {
 
       if (coachTeamId) {
         // Find the co-coach from coach_teams_table
-        const [coachTeam] = await connection.execute(
+        const [coachTeam] = await pool.execute(
           'SELECT CoachId, CoCoachId FROM coach_teams_table WHERE TeamId = ? AND Status = "active"',
           [coachTeamId]
         );
@@ -244,7 +243,7 @@ export default async function handler(req, res) {
             : coachTeam[0].CoachId;
 
           if (coCoachId) {
-            const [coCoachData] = await connection.execute(
+            const [coCoachData] = await pool.execute(
               'SELECT UserName FROM team_table WHERE UserId = ?',
               [coCoachId]
             );
@@ -254,19 +253,19 @@ export default async function handler(req, res) {
       }
 
       // STEP 3: NOW update team_table (after coach_teams_table succeeds)
-      await connection.execute(
+      await pool.execute(
         'UPDATE team_table SET UplineCoachId = ?, CoachName = ?, CoCoachName = ? WHERE UserId = ?',
         [request.UplineCoachId, coachName, coCoachName, requesterId]
       );
 
       // STEP 4: Mark request as approved
-      await connection.execute(
+      await pool.execute(
         'UPDATE approval_requests_table SET Status = ?, ProcessedAt = NOW() WHERE Id = ?',
         ['approved', request.Id]
       );
 
       // Get requester and coach details for response
-      const [userDetails] = await connection.execute(
+      const [userDetails] = await pool.execute(
         `SELECT 
           r.UserName as RequesterName,
           r.TeamId as RequesterTeamId,
@@ -295,8 +294,7 @@ export default async function handler(req, res) {
       throw dbError;
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error validating OTP:', error);

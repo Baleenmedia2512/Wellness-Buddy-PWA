@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -28,15 +28,10 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Check if the same correction already exists for this user
-    const [existingCorrections] = await connection.execute(
+    const [existingCorrections] = await pool.execute(
       `SELECT Id, TimesCorrected FROM food_corrections_table 
        WHERE UserId = ? AND AiDetected = ? AND UserCorrected = ?`,
       [userId, aiDetected, userCorrected]
@@ -47,16 +42,13 @@ export default async function handler(req, res) {
       const correctionId = existingCorrections[0].Id;
       const newCount = existingCorrections[0].TimesCorrected + 1;
 
-      await connection.execute(
+      await pool.execute(
         `UPDATE food_corrections_table 
          SET TimesCorrected = ?, LastCorrected = CURRENT_TIMESTAMP 
          WHERE Id = ?`,
         [newCount, correctionId]
       );
-
-      await connection.end();
-
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         message: 'Correction updated',
         data: {
@@ -67,15 +59,12 @@ export default async function handler(req, res) {
       });
     } else {
       // Insert new correction
-      const [result] = await connection.execute(
+      const [result] = await pool.execute(
         `INSERT INTO food_corrections_table (UserId, AiDetected, UserCorrected, TimesCorrected) 
          VALUES (?, ?, ?, 1)`,
         [userId, aiDetected, userCorrected]
       );
-
-      await connection.end();
-
-      return res.status(201).json({
+return res.status(201).json({
         success: true,
         message: 'Correction saved',
         data: {

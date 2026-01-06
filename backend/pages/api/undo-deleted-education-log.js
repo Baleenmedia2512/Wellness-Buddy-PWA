@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // CORS
@@ -22,24 +22,18 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
   try {
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Optional safety check: ensure row belongs to user
     if (userId) {
-      const [ownerCheck] = await connection.execute(
+      const [ownerCheck] = await pool.execute(
         'SELECT Id FROM education_logs_table WHERE Id = ? AND UserId = ? LIMIT 1',
         [id, userId]
       );
       if (!ownerCheck.length) {
-        await connection.end();
-        return res.status(403).json({
+return res.status(403).json({
           success: false,
           message: 'You do not have permission to restore this item.'
         });
@@ -47,14 +41,11 @@ export default async function handler(req, res) {
     }
 
     // Restore: set IsDeleted back to 0
-    const [result] = await connection.execute(
+    const [result] = await pool.execute(
       'UPDATE education_logs_table SET IsDeleted = 0 WHERE Id = ?',
       [id]
     );
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
+if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Education log not found'
@@ -68,7 +59,8 @@ export default async function handler(req, res) {
     });
   } catch (error) {
     if (connection) {
-      try { await connection.end(); } catch {}
+      try {
+} catch {}
     }
     console.error('❌ Database undo error:', error);
     return res.status(500).json({
