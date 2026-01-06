@@ -1,4 +1,5 @@
 import mysql from 'mysql2/promise';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -124,6 +125,16 @@ export default async function handler(req, res) {
     await connection.end();
 
     console.log('✅ [update-user-profile] Profile updated successfully');
+
+    // PERFORMANCE OPTIMIZATION: Clear cached profile data
+    // This ensures users see updated data immediately on next load
+    try {
+      cache.delete(cacheKeys.userProfile(email));
+      console.log('🗑️ [update-user-profile] Cache cleared for:', email);
+    } catch (cacheError) {
+      // Don't fail the request if cache clear fails
+      console.warn('⚠️ [update-user-profile] Cache clear failed:', cacheError.message);
+    }
 
     const responseData = {
       success: true,
