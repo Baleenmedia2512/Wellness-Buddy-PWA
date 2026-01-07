@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -23,12 +24,7 @@ export default async function handler(req, res) {
 
   try {
     // Database connection . //
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Soft delete the entry (set IsDeleted = 1)
     const deleteQuery = `
@@ -37,15 +33,23 @@ export default async function handler(req, res) {
       WHERE ID = ? AND UserId = ?
     `;
 
-    const [result] = await connection.execute(deleteQuery, [entryId, userId]);
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
+    const [result] = await pool.execute(deleteQuery, [entryId, userId]);
+    
+if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Weight entry not found or unauthorized'
       });
+    }
+
+    // Clear profile cache
+    const [user] = await pool.execute(
+      'SELECT Email FROM team_table WHERE UserId = ?',
+      [userId]
+    );
+    if (user.length > 0 && user[0].Email) {
+      cache.delete(cacheKeys.userProfile(user[0].Email));
+      console.log('🗑️ [delete-weight-entry] Cache cleared for user:', user[0].Email);
     }
 
     res.status(200).json({

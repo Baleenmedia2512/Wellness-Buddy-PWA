@@ -436,7 +436,7 @@ const SuccessSavePopup = ({
           
           const undoBody = isWeightEntry
             ? { id: popup.analysisId, userId: popup.userId }
-            : { id: popup.analysisId };
+            : { id: popup.analysisId, userId: popup.userId };
 
           const res = await fetch(undoUrl, {
             method: 'POST',
@@ -652,7 +652,7 @@ const SuccessSavePopup = ({
                     
                     const deleteBody = isWeightEntry
                       ? { userId: popup.userId, entryId: analysisId }
-                      : { id: analysisId };
+                      : { id: analysisId, userId: popup.userId };
 
                     const res = await fetch(deleteUrl, {
                       method: 'DELETE',

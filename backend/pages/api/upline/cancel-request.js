@@ -1,11 +1,11 @@
-/**
+﻿/**
  * Cancel Upline Coach Approval Request
  * POST /api/upline/cancel-request
  * 
  * Cancels pending approval request, clears TeamId, updates status to 'cancelled'
  */
 
-import mysql from 'mysql2/promise';
+import { getPool, getConnection } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -41,14 +41,17 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
 
   try {
-    connection = await mysql.createConnection(dbConfig);
-    await connection.beginTransaction();
+    const pool = getPool();
+    const connection = await pool.getConnection();
+    
+    try {
+      await connection.beginTransaction();
 
     // Get user ID
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId, TeamId FROM team_table WHERE Email = ?',
       [email]
     );
@@ -64,7 +67,7 @@ export default async function handler(req, res) {
     const userId = userRows[0].UserId;
 
     // Update approval request status to 'cancelled'
-    await connection.execute(
+    await pool.execute(
       `UPDATE approval_requests_table 
        SET Status = 'cancelled', ProcessedAt = NOW()
        WHERE RequesterId = ? AND Status = 'pending'`,
@@ -72,12 +75,13 @@ export default async function handler(req, res) {
     );
 
     // Clear TeamId and UplineCoachId from team_table
-    await connection.execute(
+    await pool.execute(
       'UPDATE team_table SET TeamId = NULL, UplineCoachId = NULL WHERE UserId = ?',
       [userId]
     );
 
     await connection.commit();
+    connection.release();
 
     return res.status(200).json({
       success: true,
@@ -85,19 +89,21 @@ export default async function handler(req, res) {
       redirectTo: '/setup'
     });
 
-  } catch (error) {
-    if (connection) {
-      await connection.rollback();
+    } catch (error) {
+      try {
+        await connection.rollback();
+        connection.release();
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+      throw error;
     }
-    
+
+  } catch (error) {
     console.error('Cancel request error:', error);
     return res.status(500).json({ 
       success: false, 
       error: 'Failed to cancel request' 
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

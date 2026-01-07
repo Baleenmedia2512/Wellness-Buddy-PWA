@@ -64,8 +64,16 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setIsLoading(true);
       setError('');
 
+      const cacheBuster = Date.now();
       const response = await fetch(
-        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`
+        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }
       );
 
       if (!response.ok) {

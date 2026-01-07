@@ -29,38 +29,30 @@ private static final String GEMINI_API_URL = "https://generativelanguage.googlea
             byte[] imageBytes = readFileToBytes(imagePath);
             String base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP);
 
-            // Use the same prompt as geminiService.js
-            String prompt = "Analyze this food image and return nutrition data in JSON format. Be quick but accurate.\n\n" +
+            // Optimized prompt matching geminiService.js
+            String prompt = "Analyze food image, return JSON. Quick, accurate estimates.\n\n" +
                     "RULES:\n" +
-                    "1. Estimate portions based on visual cues (plate size, typical servings)\n" +
-                    "2. Use standard nutrition values\n" +
-                    "3. Return concise JSON only\n\n" +
+                    "1. Estimate portions by visual cues\n" +
+                    "2. Use standard USDA values\n" +
+                    "3. Liquids: use ml/L; Solids: use grams\n\n" +
                     "FORMAT:\n" +
                     "{\n" +
-                    "  \"foods\": [\n" +
-                    "    {\n" +
-                    "      \"name\": \"food name\",\n" +
-                    "      \"portion\": \"description like '2 idlis' or '1 cup rice'\",\n" +
-                    "      \"weight_g\": number,\n" +
-                    "      \"nutrition\": {\n" +
-                    "        \"calories\": number,\n" +
-                    "        \"protein\": number,\n" +
-                    "        \"carbs\": number,\n" +
-                    "        \"fat\": number,\n" +
-                    "        \"fiber\": number\n" +
-                    "      }\n" +
+                    "  \"foods\": [{\n" +
+                    "    \"name\": \"food name\",\n" +
+                    "    \"portion\": \"description\",\n" +
+                    "    \"weight_g\": number,\n" +
+                    "    \"nutrition\": {\n" +
+                    "      \"calories\": number,\n" +
+                    "      \"protein\": number,\n" +
+                    "      \"carbs\": number,\n" +
+                    "      \"fat\": number,\n" +
+                    "      \"fiber\": number\n" +
                     "    }\n" +
-                    "  ],\n" +
-                    "  \"total\": {\n" +
-                    "    \"calories\": number,\n" +
-                    "    \"protein\": number,\n" +
-                    "    \"carbs\": number,\n" +
-                    "    \"fat\": number,\n" +
-                    "    \"fiber\": number\n" +
-                    "  },\n" +
+                    "  }],\n" +
+                    "  \"total\": {\"calories\":num,\"protein\":num,\"carbs\":num,\"fat\":num,\"fiber\":num},\n" +
                     "  \"confidence\": \"high/medium/low\"\n" +
                     "}\n\n" +
-                    "Return valid JSON only, no markdown.";
+                    "JSON only.";
 
             JSONObject imagePart = new JSONObject();
             imagePart.put("inline_data", new JSONObject()
@@ -74,8 +66,8 @@ private static final String GEMINI_API_URL = "https://generativelanguage.googlea
             JSONObject generationConfig = new JSONObject();
             generationConfig.put("temperature", 0);
             generationConfig.put("topK", 1);
-            generationConfig.put("topP", 0.95);
-            generationConfig.put("maxOutputTokens", 8192);
+            generationConfig.put("topP", 1.0);
+            generationConfig.put("maxOutputTokens", 4096);
             generationConfig.put("candidateCount", 1);
             generationConfig.put("responseMimeType", "application/json");
             

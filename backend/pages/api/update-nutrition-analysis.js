@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
    // Handle CORS
@@ -15,10 +16,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { id, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
+    const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
 
-    if (!id) {
-      return res.status(400).json({ success: false, message: 'Missing meal ID' });
+    if (!id || !userId) {
+      return res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
     }
 
     if (!analysisData || !analysisData.foods || !Array.isArray(analysisData.foods)) {
@@ -26,14 +27,9 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
-    // Update the meal in the database
+    // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
     const query = `
       UPDATE food_nutrition_data_table
       SET AnalysisData = ?,
@@ -42,24 +38,27 @@ export default async function handler(req, res) {
           TotalCarbs = ?,
           TotalFat = ?,
           TotalFiber = ?
-      WHERE ID = ?
+      WHERE ID = ? AND UserID = ?
     `;
 
-    const [result] = await connection.execute(query, [
+    const [result] = await pool.execute(query, [
       JSON.stringify(analysisData),
       totalCalories || 0,
       totalProtein || 0,
       totalCarbs || 0,
       totalFat || 0,
       totalFiber || 0,
-      id
+      id,
+      userId
     ]);
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ success: false, message: 'Meal not found' });
+    
+if (result.affectedRows === 0) {
+      return res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
     }
+
+    // Clear nutrition cache only (no extra query - PERFORMANCE FIX)
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    console.log('🗑️ [update-nutrition-analysis] Nutrition cache cleared for user:', userId);
 
     res.status(200).json({
       success: true,

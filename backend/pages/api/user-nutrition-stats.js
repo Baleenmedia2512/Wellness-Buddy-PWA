@@ -1,10 +1,16 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -19,12 +25,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // If detailed nutrition data requested for dashboard
     if (detailed === 'true' && date) {
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
       const endOfDay = new Date(targetDate);
       endOfDay.setHours(23, 59, 59, 999);
       
-      const [nutritionData] = await connection.execute(`
+      const [nutritionData] = await pool.execute(`
         SELECT 
           ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore,
           TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
@@ -80,10 +81,7 @@ export default async function handler(req, res) {
         totalFiber: 0,
         mealCount: 0
       });
-
-      await connection.end();
-
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         data: filteredNutritionData,
         dailyTotals: {
@@ -99,28 +97,28 @@ export default async function handler(req, res) {
     }
 
     // Get user statistics
-    const [totalCount] = await connection.execute(
+    const [totalCount] = await pool.execute(
       'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
 
-    const [todayCount] = await connection.execute(
+    const [todayCount] = await pool.execute(
       'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE UserID = ? AND DATE(CreatedAt) = CURDATE() AND IsDeleted = 0',
       [userId]
     );
 
-    const [weekCount] = await connection.execute(
+    const [weekCount] = await pool.execute(
       'SELECT COUNT(*) as week FROM food_nutrition_data_table WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0',
       [userId]
     );
 
-    const [backgroundCount] = await connection.execute(
+    const [backgroundCount] = await pool.execute(
       'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE UserID = ? AND ProcessedBy = "background_service" AND IsDeleted = 0',
       [userId]
     );
 
     // Get nutrition totals for the week
-    const [weeklyNutrition] = await connection.execute(
+    const [weeklyNutrition] = await pool.execute(
       `SELECT 
         SUM(TotalCalories) as totalCalories,
         SUM(TotalProtein) as totalProtein,
@@ -133,7 +131,7 @@ export default async function handler(req, res) {
     );
 
     // Get daily nutrition for the last 7 days
-    const [dailyNutrition] = await connection.execute(
+    const [dailyNutrition] = await pool.execute(
       `SELECT 
         DATE(CreatedAt) as date,
         SUM(TotalCalories) as calories,
@@ -149,7 +147,7 @@ export default async function handler(req, res) {
     );
 
     // Get recent analyses
-    const [recentAnalyses] = await connection.execute(
+    const [recentAnalyses] = await pool.execute(
       `SELECT 
         ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat,
         ProcessedBy, CreatedAt
@@ -159,10 +157,7 @@ export default async function handler(req, res) {
        LIMIT 10`,
       [userId]
     );
-
-    await connection.end();
-
-    res.status(200).json({
+res.status(200).json({
       success: true,
       userId: userId,
       statistics: {

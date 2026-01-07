@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -67,12 +68,7 @@ export default async function handler(req, res) {
 
   try {
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Insert weight entry into database
     const insertQuery = `
@@ -91,7 +87,7 @@ export default async function handler(req, res) {
     // Use provided BMR (manually entered)
     const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
 
-    const [result] = await connection.execute(insertQuery, [
+    const [result] = await pool.execute(insertQuery, [
       userId,
       weight,
       bmiValue,
@@ -100,9 +96,17 @@ export default async function handler(req, res) {
       bmrValue,
       imageBase64ToSave,
     ]);
-
-    await connection.end();
-
+    
+    // Get user email to clear profile cache
+    const [user] = await pool.execute(
+      'SELECT Email FROM team_table WHERE UserId = ?',
+      [userId]
+    );
+    if (user.length > 0 && user[0].Email) {
+      cache.delete(cacheKeys.userProfile(user[0].Email));
+      console.log('🗑️ [save-weight-entry] Cache cleared for user:', user[0].Email);
+    }
+    
     res.status(200).json({
       success: true,
       id: result.insertId,

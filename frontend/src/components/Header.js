@@ -26,8 +26,16 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
       
       try {
         const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+        const cacheBuster = Date.now();
         const response = await fetch(
-          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
+          {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
         );
         
         if (response.ok) {

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -13,39 +13,24 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Test database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    // Test database connection using pool
+    const pool = getPool();
 
     // Test a simple query
-    const [rows] = await connection.execute('SELECT 1 as test');
-    await connection.end();
+    const [rows] = await pool.execute('SELECT 1 as test');
 
-    // Get service statistics
-    const statsConnection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
-
-    const [totalCount] = await statsConnection.execute(
+    // Get service statistics using the same pool
+    const [totalCount] = await pool.execute(
       'SELECT COUNT(*) as total FROM food_nutrition_data_table'
     );
 
-    const [todayCount] = await statsConnection.execute(
+    const [todayCount] = await pool.execute(
       'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE DATE(CreatedAt) = CURDATE()'
     );
 
-    const [backgroundCount] = await statsConnection.execute(
+    const [backgroundCount] = await pool.execute(
       'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE ProcessedBy = "background_service"'
     );
-
-    await statsConnection.end();
 
     res.status(200).json({
       status: 'healthy',

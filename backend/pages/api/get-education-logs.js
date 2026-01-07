@@ -1,11 +1,17 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // CORS handling
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -25,18 +31,13 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
   try {
     // Database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Fetch education logs (exclude soft-deleted)
-    const [logs] = await connection.execute(
+    const [logs] = await pool.execute(
       `SELECT Id, Platform, Topic, 
        DATE_FORMAT(CreatedAt, '%Y-%m-%dT%H:%i:%s') as CreatedAt,
        Confidence, ImageBase64
@@ -46,19 +47,14 @@ export default async function handler(req, res) {
        LIMIT 100`,
       [userId]
     );
-
-    await connection.end();
-
-    return res.status(200).json({
+return res.status(200).json({
       success: true,
       count: logs.length,
       logs: logs
     });
 
   } catch (error) {
-    if (connection) {
-      try { await connection.end(); } catch {}
-    }
+
     console.error('❌ Fetch education logs error:', error);
     return res.status(500).json({
       success: false,

@@ -78,7 +78,7 @@ export const APP_VERSION = {
   VERSION_CODE: 12,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Calorie Target & Token Tracking',
+  RELEASE_NAME: 'Speed & Stability Update',
   
   // Build date
   BUILD_DATE: '2026-01-07',
@@ -88,17 +88,19 @@ export const APP_VERSION = {
  * 📋 CHANGE LOG
  * 
  * Version 1.5.0 (Code 12) - 2026-01-07
- *   🔥 Calorie target now uses user's BMR from profile with fallback
- *   📊 Added token tracking for image type detection & weight detection
- *   📝 Updated terminology from "Calories Eaten" to "Calories Consumed"
- *   🔧 Improved profile save - removed unnecessary delay, better error handling
- *   📅 Token usage API now uses rolling 30-day date range
- *   📦 Updated date-fns dependency from 4.1.0 to 2.30.0
- *   🎨 Enhanced AdminDashboard with skeleton UI loading states
- *   📱 Added PWA features with service worker and caching
- *   ⏰ Improved date handling with local timezone support
- *   ✨ Added 'yesterday' time range support in token usage API
- *   📐 Responsive design improvements in AdminDashboard
+ *   🚀 Enhanced food search with smarter variation generation and faster results
+ *   ⚡ Implemented connection pool across all APIs to eliminate timeout errors
+ *   💾 Smart caching system for improved performance and fresh data
+ *   📱 Added PWA features for offline support and faster loading
+ *   🔧 Improved mobile Google sign-in experience
+ *   ✅ Better food query accuracy with refined AI prompts
+ *   🐛 Fixed stale data issues in user profiles
+ *   🔐 Enhanced cache invalidation for dynamic data
+ * 
+ * Version 1.4.1 (Code 11) - 2026-01-06
+ *   🐛 Fixed timezone bug causing incorrect date ranges in discipline reports
+ *   🔧 Custom date ranges now query correct dates (e.g., Jan 4-5 instead of Jan 3-4)
+ *   ✅ Discipline percentages calculate accurately across all date ranges
  * 
  * Version 1.4.0 (Code 10) - 2025-12-29
  *   ✨ Made Discipline Report accessible to all users (not just coaches)

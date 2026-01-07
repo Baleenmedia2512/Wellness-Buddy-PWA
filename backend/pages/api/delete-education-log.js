@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // CORS handling
@@ -24,30 +25,27 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
+  
   try {
     // Database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Soft delete: set IsDeleted = 1 (allows undo)
-    const [result] = await connection.execute(
+    const [result] = await pool.execute(
       `UPDATE education_logs_table SET IsDeleted = 1 WHERE Id = ? AND UserId = ?`,
       [logId, userId]
     );
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
+    
+if (result.affectedRows === 0) {
       return res.status(404).json({
         success: false,
         message: 'Education log not found or already deleted'
       });
     }
+
+    // Clear cache
+    cache.delete(cacheKeys.educationSummary(userId));
+    console.log('🗑️ [delete-education-log] Cache cleared for user:', userId);
 
     return res.status(200).json({
       success: true,
@@ -56,9 +54,6 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    if (connection) {
-      try { await connection.end(); } catch {}
-    }
     console.error('❌ Delete education log error:', error);
     return res.status(500).json({
       success: false,

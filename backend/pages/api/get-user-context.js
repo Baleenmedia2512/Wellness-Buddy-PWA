@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 /**
  * Get User Context API
@@ -6,10 +6,16 @@ import mysql from 'mysql2/promise';
  * Optimized single-call API for app startup
  */
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
@@ -34,26 +40,7 @@ export default async function handler(req, res) {
     const startTime = Date.now();
 
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
-
-    // Helper function to safely execute query (returns empty array on table not found)
-    const safeExecute = async (query, params = []) => {
-      try {
-        return await connection.execute(query, params);
-      } catch (err) {
-        // Table doesn't exist (error 1146) - return empty result
-        if (err.code === 'ER_NO_SUCH_TABLE' || err.errno === 1146) {
-          console.warn(`⚠️ [get-user-context] Table not found: ${err.message}`);
-          return [[]];
-        }
-        throw err;
-      }
-    };
+    const pool = getPool();
 
     // Execute all queries in parallel for performance
     const [
@@ -63,7 +50,7 @@ export default async function handler(req, res) {
       recentMealsResult
     ] = await Promise.all([
       // 1. User's personal corrections (TOP 10 by frequency)
-      safeExecute(
+      pool.execute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -76,7 +63,7 @@ export default async function handler(req, res) {
       ),
 
       // 2. Global correction patterns (TOP 5 by total users)
-      safeExecute(
+      pool.execute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -90,7 +77,7 @@ export default async function handler(req, res) {
       ),
 
       // 3. User profile (diet preference)
-      safeExecute(
+      pool.execute(
         `SELECT DietType as diet_type
          FROM team_table 
          WHERE UserId = ? 
@@ -99,22 +86,18 @@ export default async function handler(req, res) {
       ),
 
       // 4. Recent meals (last 3 meals for context)
-      // Note: UserID is varchar in food_nutrition_data_table
-      safeExecute(
+      pool.execute(
         `SELECT 
           AnalysisData as analysis_data,
           CreatedAt as created_at
          FROM food_nutrition_data_table 
-         WHERE UserID = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
+         WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
          ORDER BY CreatedAt DESC
          LIMIT 3`,
-        [String(userId)]
+        [userId]
       )
     ]);
-
-    await connection.end();
-
-    // Parse recent meals to extract food names
+// Parse recent meals to extract food names
     const recentMeals = recentMealsResult[0].map(meal => {
       try {
         const analysisData = typeof meal.analysis_data === 'string' 

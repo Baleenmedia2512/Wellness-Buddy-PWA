@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -19,15 +19,10 @@ export default async function handler(req, res) {
   if (!recipient) return res.status(400).json({ message: 'Recipient is required' });
 
   try {
-    const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
     // Invalidate old OTPs
-    await connection.execute(
+    await pool.execute(
       'UPDATE otp_tokens_table SET IsActive = FALSE WHERE Recipient = ? AND ContactType = ? AND IsActive = TRUE',
       [recipient, contactType]
     );
@@ -36,7 +31,7 @@ export default async function handler(req, res) {
     const otpHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
-    await connection.execute(
+    await pool.execute(
       'INSERT INTO otp_tokens_table (Recipient, OTPHash, ExpiresAt, ContactType) VALUES (?, ?, ?, ?)',
       [recipient, otpHash, expiresAt, contactType]
     );

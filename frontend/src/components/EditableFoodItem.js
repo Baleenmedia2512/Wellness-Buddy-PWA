@@ -530,30 +530,80 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
       console.error('[CORRECTION DEBUG] ❌ Exception:', error);
     }
     
-    // Build serving options from defaultServing + servingOptions
-    const options = [
-      {
-        description: food.defaultServing.description,
-        grams: food.defaultServing.grams,
-        nutrition: food.defaultServing.nutrition,
-        isDefault: true
-      },
-      ...(food.servingOptions || []).map(opt => ({
-        description: opt.description,
-        grams: opt.grams,
-        nutrition: opt.nutrition,
-        isDefault: false
-      }))
-    ];
+    // Generate serving options locally using our consistent logic
+    // IMPORTANT: Preserve the user's existing unit if they already have a value entered
+    const existingGrams = parseFloat(customGrams);
+    const hasExistingWeight = !isNaN(existingGrams) && existingGrams > 0;
+    
+    // Extract the original unit from the foodItem being edited
+    let existingUnit = null;
+    if (hasExistingWeight && foodItem) {
+      // Try to extract unit from original food item's serving description
+      const originalDesc = foodItem.serving?.description || foodItem.portionDescription || '';
+      const unitMatch = originalDesc.match(/([a-zA-Z]+)\s*$/);
+      existingUnit = unitMatch ? unitMatch[1] : null;
+      console.log(`🔍 Original unit from foodItem: "${existingUnit}" (from: "${originalDesc}")`);
+    }
+    
+    // Determine which serving description to use as base
+    let baseServingDescription;
+    let baseServingGrams;
+    
+    if (hasExistingWeight && existingUnit) {
+      // User already has a weight with a unit - preserve their unit
+      // Use existing weight with preserved unit
+      const quantity = existingGrams / food.defaultServing.grams;
+      baseServingDescription = `${quantity.toFixed(quantity % 1 === 0 ? 0 : 1)} ${existingUnit}`;
+      baseServingGrams = existingGrams;
+      console.log(`✅ Preserving user's existing unit: ${existingUnit} with ${existingGrams}ml as "${baseServingDescription}"`);
+    } else {
+      // No existing unit - use API's default serving
+      baseServingDescription = food.defaultServing.description;
+      baseServingGrams = food.defaultServing.grams;
+    }
+    
+    // Use the determined base serving for generating options
+    const baseServingForOptions = {
+      grams: baseServingGrams,
+      nutrition: hasExistingWeight && food.per100g 
+        ? {
+            calories: Math.round(food.per100g.calories * baseServingGrams / 100),
+            protein: Math.ceil(food.per100g.protein * baseServingGrams / 100),
+            carbs: Math.ceil(food.per100g.carbs * baseServingGrams / 100),
+            fat: Math.ceil(food.per100g.fat * baseServingGrams / 100),
+            fiber: Math.ceil((food.per100g.fiber || 0) * baseServingGrams / 100)
+          }
+        : food.defaultServing.nutrition
+    };
+    
+    let options = [];
+    
+    // Check if per100g data is available to generate dynamic options
+    if (food.per100g && food.per100g.calories > 0) {
+      // Generate dynamic serving options using our proven algorithm
+      options = generateServingOptions(
+        baseServingForOptions,
+        food.per100g,
+        food.name,
+        baseServingDescription
+      );
+      console.log(`✅ Generated ${options.length} consistent serving options locally`);
+    } else {
+      // Fallback: just use default serving if no per100g data
+      options = [
+        {
+          description: baseServingDescription,
+          grams: baseServingGrams,
+          nutrition: baseServingForOptions.nutrition,
+          isDefault: true
+        }
+      ];
+    }
     
     setServingOptions(options);
     
-    // IMPORTANT: Preserve the original weight from the food item being edited
-    // Do NOT change customGrams - keep the existing weight
-    const existingGrams = parseFloat(customGrams);
-    
     // Find the closest serving option to the existing weight (for display purposes)
-    if (!isNaN(existingGrams) && existingGrams > 0) {
+    if (hasExistingWeight) {
       const closestIndex = options.reduce((closestIdx, opt, idx) => {
         const currentDiff = Math.abs(options[closestIdx].grams - existingGrams);
         const newDiff = Math.abs(opt.grams - existingGrams);

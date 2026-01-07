@@ -1,15 +1,22 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 /**
  * API: Get Education Summary Statistics
  * Returns overall stats independent of paginated logs
  */
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // CORS handling
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -23,17 +30,21 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: 'userId is required' });
   }
 
-  let connection;
   try {
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    // Check cache first (3 minute TTL)
+    const cacheKey = cacheKeys.educationSummary(userId);
+    const cached = cache.get(cacheKey);
+    
+    if (cached) {
+      res.setHeader('X-Cache', 'HIT');
+      return res.status(200).json(cached);
+    }
+
+    // Use connection pool to avoid ETIMEDOUT errors
+    const pool = getPool();
 
     // Get total sessions count
-    const [totalResult] = await connection.execute(
+    const [totalResult] = await pool.execute(
       `SELECT COUNT(*) as totalSessions 
        FROM education_logs_table 
        WHERE UserId = ? AND IsDeleted = 0`,
@@ -41,7 +52,7 @@ export default async function handler(req, res) {
     );
 
     // Get this month count
-    const [monthResult] = await connection.execute(
+    const [monthResult] = await pool.execute(
       `SELECT COUNT(*) as monthCount 
        FROM education_logs_table 
        WHERE UserId = ? 
@@ -52,7 +63,7 @@ export default async function handler(req, res) {
     );
 
     // Get platform usage counts
-    const [platformsResult] = await connection.execute(
+    const [platformsResult] = await pool.execute(
       `SELECT Platform, COUNT(*) as count 
        FROM education_logs_table 
        WHERE UserId = ? AND IsDeleted = 0 
@@ -62,7 +73,7 @@ export default async function handler(req, res) {
     );
 
     // Get last 7 days activity (which days had sessions)
-    const [last7DaysResult] = await connection.execute(
+    const [last7DaysResult] = await pool.execute(
       `SELECT DATE(CreatedAt) as sessionDate 
        FROM education_logs_table 
        WHERE UserId = ? 
@@ -73,7 +84,7 @@ export default async function handler(req, res) {
     );
 
     // Get total sessions count in last 7 days
-    const [last7DaysCountResult] = await connection.execute(
+    const [last7DaysCountResult] = await pool.execute(
       `SELECT COUNT(*) as sessionCount 
        FROM education_logs_table 
        WHERE UserId = ? 
@@ -83,7 +94,7 @@ export default async function handler(req, res) {
     );
 
     // Calculate streak (consecutive days with sessions)
-    const [streakResult] = await connection.execute(
+    const [streakResult] = await pool.execute(
       `SELECT DATE(CreatedAt) as sessionDate 
        FROM education_logs_table 
        WHERE UserId = ? AND IsDeleted = 0 
@@ -130,12 +141,10 @@ export default async function handler(req, res) {
     const last7DaysCount = last7DaysCountResult[0].sessionCount;
     const last7DaysDates = last7DaysResult.map(row => row.sessionDate);
 
-    await connection.end();
-
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    return res.status(200).json({
+    const response = {
       success: true,
       summary: {
         totalSessions,
@@ -146,18 +155,23 @@ export default async function handler(req, res) {
         last7DaysDates,
         currentStreak
       }
-    });
+    };
+
+    // Cache for 3 minutes
+    cache.set(cacheKey, response, 180000);
+    res.setHeader('X-Cache', 'MISS');
+    
+    return res.status(200).json(response);
 
   } catch (error) {
     console.error('❌ Error fetching education summary:', error);
-    if (connection) await connection.end();
     
     // Set CORS headers even on error
     res.setHeader('Access-Control-Allow-Origin', '*');
     
     return res.status(500).json({ 
       success: false, 
-      message: 'Failed to fetch education summary',
+      message: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : 'Failed to fetch education summary',
       error: error.message 
     });
   }
