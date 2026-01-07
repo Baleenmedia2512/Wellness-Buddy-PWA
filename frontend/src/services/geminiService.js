@@ -485,9 +485,15 @@ USDA values. JSON only.`;
     }
 
     try {
-      const prompt = `"${foodQuery}" 2 variations JSON:
-[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
-NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For solids, use isLiquid=false, unit="g".`;
+      const prompt = `"${foodQuery}" - Return 2 DIFFERENT variations:
+[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
+
+RULES:
+1. Return 2 DISTINCT variations (e.g., "Coconut Chutney", "Spicy Coconut Chutney")
+2. Use standard serving with quantity (e.g., "1/2 cup", "2 tbsp", "1 piece")
+3. Liquids: unit="ml", grams=ml value. Solids: unit="g", grams=weight
+4. Return defaultServing nutrition + per100g nutrition
+Note: Serving options generated locally, don't include servingOptions array.`;
 
       console.log('📤 Sending search request to Gemini...');
 
