@@ -75,19 +75,19 @@ export const APP_VERSION = {
   VERSION: '1.5.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 11,
+  VERSION_CODE: 12,
   
   // Release name (for Play Store)
   RELEASE_NAME: 'Calorie Target & Token Tracking',
   
   // Build date
-  BUILD_DATE: '2026-01-05',
+  BUILD_DATE: '2026-01-07',
 };
 
 /**
  * 📋 CHANGE LOG
  * 
- * Version 1.5.0 (Code 11) - 2026-01-05
+ * Version 1.5.0 (Code 12) - 2026-01-07
  *   🔥 Calorie target now uses user's BMR from profile with fallback
  *   📊 Added token tracking for image type detection & weight detection
  *   📝 Updated terminology from "Calories Eaten" to "Calories Consumed"
@@ -99,7 +99,6 @@ export const APP_VERSION = {
  *   ⏰ Improved date handling with local timezone support
  *   ✨ Added 'yesterday' time range support in token usage API
  *   📐 Responsive design improvements in AdminDashboard
- * 
  * 
  * Version 1.4.0 (Code 10) - 2025-12-29
  *   ✨ Made Discipline Report accessible to all users (not just coaches)
