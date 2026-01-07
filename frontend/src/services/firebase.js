@@ -34,7 +34,19 @@ googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 // 🧠 Enhanced device detection
 const isMobile = () => {
-  return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  // Check user agent
+  const mobileRegex = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini|Mobile|mobile/i;
+  const isMobileUA = mobileRegex.test(navigator.userAgent);
+  
+  // Check for touch support and small screen
+  const hasTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+  const isSmallScreen = window.innerWidth <= 768;
+  
+  // Check for mobile-specific properties
+  const isMobilePlatform = /iPhone|iPad|iPod|Android/i.test(navigator.platform);
+  
+  // Return true if any mobile indicator is present
+  return isMobileUA || (hasTouch && isSmallScreen) || isMobilePlatform;
 };
 
 const isCapacitorNative = () => {
@@ -129,28 +141,29 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       
       return userCredential.user;
     } else {
-      // Web-based authentication
-      const useRedirect = forceRedirect || isMobile();
-      if (useRedirect) {
-        setRedirectPending();
-        await signInWithRedirect(auth, googleProvider);
-        return null;
-      } else {
-        const result = await signInWithPopup(auth, googleProvider);
-        return result.user;
-      }
+      // Web-based authentication - ALWAYS use popup since redirect doesn't work
+      console.log('🔍 Sign-in attempt:', {
+        isMobile: isMobile(),
+        userAgent: navigator.userAgent,
+        screenWidth: window.innerWidth,
+        hasTouch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0)
+      });
+      
+      console.log('🖥️ Using popup flow');
+      const result = await signInWithPopup(auth, googleProvider);
+      return result.user;
     }
   } catch (error) {
     clearRedirectPending();
 
-    // Handle specific error cases
+    // Handle popup blocked - provide helpful error message
     if (error.code === 'auth/popup-blocked') {
-      setRedirectPending();
-      await signInWithRedirect(auth, googleProvider);
-      return null;
+      console.error('🚫 Popup blocked by browser');
+      throw new Error('Popup was blocked. Please allow popups for this site or try again.');
     }
 
     if (error.code === 'auth/popup-closed-by-user') {
+      console.log('ℹ️ User closed popup');
       throw new Error('Sign-in was cancelled. Please try again.');
     }
 
@@ -183,15 +196,22 @@ export const signInWithGooglePopup = async () => {
 // 🔄 Get redirect result
 export const handleRedirectResult = async () => {
   try {
+    console.log('🔍 Checking for redirect result...');
+    
     if (!isRedirectPending()) {
+      console.log('ℹ️ No redirect pending');
       return null;
     }
 
+    console.log('⏳ Redirect pending, getting result...');
     const result = await getRedirectResult(auth);
+    
     if (result?.user) {
+      console.log('✅ Redirect result successful:', result.user.email);
       clearRedirectPending();
       return result.user;
     } else {
+      console.log('ℹ️ No user in redirect result');
       return null;
     }
   } catch (error) {

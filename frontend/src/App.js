@@ -1654,12 +1654,17 @@ function WellnessValleyApp() {
       sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
       
       if (error.code === 'auth/popup-blocked') {
-        setError('Popup was blocked. Trying redirect method...');
-        setTimeout(() => {
-          handleSignIn(true);
-        }, 1000);
+        setError('Popup blocked by your browser. Please enable popups for this site in your browser settings, then try again.');
+        setLoading(false);
         return;
       }
+      
+      if (error.message?.includes('Popup was blocked')) {
+        setError('Popup blocked. Please enable popups for this site in your browser settings.');
+        setLoading(false);
+        return;
+      }
+      
       if (error.code === 'auth/popup-closed-by-user') {
         setError('Sign-in popup was closed. Please try again.');
         setLoading(false);
@@ -1760,6 +1765,8 @@ function WellnessValleyApp() {
 
   const getAuthErrorMessage = (error) => {
     switch (error.code) {
+      case 'auth/popup-blocked':
+        return 'Popup blocked by your browser. Please enable popups for this site in your browser settings.';
       case 'auth/popup-closed-by-user':
         return 'Sign in was cancelled. Please try again.';
       case 'auth/network-request-failed':
@@ -1769,6 +1776,10 @@ function WellnessValleyApp() {
       case 'auth/user-disabled':
         return 'This account has been disabled. Please contact support.';
       default:
+        // Check for popup-related error messages
+        if (error.message?.toLowerCase().includes('popup')) {
+          return 'Popup blocked. Please enable popups for this site in your browser settings.';
+        }
         return error.message || 'Authentication failed. Please try again.';
     }
   };
