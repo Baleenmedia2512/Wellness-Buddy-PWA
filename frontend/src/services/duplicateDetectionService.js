@@ -216,8 +216,16 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     
     let response;
     try {
+      const cacheBuster = Date.now();
       response = await fetch(
-        `${apiBaseUrl}/api/user-nutrition-stats?userId=${userId}&date=${dateString}&detailed=true`
+        `${apiBaseUrl}/api/user-nutrition-stats?userId=${userId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+        {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          cache: 'no-store'
+        }
       );
     } catch (fetchError) {
       // Edge case: Network error or offline
@@ -396,8 +404,16 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
     // Don't include image base64 - not needed for duplicate check and significantly faster
     let response;
     try {
+      const cacheBuster = Date.now();
       response = await fetch(
-        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=10&offset=0&includeImage=false`
+        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=10&offset=0&includeImage=false&_t=${cacheBuster}`,
+        {
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          cache: 'no-store'
+        }
       );
     } catch (fetchError) {
       // Edge case: Network error or offline

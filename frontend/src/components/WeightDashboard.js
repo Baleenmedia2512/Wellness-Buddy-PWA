@@ -274,11 +274,20 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
       
       // Include images so they display in the weight cards
-      const params = new URLSearchParams({ userId, includeImage: 'true' });
+      const params = new URLSearchParams({ 
+        userId, 
+        includeImage: 'true',
+        _t: Date.now() 
+      });
       
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        cache: 'no-store'
       });
 
       const data = await response.json();
