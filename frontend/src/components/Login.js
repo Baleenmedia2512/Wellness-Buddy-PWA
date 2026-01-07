@@ -1,5 +1,6 @@
 // src/components/Login.js
 import React, { useState, useRef, useEffect } from 'react';
+import { Capacitor } from '@capacitor/core';
 import TermsAndConditions from './TermsAndConditions';
 import PrivacyPolicy from './PrivacyPolicy';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
@@ -205,6 +206,20 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
           {/* Main content - changes based on state */}
           {!showEmailForm ? (
             <>
+              {/* Mobile Popup Info Banner - Only show on mobile WEB (not native app) */}
+              {!Capacitor.isNativePlatform() && /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) && (
+                <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-blue-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-xs text-blue-700">
+                      <strong>Mobile users:</strong> Please enable popups for this site in your browser settings to use Google sign-in. Or use email sign-in below.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Enhanced Google button - Primary */}
               <button
                 onClick={() => {
