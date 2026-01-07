@@ -513,6 +513,7 @@ const AdminDashboard = ({ user, onClose }) => {
     */
 
     try {
+      setLoading(true);
       setRefreshing(true);
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
       
@@ -874,16 +875,29 @@ const AdminDashboard = ({ user, onClose }) => {
         {loading ? (
           <>
             {/* Skeleton for Stats Box */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-32 mb-4"></div>
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <div className="h-10 bg-gray-200 rounded w-24 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-28"></div>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="h-4 bg-gray-200 rounded w-32 mb-4 animate-pulse"></div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
+                  </div>
                 </div>
-                <div>
-                  <div className="h-10 bg-gray-200 rounded w-24 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-20"></div>
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-16 animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -892,27 +906,33 @@ const AdminDashboard = ({ user, onClose }) => {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="h-4 bg-gray-200 rounded w-32 animate-pulse"></div>
-                  <div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-28 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
                 </div>
-                <div className="h-10 bg-gray-100 rounded animate-pulse"></div>
+                <div className="h-10 bg-gray-100 rounded-lg animate-pulse"></div>
               </div>
-              <div className="p-6 space-y-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center justify-between animate-pulse">
+              <div className="divide-y divide-gray-50">
+                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <div key={i} className="px-6 py-4 flex items-center justify-between">
                     <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-                      <div className="h-3 bg-gray-100 rounded w-48"></div>
+                      <div className="h-4 bg-gray-200 rounded w-28 mb-2 animate-pulse"></div>
+                      <div className="h-3 bg-gray-100 rounded w-40 animate-pulse"></div>
                     </div>
-                    <div className="flex gap-8">
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-12"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
+                    <div className="flex items-center gap-4">
+                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                      <div className="h-4 bg-gray-200 rounded w-10 animate-pulse"></div>
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                <div className="h-3 bg-gray-100 rounded w-20 animate-pulse"></div>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                </div>
               </div>
             </div>
           </>
