@@ -93,8 +93,8 @@ class GeminiService {
         generationConfig: {
           temperature: 0, // 0 for maximum speed (deterministic)
           topK: 1,
-          topP: 0.95,
-          maxOutputTokens: 8192,
+          topP: 1.0, // Increased for faster, more confident predictions
+          maxOutputTokens: 4096, // Reduced from 8192 (sufficient for nutrition data)
           candidateCount: 1,
           responseMimeType: 'application/json'
         }
@@ -145,8 +145,8 @@ class GeminiService {
 
   // Optimized image preprocessing
   async preprocessImage(imageFile) {
-    const maxSize = 1024 * 1024; // 1MB max
-    const maxDimension = 1024; // Max width/height
+    const maxSize = 512 * 1024; // 512KB max (faster upload)
+    const maxDimension = 800; // Max width/height (reduced for speed)
     
     // If image is already small enough, return as-is
     if (imageFile.size <= maxSize) {
@@ -180,7 +180,7 @@ class GeminiService {
           } else {
             reject(new Error('Failed to compress image'));
           }
-        }, 'image/jpeg', 0.8); // 80% quality
+        }, 'image/jpeg', 0.7); // 70% quality (faster processing, still accurate)
       };
       
       img.onerror = reject;
@@ -234,13 +234,13 @@ class GeminiService {
       }
     }
     
-    // Standard analysis prompt
-    promptParts.push('Analyze this food image and return nutrition data in JSON format. Be quick but accurate.');
+    // Standard analysis prompt (optimized for speed)
+    promptParts.push('Analyze food image, return JSON. Quick, accurate estimates.');
     promptParts.push('');
     promptParts.push('RULES:');
-    promptParts.push('1. Estimate portions based on visual cues (plate size, typical servings)');
-    promptParts.push('2. Use standard nutrition values');
-    promptParts.push('3. For LIQUID foods (beverages, soups, drinks, juices, etc.), return volume in ml/L instead of weight in grams');
+    promptParts.push('1. Estimate portions by visual cues');
+    promptParts.push('2. Use standard USDA values');
+    promptParts.push('3. Liquids: use ml/L; Solids: use grams');
     promptParts.push('4. For SOLID foods, continue using weight in grams/kg');
     promptParts.push('5. Return concise JSON only');
     promptParts.push('');
@@ -387,28 +387,22 @@ class GeminiService {
     }
 
     try {
-      // Simplified prompt for faster processing
-      const prompt = `Provide nutrition data for "${foodText}" in standard serving size. Return JSON only.
+      // Optimized prompt for speed
+      const prompt = `Nutrition for "${foodText}" standard serving. JSON only.
 
 FORMAT:
 {
   "name": "${foodText}",
-  "serving": "description like '1 cup cooked' or '250ml glass'",
-  "weight_g": number (for solid foods),
-  "volume_ml": number (for liquid foods),
+  "serving": "description",
+  "weight_g": number (solids),
+  "volume_ml": number (liquids),
   "unit": "g" or "ml",
   "isLiquid": boolean,
-  "nutrition": {
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number,
-    "fiber": number
-  }
+  "nutrition": {"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}
 }
 
-IMPORTANT: For liquids (water, juice, milk, coffee, tea, soup, smoothies), use volume_ml and unit="ml". For solids, use weight_g and unit="g".
-Use USDA values. Return valid JSON only, no markdown.`;
+Liquids: use volume_ml+ml. Solids: use weight_g+g.
+USDA values. JSON only.`;
 
       // Make API call with timeout
       const result = await Promise.race([
@@ -491,9 +485,25 @@ Use USDA values. Return valid JSON only, no markdown.`;
     }
 
     try {
-      const prompt = `"${foodQuery}" 2 variations JSON:
-[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
-NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For solids, use isLiquid=false, unit="g".`;
+      const prompt = `Search "${foodQuery}". Return 2-3 variations with serving options. JSON only.
+
+{"results":[
+  {
+    "name":"Food Name",
+    "category":"type",
+    "isLiquid":bool,
+    "unit":"g"|"ml",
+    "defaultServing":{"description":"1 cup","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},
+    "servingOptions":[
+      {"description":"small","grams":num,"nutrition":{...}},
+      {"description":"large","grams":num,"nutrition":{...}}
+    ],
+    "per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}
+  }
+]}
+
+Liquids: isLiquid=true, unit="ml", grams=ml. Solids: isLiquid=false, unit="g".
+USDA values.`;
 
       console.log('📤 Sending search request to Gemini...');
 

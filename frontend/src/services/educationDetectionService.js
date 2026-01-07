@@ -13,8 +13,8 @@ class EducationDetectionService {
         generationConfig: {
           temperature: 0,
           topK: 1,
-          topP: 0.95,
-          maxOutputTokens: 2048,
+          topP: 1.0, // Increased for faster, more confident predictions
+          maxOutputTokens: 1024, // Reduced from 2048 (sufficient for meeting detection)
           responseMimeType: 'application/json'
         }
       });
@@ -35,41 +35,26 @@ class EducationDetectionService {
       // Convert to base64
       const base64Image = await this.fileToBase64(imageFile);
 
-      const prompt = `Analyze this image and determine if it shows a VIRTUAL MEETING screenshot.
+      const prompt = `Is this a VIRTUAL MEETING screenshot? JSON only.
 
-Return ONLY this JSON format:
 {
-  "isMeeting": true or false,
-  "confidence": 0.0 to 1.0,
-  "platform": "Google Meet" or "Zoom" or "MS Teams" or "Online Meeting",
-  "reason": "brief explanation"
+  "isMeeting": bool,
+  "confidence": 0-1,
+  "platform": "Google Meet"|"Zoom"|"MS Teams"|"Online Meeting",
+  "reason": "brief"
 }
 
-PLATFORM NAMING RULES:
-- Google Meet interface → "Google Meet"
-- Zoom meeting → "Zoom"
-- Microsoft Teams → "MS Teams"
-- Any other video platform → "Online Meeting"
-- Unknown or unclear → "Online Meeting"
+PLATFORMS:
+- Green theme/Meet branding → "Google Meet"
+- Black toolbar/Zoom UI → "Zoom"
+- Purple accents/Teams → "MS Teams"
+- Other video platform → "Online Meeting"
 
-DETECTION CRITERIA:
-✅ Virtual meeting indicators:
-- Google Meet interface (green theme, Meet branding, participant tiles)
-- Zoom meeting (black toolbar, gallery/speaker view, Zoom UI)
-- Microsoft Teams (purple accents, Teams interface, call window)
-- WebEx, Skype, or other video conferencing platforms
-- Multiple participant video tiles or grid view
-- Meeting controls (mute, camera, share screen buttons)
-- Virtual backgrounds or participant names overlays
+DETECT:
+✅ Video tiles, meeting controls, participant names, virtual backgrounds
+❌ Food, scales, random screenshots
 
-❌ NOT meetings:
-- Food on plate
-- Weight scale
-- Random screenshots (desktop, apps, websites)
-- Photos of people not in a meeting context
-- Social media screenshots
-
-Be precise. Return confidence > 0.7 only if clearly a meeting screenshot.`;
+Confidence >0.7 only if clearly meeting.`;
 
       const imagePart = {
         inlineData: {
@@ -116,37 +101,27 @@ Be precise. Return confidence > 0.7 only if clearly a meeting screenshot.`;
       // Convert to base64
       const base64Image = await this.fileToBase64(imageFile);
 
-      const prompt = `Analyze this virtual meeting screenshot and extract meeting information.
+      const prompt = `Extract meeting info. JSON only.
 
-PLATFORM NAMING RULES (IMPORTANT):
-- Google Meet interface → Return "Google Meet"
-- Zoom meeting → Return "Zoom"
-- Microsoft Teams → Return "MS Teams"
-- WebEx, Skype, or any other platform → Return "Online Meeting"
-- Unknown or unclear → Return "Online Meeting"
+PLATFORMS (exact names):
+- "Google Meet" (green theme)
+- "Zoom" (black toolbar)
+- "MS Teams" (purple)
+- "Online Meeting" (other/unclear)
 
-EXTRACT INFORMATION:
-1. Platform name (required) - Use ONLY the names above
-2. Meeting title/topic (optional) - Look for meeting name, window title, or topic text
-   - Often NOT visible in Google Meet
-   - Sometimes shown in Zoom meeting title bar
-   - May appear in Teams interface
+EXTRACT:
+1. Platform (required)
+2. Title/topic (if visible, else null)
 
-Return ONLY this JSON format:
 {
   "platform": "Google Meet",
-  "detectedTitle": "Wellness Workshop" or null,
+  "detectedTitle": "name" or null,
   "confidence": 0.95,
-  "participantCount": "5-10 people visible",
-  "detectionReason": "Shows Google Meet interface with green theme and multiple participants"
+  "participantCount": "5-10 visible",
+  "detectionReason": "brief"
 }
 
-IMPORTANT:
-- MUST use exact platform names: "Google Meet", "Zoom", "MS Teams", or "Online Meeting"
-- If meeting title is NOT visible or unclear, set detectedTitle to null
-- Platform detection is more reliable than title extraction
-- Be confident about platform (>0.8) but conservative about title detection
-- Count approximate participants if visible`;
+NOTE: Titles often NOT visible in Google Meet. Be confident about platform (>0.8), conservative about title.`;
 
       const imagePart = {
         inlineData: {

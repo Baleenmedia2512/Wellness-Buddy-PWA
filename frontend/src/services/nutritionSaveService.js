@@ -174,13 +174,13 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
  * Utility to delete a saved nutrition analysis by ID
  * Note: This function works with analysis IDs, not UserIDs, so no lookup needed
  */
-export async function deleteNutritionAnalysis({ id }) {
+export async function deleteNutritionAnalysis({ id, userId }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
     const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id })
+      body: JSON.stringify({ id, userId })
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.message || 'Failed to delete analysis');

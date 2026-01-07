@@ -63,8 +63,16 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setIsLoading(true);
       setError('');
 
+      const cacheBuster = Date.now();
       const response = await fetch(
-        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`
+        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          }
+        }
       );
 
       if (!response.ok) {
@@ -114,9 +122,6 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           return;
         }
       }
-
-      // Add 5 second delay before saving
-      await new Promise(resolve => setTimeout(resolve, 3000));
 
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: 'POST',

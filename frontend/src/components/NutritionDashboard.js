@@ -234,6 +234,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: selectedMeal.ID,
+          userId: user?.id,
           analysisData: updatedAnalysisData,
           totalCalories: Math.round(newTotals.calories || 0),
           totalProtein: Math.round(newTotals.protein || 0),
@@ -629,7 +630,7 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
       const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: mealToDelete.ID }),
+        body: JSON.stringify({ id: mealToDelete.ID, userId: user?.id }),
       });
       const data = await res.json();
       if (!data.success) throw new Error(data.message || 'Delete failed');
@@ -656,7 +657,8 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         fiber:    -deltas.fiber,
         mealCountDelta: -deltas.mealCountDelta,
       });
-      alert(err.message || 'Failed to delete. Please try again.');
+      setError(err.message || 'Failed to delete. Please try again.');
+      setTimeout(() => setError(null), 5000); // Clear after 5 seconds
     }
   };
 
@@ -1711,7 +1713,7 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                           const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
                             method: 'DELETE',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ id: meal.ID })
+                            body: JSON.stringify({ id: meal.ID, userId: user?.id })
                           });
                           const data = await res.json();
                           if (!data.success) throw new Error(data.message || 'Failed to delete.');
@@ -1741,7 +1743,8 @@ const UndoRow = ({ pid, originalMeal, expiresAt, ttlSeconds = UNDO_SECONDS }) =>
                             mealCountDelta: -deltas.mealCountDelta
                           });
 
-                          alert(err.message || 'Failed to delete. Please try again.');
+                          setError(err.message || 'Failed to delete. Please try again.');
+                          setTimeout(() => setError(null), 5000); // Clear after 5 seconds
                         } finally {
                           setDeletingId(null);
                         }

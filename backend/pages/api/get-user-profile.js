@@ -33,17 +33,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Check cache first (5 minute TTL for profile data)
-    const cacheKey = cacheKeys.userProfile(email);
-    const cachedProfile = cache.get(cacheKey);
-    
-    if (cachedProfile) {
-      console.log('✅ [get-user-profile] Cache HIT for:', email);
-      res.setHeader('X-Cache', 'HIT');
-      return res.status(200).json(cachedProfile);
-    }
+    // DISABLED: Backend cache disabled for profile data to ensure fresh data after updates
+    // User profiles change frequently and cache causes stale data issues
+    // const cacheKey = cacheKeys.userProfile(email);
+    // const cachedProfile = cache.get(cacheKey);
+    // if (cachedProfile) {
+    //   console.log('✅ [get-user-profile] Cache HIT for:', email);
+    //   res.setHeader('X-Cache', 'HIT');
+    //   return res.status(200).json(cachedProfile);
+    // }
 
-    console.log('📊 [get-user-profile] Using connection pool');
+    console.log('📊 [get-user-profile] Fetching fresh profile data for:', email);
 
     // Use connection pool - no need to manually close
     const pool = getPool();
@@ -120,10 +120,9 @@ export default async function handler(req, res) {
       data: profileData,
     };
 
-    // Cache the response for 5 minutes
-    cache.set(cacheKey, response, 300000);
+    // DISABLED: Backend cache disabled to ensure fresh data
+    // cache.set(cacheKey, response, 300000);
     res.setHeader('X-Cache', 'MISS');
-    res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600');
     
     res.status(200).json(response);
   } catch (error) {

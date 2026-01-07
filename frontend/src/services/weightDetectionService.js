@@ -20,8 +20,8 @@ class WeightDetectionService {
         generationConfig: {
           temperature: 0.1, // Low temperature for accurate number detection
           topK: 1,
-          topP: 0.8,
-          maxOutputTokens: 2048,
+          topP: 1.0, // Increased for faster, more confident predictions
+          maxOutputTokens: 1024, // Reduced from 2048 (sufficient for weight data)
         }
       });
     }
@@ -42,21 +42,17 @@ class WeightDetectionService {
     try {
       const imageBase64 = await this.fileToBase64(imageFile);
 
-      const prompt = `Analyze this image and determine if it shows a WEIGHT SCALE (digital or analog weighing scale).
+      const prompt = `Is this a WEIGHT SCALE? JSON only.
 
-Return ONLY this JSON format:
 {
-  "isWeightScale": true or false,
-  "confidence": 0.0 to 1.0,
-  "reason": "brief explanation"
+  "isWeightScale": bool,
+  "confidence": 0-1,
+  "reason": "brief"
 }
 
 Examples:
-- Digital bathroom scale showing numbers = true
-- Analog scale with dial/needle = true
-- Food on plate = false
-- Person standing on scale = true
-- Empty scale = true`;
+✅ Digital/analog scale, person on scale, empty scale
+❌ Food, plates`;
 
       const imagePart = {
         inlineData: {
@@ -110,48 +106,25 @@ Examples:
       // Convert image to base64
       const imageBase64 = await this.fileToBase64(imageFile);
 
-      const prompt = `Analyze this weighing scale image and extract ALL visible measurements.
+      const prompt = `Extract scale readings. JSON only.
 
-IMPORTANT: Look for these values on the scale display:
-1. Weight (main number) - REQUIRED
-2. BMI (Body Mass Index) - if shown
-3. Body Fat % - if shown
-4. Muscle Mass (kg) - if shown
-5. BMR (Basal Metabolic Rate, calories) - if shown
+LOOK FOR: Weight (required), BMI, Body Fat %, Muscle Mass, BMR
 
-Return ONLY this JSON format:
 {
-  "weight": number (e.g., 72.5),
-  "unit": "kg" or "lbs",
-  "bmi": number or null,
-  "bodyFat": number or null,
-  "muscleMass": number or null,
-  "bmr": number or null,
-  "confidence": 0.0 to 1.0,
-  "detectedValues": ["list of what you found"]
+  "weight": number,
+  "unit": "kg"|"lbs",
+  "bmi": number|null,
+  "bodyFat": number|null,
+  "muscleMass": number|null,
+  "bmr": number|null,
+  "confidence": 0-1,
+  "detectedValues": ["weight", ...]
 }
 
-RULES:
-- Weight is REQUIRED - extract the main/largest number
-- Unit: "kg" if metric, "lbs" if imperial
-- Only include values you can clearly see
-- Set null for values not visible
-- Weight range: 20-300 kg or 44-660 lbs
-- BMI range: 10-50
-- Body Fat: 5-60%
-- Confidence: high=0.9+, medium=0.6-0.9, low=<0.6
-
-Examples:
-{
-  "weight": 72.5,
-  "unit": "kg",
-  "bmi": 24.3,
-  "bodyFat": 18.5,
-  "muscleMass": 55.2,
-  "bmr": 1650,
-  "confidence": 0.95,
-  "detectedValues": ["weight", "bmi", "bodyFat", "muscleMass", "bmr"]
-}`;
+Weight: 20-300 kg or 44-660 lbs
+BMI: 10-50, Body Fat: 5-60%
+Confidence: high=0.9+
+Null if not visible.`;
 
       const imagePart = {
         inlineData: {

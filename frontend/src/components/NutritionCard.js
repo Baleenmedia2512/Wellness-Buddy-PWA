@@ -89,6 +89,16 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
       
+      // Get userId - either from user object directly or via lookup
+      let userId = user?.id;
+      if (!userId) {
+        userId = await getUserId(user);
+      }
+      
+      if (!userId) {
+        throw new Error('User not authenticated or not found in database');
+      }
+      
       // Prepare analysis data
       const analysisData = {
         foods: newItems.map(item => ({
@@ -121,6 +131,7 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           id: savedMealId,
+          userId: userId,
           analysisData: analysisData,
           totalCalories: Math.round(newTotals.calories || 0),
           totalProtein: Math.round(newTotals.protein || 0),
