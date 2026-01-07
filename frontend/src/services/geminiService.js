@@ -485,25 +485,9 @@ USDA values. JSON only.`;
     }
 
     try {
-      const prompt = `Search "${foodQuery}". Return 2-3 variations with serving options. JSON only.
-
-{"results":[
-  {
-    "name":"Food Name",
-    "category":"type",
-    "isLiquid":bool,
-    "unit":"g"|"ml",
-    "defaultServing":{"description":"1 cup","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},
-    "servingOptions":[
-      {"description":"small","grams":num,"nutrition":{...}},
-      {"description":"large","grams":num,"nutrition":{...}}
-    ],
-    "per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}
-  }
-]}
-
-Liquids: isLiquid=true, unit="ml", grams=ml. Solids: isLiquid=false, unit="g".
-USDA values.`;
+      const prompt = `"${foodQuery}" 2 variations JSON:
+[{"name":"str","category":"str","isLiquid":bool,"unit":"g|ml","defaultServing":{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},"servingOptions":[{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}},{"description":"str","grams":num,"nutrition":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}],"per100g":{"calories":num,"protein":num,"carbs":num,"fat":num,"fiber":num}}]
+NOTE: For liquids, use isLiquid=true, unit="ml", and treat grams as ml. For solids, use isLiquid=false, unit="g".`;
 
       console.log('📤 Sending search request to Gemini...');
 
