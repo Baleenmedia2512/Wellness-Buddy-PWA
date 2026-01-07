@@ -479,8 +479,17 @@ const NutritionDashboard = ({ user, onBack, apiBaseUrl, onMealDelete, hideHeader
         }
 
         const dateString = date.toISOString().split('T')[0];
+        // Add cache busting parameter to force fresh data
+        const cacheBuster = Date.now();
         const response = await fetch(
-          `${apiBaseUrl}/api/user-nutrition-stats?userId=${actualUserId}&date=${dateString}&detailed=true`
+          `${apiBaseUrl}/api/user-nutrition-stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+          {
+            cache: 'no-store', // Disable browser cache
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
         );
         const data = await response.json();
 

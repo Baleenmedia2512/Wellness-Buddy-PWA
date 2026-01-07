@@ -107,14 +107,15 @@ class APIClient {
     const url = `${this.baseURL}${endpoint}`;
     const cacheKey = this.getCacheKey(url, { method: 'GET' });
 
-    // Check cache first (for GET requests with caching enabled)
-    if (options.cache !== false) {
-      const cached = this.cache.get(cacheKey);
-      if (cached && Date.now() - cached.timestamp < (options.cacheTTL || 60000)) {
-        console.log(`✅ Client cache HIT: ${endpoint}`);
-        return cached.data;
-      }
-    }
+    // DISABLED: Client-side caching can cause stale data after mutations
+    // Cache is now handled at backend level with proper invalidation
+    // if (options.cache !== false) {
+    //   const cached = this.cache.get(cacheKey);
+    //   if (cached && Date.now() - cached.timestamp < (options.cacheTTL || 60000)) {
+    //     console.log(`✅ Client cache HIT: ${endpoint}`);
+    //     return cached.data;
+    //   }
+    // }
 
     // Check if request is already pending (deduplication)
     if (this.isPending(cacheKey)) {
@@ -129,8 +130,11 @@ class APIClient {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
             ...options.headers,
           },
+          cache: 'no-store', // Disable browser cache
         });
 
         if (!response.ok) {
@@ -140,13 +144,14 @@ class APIClient {
 
         const data = await response.json();
 
-        // Cache the response
-        if (options.cache !== false) {
-          this.cache.set(cacheKey, {
-            data,
-            timestamp: Date.now(),
-          });
-        }
+        // DISABLED: Caching removed to prevent stale data issues
+        // Backend handles caching with proper invalidation
+        // if (options.cache !== false) {
+        //   this.cache.set(cacheKey, {
+        //     data,
+        //     timestamp: Date.now(),
+        //   });
+        // }
 
         return data;
       } finally {
