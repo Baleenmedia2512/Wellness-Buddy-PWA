@@ -94,6 +94,12 @@ export const APP_VERSION = {
  *   🔧 Improved profile save - removed unnecessary delay, better error handling
  *   📅 Token usage API now uses rolling 30-day date range
  *   📦 Updated date-fns dependency from 4.1.0 to 2.30.0
+ *   🎨 Enhanced AdminDashboard with skeleton UI loading states
+ *   📱 Added PWA features with service worker and caching
+ *   ⏰ Improved date handling with local timezone support
+ *   ✨ Added 'yesterday' time range support in token usage API
+ *   📐 Responsive design improvements in AdminDashboard
+ * 
  * 
  * Version 1.4.0 (Code 10) - 2025-12-29
  *   ✨ Made Discipline Report accessible to all users (not just coaches)
