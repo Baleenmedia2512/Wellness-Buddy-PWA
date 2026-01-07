@@ -1,14 +1,20 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 /**
  * API: Get Latest Token Costs
  * Fetches the most recent input and output token costs from ai_token_usage_table
  */
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -30,22 +36,15 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
-
   try {
-    // Create database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-    });
+    // Use connection pool
+    const pool = getPool();
 
-    console.log('📊 [get-latest-token-costs] Database connected');
+    console.log('📊 [get-latest-token-costs] Using connection pool');
     console.log('📊 [get-latest-token-costs] Fetching latest token costs for:', email);
 
     // First, get the UserId from team_table
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
@@ -57,7 +56,7 @@ export default async function handler(req, res) {
     }
 
     // Get the latest original record from ai_token_usage_table
-    const [originalRows] = await connection.execute(
+    const [originalRows] = await pool.execute(
       `SELECT 
         InputTokenCost,
         OutputTokenCost,
@@ -87,7 +86,7 @@ export default async function handler(req, res) {
     let correctedRecord = null;
 
     if (userId) {
-      const [correctionRows] = await connection.execute(
+      const [correctionRows] = await pool.execute(
         `SELECT 
           InputTokenCost,
           OutputTokenCost,
@@ -163,11 +162,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Failed to fetch latest token costs',
-      error: error.message
+      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 /**
  * API: Get Token Correction
@@ -6,10 +6,16 @@ import mysql from 'mysql2/promise';
  * Also returns the latest usage timestamp to compare
  */
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -22,21 +28,14 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
-
   try {
-    // Create database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-    });
+    // Use connection pool
+    const pool = getPool();
 
-    console.log('📖 [get-token-correction] Database connected');
+    console.log('📖 [get-token-correction] Using connection pool');
 
     // Get the latest correction record (most recent by CreatedAt)
-    const [correctionRows] = await connection.execute(
+    const [correctionRows] = await pool.execute(
       `SELECT 
         InputTokenCost as inputCost,
         OutputTokenCost as outputCost,
@@ -48,7 +47,7 @@ export default async function handler(req, res) {
     );
 
     // Get the latest usage timestamp from ai_token_usage_table
-    const [usageRows] = await connection.execute(
+    const [usageRows] = await pool.execute(
       `SELECT CreatedAt as latestUsageTimestamp 
        FROM ai_token_usage_table 
        ORDER BY CreatedAt DESC 
@@ -82,11 +81,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Database error',
-      error: error.message
+      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

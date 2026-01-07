@@ -533,7 +533,13 @@ const AdminDashboard = ({ user, onClose }) => {
         url += `&timeRange=${timeRange}`;
       }
       
-      const response = await fetch(url);
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       
       if (response.ok) {
         const data = await response.json();
@@ -570,7 +576,14 @@ const AdminDashboard = ({ user, onClose }) => {
           
           // Fetch correction data (includes latest usage timestamp for comparison)
           const correctionResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-correction`
+            `${apiBaseUrl}/api/get-token-correction`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }
           );
           
           if (correctionResponse.ok) {
@@ -606,7 +619,14 @@ const AdminDashboard = ({ user, onClose }) => {
           
           // No valid saved correction OR new usage was added - fetch calculated totals
           const response = await fetch(
-            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}&timeRange=all`
+            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}&timeRange=all`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }
           );
           
           if (response.ok) {
@@ -648,8 +668,11 @@ const AdminDashboard = ({ user, onClose }) => {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
       const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
         method: 'POST',
+        cache: 'no-store',
         headers: {
           'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         },
         body: JSON.stringify({
           email: user?.email,

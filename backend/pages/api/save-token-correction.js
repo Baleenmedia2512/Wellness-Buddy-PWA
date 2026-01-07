@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 /**
  * API: Save Token Correction
@@ -36,18 +36,11 @@ export default async function handler(req, res) {
     });
   }
 
-  let connection;
-
   try {
-    // Create database connection
-    connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME,
-    });
+    // Use connection pool
+    const pool = getPool();
 
-    console.log('💾 [save-token-correction] Database connected');
+    console.log('💾 [save-token-correction] Using connection pool');
     console.log('💾 [save-token-correction] Saving token correction for:', email);
     console.log('💾 [save-token-correction] Request data:', {
       originalInputCost,
@@ -57,7 +50,7 @@ export default async function handler(req, res) {
     });
 
     // Get UserId from team_table
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
@@ -86,7 +79,7 @@ export default async function handler(req, res) {
     });
 
     // Always insert a new record (no update - track all changes)
-    await connection.execute(
+    await pool.execute(
       `INSERT INTO token_correction_table 
        (UserId, InputTokenCost, OutputTokenCost, TotalTokenCost)
        VALUES (?, ?, ?, ?)`,
@@ -119,11 +112,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       success: false,
       message: 'Failed to save token correction',
-      error: error.message
+      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }

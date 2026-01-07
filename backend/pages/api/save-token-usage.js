@@ -1,14 +1,4 @@
-import mysql from 'mysql2/promise';
-
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'wellness_buddy',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-};
+import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -24,8 +14,6 @@ export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
-
-  let connection;
 
   try {
     const { 
@@ -63,8 +51,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create database connection
-    connection = await mysql.createConnection(dbConfig);
+    // Use connection pool
+    const pool = getPool();
 
     // Insert token usage record
     const insertQuery = `
@@ -73,7 +61,7 @@ export default async function handler(req, res) {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
     `;
 
-    const [result] = await connection.execute(insertQuery, [
+    const [result] = await pool.execute(insertQuery, [
       userId,
       email,
       operationType,
@@ -86,8 +74,6 @@ export default async function handler(req, res) {
       totalTokenCost || 0
     ]);
 
-    await connection.end();
-
     return res.status(200).json({
       success: true,
       message: 'Token usage saved successfully',
@@ -96,19 +82,11 @@ export default async function handler(req, res) {
 
   } catch (error) {
     console.error('❌ Error saving token usage:', error);
-    
-    if (connection) {
-      try {
-        await connection.end();
-      } catch (endError) {
-        console.error('Error closing connection:', endError);
-      }
-    }
 
     return res.status(500).json({
       success: false,
       message: 'Failed to save token usage',
-      error: error.message
+      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
   }
 }
