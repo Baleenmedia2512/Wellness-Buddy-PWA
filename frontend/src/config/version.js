@@ -72,20 +72,30 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.4.1',
+  VERSION: '1.5.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 11,
+  VERSION_CODE: 12,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Discipline Report Date Fix',
+  RELEASE_NAME: 'Speed & Stability Update',
   
   // Build date
-  BUILD_DATE: '2026-01-06',
+  BUILD_DATE: '2026-01-07',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.5.0 (Code 12) - 2026-01-07
+ *   🚀 Enhanced food search with smarter variation generation and faster results
+ *   ⚡ Implemented connection pool across all APIs to eliminate timeout errors
+ *   💾 Smart caching system for improved performance and fresh data
+ *   📱 Added PWA features for offline support and faster loading
+ *   🔧 Improved mobile Google sign-in experience
+ *   ✅ Better food query accuracy with refined AI prompts
+ *   🐛 Fixed stale data issues in user profiles
+ *   🔐 Enhanced cache invalidation for dynamic data
  * 
  * Version 1.4.1 (Code 11) - 2026-01-06
  *   🐛 Fixed timezone bug causing incorrect date ranges in discipline reports
