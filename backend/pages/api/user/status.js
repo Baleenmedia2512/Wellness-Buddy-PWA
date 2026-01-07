@@ -191,8 +191,7 @@ export default async function handler(req, res) {
 
     } catch (error) {
       console.error('Error checking user status:', error);
-      await connection.end();
-      
+      // await connection.end();
       return res.status(500).json({
         success: false,
         error: 'Failed to check user status',

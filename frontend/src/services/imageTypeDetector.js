@@ -57,7 +57,7 @@ class ImageTypeDetector {
     const startTime = Date.now();
     
     try {
-      console.log('🔍 Analyzing image with Gemini AI (2-call approach)...');
+      
 
       // Initialize if not already done
       if (!this.initialized) {

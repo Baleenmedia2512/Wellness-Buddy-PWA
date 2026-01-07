@@ -41,6 +41,20 @@ export default async function handler(req, res) {
       database: process.env.DB_NAME
     });
 
+    // Helper function to safely execute query (returns empty array on table not found)
+    const safeExecute = async (query, params = []) => {
+      try {
+        return await connection.execute(query, params);
+      } catch (err) {
+        // Table doesn't exist (error 1146) - return empty result
+        if (err.code === 'ER_NO_SUCH_TABLE' || err.errno === 1146) {
+          console.warn(`⚠️ [get-user-context] Table not found: ${err.message}`);
+          return [[]];
+        }
+        throw err;
+      }
+    };
+
     // Execute all queries in parallel for performance
     const [
       userCorrectionsResult,
@@ -49,7 +63,7 @@ export default async function handler(req, res) {
       recentMealsResult
     ] = await Promise.all([
       // 1. User's personal corrections (TOP 10 by frequency)
-      connection.execute(
+      safeExecute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -62,7 +76,7 @@ export default async function handler(req, res) {
       ),
 
       // 2. Global correction patterns (TOP 5 by total users)
-      connection.execute(
+      safeExecute(
         `SELECT 
           AiDetected as ai_detected,
           UserCorrected as user_corrected,
@@ -76,7 +90,7 @@ export default async function handler(req, res) {
       ),
 
       // 3. User profile (diet preference)
-      connection.execute(
+      safeExecute(
         `SELECT DietType as diet_type
          FROM team_table 
          WHERE UserId = ? 
@@ -85,15 +99,16 @@ export default async function handler(req, res) {
       ),
 
       // 4. Recent meals (last 3 meals for context)
-      connection.execute(
+      // Note: UserID is varchar in food_nutrition_data_table
+      safeExecute(
         `SELECT 
           AnalysisData as analysis_data,
           CreatedAt as created_at
          FROM food_nutrition_data_table 
-         WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
+         WHERE UserID = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
          ORDER BY CreatedAt DESC
          LIMIT 3`,
-        [userId]
+        [String(userId)]
       )
     ]);
 
