@@ -93,8 +93,8 @@ export default async function handler(req, res) {
 
     console.log('📤 [lookup-user-id] Sending response:', response);
 
-    // Cache for 2 minutes
-    cache.set(cacheKey, response, 120000);
+    // Cache for 5 minutes (userId doesn't change, status checks are periodic)
+    cache.set(cacheKey, response, 300000);
     res.setHeader('X-Cache', 'MISS');
     
     res.status(200).json(response);

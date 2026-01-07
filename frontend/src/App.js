@@ -16,7 +16,7 @@ import UserNotFoundModal from './components/UserNotFoundModal';
 import Header from './components/Header';
 import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
-import { getUserId } from './services/getUserId';
+import { getUserId, clearUserIdCache } from './services/getUserId';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
@@ -1732,6 +1732,10 @@ function WellnessValleyApp() {
       setUserContextLoading(false);
       console.log('🗑️ [Sign Out] User context cache and state cleared');
       
+      // Clear userId session cache
+      clearUserIdCache();
+      console.log('🗑️ [Sign Out] UserId cache cleared');
+      
       if (Capacitor.isNativePlatform()) {
         try {
           await GalleryMonitor.clearCurrentUser();
@@ -2014,7 +2018,11 @@ function WellnessValleyApp() {
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-              {imageType === 'weight' ? 'Saving weight entry...' : 'Saving nutrition analysis...'}
+              {imageType === 'weight' 
+                ? 'Saving your weight progress...' 
+                : imageType === 'education' 
+                ? 'Saving your study session...' 
+                : 'Saving your nutrition analysis...'}
             </div>
           </div>
         )}
