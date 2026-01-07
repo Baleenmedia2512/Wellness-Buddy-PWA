@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool, getConnection } from '../../../utils/dbPool.js';
 
 /**
  * API: Admin Time Windows Management
@@ -17,14 +17,9 @@ export default async function handler(req, res) {
   // GET: Fetch current time windows
   if (req.method === 'GET') {
     try {
-      const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-      });
+      const pool = getPool();
 
-      const [rows] = await connection.query(`
+      const [rows] = await pool.query(`
         SELECT 
           ActivityType,
           WindowStartTime,
@@ -39,10 +34,7 @@ export default async function handler(req, res) {
         ORDER BY 
           FIELD(ActivityType, 'weight', 'education', 'breakfast', 'lunch', 'dinner')
       `);
-
-      await connection.end();
-
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         timeWindows: rows
       });
@@ -112,22 +104,15 @@ export default async function handler(req, res) {
       
       // Validate meal time windows don't overlap (only for meals)
       if (['breakfast', 'lunch', 'dinner'].includes(activityType)) {
-        const checkConnection = await mysql.createConnection({
-          host: process.env.DB_HOST,
-          user: process.env.DB_USER,
-          password: process.env.DB_PASS,
-          database: process.env.DB_NAME
-        });
+        const pool = getPool();
         
-        const [existingWindows] = await checkConnection.query(`
+        const [existingWindows] = await pool.query(`
           SELECT ActivityType, WindowStartTime, WindowEndTime
           FROM activity_time_windows_table
           WHERE EffectiveToDate IS NULL
             AND ActivityType IN ('breakfast', 'lunch', 'dinner')
             AND ActivityType != ?
         `, [activityType]);
-        
-        await checkConnection.end();
         
         // Check for overlaps with other meal windows
         for (const existing of existingWindows) {
@@ -150,16 +135,12 @@ export default async function handler(req, res) {
         }
       }
 
-      const connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-      });
-
-      await connection.beginTransaction();
+      const pool = getPool();
+      const connection = await pool.getConnection();
 
       try {
+        await connection.beginTransaction();
+
         // Close previous window by setting EffectiveToDate
         await connection.query(`
           UPDATE activity_time_windows_table
@@ -183,8 +164,8 @@ export default async function handler(req, res) {
         ]);
 
         await connection.commit();
-        await connection.end();
-
+        connection.release();
+        
         return res.status(200).json({
           success: true,
           message: 'Time window updated successfully',
@@ -193,12 +174,16 @@ export default async function handler(req, res) {
 
       } catch (error) {
         await connection.rollback();
-        await connection.end();
-        throw error;
+        connection.release();
+        console.error('Error updating time window:', error);
+        return res.status(500).json({
+          success: false,
+          error: 'Internal server error',
+          message: error.message
+        });
       }
-
     } catch (error) {
-      console.error('Error updating time window:', error);
+      console.error('Error in time windows:', error);
       return res.status(500).json({
         success: false,
         error: 'Internal server error',

@@ -1,10 +1,17 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -19,47 +26,43 @@ export default async function handler(req, res) {
   }
 
   try {
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
-
-    // Get background analysis results for the user
+    const pool = getPool();
+    
+    // Get pagination params
     const limitInt = parseInt(limit) || 50;
     const offsetInt = parseInt(offset) || 0;
     
-    // First, try a simple query without LIMIT/OFFSET to test
-    const [rows] = await connection.execute(
+    // Note: Removed caching for paginated responses since cache hit rate is low
+    // Users rarely request the same page twice, making caching ineffective
+    
+    // Use proper SQL pagination (CRITICAL FIX: was fetching all rows and slicing)
+    const [rows] = await pool.execute(
       `SELECT *
        FROM food_nutrition_data_table 
        WHERE UserID = ? AND IsDeleted = 0
-       ORDER BY CreatedAt DESC`,
-      [userId]
+       ORDER BY CreatedAt DESC
+       LIMIT ? OFFSET ?`,
+      [userId, limitInt, offsetInt]
     );
-    
-    // Manually apply limit and offset to the results
-    const paginatedRows = rows.slice(offsetInt, offsetInt + limitInt);
 
     // Get total count for pagination
-    const [countResult] = await connection.execute(
+    const [countResult] = await pool.execute(
       'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
       [userId]
     );
-
-    await connection.end();
-
-    res.status(200).json({
+    
+    const response = {
       success: true,
-      data: paginatedRows,
+      data: rows,
       pagination: {
         total: countResult[0].total,
         limit: limitInt,
         offset: offsetInt,
         hasMore: (offsetInt + limitInt) < countResult[0].total
       }
-    });
+    };
+    
+    res.status(200).json(response);
 
   } catch (error) {
     console.error('Failed to fetch background analysis:', error);

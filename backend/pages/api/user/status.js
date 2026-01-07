@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Get User Setup Status
  * GET /api/user/status
  * 
@@ -13,7 +13,7 @@
  * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -24,17 +24,23 @@ const dbConfig = {
 };
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
@@ -56,17 +62,16 @@ export default async function handler(req, res) {
     }
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     // Get user's UserId from team_table
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT UserId, TeamId, UplineCoachId, Role FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
 
     if (userRows.length === 0) {
-      await connection.end();
-      return res.status(404).json({
+return res.status(404).json({
         success: false,
         error: 'User not found'
       });
@@ -80,8 +85,7 @@ export default async function handler(req, res) {
 
     // ADMIN/DEVELOPER users bypass coach auth flow
     if (userRole === 'admin' || userRole === 'developer') {
-      await connection.end();
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: hasTeamId,
@@ -97,8 +101,7 @@ export default async function handler(req, res) {
 
     // STATE 5: Setup complete ✅
     if (hasTeamId && hasUpline) {
-      await connection.end();
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: true,
@@ -113,8 +116,7 @@ export default async function handler(req, res) {
 
     // STATE 1: No Team ID
     if (!hasTeamId) {
-      await connection.end();
-      return res.status(200).json({
+return res.status(200).json({
         success: true,
         setupComplete: false,
           hasTeamId: false,
@@ -126,7 +128,7 @@ export default async function handler(req, res) {
       }
 
       // Check for pending approval request
-      const [requestRows] = await connection.execute(
+      const [requestRows] = await pool.execute(
         `SELECT Id, UplineCoachId, Status, OtpExpiresAt, RequestedAt
          FROM approval_requests_table
          WHERE RequesterId = ?
@@ -143,7 +145,7 @@ export default async function handler(req, res) {
 
         // STATE 4: Expired request - delete it
         if (now > expiresAt) {
-          await connection.execute(
+          await pool.execute(
             'DELETE FROM approval_requests_table WHERE Id = ?',
             [request.Id]
           );
@@ -191,9 +193,7 @@ export default async function handler(req, res) {
 
     } catch (error) {
       console.error('Error checking user status:', error);
-      await connection.end();
-      
-      return res.status(500).json({
+return res.status(500).json({
         success: false,
         error: 'Failed to check user status',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined

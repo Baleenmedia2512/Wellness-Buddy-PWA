@@ -165,9 +165,15 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       const userId = userIdRef.current || user?.id;
       if (!userId) return;
 
-      const response = await fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}`, {
+      const cacheBuster = Date.now();
+      const response = await fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        cache: 'no-store'
       });
 
       if (response.ok) {
@@ -199,14 +205,25 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
       
       // Fetch logs and summary in parallel
+      const cacheBuster = Date.now();
       const [logsResponse, summaryResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/get-education-logs?userId=${userId}`, {
+        fetch(`${apiBaseUrl}/api/get-education-logs?userId=${userId}&_t=${cacheBuster}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          cache: 'no-store'
         }),
-        fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}`, {
+        fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
           method: 'GET',
-          headers: { 'Content-Type': 'application/json' }
+          headers: { 
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+          },
+          cache: 'no-store'
         })
       ]);
 

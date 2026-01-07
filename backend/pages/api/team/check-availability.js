@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Check Team ID Availability
  * GET /api/team/check-availability/:teamId
  * 
@@ -8,7 +8,7 @@
  * - taken-by-other: Another user owns this Team ID
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -19,17 +19,23 @@ const dbConfig = {
 };
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
@@ -70,17 +76,16 @@ export default async function handler(req, res) {
     }
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     // Get current user's UserId
-    const [currentUserRows] = await connection.execute(
+    const [currentUserRows] = await pool.execute(
       'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
 
     if (currentUserRows.length === 0) {
-      await connection.end();
-      return res.status(404).json({
+return res.status(404).json({
         success: false,
         error: 'User not found'
       });
@@ -92,13 +97,13 @@ export default async function handler(req, res) {
 
     try {
       // Check if Team ID exists in coach_teams_table (only active)
-      const [teamRows] = await connection.execute(
+      const [teamRows] = await pool.execute(
         'SELECT TeamId, CoachId, CoCoachId FROM coach_teams_table WHERE TeamId = ? AND Status = "active"',
         [teamId]
       );
 
       // Also check if TeamId exists in team_table but inactive
-      const [teamTableCheck] = await connection.execute(
+      const [teamTableCheck] = await pool.execute(
         'SELECT UserId FROM team_table WHERE TeamId = ?',
         [teamId]
       );
@@ -141,7 +146,7 @@ export default async function handler(req, res) {
       // Check if team has space (only CoachId, no CoCoachId)
       if (team.CoachId && !team.CoCoachId) {
         // Get coach details
-        const [coachRows] = await connection.execute(
+        const [coachRows] = await pool.execute(
           'SELECT UserName, Email FROM team_table WHERE UserId = ?',
           [team.CoachId]
         );
@@ -171,8 +176,7 @@ export default async function handler(req, res) {
       });
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error checking Team ID availability:', error);

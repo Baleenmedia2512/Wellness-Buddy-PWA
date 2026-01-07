@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../../utils/dbPool.js';
 import { calculateTeamDiscipline } from '../../../utils/disciplineCalculations.js';
 import { 
   parseDateRange, 
@@ -13,11 +13,17 @@ import {
  * Returns discipline percentages for all team members
  */
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -72,18 +78,13 @@ export default async function handler(req, res) {
     }
     
     // Connect to database (declared here for proper cleanup in finally block)
-    let connection;
+    
     
     try {
-      connection = await mysql.createConnection({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASS,
-        database: process.env.DB_NAME
-      });
+      const pool = getPool();
     
       // Step 1: Get ALL team members (recursive) + logged-in coach
-      const [members] = await connection.execute(`
+      const [members] = await pool.execute(`
         WITH RECURSIVE team_hierarchy AS (
           -- Base case: The logged-in coach themselves
           SELECT 
@@ -172,8 +173,7 @@ export default async function handler(req, res) {
       const teamMembers = uniqueMembers.filter(m => !m.IsLoggedInCoach);
       
       if (uniqueMembers.length === 0) {
-        await connection.end();
-        return res.status(200).json({
+return res.status(200).json({
           success: true,
           source: 'realtime',
           lastUpdated: new Date().toISOString(),
@@ -232,7 +232,7 @@ export default async function handler(req, res) {
       };
       
       // Step 1.5: Get current time windows for display
-      const [currentTimeWindows] = await connection.execute(`
+      const [currentTimeWindows] = await pool.execute(`
         SELECT ActivityType, WindowStartTime, WindowEndTime
         FROM activity_time_windows_table
         WHERE EffectiveToDate IS NULL
@@ -261,7 +261,7 @@ export default async function handler(req, res) {
       // Step 2: Calculate discipline for coach + all team members
       const allUserIds = uniqueMembers.map(m => m.UserId);  // Includes coach
       const disciplineData = await calculateTeamDiscipline(
-        connection,
+        pool,
         allUserIds,
         dates.start,
         dates.end
@@ -504,9 +504,7 @@ export default async function handler(req, res) {
       
       const needsAttention = allMembersForStats.filter(m => m.periodDiscipline.percentage < 60);
       
-      // Step 7: Close connection and return response
-      await connection.end();
-      connection = null; // Mark as closed
+      // Step 7: Return response
       
       return res.status(200).json({
         success: true,
@@ -541,15 +539,6 @@ export default async function handler(req, res) {
     } catch (innerError) {
       console.error('❌ Discipline report query error:', innerError);
       throw innerError; // Re-throw to be caught by outer catch
-    } finally {
-      // Ensure connection is closed even if there's an error
-      if (connection) {
-        try {
-          await connection.end();
-        } catch (closeError) {
-          console.error('❌ Error closing connection:', closeError);
-        }
-      }
     }
     
   } catch (error) {

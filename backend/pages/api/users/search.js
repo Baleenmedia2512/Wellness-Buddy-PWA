@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Search Coaches
  * GET /api/users/search?q={query}
  * 
@@ -7,7 +7,7 @@
  * Used in upline coach selection
  */
 
-import mysql from 'mysql2/promise';
+import { getPool } from '../../../utils/dbPool.js';
 
 // Database configuration
 const dbConfig = {
@@ -18,17 +18,23 @@ const dbConfig = {
 };
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
@@ -68,11 +74,11 @@ export default async function handler(req, res) {
     };
 
     // Connect to database
-    const connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     try {
       // Search for coaches by name or email, excluding current user
-      const [coaches] = await connection.execute(
+      const [coaches] = await pool.execute(
         `SELECT 
           UserId,
           UserName,
@@ -111,8 +117,7 @@ export default async function handler(req, res) {
       });
 
     } finally {
-      await connection.end();
-    }
+}
 
   } catch (error) {
     console.error('Error searching coaches:', error);

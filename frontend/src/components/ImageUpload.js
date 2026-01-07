@@ -113,18 +113,27 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
     if (loadingState === 'saving') {
       if (imageType === 'weight') {
         return [
-          "Saving your weight entry...",
-          "Recording your progress...",
-          "Updating your health journal...",
-          "Storing weight data...",
+          "Saving your progress...",
+          "Updating your wellness journey...",
+          "Recording your achievement...",
+          "Your transformation is being tracked...",
           "Almost there..."
         ];
       }
+      if (imageType === 'education') {
+        return [
+          "Logging your learning session...",
+          "Recording your education time...",
+          "Saving your study progress...",
+          "Updating your education log...",
+          "Almost done..."
+        ];
+      }
       return [
-        "Saving your meal...",
-        "Recording nutrition data...",
-        "Updating your food journal...",
-        "Storing your analysis...",
+        "Saving your delicious meal...",
+        "Recording your nutrition...",
+        "Updating your food diary...",
+        "Your healthy choice is being saved...",
         "Almost there..."
       ];
     }
@@ -132,35 +141,45 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
     // When image type is not yet detected
     if (!imageType) {
       return [
-        "Analyzing your image...",
-        "Detecting image type...",
-        "Is it food or weight?...",
-        "Processing image...",
-        "Just a moment..."
+        "Discovering what you've got...",
+        "AI magic in progress...",
+        "Smart detection underway...",
+        "Let's see what we have here...",
+        "Analyzing your image..."
       ];
     }
     
     if (imageType === 'weight') {
       return [
-        "Reading the scale...",
-        "Detecting weight value...",
-        "Analyzing display...",
-        "Extracting measurements...",
-        "Processing weight data..."
+        "Reading your scale...",
+        "Tracking your body metrics...",
+        "Calculating your progress...",
+        "Measuring your transformation...",
+        "Your wellness data is loading..."
+      ];
+    }
+    
+    if (imageType === 'education') {
+      return [
+        "Detecting your learning session...",
+        "Recognizing your study platform...",
+        "Identifying your meeting...",
+        "Logging your education time...",
+        "Processing your study session..."
       ];
     }
     
     return [
-      "Scanning your meal...",
-      "Crunching the numbers...",
-      "Serving up nutrition facts...",
-      "Analyzing delicious details...",
-      "Counting every calorie...",
-      "Identifying ingredients...",
-      "Plating your nutrition insights...",
-      "Decoding your dish...",
-      "Looking deeper into your food...",
-      "Cooking up your results..."
+      "Analyzing your delicious meal...",
+      "Discovering ingredients...",
+      "Calculating your nutrition...",
+      "Breaking down macros & calories...",
+      "Smart portion sizing...",
+      "AI-powered food recognition...",
+      "Your healthy choice matters...",
+      "Nutrition facts loading...",
+      "USDA database lookup...",
+      "Creating your meal summary..."
     ];
   };
 

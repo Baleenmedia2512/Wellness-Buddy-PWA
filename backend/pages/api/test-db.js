@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -14,26 +14,19 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Database connection for local developments
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST || 'localhost',
-      user: process.env.DB_USER || 'root',
-      password: process.env.DB_PASS || '',
-      database: process.env.DB_NAME || 'wellness_buddy'
-    });
+    // Use connection pool
+    const pool = getPool();
 
     // Test queries
-    const [tables] = await connection.execute('SHOW TABLES');
-    const [teamCount] = await connection.execute('SELECT COUNT(*) as count FROM team_table');
-    const [otpCount] = await connection.execute('SELECT COUNT(*) as count FROM otp_tokens_table');
-    const [foodCount] = await connection.execute('SELECT COUNT(*) as count FROM food_nutrition_data_table');
+    const [tables] = await pool.execute('SHOW TABLES');
+    const [teamCount] = await pool.execute('SELECT COUNT(*) as count FROM team_table');
+    const [otpCount] = await pool.execute('SELECT COUNT(*) as count FROM otp_tokens_table');
+    const [foodCount] = await pool.execute('SELECT COUNT(*) as count FROM food_nutrition_data_table');
     
     // Get sample user
-    const [sampleUser] = await connection.execute(
+    const [sampleUser] = await pool.execute(
       'SELECT UserId, UserName, Email FROM team_table LIMIT 1'
     );
-
-    await connection.end();
 
     res.json({
       success: true,

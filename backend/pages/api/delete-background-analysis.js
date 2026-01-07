@@ -1,4 +1,5 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -13,38 +14,35 @@ export default async function handler(req, res) {
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
-  const { id } = req.body;
+  const { id, userId } = req.body;
 
-  if (!id) {
+  if (!id || !userId) {
     return res.status(400).json({ 
       success: false,
-      message: 'Analysis ID is required' 
+      message: 'Analysis ID and userId are required' 
     });
   }
 
   try {
     // Database connection
-    const connection = await mysql.createConnection({
-      host: process.env.DB_HOST,
-      user: process.env.DB_USER,
-      password: process.env.DB_PASS,
-      database: process.env.DB_NAME
-    });
+    const pool = getPool();
 
-    // Delete the analysis record
-    const [result] = await connection.execute(
-      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ?',
-      [id]
+    // Delete the analysis record WITH ownership validation (SECURITY FIX)
+    const [result] = await pool.execute(
+      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ? AND UserID = ?',
+      [id, userId]
     );
-
-    await connection.end();
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({
+    
+if (result.affectedRows === 0) {
+      return res.status(403).json({
         success: false,
-        message: 'Analysis not found'
+        message: 'Unauthorized or analysis not found'
       });
     }
+
+    // Clear nutrition cache only (no extra query needed - PERFORMANCE FIX)
+    cache.delete(cacheKeys.nutritionMeals(userId));
+    console.log('🗑️ [delete-background-analysis] Nutrition cache cleared for user:', userId);
 
     res.status(200).json({
       success: true,

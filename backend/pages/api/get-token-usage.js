@@ -1,4 +1,4 @@
-import mysql from 'mysql2/promise';
+﻿import { getPool } from '../../utils/dbPool.js';
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -11,11 +11,17 @@ const dbConfig = {
 };
 
 export default async function handler(req, res) {
+  // Prevent browser/service worker caching of dynamic data
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
     return res.status(200).end();
   }
 
@@ -23,7 +29,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
-  let connection;
+  
 
   try {
     const { email, timeRange = 'month', operationType, model, startDate, endDate } = req.query;
@@ -33,17 +39,16 @@ export default async function handler(req, res) {
     }
 
     // Create database connection
-    connection = await mysql.createConnection(dbConfig);
+    const pool = getPool();
 
     // Verify user has admin or developer role
-    const [userRows] = await connection.execute(
+    const [userRows] = await pool.execute(
       'SELECT Role FROM team_table WHERE Email = ? LIMIT 1',
       [email]
     );
 
     if (!userRows.length) {
-      await connection.end();
-      return res.status(403).json({ 
+return res.status(403).json({ 
         success: false, 
         message: 'Access denied. User not found.' 
       });
@@ -51,8 +56,7 @@ export default async function handler(req, res) {
 
     const userRole = userRows[0].Role;
     if (userRole !== 'admin' && userRole !== 'developer') {
-      await connection.end();
-      return res.status(403).json({ 
+return res.status(403).json({ 
         success: false, 
         message: 'Access denied. Admin or Developer role required.' 
       });
@@ -105,7 +109,7 @@ export default async function handler(req, res) {
     const whereClause = whereConditions.join(' AND ');
 
     // Query 1: Summary statistics
-    const [summaryRows] = await connection.execute(
+    const [summaryRows] = await pool.execute(
       `SELECT 
         COALESCE(SUM(InputTokens), 0) as totalInputTokens,
         COALESCE(SUM(OutputTokens), 0) as totalOutputTokens,
@@ -123,7 +127,7 @@ export default async function handler(req, res) {
     const summary = summaryRows[0];
 
     // Query 2: Most used operation type
-    const [mostUsedOpRows] = await connection.execute(
+    const [mostUsedOpRows] = await pool.execute(
       `SELECT OperationType, COUNT(*) as count
       FROM ai_token_usage_table
       WHERE ${whereClause}
@@ -134,7 +138,7 @@ export default async function handler(req, res) {
     );
 
     // Query 3: Most used model
-    const [mostUsedModelRows] = await connection.execute(
+    const [mostUsedModelRows] = await pool.execute(
       `SELECT ModelName, COUNT(*) as count
       FROM ai_token_usage_table
       WHERE ${whereClause}
@@ -145,7 +149,7 @@ export default async function handler(req, res) {
     );
 
     // Query 4: Usage by operation type
-    const [byOperationRows] = await connection.execute(
+    const [byOperationRows] = await pool.execute(
       `SELECT 
         OperationType as operationType,
         COALESCE(SUM(TotalTokens), 0) as totalTokens,
@@ -161,7 +165,7 @@ export default async function handler(req, res) {
     );
 
     // Query 5: Usage by model
-    const [byModelRows] = await connection.execute(
+    const [byModelRows] = await pool.execute(
       `SELECT 
         ModelName as modelName,
         COALESCE(SUM(TotalTokens), 0) as totalTokens,
@@ -177,7 +181,7 @@ export default async function handler(req, res) {
     );
 
     // Query 6: Recent usage (last 10 records)
-    const [recentUsageRows] = await connection.execute(
+    const [recentUsageRows] = await pool.execute(
       `SELECT 
         ID as id,
         UserId as userId,
@@ -203,7 +207,7 @@ export default async function handler(req, res) {
     const dailyParams = [...queryParams];
     dailyParams[0] = thirtyDaysAgo > startDateObj ? thirtyDaysAgo : startDateObj;
 
-    const [dailyStatsRows] = await connection.execute(
+    const [dailyStatsRows] = await pool.execute(
       `SELECT 
         DATE(CreatedAt) as date,
         COALESCE(SUM(TotalTokens), 0) as totalTokens,
@@ -218,7 +222,7 @@ export default async function handler(req, res) {
     );
 
     // Query 8: User spending aggregation (with user names from team_table)
-    const [userSpendingRows] = await connection.execute(
+    const [userSpendingRows] = await pool.execute(
       `SELECT 
         a.UserId as userId,
         a.Email as email,
@@ -314,9 +318,5 @@ export default async function handler(req, res) {
       message: 'Failed to fetch token usage data',
       error: error.message 
     });
-  } finally {
-    if (connection) {
-      await connection.end();
-    }
   }
 }
