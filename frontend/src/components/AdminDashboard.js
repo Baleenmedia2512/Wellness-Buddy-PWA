@@ -668,7 +668,7 @@ const AdminDashboard = ({ user, onClose }) => {
           setTimeout(() => {
             setShowSuccessMessage(false);
             setShowEditPopup(false);
-          }, 7000);
+          }, 200);
         }
       } else {
         console.error('Failed to save token correction');
