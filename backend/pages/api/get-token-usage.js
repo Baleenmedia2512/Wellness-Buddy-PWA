@@ -1,16 +1,9 @@
 ﻿import { getPool } from '../../utils/dbPool.js';
 
-const dbConfig = {
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASS,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-};
-
 export default async function handler(req, res) {
+  console.log('========== [get-token-usage] API Called ==========');
+  console.log('[get-token-usage] Request query:', req.query);
+  
   // Prevent browser/service worker caching of dynamic data
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -31,17 +24,19 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
-  
-
   try {
     const { email, timeRange = 'month', operationType, model, startDate, endDate } = req.query;
 
     if (!email) {
+      console.log('[get-token-usage] ERROR: No email provided');
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
+    console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange);
+
     // Create database connection
     const pool = getPool();
+    console.log('[get-token-usage] Database pool acquired');
 
     // Verify user has admin or developer role
     const [userRows] = await pool.execute(
@@ -49,20 +44,30 @@ export default async function handler(req, res) {
       [email]
     );
 
+    console.log('[get-token-usage] User lookup:', { 
+      email, 
+      found: userRows.length > 0, 
+      role: userRows[0]?.Role || 'N/A' 
+    });
+
     if (!userRows.length) {
-return res.status(403).json({ 
+      console.log('[get-token-usage] ERROR: User not found in team_table');
+      return res.status(403).json({ 
         success: false, 
-        message: 'Access denied. User not found.' 
+        message: `Access denied. User not found: ${email}` 
       });
     }
 
     const userRole = userRows[0].Role;
     if (userRole !== 'admin' && userRole !== 'developer') {
-return res.status(403).json({ 
+      console.log('[get-token-usage] ERROR: User role is not admin/developer:', userRole);
+      return res.status(403).json({ 
         success: false, 
-        message: 'Access denied. Admin or Developer role required.' 
+        message: `Access denied. Admin or Developer role required. Current role: ${userRole}` 
       });
     }
+
+    console.log('[get-token-usage] User authorized with role:', userRole);
 
     // Calculate date range using server's local timezone
     const now = new Date();
@@ -121,7 +126,7 @@ return res.status(403).json({
       switch (timeRange) {
         case 'today':
           startDateObj = today;
-          endDateObj = now;
+          endDateObj = getEndOfDay(today);  // Fixed: Use end of day instead of 'now'
           break;
         case 'yesterday':
           const yesterday = new Date(today);
@@ -133,15 +138,18 @@ return res.status(403).json({
           const weekStart = new Date(today);
           weekStart.setDate(weekStart.getDate() - 6);
           startDateObj = weekStart;
+          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
           break;
         case 'month':
           const monthStart = new Date(today);
           monthStart.setDate(monthStart.getDate() - 29);
           startDateObj = monthStart;
+          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
           break;
         case 'all':
         default:
           startDateObj = new Date(0); // Beginning of time
+          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
           break;
       }
     }
@@ -149,6 +157,12 @@ return res.status(403).json({
     // Build WHERE clause
     let whereConditions = ['CreatedAt >= ?', 'CreatedAt <= ?'];
     let queryParams = [startDateObj, endDateObj];
+
+    console.log('[get-token-usage] Date range:', {
+      timeRange,
+      startDate: startDateObj.toISOString(),
+      endDate: endDateObj.toISOString()
+    });
 
     if (operationType && operationType !== 'all') {
       whereConditions.push('OperationType = ?');
@@ -161,6 +175,7 @@ return res.status(403).json({
     }
 
     const whereClause = whereConditions.join(' AND ');
+    console.log('[get-token-usage] WHERE clause:', whereClause);
 
     // Query 1: Summary statistics
     const [summaryRows] = await pool.execute(
@@ -179,6 +194,14 @@ return res.status(403).json({
     );
 
     const summary = summaryRows[0];
+    console.log('[get-token-usage] Summary result:', {
+      totalInputTokens: summary.totalInputTokens,
+      totalOutputTokens: summary.totalOutputTokens,
+      totalInputCost: summary.totalInputCost,
+      totalOutputCost: summary.totalOutputCost,
+      totalCost: summary.totalCost,
+      requestCount: summary.requestCount
+    });
 
     // Query 2: Most used operation type
     const [mostUsedOpRows] = await pool.execute(
@@ -295,6 +318,11 @@ return res.status(403).json({
       queryParams
     );
 
+    console.log('[get-token-usage] User spending rows:', userSpendingRows.length);
+    if (userSpendingRows.length > 0) {
+      console.log('[get-token-usage] First user:', userSpendingRows[0]);
+    }
+
     // Calculate percentages for operation types
     const totalTokensForPercentage = Number(summary.totalTokens) || 1;
     const byOperationWithPercentage = byOperationRows.map(op => ({
@@ -363,10 +391,19 @@ return res.status(403).json({
       }
     };
 
+    console.log('[get-token-usage] SUCCESS - Sending response with:', {
+      summaryTotalCost: response.data.summary.totalCost,
+      summaryInputCost: response.data.summary.totalInputCost,
+      summaryOutputCost: response.data.summary.totalOutputCost,
+      userSpendingCount: response.data.userSpending.length,
+      timeRange: response.data.timeRange
+    });
+    console.log('========== [get-token-usage] API Complete ==========');
+
     return res.status(200).json(response);
 
   } catch (error) {
-    console.error('Error fetching token usage:', error);
+    console.error('[get-token-usage] ERROR:', error);
     return res.status(500).json({ 
       success: false, 
       message: 'Failed to fetch token usage data',

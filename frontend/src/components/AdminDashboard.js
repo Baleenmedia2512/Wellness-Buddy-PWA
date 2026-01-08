@@ -475,6 +475,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [timeRange, setTimeRange] = useState('month');
   const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [apiError, setApiError] = useState(null); // Track API errors for display
   // const [showDemoData, setShowDemoData] = useState(false); // COMMENTED OUT - Demo disabled
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -515,6 +516,7 @@ const AdminDashboard = ({ user, onClose }) => {
     try {
       setLoading(true);
       setRefreshing(true);
+      setApiError(null); // Clear previous errors
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
       
       // Build URL with custom date range if selected
@@ -533,6 +535,8 @@ const AdminDashboard = ({ user, onClose }) => {
         url += `&timeRange=${timeRange}`;
       }
       
+      console.log('[AdminDashboard] Fetching token data from:', url);
+      
       const response = await fetch(url, {
         cache: 'no-store',
         headers: {
@@ -541,15 +545,24 @@ const AdminDashboard = ({ user, onClose }) => {
         }
       });
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setTokenData(data.data);
-          setLastUpdated(new Date());
-        }
+      const data = await response.json();
+      console.log('[AdminDashboard] API Response:', { status: response.status, data });
+      
+      if (response.ok && data.success) {
+        setTokenData(data.data);
+        setLastUpdated(new Date());
+        setApiError(null);
+      } else {
+        // Log the error for debugging - API returned an error
+        console.error('[AdminDashboard] API Error:', data.message || 'Unknown error');
+        setApiError(data.message || `API Error: ${response.status}`);
+        // Still show empty data to indicate something is wrong
+        setTokenData(null);
       }
     } catch (error) {
-      console.error('Error fetching token data:', error);
+      console.error('[AdminDashboard] Network/Fetch error:', error);
+      setApiError(`Network error: ${error.message}`);
+      setTokenData(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -961,6 +974,18 @@ const AdminDashboard = ({ user, onClose }) => {
           </>
         ) : (
           <>
+            {/* Error Alert */}
+            {apiError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4"
+              >
+                <p className="text-red-700 font-medium text-sm">Failed to load data</p>
+                <p className="text-red-600 text-xs mt-1">{apiError}</p>
+              </motion.div>
+            )}
+
             {/* Stats Box */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -1105,8 +1130,17 @@ const AdminDashboard = ({ user, onClose }) => {
                 </tbody>
               </table>
             ) : (
-              <div className="p-6 text-center text-gray-400 text-sm">
-                {searchQuery ? `No users found matching "${searchQuery}"` : 'No user spending data'}
+              <div className="p-6 text-center text-sm">
+                {apiError ? (
+                  <div className="text-red-500">
+                    <p className="font-medium">Error loading data</p>
+                    <p className="text-xs mt-1">{apiError}</p>
+                  </div>
+                ) : searchQuery ? (
+                  <span className="text-gray-400">{`No users found matching "${searchQuery}"`}</span>
+                ) : (
+                  <span className="text-gray-400">No user spending data</span>
+                )}
               </div>
             )}
           </div>
