@@ -25,14 +25,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, timeRange = 'month', operationType, model, startDate, endDate } = req.query;
+    const { email, timeRange = 'month', operationType, model, startDate, endDate, userToday } = req.query;
 
     if (!email) {
       console.log('[get-token-usage] ERROR: No email provided');
       return res.status(400).json({ success: false, message: 'Email is required' });
     }
 
-    console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange);
+    console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange, '| UserToday:', userToday);
 
     // Create database connection
     const pool = getPool();
@@ -69,7 +69,7 @@ export default async function handler(req, res) {
 
     console.log('[get-token-usage] User authorized with role:', userRole);
 
-    // Calculate date range using server's local timezone
+  // Calculate date range using server's local timezone
     const now = new Date();
     
     // Helper function to parse date string in local timezone (prevents date shifting)
@@ -120,36 +120,47 @@ export default async function handler(req, res) {
         parsedEnd: endDateObj.toISOString()
       });
     } else {
-      // Use predefined time ranges based on server's local timezone
-      const today = getStartOfDay(now);
+      // Use predefined time ranges
+      // Use userToday from frontend (user's local date) to avoid timezone issues in production
+      // This ensures "today" means the same date for the user regardless of server timezone
+      const todayStr = userToday || new Date().toISOString().split('T')[0]; // Fallback to server date if not provided
+      const todayDate = parseLocalDate(todayStr);
+      
+      console.log('[Token Usage] Using todayStr:', todayStr, '| From userToday param:', !!userToday);
       
       switch (timeRange) {
         case 'today':
-          startDateObj = today;
-          endDateObj = getEndOfDay(today);  // Fixed: Use end of day instead of 'now'
+          // Use the same parsing logic as Custom Date for consistency
+          startDateObj = getStartOfDay(todayDate);
+          endDateObj = getEndOfDay(todayDate);
+          console.log('[Token Usage] Today filter:', {
+            todayStr,
+            start: startDateObj.toISOString(),
+            end: endDateObj.toISOString()
+          });
           break;
         case 'yesterday':
-          const yesterday = new Date(today);
-          yesterday.setDate(yesterday.getDate() - 1);
-          startDateObj = yesterday;
-          endDateObj = getEndOfDay(yesterday);
+          const yesterdayDate = new Date(todayDate);
+          yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+          startDateObj = getStartOfDay(yesterdayDate);
+          endDateObj = getEndOfDay(yesterdayDate);
           break;
         case 'week':
-          const weekStart = new Date(today);
-          weekStart.setDate(weekStart.getDate() - 6);
-          startDateObj = weekStart;
-          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
+          const weekStartDate = new Date(todayDate);
+          weekStartDate.setDate(weekStartDate.getDate() - 6);
+          startDateObj = getStartOfDay(weekStartDate);
+          endDateObj = getEndOfDay(todayDate);
           break;
         case 'month':
-          const monthStart = new Date(today);
-          monthStart.setDate(monthStart.getDate() - 29);
-          startDateObj = monthStart;
-          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
+          const monthStartDate = new Date(todayDate);
+          monthStartDate.setDate(monthStartDate.getDate() - 29);
+          startDateObj = getStartOfDay(monthStartDate);
+          endDateObj = getEndOfDay(todayDate);
           break;
         case 'all':
         default:
           startDateObj = new Date(0); // Beginning of time
-          endDateObj = getEndOfDay(today);  // Fixed: Use end of today
+          endDateObj = getEndOfDay(todayDate);
           break;
       }
     }
