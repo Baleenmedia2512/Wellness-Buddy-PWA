@@ -1000,6 +1000,13 @@ const AdminDashboard = ({ user, onClose }) => {
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
               <div className="grid grid-cols-3 gap-2">
                 <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Total Cost</span>
+                  </div>
+                </div>
+                <div className="text-center">
                   <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalInputCost || 0)}</p>
                   <div className="flex items-center justify-center space-x-1">
                     <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
@@ -1011,13 +1018,6 @@ const AdminDashboard = ({ user, onClose }) => {
                   <div className="flex items-center justify-center space-x-1">
                     <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
                     <span className="text-xs text-gray-400 whitespace-nowrap">Output Cost</span>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalCost || 0)}</p>
-                  <div className="flex items-center justify-center space-x-1">
-                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                    <span className="text-xs text-gray-400 whitespace-nowrap">Total Cost</span>
                   </div>
                 </div>
               </div>
@@ -1072,6 +1072,24 @@ const AdminDashboard = ({ user, onClose }) => {
                       </div>
                     </th>
                     <th 
+                      onClick={() => handleSort('totalCost')}
+                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
+                    >
+                      <div className="flex items-center justify-end space-x-1">
+                        <span>Cost</span>
+                        <SortIcon field="totalCost" />
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('totalTokens')}
+                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
+                    >
+                      <div className="flex items-center justify-end space-x-1">
+                        <span>Total Tokens</span>
+                        <SortIcon field="totalTokens" />
+                      </div>
+                    </th>
+                    <th 
                       onClick={() => handleSort('inputTokens')}
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
@@ -1089,24 +1107,6 @@ const AdminDashboard = ({ user, onClose }) => {
                         <SortIcon field="outputTokens" />
                       </div>
                     </th>
-                    <th 
-                      onClick={() => handleSort('totalTokens')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Total Tokens</span>
-                        <SortIcon field="totalTokens" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('totalCost')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Cost</span>
-                        <SortIcon field="totalCost" />
-                      </div>
-                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -1119,16 +1119,16 @@ const AdminDashboard = ({ user, onClose }) => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.inputTokens || 0)}</p>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.outputTokens || 0)}</p>
+                        <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-medium text-gray-800">{formatNumber(user.totalTokens)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
+                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.inputTokens || 0)}</p>
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.outputTokens || 0)}</p>
                       </td>
                     </tr>
                   ))}
