@@ -1161,7 +1161,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
         {/* Serving Size Dropdown */}
         {selectedFood && servingOptions.length > 0 && (
           <div className="relative">
-            <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
               <span>Serving Size</span>
             </label>
@@ -1251,7 +1251,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
 
         {/* Custom Grams/ML Input - Always visible */}
         <div>
-          <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+          <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
             <Scale className="w-3.5 h-3.5 text-gray-500" />
             <span>{selectedFood?.isLiquid ? 'Volume' : 'Weight'}</span>
           </label>
@@ -1273,7 +1273,7 @@ const EditableFoodItem = forwardRef(({ foodItem, onUpdate, index, onEditingChang
         {/* Nutrition Preview - Glassmorphism Pills */}
         {customGrams && selectedFood && selectedFood.per100g && (
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+            <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
               <Utensils className="w-3.5 h-3.5 text-gray-500" />
               <span>Preview ({customGrams}{selectedFood?.unit || (selectedFood?.isLiquid ? 'ml' : 'g')})</span>
             </label>

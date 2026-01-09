@@ -662,9 +662,10 @@ Note: Serving options generated locally, don't include servingOptions array.`;
         responseLength: response.text ? response.text().length : 0
       };
 
-      // Calculate cost estimate (for gemini-2.5-flash-lite - free tier)
-      const inputCost = (tokenData.promptTokens / 1000000) * 0.075; // $0.075 per 1M input tokens
-      const outputCost = (tokenData.completionTokens / 1000000) * 0.30; // $0.30 per 1M output tokens
+      // Calculate cost estimate (for gemini-2.5-flash-lite)
+      // Pricing from: https://ai.google.dev/pricing (Jan 2026)
+      const inputCost = (tokenData.promptTokens / 1000000) * 0.10; // $0.10 per 1M input tokens
+      const outputCost = (tokenData.completionTokens / 1000000) * 0.40; // $0.40 per 1M output tokens
       const totalCost = inputCost + outputCost;
 
       // Update session metrics
