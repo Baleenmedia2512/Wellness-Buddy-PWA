@@ -1,4 +1,12 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client
+const getSupabaseClient = () => {
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 export default async function handler(req, res) {
   console.log('========== [get-token-usage] API Called ==========');
@@ -34,23 +42,23 @@ export default async function handler(req, res) {
 
     console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange, '| UserToday:', userToday);
 
-    // Create database connection
-    const pool = getPool();
-    console.log('[get-token-usage] Database pool acquired');
+    const supabase = getSupabaseClient();
+    console.log('[get-token-usage] Using Supabase REST API');
 
     // Verify user has admin or developer role
-    const [userRows] = await pool.execute(
-      'SELECT Role FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('Role')
+      .eq('Email', email)
+      .maybeSingle();
 
     console.log('[get-token-usage] User lookup:', { 
       email, 
-      found: userRows.length > 0, 
-      role: userRows[0]?.Role || 'N/A' 
+      found: !!user, 
+      role: user?.Role || 'N/A' 
     });
 
-    if (!userRows.length) {
+    if (userError || !user) {
       console.log('[get-token-usage] ERROR: User not found in team_table');
       return res.status(403).json({ 
         success: false, 
@@ -58,7 +66,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const userRole = userRows[0].Role;
+    const userRole = user.Role;
     if (userRole !== 'admin' && userRole !== 'developer') {
       console.log('[get-token-usage] ERROR: User role is not admin/developer:', userRole);
       return res.status(403).json({ 

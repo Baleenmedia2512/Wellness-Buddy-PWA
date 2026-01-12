@@ -47,7 +47,7 @@ export default async function handler(req, res) {
 
     // Get total count for pagination
     const [countResult] = await pool.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
+      'SELECT COUNT(*) as total FROM `food_nutrition_data_table` WHERE `UserID` = ? AND `IsDeleted` = 0',
       [userId]
     );
     

@@ -1,5 +1,16 @@
-import { getPool } from '../../utils/dbPool.js';
+import { createClient } from '@supabase/supabase-js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+
+// Initialize Supabase client (uses REST API via HTTPS - not blocked)
+const getSupabaseClient = () => {
+  if (!process.env.SUPABASE_ANON_KEY) {
+    throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
+  }
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -41,21 +52,28 @@ export default async function handler(req, res) {
       return res.status(200).json(cached);
     }
 
-    // Use connection pool to avoid ETIMEDOUT errors
-    const pool = getPool();
-    console.log('📊 [lookup-user-id] Using connection pool');
+    // Use Supabase REST API (bypasses blocked PostgreSQL ports)
+    console.log('📊 [lookup-user-id] Using Supabase REST API');
 
-    // Try to find user by email first (most reliable)
-    let query = 'SELECT UserId, UserName, Email, Status, Role FROM team_table WHERE Email = ?';
-    let params = [email];
-    
-    console.log('🔎 [lookup-user-id] Executing query:', query, 'with params:', params);
+    const supabase = getSupabaseClient();
 
-    const [rows] = await pool.execute(query, params);
+    // Query user by email (note: lowercase column names in PostgreSQL)
+    console.log('🔎 [lookup-user-id] Querying team_table for email:', email);
 
-    console.log('📋 [lookup-user-id] Query results:', { rowCount: rows.length, rows });
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "Status", "Role"')
+      .eq('"Email"', email)
+      .maybeSingle();
 
-    if (rows.length === 0) {
+    if (error) {
+      console.error('❌ [lookup-user-id] Supabase query error:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('📋 [lookup-user-id] Query results:', { found: !!data, data });
+
+    if (!data) {
       console.log('❌ [lookup-user-id] User not found in database');
       return res.status(404).json({ 
         success: false, 
@@ -64,7 +82,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const user = rows[0];
+    const user = data;
     const isActive = user.Status === 'Active';
 
     console.log('✅ [lookup-user-id] User found:', {

@@ -1,5 +1,13 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { createClient } from '@supabase/supabase-js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+
+// Initialize Supabase client (uses REST API via HTTPS - not blocked)
+const getSupabaseClient = () => {
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 // Configure API body parser for large image uploads
 export const config = {
@@ -11,6 +19,8 @@ export const config = {
 };
 
 export default async function handler(req, res) {
+  console.log('🔵 [save-background-analysis] Request received:', { method: req.method, timestamp: new Date().toISOString() });
+  
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -20,19 +30,29 @@ export default async function handler(req, res) {
   }
 
   if (req.method !== 'POST') {
+    console.log('❌ [save-background-analysis] Method not allowed:', req.method);
     return res.status(405).json({ message: 'Method not allowed' });
   }
 
   // Check if request body is too large or malformed
   if (!req.body) {
+    console.log('❌ [save-background-analysis] Request body is missing or too large');
     return res.status(400).json({ 
       message: 'Request body is missing or too large. Maximum size is 10MB.' 
     });
   }
 
   const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64 } = req.body;
+  console.log('📝 [save-background-analysis] Request data:', { 
+    userId, 
+    imagePath, 
+    hasAnalysisResult: !!analysisResult,
+    deviceInfo,
+    hasImageBase64: !!ImageBase64
+  });
 
   if (!userId || !imagePath || !analysisResult) {
+    console.log('❌ [save-background-analysis] Missing required fields:', { userId: !!userId, imagePath: !!imagePath, analysisResult: !!analysisResult });
     return res.status(400).json({ 
       message: 'Missing required fields: userId, imagePath, analysisResult' 
     });
@@ -62,6 +82,13 @@ export default async function handler(req, res) {
     
     try {
       const analysis = typeof analysisResult === 'string' ? JSON.parse(analysisResult) : analysisResult;
+      console.log('📊 [save-background-analysis] Parsed analysis:', { 
+        hasFoods: !!analysis.foods, 
+        foodsLength: analysis.foods?.length,
+        hasTotal: !!analysis.total,
+        hasNutrition: !!analysis.nutrition,
+        confidence: analysis.confidence
+      });
       
       // Check if this is from background service (has foods array with total)
       if (analysis.foods && analysis.foods.length > 0 && analysis.total) {
@@ -74,6 +101,7 @@ export default async function handler(req, res) {
         confidenceScore = convertConfidenceToNumeric(analysis.confidence);
         // Determine source based on deviceInfo - only actual Android Background Service should be background_service
         processedBy = (deviceInfo && deviceInfo.includes('Android Background Service')) ? 'background_service' : 'manual_app';
+        console.log('✅ [save-background-analysis] Using standard format (foods + total)');
       } else if (analysis.nutrition) {
         // Legacy manual save format - use nutrition object (keeping for backwards compatibility)
         totalCalories = analysis.nutrition.calories || null;
@@ -83,6 +111,7 @@ export default async function handler(req, res) {
         totalFiber = analysis.nutrition.fiber || null;
         confidenceScore = convertConfidenceToNumeric(analysis.confidence);
         processedBy = 'manual_app';
+        console.log('✅ [save-background-analysis] Using legacy format (nutrition object)');
       } else if (analysis.foods && analysis.foods.length > 0) {
         // Fallback: extract from first food item (legacy format)
         const firstFood = analysis.foods[0];
@@ -95,46 +124,71 @@ export default async function handler(req, res) {
         }
         confidenceScore = convertConfidenceToNumeric(firstFood.confidence || analysis.confidence);
         processedBy = 'background_service';
+        console.log('✅ [save-background-analysis] Using fallback format (first food item)');
       }
+      
+      console.log('📊 [save-background-analysis] Extracted nutrition:', { 
+        totalCalories, 
+        totalProtein, 
+        totalCarbs, 
+        totalFat, 
+        totalFiber,
+        confidenceScore,
+        processedBy
+      });
     } catch (parseError) {
-      console.warn('Could not parse nutrition data:', parseError);
+      console.warn('⚠️ [save-background-analysis] Could not parse nutrition data:', parseError);
     }
 
-    // Database connection
-    const pool = getPool();
-
-
-    // Insert into the new table structure, now including ImageBase64
-    const insertQuery = `
-      INSERT INTO food_nutrition_data_table (
-        UserID, ImagePath, AnalysisData, ConfidenceScore, 
-        TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-        ProcessedBy, DeviceInfo, ImageBase64
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-
-    const analysisDataJson = typeof analysisResult === 'string' ? analysisResult : JSON.stringify(analysisResult);
+    // Database connection - Use Supabase REST API
+    const supabase = getSupabaseClient();
 
     // If ImageBase64 is empty string, store as null
     const imageBase64ToSave = (ImageBase64 && ImageBase64.trim() !== '') ? ImageBase64 : null;
 
-    const [result] = await pool.execute(insertQuery, [
-      userId,
-      imagePath,
-      analysisDataJson,
-      confidenceScore,
-      totalCalories,
-      totalProtein,
-      totalCarbs,
-      totalFat,
-      totalFiber,
-      processedBy,
-      deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
-      imageBase64ToSave
-    ]);
-res.status(200).json({
+    const analysisDataJson = typeof analysisResult === 'string' ? analysisResult : JSON.stringify(analysisResult);
+
+    console.log('💾 [save-background-analysis] Preparing to insert into Supabase:', {
+      UserID: userId.toString(),
+      ImagePath: imagePath.substring(0, 50) + '...',
+      hasImageBase64: !!imageBase64ToSave,
+      TotalCalories: totalCalories,
+      ProcessedBy: processedBy
+    });
+
+    // Insert using Supabase - use PascalCase column names as they exist in Supabase
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .insert({
+        UserID: userId.toString(),
+        ImagePath: imagePath,
+        AnalysisData: analysisDataJson,
+        ConfidenceScore: confidenceScore,
+        TotalCalories: totalCalories,
+        TotalProtein: totalProtein,
+        TotalCarbs: totalCarbs,
+        TotalFat: totalFat,
+        TotalFiber: totalFiber,
+        ProcessedBy: processedBy,
+        DeviceInfo: deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
+        ImageBase64: imageBase64ToSave
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ [save-background-analysis] Database save error:', error);
+      console.error('❌ [save-background-analysis] Error code:', error.code);
+      console.error('❌ [save-background-analysis] Error details:', error.details);
+      console.error('❌ [save-background-analysis] Error hint:', error.hint);
+      throw error;
+    }
+
+    console.log('✅ [save-background-analysis] Successfully saved to database, ID:', data?.ID);
+
+    res.status(200).json({
       success: true,
-      id: result.insertId,
+      id: data?.ID || data?.id,
       message: 'Analysis saved successfully',
       data: {
         userId,
@@ -154,13 +208,35 @@ res.status(200).json({
     // Clear nutrition cache only (education is separate domain)
     cache.delete(cacheKeys.nutritionMeals(userId));
     console.log('🗑️ [save-background-analysis] Nutrition cache cleared for user:', userId);
+    console.log('✅ [save-background-analysis] Response sent successfully');
 
   } catch (error) {
-    console.error('❌ Database save error:', error);
+    console.error('❌ [save-background-analysis] Caught error:', error);
+    console.error('❌ [save-background-analysis] Error code:', error.code);
+    console.error('❌ [save-background-analysis] Error message:', error.message);
+    console.error('❌ [save-background-analysis] Error stack:', error.stack);
+    
+    // Enhanced error messages for different error types
+    let errorMessage = 'Failed to save analysis';
+    
+    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      errorMessage = 'Database connection timeout. Please try again.';
+    } else if (error.message?.includes('Connection terminated')) {
+      errorMessage = 'Database connection was terminated. Retrying...';
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Database connection refused. Please check if database is accessible.';
+    } else if (error.code === '23505') {
+      errorMessage = 'Duplicate key error: The database sequence needs to be reset. Please contact support.';
+      console.error('❌ [save-background-analysis] DUPLICATE KEY ERROR - Sequence out of sync!');
+      console.error('❌ [save-background-analysis] Run this SQL in Supabase: SELECT setval(pg_get_serial_sequence(\'food_nutrition_data_table\', \'ID\'), (SELECT MAX("ID") FROM food_nutrition_data_table));');
+    }
+    
+    console.error('❌ [save-background-analysis] Sending error response:', errorMessage);
+    
     res.status(500).json({
       success: false,
-      message: 'Failed to save analysis',
-      error: error.message
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }

@@ -30,7 +30,7 @@ export default async function handler(req, res) {
     // OPTIONAL safety: ensure this row belongs to the user (if you store UserID)
     if (userId) {
       const [ownerCheck] = await pool.execute(
-        'SELECT ID FROM food_nutrition_data_table WHERE ID = ? AND UserID = ? LIMIT 1',
+        'SELECT `ID` FROM `food_nutrition_data_table` WHERE `ID` = ? AND `UserID` = ? LIMIT 1',
         [id, userId]
       );
       if (!ownerCheck.length) {
@@ -43,7 +43,7 @@ return res.status(403).json({
 
     // Restore: flip IsDeleted back to 0
     const [result] = await pool.execute(
-      'UPDATE food_nutrition_data_table SET IsDeleted = 0 WHERE ID = ?',
+      'UPDATE `food_nutrition_data_table` SET `IsDeleted` = 0 WHERE `ID` = ?',
       [id]
     );
     

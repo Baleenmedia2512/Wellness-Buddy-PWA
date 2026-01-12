@@ -1,4 +1,12 @@
-import { getPool } from '../../utils/dbPool.js';
+import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client (uses REST API via HTTPS - not blocked)
+const getSupabaseClient = () => {
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -51,42 +59,59 @@ export default async function handler(req, res) {
       });
     }
 
-    // Use connection pool
-    const pool = getPool();
+    // Use Supabase REST API (bypasses blocked PostgreSQL ports)
+    const supabase = getSupabaseClient();
 
-    // Insert token usage record
-    const insertQuery = `
-      INSERT INTO ai_token_usage_table 
-      (UserId, Email, OperationType, ModelName, InputTokens, OutputTokens, TotalTokens, InputTokenCost, OutputTokenCost, TotalTokenCost, CreatedAt)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())
-    `;
+    // Insert token usage record using Supabase
+    // Use exact PascalCase column names as shown in Supabase UI
+    const { data, error } = await supabase
+      .from('ai_token_usage_table')
+      .insert({
+        UserId: userId.toString(),
+        Email: email,
+        OperationType: operationType,
+        ModelName: modelName,
+        InputTokens: inputTokens || 0,
+        OutputTokens: outputTokens || 0,
+        TotalTokens: totalTokens || 0,
+        InputTokenCost: inputTokenCost || 0,
+        OutputTokenCost: outputTokenCost || 0,
+        TotalTokenCost: totalTokenCost || 0
+      })
+      .select()
+      .single();
 
-    const [result] = await pool.execute(insertQuery, [
-      userId,
-      email,
-      operationType,
-      modelName,
-      inputTokens || 0,
-      outputTokens || 0,
-      totalTokens || 0,
-      inputTokenCost || 0,
-      outputTokenCost || 0,
-      totalTokenCost || 0
-    ]);
+    if (error) {
+      console.error('❌ Error saving token usage:', error);
+      throw error;
+    }
 
     return res.status(200).json({
       success: true,
       message: 'Token usage saved successfully',
-      id: result.insertId
+      id: data?.ID || data?.id
     });
 
   } catch (error) {
     console.error('❌ Error saving token usage:', error);
+    console.error('Error code:', error.code);
+    console.error('Error stack:', error.stack);
+
+    // Enhanced error messages for different error types
+    let errorMessage = 'Failed to save token usage';
+    
+    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      errorMessage = 'Database connection timeout. Please try again.';
+    } else if (error.message?.includes('Connection terminated')) {
+      errorMessage = 'Database connection was terminated. Retrying...';
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Database connection refused. Please check if database is accessible.';
+    }
 
     return res.status(500).json({
       success: false,
-      message: 'Failed to save token usage',
-      error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }

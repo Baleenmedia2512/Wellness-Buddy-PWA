@@ -31,14 +31,14 @@ export default async function handler(req, res) {
 
     // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
     const query = `
-      UPDATE food_nutrition_data_table
-      SET AnalysisData = ?,
-          TotalCalories = ?,
-          TotalProtein = ?,
-          TotalCarbs = ?,
-          TotalFat = ?,
-          TotalFiber = ?
-      WHERE ID = ? AND UserID = ?
+      UPDATE \`food_nutrition_data_table\`
+      SET \`AnalysisData\` = ?,
+          \`TotalCalories\` = ?,
+          \`TotalProtein\` = ?,
+          \`TotalCarbs\` = ?,
+          \`TotalFat\` = ?,
+          \`TotalFiber\` = ?
+      WHERE \`ID\` = ? AND \`UserID\` = ?
     `;
 
     const [result] = await pool.execute(query, [

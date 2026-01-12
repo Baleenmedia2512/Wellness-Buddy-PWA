@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     // Delete the analysis record WITH ownership validation (SECURITY FIX)
     const [result] = await pool.execute(
-      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ? AND UserID = ?',
+      'UPDATE `food_nutrition_data_table` SET `IsDeleted` = 1 WHERE `ID` = ? AND `UserID` = ?',
       [id, userId]
     );
     

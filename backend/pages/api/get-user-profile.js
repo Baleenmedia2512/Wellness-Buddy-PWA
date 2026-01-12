@@ -1,5 +1,16 @@
-import { getPool, query } from '../../utils/dbPool.js';
+import { createClient } from '@supabase/supabase-js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+
+// Initialize Supabase client
+const getSupabaseClient = () => {
+  if (!process.env.SUPABASE_ANON_KEY) {
+    throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
+  }
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -45,19 +56,21 @@ export default async function handler(req, res) {
 
     console.log('📊 [get-user-profile] Fetching fresh profile data for:', email);
 
-    // Use connection pool - no need to manually close
-    const pool = getPool();
-    
-    // Fetch user profile from team_table
-    const [userRows] = await pool.execute(
-      `SELECT UserId, UserName, Email, Height, DietType 
-       FROM team_table 
-       WHERE Email = ? 
-       LIMIT 1`,
-      [email]
-    );
+    const supabase = getSupabaseClient();
 
-    if (userRows.length === 0) {
+    // Fetch user profile from team_table using Supabase
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "Height", "DietType"')
+      .eq('"Email"', email)
+      .maybeSingle();
+
+    if (userError) {
+      console.error('❌ [get-user-profile] Query error:', userError);
+      throw new Error(userError.message);
+    }
+
+    if (!user) {
       console.log('❌ [get-user-profile] User not found:', email);
       return res.status(404).json({
         success: false,
@@ -65,18 +78,16 @@ export default async function handler(req, res) {
       });
     }
 
-    const user = userRows[0];
     console.log('✅ [get-user-profile] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Fetch latest weight and BMR from weight_records_table
-    const [weightRows] = await pool.execute(
-      `SELECT Weight, Bmr, CreatedAt 
-       FROM weight_records_table 
-       WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-       ORDER BY CreatedAt DESC 
-       LIMIT 1`,
-      [user.UserId]
-    );
+    const { data: weightRows, error: weightError } = await supabase
+      .from('weight_records_table')
+      .select('"Weight", "Bmr", "CreatedAt"')
+      .eq('"UserId"', user.UserId)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
 
     // Helper function to format date as local time string (without UTC conversion)
     // MySQL stores local time, but mysql2 returns Date objects which get serialized as UTC
@@ -105,10 +116,13 @@ export default async function handler(req, res) {
       weightRecordDate: null,
     };
 
-    if (weightRows.length > 0) {
-      profileData.latestWeight = weightRows[0].Weight ? parseFloat(weightRows[0].Weight) : null;
-      profileData.latestBmr = weightRows[0].Bmr ? parseFloat(weightRows[0].Bmr) : null;
-      profileData.weightRecordDate = formatDateAsLocal(weightRows[0].CreatedAt);
+    if (weightError) {
+      console.warn('⚠️ [get-user-profile] Weight query error:', weightError);
+    } else if (weightRows && weightRows.length > 0) {
+      const latestWeight = weightRows[0];
+      profileData.latestWeight = latestWeight.Weight ? parseFloat(latestWeight.Weight) : null;
+      profileData.latestBmr = latestWeight.Bmr ? parseFloat(latestWeight.Bmr) : null;
+      profileData.weightRecordDate = latestWeight.CreatedAt;
     }
     
     console.log('📦 [get-user-profile] Compiled profile data:', profileData);

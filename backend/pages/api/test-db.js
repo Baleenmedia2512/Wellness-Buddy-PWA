@@ -17,23 +17,29 @@ export default async function handler(req, res) {
     // Use connection pool
     const pool = getPool();
 
-    // Test queries
-    const [tables] = await pool.execute('SHOW TABLES');
+    // Test queries - PostgreSQL syntax
+    const [tables] = await pool.execute(`
+      SELECT table_name 
+      FROM information_schema.tables 
+      WHERE table_schema = 'public' 
+      AND table_type = 'BASE TABLE'
+      ORDER BY table_name
+    `);
     const [teamCount] = await pool.execute('SELECT COUNT(*) as count FROM team_table');
     const [otpCount] = await pool.execute('SELECT COUNT(*) as count FROM otp_tokens_table');
     const [foodCount] = await pool.execute('SELECT COUNT(*) as count FROM food_nutrition_data_table');
     
-    // Get sample user
+    // Get sample user - PostgreSQL uses lowercase column names
     const [sampleUser] = await pool.execute(
-      'SELECT UserId, UserName, Email FROM team_table LIMIT 1'
+      'SELECT user_id, user_name, email FROM team_table LIMIT 1'
     );
 
     res.json({
       success: true,
-      message: 'Database connection successful',
+      message: 'Database connection successful (PostgreSQL/Supabase)',
       environment: process.env.NODE_ENV || 'development',
-      database: process.env.DB_NAME || 'wellness_buddy',
-      tables: tables.map(t => Object.values(t)[0]),
+      database: process.env.DB_NAME || 'postgres',
+      tables: tables.map(t => t.table_name),
       counts: {
         team_table: teamCount[0].count,
         otp_tokens_table: otpCount[0].count,

@@ -13,14 +13,17 @@
  * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
  */
 
-import { getPool } from '../../../utils/dbPool.js';
+import { createClient } from '@supabase/supabase-js';
 
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'baleed5_wellness'
+// Initialize Supabase client
+const getSupabaseClient = () => {
+  if (!process.env.SUPABASE_ANON_KEY) {
+    throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
+  }
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
 };
 
 export default async function handler(req, res) {
@@ -61,23 +64,26 @@ export default async function handler(req, res) {
       });
     }
 
-    // Connect to database
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    // Get user's UserId from team_table
-    const [userRows] = await pool.execute(
-      'SELECT UserId, TeamId, UplineCoachId, Role FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    // Get user's details from team_table using Supabase
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId", "TeamId", "UplineCoachId", "Role"')
+      .eq('"Email"', email)
+      .maybeSingle();
 
-    if (userRows.length === 0) {
-return res.status(404).json({
+    if (userError) {
+      console.error('❌ [status] Query error:', userError);
+      throw new Error(userError.message);
+    }
+
+    if (!user) {
+      return res.status(404).json({
         success: false,
         error: 'User not found'
       });
     }
-
-    const user = userRows[0];
     const userId = user.UserId;
     const userRole = user.Role;
     const hasTeamId = !!user.TeamId;
@@ -106,8 +112,8 @@ return res.status(200).json({
         setupComplete: true,
         hasTeamId: true,
         hasUpline: true,
-        teamId: user.TeamId,
-        uplineCoachId: user.UplineCoachId,
+        teamId: user.team_id,
+        uplineCoachId: user.upline_coach_id,
         pendingRequest: null,
         redirectTo: '/dashboard',
         message: 'Setup complete'
@@ -127,28 +133,30 @@ return res.status(200).json({
         });
       }
 
-      // Check for pending approval request
-      const [requestRows] = await pool.execute(
-        `SELECT Id, UplineCoachId, Status, OtpExpiresAt, RequestedAt
-         FROM approval_requests_table
-         WHERE RequesterId = ?
-         AND Status = 'pending'
-         ORDER BY RequestedAt DESC
-         LIMIT 1`,
-        [userId]
-      );
+      // Check for pending approval request using Supabase
+      const { data: requestRows, error: requestError } = await supabase
+        .from('approval_requests_table')
+        .select('"Id", "UplineCoachId", "Status", "OtpExpiresAt", "RequestedAt"')
+        .eq('"RequesterId"', userId)
+        .eq('"Status"', 'pending')
+        .order('"RequestedAt"', { ascending: false })
+        .limit(1);
 
-      if (requestRows.length > 0) {
+      if (requestError) {
+        console.error('❌ [status] Request query error:', requestError);
+      }
+
+      if (requestRows && requestRows.length > 0) {
         const request = requestRows[0];
         const now = new Date();
         const expiresAt = new Date(request.OtpExpiresAt);
 
         // STATE 4: Expired request - delete it
         if (now > expiresAt) {
-          await pool.execute(
-            'DELETE FROM approval_requests_table WHERE Id = ?',
-            [request.Id]
-          );
+          await supabase
+            .from('approval_requests_table')
+            .delete()
+            .eq('"Id"', request.Id);
 
           return res.status(200).json({
             success: true,

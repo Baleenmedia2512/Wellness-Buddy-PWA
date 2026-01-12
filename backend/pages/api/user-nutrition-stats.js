@@ -1,4 +1,12 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { createClient } from '@supabase/supabase-js';
+
+// Initialize Supabase client (uses REST API via HTTPS - not blocked)
+const getSupabaseClient = () => {
+  return createClient(
+    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+    process.env.SUPABASE_ANON_KEY
+  );
+};
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -25,7 +33,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // If detailed nutrition data requested for dashboard
     if (detailed === 'true' && date) {
@@ -35,29 +43,35 @@ export default async function handler(req, res) {
       const endOfDay = new Date(targetDate);
       endOfDay.setHours(23, 59, 59, 999);
       
-      const [nutritionData] = await pool.execute(`
-        SELECT 
-          ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore,
-          TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber,
-          ProcessedBy, DeviceInfo,
-          DATE_FORMAT(CreatedAt, '%Y-%m-%d %H:%i:%s') as CreatedAt,
-          HOUR(CreatedAt) as meal_hour,
-          CASE 
-            WHEN HOUR(CreatedAt) >= 5 AND HOUR(CreatedAt) < 10 THEN 'breakfast'
-            WHEN HOUR(CreatedAt) >= 10 AND HOUR(CreatedAt) < 12 THEN 'morning-snack'
-            WHEN HOUR(CreatedAt) >= 12 AND HOUR(CreatedAt) < 16 THEN 'lunch'
-            WHEN HOUR(CreatedAt) >= 16 AND HOUR(CreatedAt) < 18 THEN 'evening-snack'
-            WHEN HOUR(CreatedAt) >= 18 AND HOUR(CreatedAt) < 23 THEN 'dinner'
-            ELSE 'late-night'
-          END as meal_category
-        FROM food_nutrition_data_table 
-        WHERE UserID = ? AND DATE(CreatedAt) >= ? AND DATE(CreatedAt) <= ? AND IsDeleted = 0
-        ORDER BY CreatedAt DESC
-      `, [userId, startOfDay.toISOString(), endOfDay.toISOString()]);
+      // Fetch nutrition data using Supabase
+      const { data: nutritionData, error } = await supabase
+        .from('food_nutrition_data_table')
+        .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ProcessedBy, DeviceInfo, CreatedAt')
+        .eq('UserID', userId)
+        .eq('IsDeleted', 0)
+        .gte('CreatedAt', startOfDay.toISOString())
+        .lte('CreatedAt', endOfDay.toISOString())
+        .order('CreatedAt', { ascending: false });
 
-      // Calculate daily totals
+      if (error) throw error;
+
+      // Add meal_hour and meal_category on the server side
+      const enrichedData = (nutritionData || []).map(record => {
+        const createdAt = new Date(record.CreatedAt);
+        const meal_hour = createdAt.getHours();
+        let meal_category = 'late-night';
+        
+        if (meal_hour >= 5 && meal_hour < 10) meal_category = 'breakfast';
+        else if (meal_hour >= 10 && meal_hour < 12) meal_category = 'morning-snack';
+        else if (meal_hour >= 12 && meal_hour < 16) meal_category = 'lunch';
+        else if (meal_hour >= 16 && meal_hour < 18) meal_category = 'evening-snack';
+        else if (meal_hour >= 18 && meal_hour < 23) meal_category = 'dinner';
+        
+        return { ...record, meal_hour, meal_category };
+      });
+
       // Filter out records with empty foods array in AnalysisData
-      const filteredNutritionData = nutritionData.filter(record => {
+      const filteredNutritionData = enrichedData.filter(record => {
         try {
           const data = JSON.parse(record.AnalysisData);
           return Array.isArray(data.foods) && data.foods.length > 0;
@@ -96,93 +110,130 @@ return res.status(200).json({
       });
     }
 
-    // Get user statistics
-    const [totalCount] = await pool.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
-      [userId]
-    );
+    // Get user statistics using Supabase
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const weekAgo = new Date(today);
+    weekAgo.setDate(weekAgo.getDate() - 7);
 
-    const [todayCount] = await pool.execute(
-      'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE UserID = ? AND DATE(CreatedAt) = CURDATE() AND IsDeleted = 0',
-      [userId]
-    );
+    // Total count
+    const { count: totalCount, error: totalError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .eq('UserID', userId)
+      .eq('IsDeleted', 0);
 
-    const [weekCount] = await pool.execute(
-      'SELECT COUNT(*) as week FROM food_nutrition_data_table WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0',
-      [userId]
-    );
+    if (totalError) throw totalError;
 
-    const [backgroundCount] = await pool.execute(
-      'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE UserID = ? AND ProcessedBy = "background_service" AND IsDeleted = 0',
-      [userId]
-    );
+    // Today count
+    const { count: todayCount, error: todayError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .eq('UserID', userId)
+      .eq('IsDeleted', 0)
+      .gte('CreatedAt', today.toISOString());
 
-    // Get nutrition totals for the week
-    const [weeklyNutrition] = await pool.execute(
-      `SELECT 
-        SUM(TotalCalories) as totalCalories,
-        SUM(TotalProtein) as totalProtein,
-        SUM(TotalCarbs) as totalCarbs,
-        SUM(TotalFat) as totalFat,
-        SUM(TotalFiber) as totalFiber
-       FROM food_nutrition_data_table 
-       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0`,
-      [userId]
-    );
+    if (todayError) throw todayError;
 
-    // Get daily nutrition for the last 7 days
-    const [dailyNutrition] = await pool.execute(
-      `SELECT 
-        DATE(CreatedAt) as date,
-        SUM(TotalCalories) as calories,
-        SUM(TotalProtein) as protein,
-        SUM(TotalCarbs) as carbs,
-        SUM(TotalFat) as fat,
-        COUNT(*) as meals
-       FROM food_nutrition_data_table 
-       WHERE UserID = ? AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) AND IsDeleted = 0
-       GROUP BY DATE(CreatedAt)
-       ORDER BY date DESC`,
-      [userId]
-    );
+    // Week count
+    const { count: weekCount, error: weekError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .eq('UserID', userId)
+      .eq('IsDeleted', 0)
+      .gte('CreatedAt', weekAgo.toISOString());
+
+    if (weekError) throw weekError;
+
+    // Background count
+    const { count: backgroundCount, error: backgroundError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .eq('UserID', userId)
+      .eq('ProcessedBy', 'background_service')
+      .eq('IsDeleted', 0);
+
+    if (backgroundError) throw backgroundError;
+
+    // Get weekly nutrition data
+    const { data: weeklyData, error: weeklyError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber')
+      .eq('UserID', userId)
+      .eq('IsDeleted', 0)
+      .gte('CreatedAt', weekAgo.toISOString());
+
+    if (weeklyError) throw weeklyError;
+
+    const weeklyNutrition = (weeklyData || []).reduce((totals, record) => ({
+      totalCalories: totals.totalCalories + (record.TotalCalories || 0),
+      totalProtein: totals.totalProtein + (record.TotalProtein || 0),
+      totalCarbs: totals.totalCarbs + (record.TotalCarbs || 0),
+      totalFat: totals.totalFat + (record.TotalFat || 0),
+      totalFiber: totals.totalFiber + (record.TotalFiber || 0)
+    }), { totalCalories: 0, totalProtein: 0, totalCarbs: 0, totalFat: 0, totalFiber: 0 });
+
+    // Get daily nutrition (manually group by date)
+    const dailyMap = {};
+    (weeklyData || []).forEach(record => {
+      const date = new Date(record.CreatedAt).toISOString().split('T')[0];
+      if (!dailyMap[date]) {
+        dailyMap[date] = { date, calories: 0, protein: 0, carbs: 0, fat: 0, meals: 0 };
+      }
+      dailyMap[date].calories += record.TotalCalories || 0;
+      dailyMap[date].protein += record.TotalProtein || 0;
+      dailyMap[date].carbs += record.TotalCarbs || 0;
+      dailyMap[date].fat += record.TotalFat || 0;
+      dailyMap[date].meals += 1;
+    });
+    const dailyNutrition = Object.values(dailyMap).sort((a, b) => b.date.localeCompare(a.date));
 
     // Get recent analyses
-    const [recentAnalyses] = await pool.execute(
-      `SELECT 
-        ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat,
-        ProcessedBy, CreatedAt
-       FROM food_nutrition_data_table 
-       WHERE UserID = ? AND IsDeleted = 0
-       ORDER BY CreatedAt DESC 
-       LIMIT 10`,
-      [userId]
-    );
-res.status(200).json({
+    const { data: recentAnalyses, error: recentError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('ID, ImagePath, ImageBase64, TotalCalories, TotalProtein, TotalCarbs, TotalFat, ProcessedBy, CreatedAt')
+      .eq('UserID', userId)
+      .eq('IsDeleted', 0)
+      .order('CreatedAt', { ascending: false })
+      .limit(10);
+
+    if (recentError) throw recentError;
+
+    res.status(200).json({
       success: true,
       userId: userId,
       statistics: {
-        total: totalCount[0].total,
-        today: todayCount[0].today,
-        thisWeek: weekCount[0].week,
-        backgroundProcessed: backgroundCount[0].background,
-        manualProcessed: totalCount[0].total - backgroundCount[0].background
+        total: totalCount || 0,
+        today: todayCount || 0,
+        thisWeek: weekCount || 0,
+        backgroundProcessed: backgroundCount || 0,
+        manualProcessed: (totalCount || 0) - (backgroundCount || 0)
       },
-      weeklyNutrition: {
-        totalCalories: weeklyNutrition[0].totalCalories || 0,
-        totalProtein: weeklyNutrition[0].totalProtein || 0,
-        totalCarbs: weeklyNutrition[0].totalCarbs || 0,
-        totalFat: weeklyNutrition[0].totalFat || 0,
-        totalFiber: weeklyNutrition[0].totalFiber || 0
-      },
+      weeklyNutrition: weeklyNutrition,
       dailyNutrition: dailyNutrition,
-      recentAnalyses: recentAnalyses
+      recentAnalyses: recentAnalyses || []
     });
 
   } catch (error) {
     console.error('Failed to get user statistics:', error);
+    console.error('Error code:', error.code);
+    console.error('Error stack:', error.stack);
+    
+    // Enhanced error messages for different error types
+    let errorMessage = 'Failed to fetch user nutrition statistics';
+    
+    if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+      errorMessage = 'Database connection timeout. Please try again.';
+    } else if (error.message?.includes('Connection terminated')) {
+      errorMessage = 'Database connection was terminated. Retrying...';
+    } else if (error.code === 'ECONNREFUSED') {
+      errorMessage = 'Database connection refused. Please check if database is accessible.';
+    }
+    
     res.status(500).json({ 
       success: false, 
-      error: error.message 
+      message: errorMessage,
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }
