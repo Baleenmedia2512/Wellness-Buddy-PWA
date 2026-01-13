@@ -101,8 +101,8 @@ return res.status(200).json({
         setupComplete: true,
         hasTeamId: true,
         hasUpline: true,
-        teamId: user.team_id,
-        uplineCoachId: user.upline_coach_id,
+        teamId: user.TeamId,
+        uplineCoachId: user.UplineCoachId,
         pendingRequest: null,
         redirectTo: '/dashboard',
         message: 'Setup complete'
