@@ -1,15 +1,4 @@
-﻿import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const getSupabaseClient = () => {
-  if (!process.env.SUPABASE_ANON_KEY) {
-    throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
-  }
-  return createClient(
-    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
-    process.env.SUPABASE_ANON_KEY
-  );
-};
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
  * Get User Context API

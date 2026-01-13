@@ -1,13 +1,5 @@
-﻿import { createClient } from '@supabase/supabase-js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-
-// Initialize Supabase client
-const getSupabaseClient = () => {
-  return createClient(
-    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
-    process.env.SUPABASE_ANON_KEY
-  );
-};
 
 // Configure API body parser for large image uploads
 export const config = {

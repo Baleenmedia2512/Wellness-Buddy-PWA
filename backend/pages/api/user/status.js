@@ -13,18 +13,7 @@
  * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
  */
 
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client
-const getSupabaseClient = () => {
-  if (!process.env.SUPABASE_ANON_KEY) {
-    throw new Error('SUPABASE_ANON_KEY is not set in environment variables');
-  }
-  return createClient(
-    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
-    process.env.SUPABASE_ANON_KEY
-  );
-};
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -43,7 +32,7 @@ export default async function handler(req, res) {
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
 
   // Only allow GET requests
   if (req.method !== 'GET') {

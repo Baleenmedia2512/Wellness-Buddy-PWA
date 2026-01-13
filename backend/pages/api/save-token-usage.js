@@ -1,12 +1,4 @@
-import { createClient } from '@supabase/supabase-js';
-
-// Initialize Supabase client (uses REST API via HTTPS - not blocked)
-const getSupabaseClient = () => {
-  return createClient(
-    process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
-    process.env.SUPABASE_ANON_KEY
-  );
-};
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
