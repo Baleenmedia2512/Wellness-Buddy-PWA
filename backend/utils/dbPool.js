@@ -19,11 +19,15 @@
 
 import pg from 'pg';
 import dns from 'dns';
+import tls from 'tls';
 import { promisify } from 'util';
 const { Pool } = pg;
 
 // Force IPv4 DNS resolution to avoid IPv6 timeout issues
 dns.setDefaultResultOrder('ipv4first');
+
+// Allow self-signed certificates for Supabase Pooler
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
 
 // Create IPv4-only DNS lookup function
 const dnsLookup = promisify(dns.lookup);
@@ -47,41 +51,49 @@ const ipv4OnlyLookup = async (hostname, options, callback) => {
   }
 };
 
-// Configuration for PostgreSQL/Supabase
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'postgres',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'postgres',
-  port: parseInt(process.env.DB_PORT, 10) || 5432,
-  max: 20, // Increased maximum concurrent connections
-  min: 2, // Keep minimum connections ready
-  idleTimeoutMillis: 30000, // Increased to 30 seconds
-  connectionTimeoutMillis: 30000, // Increased to 30 seconds
-  // Note: query_timeout and statement_timeout are set per-session, not as startup params
-  keepAlive: true,
-  keepAliveInitialDelayMillis: 10000, // Increased to 10 seconds
-  // Custom IPv4-only DNS lookup to force IPv4 connections
-  lookup: ipv4OnlyLookup,
-  ssl: process.env.DB_HOST?.includes('supabase.co') ? {
-    rejectUnauthorized: false // Required for Supabase
-  } : false,
-  // Additional reliability settings
-  application_name: 'wellness-buddy-api',
-  // Increase total connection attempts
-  connect_timeout: 30
-};
-
-// ===== DATABASE CONNECTION DEBUG LOGS =====
-console.log('\n🔍 ===== DATABASE CONFIGURATION DEBUG =====');
-console.log('📋 DB_HOST:', process.env.DB_HOST || 'localhost (default)');
-console.log('👤 DB_USER:', process.env.DB_USER || 'postgres (default)');
-console.log('🔐 DB_PASS:', process.env.DB_PASS ? '****** (SET)' : 'EMPTY (default)');
-console.log('🗄️  DB_NAME:', process.env.DB_NAME || 'postgres (default)');
-console.log('🔌 DB_PORT:', process.env.DB_PORT || '5432 (default)');
-console.log('🔗 SSL Enabled: YES (rejectUnauthorized: false)');
-console.log('🏊 Max Pool Connections:', dbConfig.max);
-console.log('==========================================\n');
+// Configuration for PostgreSQL/Supabase - created lazily to ensure env is loaded
+function getDbConfig() {
+  // Use DATABASE_URL if available (handles special username formats like postgres.projectref)
+  if (process.env.DATABASE_URL) {
+    console.log('📡 Using DATABASE_URL connection string');
+    return {
+      connectionString: process.env.DATABASE_URL,
+      max: 10, // Reduced for pooler
+      min: 1,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 30000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+      lookup: ipv4OnlyLookup,
+      ssl: {
+        rejectUnauthorized: false // Required for Supabase
+      },
+      application_name: 'wellness-buddy-api'
+    };
+  }
+  
+  // Fallback to individual parameters
+  console.log('📡 Using individual DB parameters');
+  return {
+    host: process.env.DB_HOST || 'localhost',
+    user: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASS || '',
+    database: process.env.DB_NAME || 'postgres',
+    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    max: 20,
+    min: 2,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 30000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10000,
+    lookup: ipv4OnlyLookup,
+    ssl: (process.env.DB_HOST?.includes('supabase.co') || process.env.DB_HOST?.includes('supabase.com')) ? {
+      rejectUnauthorized: false
+    } : false,
+    application_name: 'wellness-buddy-api',
+    connect_timeout: 30
+  };
+}
 
 // Create the connection pool (singleton with Next.js hot reload protection)
 // Use global object to persist pool across hot module reloads in development
@@ -357,7 +369,20 @@ function createPoolWrapper(pgPool) {
  */
 export function getPool() {
   if (!pool) {
-    console.log('\n🔄 Creating new PostgreSQL connection pool...');
+    const dbConfig = getDbConfig();
+    
+    // ===== DATABASE CONNECTION DEBUG LOGS =====
+    console.log('\n🔍 ===== DATABASE CONFIGURATION DEBUG =====');
+    console.log('📋 DB_HOST:', dbConfig.host);
+    console.log('👤 DB_USER:', dbConfig.user);
+    console.log('🔐 DB_PASS:', dbConfig.password ? '****** (SET)' : 'EMPTY (default)');
+    console.log('🗄️  DB_NAME:', dbConfig.database);
+    console.log('🔌 DB_PORT:', dbConfig.port);
+    console.log('🔗 SSL Enabled:', dbConfig.ssl ? 'YES' : 'NO');
+    console.log('🏊 Max Pool Connections:', dbConfig.max);
+    console.log('==========================================\n');
+    
+    console.log('🔄 Creating new PostgreSQL connection pool...');
     const pgPool = new Pool(dbConfig);
     
     // Set session-level parameters on each new connection
