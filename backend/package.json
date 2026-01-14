@@ -16,8 +16,8 @@
     "stream-json": "^1.9.1"
   },
   "scripts": {
-    "dev": "export NODE_OPTIONS=--dns-result-order=ipv4first && next dev",
-    "dev:local": "export NODE_OPTIONS=--dns-result-order=ipv4first && next dev --port 3000",
+    "dev": "SET NODE_OPTIONS=--dns-result-order=ipv4first&& next dev",
+    "dev:local": "SET NODE_OPTIONS=--dns-result-order=ipv4first&& next dev --port 3000",
     "build": "next build",
     "start": "next start",
     "start:local": "next start --port 3000"
