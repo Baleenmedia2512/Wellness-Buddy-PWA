@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -28,26 +28,32 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Check if the same correction already exists for this user
-    const [existingCorrections] = await pool.execute(
-      `SELECT Id, TimesCorrected FROM food_corrections_table 
-       WHERE UserId = ? AND AiDetected = ? AND UserCorrected = ?`,
-      [userId, aiDetected, userCorrected]
-    );
+    const { data: existingCorrections, error: selectError } = await supabase
+      .from('food_corrections_table')
+      .select('"Id", "TimesCorrected"')
+      .eq('"UserId"', userId)
+      .eq('"AiDetected"', aiDetected)
+      .eq('"UserCorrected"', userCorrected);
 
-    if (existingCorrections.length > 0) {
+    if (selectError) throw selectError;
+
+    if (existingCorrections && existingCorrections.length > 0) {
       // Update existing correction (increment times_corrected)
       const correctionId = existingCorrections[0].Id;
       const newCount = existingCorrections[0].TimesCorrected + 1;
 
-      await pool.execute(
-        `UPDATE food_corrections_table 
-         SET TimesCorrected = ?, LastCorrected = CURRENT_TIMESTAMP 
-         WHERE Id = ?`,
-        [newCount, correctionId]
-      );
+      const { error: updateError } = await supabase
+        .from('food_corrections_table')
+        .update({ 
+          "TimesCorrected": newCount,
+          "LastCorrected": new Date().toISOString()
+        })
+        .eq('"Id"', correctionId);
+
+      if (updateError) throw updateError;
 return res.status(200).json({
         success: true,
         message: 'Correction updated',
@@ -59,11 +65,20 @@ return res.status(200).json({
       });
     } else {
       // Insert new correction
-      const [result] = await pool.execute(
-        `INSERT INTO food_corrections_table (UserId, AiDetected, UserCorrected, TimesCorrected) 
-         VALUES (?, ?, ?, 1)`,
-        [userId, aiDetected, userCorrected]
-      );
+      const { data: insertedData, error: insertError } = await supabase
+        .from('food_corrections_table')
+        .insert({
+          "UserId": userId,
+          "AiDetected": aiDetected,
+          "UserCorrected": userCorrected,
+          "TimesCorrected": 1
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const result = { insertId: insertedData?.Id };
 return res.status(201).json({
         success: true,
         message: 'Correction saved',

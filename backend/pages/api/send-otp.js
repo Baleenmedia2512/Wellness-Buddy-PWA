@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -19,22 +19,32 @@ export default async function handler(req, res) {
   if (!recipient) return res.status(400).json({ message: 'Recipient is required' });
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Invalidate old OTPs
-    await pool.execute(
-      'UPDATE otp_tokens_table SET IsActive = FALSE WHERE Recipient = ? AND ContactType = ? AND IsActive = TRUE',
-      [recipient, contactType]
-    );
+    const { error: updateError } = await supabase
+      .from('otp_tokens_table')
+      .update({ IsActive: false })
+      .eq('"Recipient"', recipient)
+      .eq('"ContactType"', contactType)
+      .eq('"IsActive"', true);
+
+    if (updateError) throw updateError;
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
 
-    await pool.execute(
-      'INSERT INTO otp_tokens_table (Recipient, OTPHash, ExpiresAt, ContactType) VALUES (?, ?, ?, ?)',
-      [recipient, otpHash, expiresAt, contactType]
-    );
+    const { error: insertError } = await supabase
+      .from('otp_tokens_table')
+      .insert({
+        Recipient: recipient,
+        OTPHash: otpHash,
+        ExpiresAt: expiresAt.toISOString(),
+        ContactType: contactType
+      });
+
+    if (insertError) throw insertError;
 
     if (contactType === 'email') {
       const transporter = nodemailer.createTransport({

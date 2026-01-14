@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -25,16 +25,21 @@ export default async function handler(req, res) {
 
   
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Optional safety check: ensure row belongs to user
     if (userId) {
-      const [ownerCheck] = await pool.execute(
-        'SELECT Id FROM education_logs_table WHERE Id = ? AND UserId = ? LIMIT 1',
-        [id, userId]
-      );
-      if (!ownerCheck.length) {
-return res.status(403).json({
+      const { data: ownerCheck, error: ownerError } = await supabase
+        .from('education_logs_table')
+        .select('"Id"')
+        .eq('"Id"', id)
+        .eq('"UserId"', userId)
+        .limit(1);
+
+      if (ownerError) throw ownerError;
+
+      if (!ownerCheck || ownerCheck.length === 0) {
+        return res.status(403).json({
           success: false,
           message: 'You do not have permission to restore this item.'
         });
@@ -42,12 +47,15 @@ return res.status(403).json({
     }
 
     // Restore: set IsDeleted back to 0
-    const [result] = await pool.execute(
-      'UPDATE education_logs_table SET IsDeleted = 0 WHERE Id = ?',
-      [id]
-    );
+    const { data, error } = await supabase
+      .from('education_logs_table')
+      .update({ "IsDeleted": 0 })
+      .eq('"Id"', id)
+      .select();
+
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
+    if (!data || data.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Education log not found'

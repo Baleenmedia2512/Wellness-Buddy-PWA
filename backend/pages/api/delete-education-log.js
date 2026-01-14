@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -28,15 +28,19 @@ export default async function handler(req, res) {
   
   try {
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Soft delete: set IsDeleted = 1 (allows undo)
-    const [result] = await pool.execute(
-      `UPDATE education_logs_table SET IsDeleted = 1 WHERE Id = ? AND UserId = ?`,
-      [logId, userId]
-    );
+    const { data, error } = await supabase
+      .from('education_logs_table')
+      .update({ "IsDeleted": 1 })
+      .eq('"Id"', logId)
+      .eq('"UserId"', userId)
+      .select();
+
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
+    if (!data || data.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Education log not found or already deleted'

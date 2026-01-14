@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
  * API: Save Token Correction
@@ -37,10 +37,10 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Use connection pool
-    const pool = getPool();
+    // Use Supabase client
+    const supabase = getSupabaseClient();
 
-    console.log('💾 [save-token-correction] Using connection pool');
+    console.log('💾 [save-token-correction] Using Supabase REST API');
     console.log('💾 [save-token-correction] Saving token correction for:', email);
     console.log('💾 [save-token-correction] Request data:', {
       originalInputCost,
@@ -50,14 +50,17 @@ export default async function handler(req, res) {
     });
 
     // Get UserId from team_table
-    const [userRows] = await pool.execute(
-      'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    const { data: userRows, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .eq('"Email"', email)
+      .limit(1);
+
+    if (userError) throw userError;
 
     console.log('💾 [save-token-correction] User lookup result:', userRows);
 
-    if (userRows.length === 0) {
+    if (!userRows || userRows.length === 0) {
       console.log('❌ [save-token-correction] User not found in team_table');
       return res.status(404).json({
         success: false,
@@ -79,17 +82,16 @@ export default async function handler(req, res) {
     });
 
     // Always insert a new record (no update - track all changes)
-    await pool.execute(
-      `INSERT INTO token_correction_table 
-       (UserId, InputTokenCost, OutputTokenCost, TotalTokenCost)
-       VALUES (?, ?, ?, ?)`,
-      [
-        userId,
-        correctedInputCost,
-        correctedOutputCost,
-        totalCost
-      ]
-    );
+    const { error: insertError } = await supabase
+      .from('token_correction_table')
+      .insert({
+        "UserId": userId,
+        "InputTokenCost": correctedInputCost,
+        "OutputTokenCost": correctedOutputCost,
+        "TotalTokenCost": totalCost
+      });
+
+    if (insertError) throw insertError;
 
     console.log('✅ [save-token-correction] Inserted new record:', {
       userId,

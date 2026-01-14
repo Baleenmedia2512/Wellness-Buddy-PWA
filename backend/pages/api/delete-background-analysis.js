@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -25,15 +25,19 @@ export default async function handler(req, res) {
 
   try {
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Delete the analysis record WITH ownership validation (SECURITY FIX)
-    const [result] = await pool.execute(
-      'UPDATE `food_nutrition_data_table` SET `IsDeleted` = 1 WHERE `ID` = ? AND `UserID` = ?',
-      [id, userId]
-    );
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .update({ "IsDeleted": 1 })
+      .eq('"ID"', id)
+      .eq('"UserID"', userId)
+      .select();
+
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
+    if (!data || data.length === 0) {
       return res.status(403).json({
         success: false,
         message: 'Unauthorized or analysis not found'

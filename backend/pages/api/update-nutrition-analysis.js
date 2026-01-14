@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -27,32 +27,26 @@ export default async function handler(req, res) {
     }
 
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
-    const query = `
-      UPDATE \`food_nutrition_data_table\`
-      SET \`AnalysisData\` = ?,
-          \`TotalCalories\` = ?,
-          \`TotalProtein\` = ?,
-          \`TotalCarbs\` = ?,
-          \`TotalFat\` = ?,
-          \`TotalFiber\` = ?
-      WHERE \`ID\` = ? AND \`UserID\` = ?
-    `;
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .update({
+        "AnalysisData": JSON.stringify(analysisData),
+        "TotalCalories": totalCalories || 0,
+        "TotalProtein": totalProtein || 0,
+        "TotalCarbs": totalCarbs || 0,
+        "TotalFat": totalFat || 0,
+        "TotalFiber": totalFiber || 0
+      })
+      .eq('"ID"', id)
+      .eq('"UserID"', userId)
+      .select();
 
-    const [result] = await pool.execute(query, [
-      JSON.stringify(analysisData),
-      totalCalories || 0,
-      totalProtein || 0,
-      totalCarbs || 0,
-      totalFat || 0,
-      totalFiber || 0,
-      id,
-      userId
-    ]);
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
+    if (!data || data.length === 0) {
       return res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
     }
 

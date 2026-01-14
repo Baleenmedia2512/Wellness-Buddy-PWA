@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -32,27 +32,32 @@ export default async function handler(req, res) {
       });
     }
 
-    // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Fetch user's corrections ordered by frequency
-    const [corrections] = await pool.execute(
-      `SELECT 
-        Id as id,
-        AiDetected as ai_detected,
-        UserCorrected as user_corrected,
-        TimesCorrected as times_corrected,
-        CreatedAt as created_at,
-        LastCorrected as last_corrected
-       FROM food_corrections_table 
-       WHERE UserId = ? 
-       ORDER BY TimesCorrected DESC, LastCorrected DESC`,
-      [userId]
-    );
-return res.status(200).json({
+    const { data: corrections, error } = await supabase
+      .from('food_corrections_table')
+      .select('"Id", "AiDetected", "UserCorrected", "TimesCorrected", "CreatedAt", "LastCorrected"')
+      .eq('"UserId"', userId)
+      .order('"TimesCorrected"', { ascending: false })
+      .order('"LastCorrected"', { ascending: false });
+
+    if (error) throw error;
+
+    // Transform to match expected format
+    const transformedCorrections = (corrections || []).map(c => ({
+      id: c.Id,
+      ai_detected: c.AiDetected,
+      user_corrected: c.UserCorrected,
+      times_corrected: c.TimesCorrected,
+      created_at: c.CreatedAt,
+      last_corrected: c.LastCorrected
+    }));
+
+    return res.status(200).json({
       success: true,
-      data: corrections,
-      count: corrections.length
+      data: transformedCorrections,
+      count: transformedCorrections.length
     });
   } catch (error) {
     console.error('Error fetching food corrections:', error);

@@ -1,6 +1,5 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
-};
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data

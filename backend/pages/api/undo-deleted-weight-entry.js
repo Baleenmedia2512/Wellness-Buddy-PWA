@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -25,16 +25,21 @@ export default async function handler(req, res) {
 
   
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // OPTIONAL safety: ensure this row belongs to the user
     if (userId) {
-      const [ownerCheck] = await pool.execute(
-        'SELECT ID FROM weight_records_table WHERE ID = ? AND UserId = ? LIMIT 1',
-        [id, userId]
-      );
-      if (!ownerCheck.length) {
-return res.status(403).json({
+      const { data: ownerCheck, error: checkError } = await supabase
+        .from('weight_records_table')
+        .select('"ID"')
+        .eq('"ID"', id)
+        .eq('"UserId"', userId)
+        .limit(1);
+
+      if (checkError) throw checkError;
+      
+      if (!ownerCheck || ownerCheck.length === 0) {
+        return res.status(403).json({
           success: false,
           message: 'You do not have permission to restore this item.'
         });
@@ -42,12 +47,15 @@ return res.status(403).json({
     }
 
     // Restore: flip IsDeleted back to 0
-    const [result] = await pool.execute(
-      'UPDATE weight_records_table SET IsDeleted = 0 WHERE ID = ?',
-      [id]
-    );
+    const { data: result, error: updateError } = await supabase
+      .from('weight_records_table')
+      .update({ IsDeleted: 0 })
+      .eq('"ID"', id)
+      .select();
+
+    if (updateError) throw updateError;
     
-if (result.affectedRows === 0) {
+    if (!result || result.length === 0) {
       return res.status(404).json({
         success: false,
         message: 'Weight entry not found'
@@ -56,11 +64,15 @@ if (result.affectedRows === 0) {
 
     // Clear profile cache if userId provided
     if (userId) {
-      const [user] = await pool.execute(
-        'SELECT Email FROM team_table WHERE UserId = ?',
-        [userId]
-      );
-      if (user.length > 0 && user[0].Email) {
+      const { data: user, error: userError } = await supabase
+        .from('team_table')
+        .select('"Email"')
+        .eq('"UserId"', userId)
+        .limit(1);
+
+      if (userError) throw userError;
+      
+      if (user && user.length > 0 && user[0].Email) {
         cache.delete(cacheKeys.userProfile(user[0].Email));
         console.log('🗑️ [undo-deleted-weight-entry] Cache cleared for user:', user[0].Email);
       }

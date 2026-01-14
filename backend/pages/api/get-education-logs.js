@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -34,23 +34,23 @@ export default async function handler(req, res) {
   
   try {
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Fetch education logs (exclude soft-deleted)
-    const [logs] = await pool.execute(
-      `SELECT Id, Platform, Topic, 
-       DATE_FORMAT(CreatedAt, '%Y-%m-%dT%H:%i:%s') as CreatedAt,
-       Confidence, ImageBase64
-       FROM education_logs_table
-       WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-       ORDER BY CreatedAt DESC
-       LIMIT 100`,
-      [userId]
-    );
-return res.status(200).json({
+    const { data: logs, error } = await supabase
+      .from('education_logs_table')
+      .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"')
+      .eq('"UserId"', userId)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    return res.status(200).json({
       success: true,
-      count: logs.length,
-      logs: logs
+      count: logs?.length || 0,
+      logs: logs || []
     });
 
   } catch (error) {

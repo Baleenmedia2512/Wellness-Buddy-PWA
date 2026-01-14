@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -20,14 +20,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    const [rows] = await pool.execute(
-      'SELECT ID, OTPHash, ExpiresAt FROM otp_tokens_table WHERE Recipient = ? AND ContactType = ? AND IsActive = TRUE ORDER BY ID DESC LIMIT 1',
-      [recipient, contactType]
-    );
+    // Get active OTP token
+    const { data: rows, error: otpError } = await supabase
+      .from('otp_tokens_table')
+      .select('"ID", "OTPHash", "ExpiresAt"')
+      .eq('"Recipient"', recipient)
+      .eq('"ContactType"', contactType)
+      .eq('"IsActive"', true)
+      .order('"ID"', { ascending: false })
+      .limit(1);
 
-    if (!rows.length) {
+    if (otpError) throw otpError;
+
+    if (!rows || rows.length === 0) {
       return res.status(404).json({ message: 'No active OTP found' });
     }
 
@@ -43,21 +50,29 @@ export default async function handler(req, res) {
     }
 
     // OTP verified - deactivate token
-    await pool.execute(
-      'UPDATE otp_tokens_table SET Verified = TRUE, IsActive = FALSE WHERE ID = ?',
-      [otpData.ID]
-    );
+    const { error: updateError } = await supabase
+      .from('otp_tokens_table')
+      .update({ 
+        Verified: true, 
+        IsActive: false 
+      })
+      .eq('"ID"', otpData.ID);
 
-    // Check & insert user if not exists.
-    const [userRows] = await pool.execute(
-      'SELECT * FROM team_table WHERE Email = ? LIMIT 1',
-      [recipient]
-    );
+    if (updateError) throw updateError;
+
+    // Check if user exists
+    const { data: userRows, error: userError } = await supabase
+      .from('team_table')
+      .select('*')
+      .eq('"Email"', recipient)
+      .limit(1);
+
+    if (userError) throw userError;
 
     let userInfo;
     let isNewUser = false;
 
-    if (userRows.length) {
+    if (userRows && userRows.length > 0) {
       userInfo = userRows[0];
       isNewUser = false;
     } else {
@@ -65,19 +80,26 @@ export default async function handler(req, res) {
       const defaultPassword = 'User@123#';
       const hashedPassword = defaultPassword; // You can hash it later if you want
       
-      await pool.execute(
-        `INSERT INTO team_table
-          (EntryDateTime, EntryUser, UserName, Password, \`TargetWeight(in_kg)\`, CoachName, CoCoachName, Status, CoachApproved, Email)
-          VALUES (NOW(), 'Wellness Valley', ?, ?, 0, '', '', 'Active', 0, ?)`,
-        [username, hashedPassword, recipient]
-      );
+      const { data: newUser, error: insertError } = await supabase
+        .from('team_table')
+        .insert({
+          EntryDateTime: new Date().toISOString(),
+          EntryUser: 'Wellness Valley',
+          UserName: username,
+          Password: hashedPassword,
+          'TargetWeight(in_kg)': 0,
+          CoachName: '',
+          CoCoachName: '',
+          Status: 'Active',
+          CoachApproved: 0,
+          Email: recipient
+        })
+        .select()
+        .single();
 
-      const [newUserRows] = await pool.execute(
-        'SELECT * FROM team_table WHERE Email = ? LIMIT 1',
-        [recipient]
-      );
+      if (insertError) throw insertError;
 
-      userInfo = newUserRows[0];
+      userInfo = newUser;
       isNewUser = true;
       console.log('🆕 [verify-otp] New user created:', recipient);
     }
