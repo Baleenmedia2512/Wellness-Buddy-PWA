@@ -1,4 +1,5 @@
 ﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getPool } from '../../utils/dbPool.js';
 
 export default async function handler(req, res) {
   console.log('========== [get-token-usage] API Called ==========');
@@ -187,6 +188,9 @@ export default async function handler(req, res) {
 
     const whereClause = whereConditions.join(' AND ');
     console.log('[get-token-usage] WHERE clause:', whereClause);
+
+    // Initialize database pool
+    const pool = getPool();
 
     // Query 1: Summary statistics
     const [summaryRows] = await pool.execute(

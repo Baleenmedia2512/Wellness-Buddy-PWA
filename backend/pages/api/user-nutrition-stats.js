@@ -87,7 +87,7 @@ export default async function handler(req, res) {
         totalFiber: 0,
         mealCount: 0
       });
-return res.status(200).json({
+res.status(200).json({
         success: true,
         data: filteredNutritionData,
         dailyTotals: {
@@ -100,6 +100,7 @@ return res.status(200).json({
         },
         queryInfo: { userId, date, recordCount: filteredNutritionData.length }
       });
+      return;
     }
 
     // Get user statistics using Supabase

@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { calculateTeamDiscipline } from '../../../utils/disciplineCalculations.js';
 import { 
   parseDateRange, 
@@ -66,78 +66,20 @@ export default async function handler(req, res) {
       }
     }
     
-    const pool = getPool();
+    const supabase = getSupabaseClient();
     
-    // Step 1: Get ALL team members (recursive) + logged-in coach
-    const [members] = await pool.execute(`
-      WITH RECURSIVE team_hierarchy AS (
-        -- Base case: The logged-in coach themselves
-        SELECT 
-          UserId,
-          UserName,
-          Email,
-          Role,
-          EntryDateTime,
-          UplineCoachId,
-          0 as HierarchyLevel,
-          CAST(UserId AS CHAR(500)) as HierarchyPath,
-          TRUE as IsLoggedInCoach
-        FROM team_table
-        WHERE UserId = ?
-          AND Status = 'active'
-        
-        UNION ALL
-        
-        -- Direct team members (Level 1)
-        SELECT 
-          t.UserId,
-          t.UserName,
-          t.Email,
-          t.Role,
-          t.EntryDateTime,
-          t.UplineCoachId,
-          1 as HierarchyLevel,
-          CAST(t.UserId AS CHAR(500)) as HierarchyPath,
-          FALSE as IsLoggedInCoach
-        FROM team_table t
-        WHERE t.UplineCoachId = ?
-          AND t.Status = 'active'
-        
-        UNION ALL
-        
-        -- Recursive case: Sub-coaches' team members (Level 2+)
-        SELECT 
-          t.UserId,
-          t.UserName,
-          t.Email,
-          t.Role,
-          t.EntryDateTime,
-          t.UplineCoachId,
-          th.HierarchyLevel + 1,
-          CONCAT(th.HierarchyPath, '>', t.UserId),
-          FALSE as IsLoggedInCoach
-        FROM team_table t
-        INNER JOIN team_hierarchy th ON t.UplineCoachId = th.UserId
-        WHERE t.Status = 'active'
-          AND th.HierarchyLevel < 10
-          AND th.HierarchyLevel > 0
-          AND FIND_IN_SET(t.UserId, REPLACE(th.HierarchyPath, '>', ',')) = 0
-      )
-      SELECT 
-        th.UserId,
-        th.UserName,
-        th.Email,
-        th.Role,
-        th.EntryDateTime,
-        th.UplineCoachId,
-        COALESCE(coach.UserName, NULL) as UplineCoachName,
-        th.HierarchyLevel,
-        th.HierarchyPath,
-        th.IsLoggedInCoach
-      FROM team_hierarchy th
-      LEFT JOIN team_table coach ON th.UplineCoachId = coach.UserId
-      ORDER BY th.HierarchyLevel, th.UserName
-    `, [coachId, coachId]);
+    // Step 1: Get ALL team members (recursive) + logged-in coach using Supabase RPC
+    const { data: members, error: membersError } = await supabase
+      .rpc('get_team_hierarchy', { coach_id: parseInt(coachId) });
+    
+    if (membersError) {
+      console.error('❌ Error fetching team hierarchy:', membersError);
+      throw membersError;
+    }
+    
+    if (!members || members.length === 0) {
+      console.warn('⚠️ No team members found for coach:', coachId);
+    }
     
     // Step 2: Deduplicate members (keep lowest hierarchy level for each user)
     const uniqueMembers = [];
@@ -216,13 +158,14 @@ export default async function handler(req, res) {
       return filters;
     };
     
-    // Step 4: Get current time windows for display
-    const [currentTimeWindows] = await pool.execute(`
-      SELECT ActivityType, WindowStartTime, WindowEndTime
-      FROM activity_time_windows_table
-      WHERE EffectiveToDate IS NULL
-      ORDER BY FIELD(ActivityType, 'weight', 'education', 'breakfast', 'lunch', 'dinner')
-    `);
+    // Step 4: Get current time windows for display using Supabase RPC
+    const { data: currentTimeWindows, error: timeWindowsError } = await supabase
+      .rpc('get_current_time_windows');
+    
+    if (timeWindowsError) {
+      console.error('❌ Error fetching time windows:', timeWindowsError);
+      throw timeWindowsError;
+    }
     
     // Create a map for quick lookup
     const timeWindowMap = {};
@@ -276,10 +219,12 @@ export default async function handler(req, res) {
           userName: loggedInCoach.UserName,
           email: loggedInCoach.Email,
           role: loggedInCoach.Role,
+          joinedDate: loggedInCoach.EntryDateTime,
           isLoggedInCoach: true,
           uplineCoachId: loggedInCoach.UplineCoachId,
-          uplineCoachName: loggedInCoach.UplineCoachName,
-          periodDiscipline: {
+          uplineCoachName: loggedInCoach.UplineCoachName || 'None',
+          hierarchyLevel: loggedInCoach.HierarchyLevel,
+          period: {
             percentage: calculateDisciplinePercentage(
               coachTotalOnTimePosts,
               coachTotalExpectedPosts

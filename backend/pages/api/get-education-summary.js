@@ -37,7 +37,8 @@ export default async function handler(req, res) {
     
     if (cached) {
       res.setHeader('X-Cache', 'HIT');
-      return res.status(200).json(cached);
+      res.status(200).json(cached);
+      return;
     }
 
     // Use connection pool to avoid ETIMEDOUT errors
@@ -147,7 +148,8 @@ export default async function handler(req, res) {
     cache.set(cacheKey, response, 180000);
     res.setHeader('X-Cache', 'MISS');
     
-    return res.status(200).json(response);
+    res.status(200).json(response);
+    return;
 
   } catch (error) {
     console.error('❌ Error fetching education summary:', error);
