@@ -1,16 +1,16 @@
 ﻿import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { calculateTeamDiscipline } from '../../../utils/disciplineCalculations.js';
 import { 
   parseDateRange, 
   calculateExpectedPosts,
   calculateDisciplinePercentage,
-  getDaysBetween 
+  getDaysBetween,
+  formatDateForMySQL
 } from '../../../utils/disciplineHelpers.js';
 
 /**
  * API: Get Coach Discipline Report
  * Returns discipline percentages for all team members
- * Uses direct PostgreSQL connection (works on Vercel)
+ * Uses Supabase REST API (consistent with other working APIs)
  */
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -67,44 +67,258 @@ export default async function handler(req, res) {
     }
     
     const supabase = getSupabaseClient();
+    const coachIdInt = parseInt(coachId);
     
-    // Step 1: Get ALL team members (recursive) + logged-in coach using Supabase RPC
-    const { data: members, error: membersError } = await supabase
-      .rpc('get_team_hierarchy', { coach_id: parseInt(coachId) });
+    // Step 1: Get the coach first
+    const { data: coach, error: coachError } = await supabase
+      .from('team_table')
+      .select('*')
+      .eq('UserId', coachIdInt)
+      .eq('Status', 'Active')
+      .maybeSingle();
     
-    if (membersError) {
-      console.error('❌ Error fetching team hierarchy:', membersError);
-      throw membersError;
+    if (coachError || !coach) {
+      console.error('Coach not found:', coachError);
+      return res.status(404).json({ success: false, message: 'Coach not found' });
     }
     
-    if (!members || members.length === 0) {
-      console.warn('⚠️ No team members found for coach:', coachId);
-    }
-    
-    // Step 2: Deduplicate members (keep lowest hierarchy level for each user)
-    const uniqueMembers = [];
+    // Step 2: Get all active team members recursively using iterative approach
+    // (Supabase REST API doesn't support recursive CTEs, so we do it in JS)
+    const allMembers = [];
     const seenUserIds = new Set();
     
-    // Sort by HierarchyLevel to keep the closest relationship
-    const sortedMembers = [...members].sort((a, b) => a.HierarchyLevel - b.HierarchyLevel);
+    // Add coach as level 0
+    allMembers.push({
+      ...coach,
+      HierarchyLevel: 0,
+      IsLoggedInCoach: true,
+      UplineCoachName: null
+    });
+    seenUserIds.add(coach.UserId);
     
-    for (const member of sortedMembers) {
-      if (!seenUserIds.has(member.UserId)) {
-        seenUserIds.add(member.UserId);
-        uniqueMembers.push(member);
+    // Iteratively fetch team members level by level
+    let currentLevelCoachIds = [coachIdInt];
+    let currentLevel = 1;
+    const maxLevel = 10;
+    
+    while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+      const { data: levelMembers, error: levelError } = await supabase
+        .from('team_table')
+        .select('*')
+        .in('UplineCoachId', currentLevelCoachIds)
+        .eq('Status', 'Active');
+      
+      if (levelError) {
+        console.error('Error fetching level members:', levelError);
+        break;
       }
+      
+      if (!levelMembers || levelMembers.length === 0) break;
+      
+      const nextLevelCoachIds = [];
+      
+      for (const member of levelMembers) {
+        if (!seenUserIds.has(member.UserId)) {
+          seenUserIds.add(member.UserId);
+          
+          // Find upline coach name
+          const uplineCoach = allMembers.find(m => m.UserId === member.UplineCoachId);
+          
+          allMembers.push({
+            ...member,
+            HierarchyLevel: currentLevel,
+            IsLoggedInCoach: false,
+            UplineCoachName: uplineCoach?.UserName || null
+          });
+          
+          // If this member is a coach, add to next level search
+          if (member.Role === 'coach') {
+            nextLevelCoachIds.push(member.UserId);
+          }
+        }
+      }
+      
+      currentLevelCoachIds = nextLevelCoachIds;
+      currentLevel++;
     }
     
-    // Step 3: Separate logged-in coach from team members
-    const loggedInCoach = uniqueMembers.find(m => m.IsLoggedInCoach);
-    const teamMembers = uniqueMembers.filter(m => !m.IsLoggedInCoach);
+    // Step 3: Get time windows
+    const { data: timeWindows, error: twError } = await supabase
+      .from('activity_time_windows_table')
+      .select('*')
+      .is('EffectiveToDate', null);
     
-    if (uniqueMembers.length === 0) {
+    if (twError) {
+      console.error('Error fetching time windows:', twError);
+    }
+    
+    // Create time window map
+    const timeWindowMap = {};
+    (timeWindows || []).forEach(tw => {
+      timeWindowMap[tw.ActivityType] = {
+        start: tw.WindowStartTime,
+        end: tw.WindowEndTime
+      };
+    });
+    
+    // Meal windows for discipline calculation
+    const mealWindows = {
+      breakfast: timeWindowMap.breakfast || { start: '05:30:00', end: '08:30:00' },
+      lunch: timeWindowMap.lunch || { start: '12:00:00', end: '16:00:00' },
+      dinner: timeWindowMap.dinner || { start: '17:30:00', end: '20:30:00' }
+    };
+    
+    // Step 4: Calculate discipline for all members
+    const startDateStr = formatDateForMySQL(dates.start);
+    const endDateStr = formatDateForMySQL(dates.end);
+    const allUserIds = allMembers.map(m => m.UserId);
+    
+    // Fetch all required data in bulk for efficiency
+    const [weightData, educationData, foodData] = await Promise.all([
+      // Weight records
+      supabase
+        .from('weight_records_table')
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0),
+      
+      // Education records
+      supabase
+        .from('education_logs_table')
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0),
+      
+      // Food/nutrition records
+      supabase
+        .from('food_nutrition_data_table')
+        .select('UserID, CreatedAt')
+        .in('UserID', allUserIds.map(String))
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0)
+    ]);
+    
+    // Process discipline data for each member
+    const daysInPeriod = getDaysBetween(dates.start, dates.end);
+    const expectedPostsPerActivity = daysInPeriod;
+    
+    // Helper to check if time is within window
+    const isTimeInWindow = (dateStr, windowStart, windowEnd) => {
+      const date = new Date(dateStr);
+      const time = date.toTimeString().slice(0, 8); // HH:MM:SS
+      return time >= windowStart && time <= windowEnd;
+    };
+    
+    // Helper to get unique dates
+    const getUniqueDates = (records, userId, userIdField = 'UserId') => {
+      const dates = new Set();
+      records.forEach(r => {
+        if (r[userIdField] == userId) {
+          dates.add(new Date(r.CreatedAt).toISOString().split('T')[0]);
+        }
+      });
+      return dates;
+    };
+    
+    // Helper to get unique on-time dates
+    const getUniqueOnTimeDates = (records, userId, windowStart, windowEnd, userIdField = 'UserId') => {
+      const dates = new Set();
+      records.forEach(r => {
+        if (r[userIdField] == userId && isTimeInWindow(r.CreatedAt, windowStart, windowEnd)) {
+          dates.add(new Date(r.CreatedAt).toISOString().split('T')[0]);
+        }
+      });
+      return dates;
+    };
+    
+    // Calculate discipline for each member
+    const disciplineData = allMembers.map(member => {
+      const userId = member.UserId;
+      
+      // Weight
+      const weightDates = getUniqueDates(weightData.data || [], userId);
+      const weightWindow = timeWindowMap.weight || { start: '05:00:00', end: '09:00:00' };
+      const weightOnTimeDates = getUniqueOnTimeDates(
+        weightData.data || [], userId, weightWindow.start, weightWindow.end
+      );
+      
+      // Education
+      const educationDates = getUniqueDates(educationData.data || [], userId);
+      const educationWindow = timeWindowMap.education || { start: '05:00:00', end: '23:00:00' };
+      const educationOnTimeDates = getUniqueOnTimeDates(
+        educationData.data || [], userId, educationWindow.start, educationWindow.end
+      );
+      
+      // Meals - need to filter by time to determine meal type
+      const getMealData = (mealWindow) => {
+        const dates = new Set();
+        const onTimeDates = new Set();
+        
+        (foodData.data || []).forEach(r => {
+          if (r.UserID == userId) {
+            const date = new Date(r.CreatedAt);
+            const time = date.toTimeString().slice(0, 8);
+            
+            // Check if this record falls within the meal window
+            if (time >= mealWindow.start && time <= mealWindow.end) {
+              dates.add(date.toISOString().split('T')[0]);
+              onTimeDates.add(date.toISOString().split('T')[0]); // If in window, it's on-time
+            }
+          }
+        });
+        
+        return { dates, onTimeDates };
+      };
+      
+      const breakfastData = getMealData(mealWindows.breakfast);
+      const lunchData = getMealData(mealWindows.lunch);
+      const dinnerData = getMealData(mealWindows.dinner);
+      
+      return {
+        userId,
+        weight: {
+          totalPosts: weightDates.size,
+          onTimePosts: weightOnTimeDates.size,
+          expectedPosts: expectedPostsPerActivity
+        },
+        education: {
+          totalPosts: educationDates.size,
+          onTimePosts: educationOnTimeDates.size,
+          expectedPosts: expectedPostsPerActivity
+        },
+        breakfast: {
+          totalPosts: breakfastData.dates.size,
+          onTimePosts: breakfastData.onTimeDates.size,
+          expectedPosts: expectedPostsPerActivity
+        },
+        lunch: {
+          totalPosts: lunchData.dates.size,
+          onTimePosts: lunchData.onTimeDates.size,
+          expectedPosts: expectedPostsPerActivity
+        },
+        dinner: {
+          totalPosts: dinnerData.dates.size,
+          onTimePosts: dinnerData.onTimeDates.size,
+          expectedPosts: expectedPostsPerActivity
+        }
+      };
+    });
+    
+    // Step 5: Separate coach from team members
+    const loggedInCoach = allMembers.find(m => m.IsLoggedInCoach);
+    const teamMembers = allMembers.filter(m => !m.IsLoggedInCoach);
+    
+    if (allMembers.length === 0) {
       return res.status(200).json({
         success: true,
         source: 'realtime',
         lastUpdated: new Date().toISOString(),
-        coachId: parseInt(coachId),
+        coachId: coachIdInt,
         dateRange,
         startDate: dates.start.toISOString().split('T')[0],
         endDate: dates.end.toISOString().split('T')[0],
@@ -158,24 +372,6 @@ export default async function handler(req, res) {
       return filters;
     };
     
-    // Step 4: Get current time windows for display using Supabase RPC
-    const { data: currentTimeWindows, error: timeWindowsError } = await supabase
-      .rpc('get_current_time_windows');
-    
-    if (timeWindowsError) {
-      console.error('❌ Error fetching time windows:', timeWindowsError);
-      throw timeWindowsError;
-    }
-    
-    // Create a map for quick lookup
-    const timeWindowMap = {};
-    currentTimeWindows.forEach(tw => {
-      timeWindowMap[tw.ActivityType] = {
-        start: tw.WindowStartTime,
-        end: tw.WindowEndTime
-      };
-    });
-    
     // Helper function to format time for display (HH:MM:SS -> h:MM AM/PM)
     const formatTimeForDisplay = (timeStr) => {
       if (!timeStr) return '';
@@ -186,17 +382,8 @@ export default async function handler(req, res) {
       return `${displayHour}:${minutes} ${ampm}`;
     };
     
-    // Step 5: Calculate discipline for coach + all team members
-    const allUserIds = uniqueMembers.map(m => m.UserId);
-    const disciplineData = await calculateTeamDiscipline(
-      pool,
-      allUserIds,
-      dates.start,
-      dates.end
-    );
-    
     // Step 6: Build coach filters
-    const coachFilters = buildCoachFilters(uniqueMembers, parseInt(coachId));
+    const coachFilters = buildCoachFilters(allMembers, coachIdInt);
     
     // Step 7: Format logged-in coach's performance data
     let coachPerformanceData = null;
@@ -204,7 +391,6 @@ export default async function handler(req, res) {
       const coachDiscipline = disciplineData.find(d => d.userId === loggedInCoach.UserId);
       
       if (coachDiscipline) {
-        // Calculate period discipline with null safety
         const coachTotalOnTimePosts = 
           (coachDiscipline.weight?.onTimePosts || 0) +
           (coachDiscipline.education?.onTimePosts || 0) +
@@ -224,6 +410,15 @@ export default async function handler(req, res) {
           uplineCoachId: loggedInCoach.UplineCoachId,
           uplineCoachName: loggedInCoach.UplineCoachName || 'None',
           hierarchyLevel: loggedInCoach.HierarchyLevel,
+          periodDiscipline: {
+            percentage: calculateDisciplinePercentage(
+              coachTotalOnTimePosts,
+              coachTotalExpectedPosts
+            ),
+            onTimePosts: coachTotalOnTimePosts,
+            expectedPosts: coachTotalExpectedPosts,
+            daysInPeriod: daysInPeriod
+          },
           period: {
             percentage: calculateDisciplinePercentage(
               coachTotalOnTimePosts,
@@ -298,16 +493,14 @@ export default async function handler(req, res) {
       const discipline = disciplineData.find(d => d.userId === member.UserId);
       
       if (!discipline) {
-        return null; // Skip members with no data
+        return null;
       }
       
-      // Check if this member is also a coach
       const isCoach = member.Role === 'coach';
       const subTeamCount = isCoach 
-        ? uniqueMembers.filter(m => m.UplineCoachId === member.UserId).length 
+        ? allMembers.filter(m => m.UplineCoachId === member.UserId).length 
         : 0;
       
-      // Calculate percentages for each activity with null safety
       const activities = {
         weight: {
           percentage: calculateDisciplinePercentage(
@@ -366,7 +559,6 @@ export default async function handler(req, res) {
         }
       };
       
-      // Calculate period discipline with null safety
       const totalOnTimePosts = 
         (discipline.weight?.onTimePosts || 0) +
         (discipline.education?.onTimePosts || 0) +
@@ -397,13 +589,13 @@ export default async function handler(req, res) {
           percentage: periodDisciplinePercentage,
           expectedPosts: totalExpectedPosts,
           onTimePosts: totalOnTimePosts,
-          daysInPeriod: getDaysBetween(dates.start, dates.end)
+          daysInPeriod: daysInPeriod
         },
         activities
       };
     }).filter(m => m !== null);
     
-    // Step 9: Calculate team summary (including coach)
+    // Step 9: Calculate team summary
     const allMembersForStats = [];
     if (coachPerformanceData) {
       allMembersForStats.push(coachPerformanceData);
@@ -423,11 +615,11 @@ export default async function handler(req, res) {
     const needsAttention = allMembersForStats.filter(m => m.periodDiscipline.percentage < 60);
     
     // Step 10: Return response
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       source: 'realtime',
       lastUpdated: new Date().toISOString(),
-      coachId: parseInt(coachId),
+      coachId: coachIdInt,
       dateRange,
       startDate: dates.start.toISOString().split('T')[0],
       endDate: dates.end.toISOString().split('T')[0],
@@ -435,7 +627,7 @@ export default async function handler(req, res) {
       teamMembers: formattedTeamMembers,
       coachFilters: coachFilters,
       teamSummary: {
-        totalMembers: uniqueMembers.length,
+        totalMembers: allMembers.length,
         totalTeamMembers: formattedTeamMembers.length,
         totalCoaches: coachFilters.length,
         averagePeriodDiscipline: Math.round(avgPeriodDiscipline * 10) / 10,
@@ -452,13 +644,15 @@ export default async function handler(req, res) {
         }))
       }
     });
+    return;
     
   } catch (error) {
     console.error('❌ Discipline report error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to retrieve discipline report',
       error: error.message
     });
+    return;
   }
 }
