@@ -11,17 +11,20 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { userId, date, startDate, endDate, detailed = 'false' } = req.query;
 
   if (!userId) {
-    return res.status(400).json({ message: 'UserId is required' });
+    res.status(400).json({ message: 'UserId is required' });
+    return;
   }
 
   try {
@@ -29,21 +32,48 @@ export default async function handler(req, res) {
 
     // If detailed nutrition data requested for dashboard
     if (detailed === 'true' && date) {
-      const targetDate = new Date(date);
-      const startOfDay = new Date(targetDate);
-      startOfDay.setHours(0, 0, 0, 0);
-      const endOfDay = new Date(targetDate);
-      endOfDay.setHours(23, 59, 59, 999);
+      // Use the date string directly to avoid timezone issues
+      // Database stores timestamps without timezone, so we query with local dates
+      const startOfDay = `${date}T00:00:00`;
+      const endOfDay = `${date}T23:59:59`;
+      
+      console.log('📊 [user-nutrition-stats] Query params:', {
+        userId: userId,
+        userIdType: typeof userId,
+        date,
+        startOfDay,
+        endOfDay
+      });
       
       // Fetch nutrition data using Supabase
+      // UserID is stored as TEXT, ensure we compare as string
       const { data: nutritionData, error } = await supabase
         .from('food_nutrition_data_table')
         .select('ID, ImagePath, ImageBase64, AnalysisData, ConfidenceScore, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ProcessedBy, DeviceInfo, CreatedAt')
-        .eq('UserID', userId)
+        .eq('UserID', String(userId))
         .eq('IsDeleted', 0)
-        .gte('CreatedAt', startOfDay.toISOString())
-        .lte('CreatedAt', endOfDay.toISOString())
+        .gte('CreatedAt', startOfDay)
+        .lte('CreatedAt', endOfDay)
         .order('CreatedAt', { ascending: false });
+
+      console.log('📊 [user-nutrition-stats] Query result:', {
+        recordCount: nutritionData?.length || 0,
+        error: error?.message || null,
+        firstRecord: nutritionData?.[0] ? { id: nutritionData[0].ID, createdAt: nutritionData[0].CreatedAt } : null
+      });
+
+      // Also try a simpler query to debug - order by ID desc to get latest
+      const { data: allRecords, error: allError } = await supabase
+        .from('food_nutrition_data_table')
+        .select('ID, UserID, CreatedAt, IsDeleted')
+        .eq('UserID', String(userId))
+        .order('ID', { ascending: false })
+        .limit(10);
+      
+      console.log('📊 [user-nutrition-stats] Debug - All records for user (by ID desc):', {
+        count: allRecords?.length || 0,
+        records: allRecords?.map(r => ({ id: r.ID, createdAt: r.CreatedAt, isDeleted: r.IsDeleted }))
+      });
 
       if (error) throw error;
 
