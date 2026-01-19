@@ -10,7 +10,7 @@ import { getUsdToInrRate } from './tokenCostConfig';
 import { calculateTokenCosts, extractTokenMetadata } from './tokenCostCalculator';
 
 // API Base URL
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
 // Deduplication: Track responses that have already been processed
 // Uses WeakSet so responses can be garbage collected after processing
