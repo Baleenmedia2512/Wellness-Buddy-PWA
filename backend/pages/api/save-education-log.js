@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export const config = {
@@ -57,6 +57,7 @@ export default async function handler(req, res) {
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
     // Insert into education_logs_table using Supabase
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({
@@ -65,7 +66,9 @@ export default async function handler(req, res) {
         Topic: topic,
         Confidence: confidence || null,
         DeviceInfo: deviceInfo || null,
-        ImageBase64: imageBase64ToSave
+        ImageBase64: imageBase64ToSave,
+        CreatedAt: currentTime,
+        UpdatedAt: currentTime
       })
       .select()
       .single();

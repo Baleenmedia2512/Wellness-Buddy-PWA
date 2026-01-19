@@ -6,7 +6,7 @@
  * Completes the setup process
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 
 const MAX_OTP_ATTEMPTS = 5;
@@ -197,7 +197,7 @@ export default async function handler(req, res) {
       if (team.Status === 'active') {
         // Team is active, add requester as CoCoachId if slot available
         if (!team.CoCoachId) {
-          const updateTime = new Date().toISOString();
+          const updateTime = getISTTimestamp();
           await supabase
             .from('coach_teams_table')
             .update({ CoCoachId: requesterId, UpdatedAt: updateTime })
@@ -206,7 +206,7 @@ export default async function handler(req, res) {
         }
       } else {
         // Team is inactive, reactivate with requester as primary coach
-        const updateTime = new Date().toISOString();
+        const updateTime = getISTTimestamp();
         await supabase
           .from('coach_teams_table')
           .update({ CoachId: requesterId, CoCoachId: null, Status: 'active', UpdatedAt: updateTime })
@@ -265,15 +265,15 @@ export default async function handler(req, res) {
       .update({ 
         UplineCoachId: request.UplineCoachId, 
         CoachName: coachName, 
-        CoCoachName: coCoachName 
+        CoCoachName: coCoachName
       })
       .eq('UserId', requesterId);
 
     // STEP 4: Mark request as approved
-    const processedAt = new Date().toISOString();
+    const processedAt = getISTTimestamp();
     await supabase
       .from('approval_requests_table')
-      .update({ Status: 'approved', ProcessedAt: processedAt })
+      .update({ Status: 'approved', ProcessedAt: processedAt, UpdatedAt: processedAt })
       .eq('Id', request.Id);
 
     // Get requester and coach details for response

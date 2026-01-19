@@ -6,7 +6,7 @@
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -171,6 +171,7 @@ export default async function handler(req, res) {
     // Calculate 24-hour expiry
     const requestedAt = new Date();
     const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
+    const currentTime = getISTTimestamp();
 
     // Create approval request with 24-hour expiry
     const { data: insertResult, error: insertError } = await supabase
@@ -183,7 +184,9 @@ export default async function handler(req, res) {
         OtpExpiresAt: otpExpiresAt.toISOString(),
         OtpSentAt: requestedAt.toISOString(),
         OtpAttempts: 0,
-        RequestedAt: requestedAt.toISOString()
+        RequestedAt: requestedAt.toISOString(),
+        CreatedAt: currentTime,
+        UpdatedAt: currentTime
       }])
       .select('Id');
 

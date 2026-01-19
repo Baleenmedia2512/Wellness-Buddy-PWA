@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -35,9 +35,10 @@ export default async function handler(req, res) {
 
     // Soft delete the entry (set IsDeleted = 1) using Supabase
     console.log('💾 [delete-weight-entry] Soft deleting entry:', entryId);
+    const currentTime = getISTTimestamp();
     const { data: updateData, error: updateError } = await supabase
       .from('weight_records_table')
-      .update({ IsDeleted: 1 })
+      .update({ IsDeleted: 1, UpdatedAt: currentTime })
       .eq('ID', entryId)
       .eq('UserId', userId)
       .select();

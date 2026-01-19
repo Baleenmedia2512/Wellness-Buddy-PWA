@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -106,9 +106,10 @@ export default async function handler(req, res) {
 
         if (weightRecords && weightRecords.length > 0) {
           // Update the latest weight record with BMR
+          const currentTime = getISTTimestamp();
           const { error: bmrUpdateError } = await supabase
             .from('weight_records_table')
-            .update({ Bmr: bmrValue })
+            .update({ Bmr: bmrValue, UpdatedAt: currentTime })
             .eq('ID', weightRecords[0].ID);
           
           if (bmrUpdateError) throw bmrUpdateError;

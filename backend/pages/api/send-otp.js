@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -27,9 +27,10 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Invalidate old OTPs
+    const currentTime = getISTTimestamp();
     const { error: updateError } = await supabase
       .from('otp_tokens_table')
-      .update({ IsActive: false })
+      .update({ IsActive: false, UpdatedAt: currentTime })
       .eq('"Recipient"', recipient)
       .eq('"ContactType"', contactType)
       .eq('"IsActive"', true);
@@ -39,6 +40,7 @@ export default async function handler(req, res) {
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpHash = await bcrypt.hash(otp, 10);
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+    const currentTime = getISTTimestamp();
 
     const { error: insertError } = await supabase
       .from('otp_tokens_table')
@@ -46,7 +48,9 @@ export default async function handler(req, res) {
         Recipient: recipient,
         OTPHash: otpHash,
         ExpiresAt: expiresAt.toISOString(),
-        ContactType: contactType
+        ContactType: contactType,
+        CreatedAt: currentTime,
+        UpdatedAt: currentTime
       });
 
     if (insertError) throw insertError;

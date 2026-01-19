@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
@@ -75,10 +75,11 @@ export default async function handler(req, res) {
       }
       
       try {
+        const currentTime = getISTTimestamp();
         const { data: insertData, error: insertErr } = await supabase
           .from('team_table')
           .insert({
-            EntryDateTime: new Date().toISOString(),
+            EntryDateTime: currentTime,
             EntryUser: 'Google Sign-In',
             UserName: username,
             Password: 'User@123#',

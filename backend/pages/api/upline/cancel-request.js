@@ -5,7 +5,7 @@
  * Cancels pending approval request, clears TeamId, updates status to 'cancelled'
  */
 
-import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // CORS headers
@@ -58,10 +58,10 @@ export default async function handler(req, res) {
     const userId = userRows[0].UserId;
 
     // Update approval request status to 'cancelled'
-    const processedAt = new Date().toISOString();
+    const processedAt = getISTTimestamp();
     await supabase
       .from('approval_requests_table')
-      .update({ Status: 'cancelled', ProcessedAt: processedAt })
+      .update({ Status: 'cancelled', ProcessedAt: processedAt, UpdatedAt: processedAt })
       .eq('RequesterId', userId)
       .eq('Status', 'pending');
 

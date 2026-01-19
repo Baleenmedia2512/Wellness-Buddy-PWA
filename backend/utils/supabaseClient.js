@@ -8,6 +8,20 @@ import { createClient } from '@supabase/supabase-js';
 let supabaseInstance = null;
 
 /**
+ * Get current timestamp in IST (UTC+5:30) for database insertion
+ * Database uses "timestamp without time zone" so we need to provide local time
+ * @returns {string} ISO timestamp string adjusted to IST
+ */
+export function getISTTimestamp() {
+  const now = new Date();
+  // IST is UTC+5:30
+  const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+  const istTime = new Date(now.getTime() + istOffset);
+  // Format as PostgreSQL timestamp without timezone
+  return istTime.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+}
+
+/**
  * Get or create Supabase client
  * @returns {Object} Supabase client instance
  */

@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -51,9 +51,10 @@ export default async function handler(req, res) {
     }
 
     // Restore: flip IsDeleted back to 0
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('food_nutrition_data_table')
-      .update({ "IsDeleted": 0 })
+      .update({ "IsDeleted": 0, "UpdatedAt": currentTime })
       .eq('"ID"', id)
       .select();
 

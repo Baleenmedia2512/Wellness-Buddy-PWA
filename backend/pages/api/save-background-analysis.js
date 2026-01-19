@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 // Configure API body parser for large image uploads
@@ -153,6 +153,7 @@ export default async function handler(req, res) {
     });
 
     // Insert using Supabase - use PascalCase column names as they exist in Supabase
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('food_nutrition_data_table')
       .insert({
@@ -167,7 +168,9 @@ export default async function handler(req, res) {
         TotalFiber: totalFiber,
         ProcessedBy: processedBy,
         DeviceInfo: deviceInfo || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
-        ImageBase64: imageBase64ToSave
+        ImageBase64: imageBase64ToSave,
+        CreatedAt: currentTime,
+        UpdatedAt: currentTime
       })
       .select()
       .single();

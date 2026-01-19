@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 
 export default async function handler(req, res) {
@@ -56,11 +56,13 @@ export default async function handler(req, res) {
     }
 
     // OTP verified - deactivate token
+    const currentTime = getISTTimestamp();
     const { error: updateError } = await supabase
       .from('otp_tokens_table')
       .update({ 
         Verified: true, 
-        IsActive: false 
+        IsActive: false,
+        UpdatedAt: currentTime
       })
       .eq('"ID"', otpData.ID);
 
@@ -85,11 +87,12 @@ export default async function handler(req, res) {
       const username = recipient.split('@')[0];
       const defaultPassword = 'User@123#';
       const hashedPassword = defaultPassword; // You can hash it later if you want
+      const currentTime = getISTTimestamp();
       
       const { data: newUser, error: insertError } = await supabase
         .from('team_table')
         .insert({
-          EntryDateTime: new Date().toISOString(),
+          EntryDateTime: currentTime,
           EntryUser: 'Wellness Valley',
           UserName: username,
           Password: hashedPassword,

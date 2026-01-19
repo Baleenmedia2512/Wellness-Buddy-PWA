@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -31,9 +31,10 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Delete the analysis record WITH ownership validation (SECURITY FIX)
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('food_nutrition_data_table')
-      .update({ "IsDeleted": 1 })
+      .update({ "IsDeleted": 1, "UpdatedAt": currentTime })
       .eq('"ID"', id)
       .eq('"UserID"', userId)
       .select();

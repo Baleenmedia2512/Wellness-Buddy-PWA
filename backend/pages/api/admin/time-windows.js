@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 
 /**
  * API: Admin Time Windows Management
@@ -163,6 +163,7 @@ export default async function handler(req, res) {
       }
 
       // Insert new window
+      const currentTime = getISTTimestamp();
       const { data: insertResult, error: insertError } = await supabase
         .from('activity_time_windows_table')
         .insert({
@@ -171,7 +172,8 @@ export default async function handler(req, res) {
           WindowEndTime: endTime,
           EffectiveFromDate: effectiveFromDate,
           ChangedBy: changedBy,
-          ChangeReason: changeReason || null
+          ChangeReason: changeReason || null,
+          CreatedAt: currentTime
         })
         .select('Id')
         .single();

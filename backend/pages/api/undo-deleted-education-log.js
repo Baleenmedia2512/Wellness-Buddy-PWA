@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -51,9 +51,10 @@ export default async function handler(req, res) {
     }
 
     // Restore: set IsDeleted back to 0
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('education_logs_table')
-      .update({ "IsDeleted": 0 })
+      .update({ "IsDeleted": 0, "UpdatedAt": currentTime })
       .eq('"Id"', id)
       .select();
 

@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -47,12 +47,14 @@ export default async function handler(req, res) {
       // Update existing correction (increment times_corrected)
       const correctionId = existingCorrections[0].Id;
       const newCount = existingCorrections[0].TimesCorrected + 1;
+      const currentTime = getISTTimestamp();
 
       const { error: updateError } = await supabase
         .from('food_corrections_table')
         .update({ 
           "TimesCorrected": newCount,
-          "LastCorrected": new Date().toISOString()
+          "LastCorrected": currentTime,
+          "UpdatedAt": currentTime
         })
         .eq('"Id"', correctionId);
 
@@ -69,13 +71,16 @@ res.status(200).json({
       return;
     } else {
       // Insert new correction
+      const currentTime = getISTTimestamp();
       const { data: insertedData, error: insertError } = await supabase
         .from('food_corrections_table')
         .insert({
           "UserId": userId,
           "AiDetected": aiDetected,
           "UserCorrected": userCorrected,
-          "TimesCorrected": 1
+          "TimesCorrected": 1,
+          "CreatedAt": currentTime,
+          "UpdatedAt": currentTime
         })
         .select()
         .single();

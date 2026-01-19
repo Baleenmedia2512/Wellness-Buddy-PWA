@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -34,9 +34,10 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Soft delete: set IsDeleted = 1 (allows undo)
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('education_logs_table')
-      .update({ "IsDeleted": 1 })
+      .update({ "IsDeleted": 1, "UpdatedAt": currentTime })
       .eq('"Id"', logId)
       .eq('"UserId"', userId)
       .select();

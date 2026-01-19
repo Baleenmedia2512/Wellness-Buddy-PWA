@@ -4,6 +4,7 @@
  */
 
 import { getSupabaseClient } from './supabaseClient.js';
+import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 
 /**
@@ -215,7 +216,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     const onTimeDates = new Set();
     
     records.forEach(r => {
-      const date = new Date(r.CreatedAt).toISOString().split('T')[0];
+      const normalizedDate = normalizeTimestamp(r.CreatedAt);
+      const date = normalizedDate.split('T')[0];
       uniqueDates.add(date);
       if (isWithinWindow(r.CreatedAt, window)) {
         onTimeDates.add(date);
@@ -266,7 +268,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     nutritionRecords.forEach(r => {
       const mealType = getMealType(r.CreatedAt);
       if (mealType) {
-        const date = new Date(r.CreatedAt).toISOString().split('T')[0];
+        const normalizedDate = normalizeTimestamp(r.CreatedAt);
+        const date = normalizedDate.split('T')[0];
         mealDates[mealType].add(date);
       }
     });

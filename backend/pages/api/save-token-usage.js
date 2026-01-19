@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
@@ -61,6 +61,7 @@ export default async function handler(req, res) {
 
     // Insert token usage record using Supabase
     // Use exact PascalCase column names as shown in Supabase UI
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('ai_token_usage_table')
       .insert({

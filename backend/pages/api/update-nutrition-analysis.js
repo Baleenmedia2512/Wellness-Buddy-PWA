@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -34,6 +34,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
+    const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('food_nutrition_data_table')
       .update({
@@ -42,7 +43,8 @@ export default async function handler(req, res) {
         "TotalProtein": totalProtein || 0,
         "TotalCarbs": totalCarbs || 0,
         "TotalFat": totalFat || 0,
-        "TotalFiber": totalFiber || 0
+        "TotalFiber": totalFiber || 0,
+        "UpdatedAt": currentTime
       })
       .eq('"ID"', id)
       .eq('"UserID"', userId)

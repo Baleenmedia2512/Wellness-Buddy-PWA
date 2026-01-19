@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 /**
  * API: Save Token Correction
@@ -86,13 +86,16 @@ export default async function handler(req, res) {
     });
 
     // Always insert a new record (no update - track all changes)
+    const currentTime = getISTTimestamp();
     const { error: insertError } = await supabase
       .from('token_correction_table')
       .insert({
         "UserId": userId,
         "InputTokenCost": correctedInputCost,
         "OutputTokenCost": correctedOutputCost,
-        "TotalTokenCost": totalCost
+        "TotalTokenCost": totalCost,
+        "CreatedAt": currentTime,
+        "UpdatedAt": currentTime
       });
 
     if (insertError) throw insertError;
