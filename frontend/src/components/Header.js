@@ -82,6 +82,9 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
           <p className="text-xs sm:text-sm text-green-600 -mt-2 ml-14 sm:ml-14 truncate">
             Track your meals effortlessly
           </p>
+          <p className="text-[9px] font-light text-gray-400 text-center tracking-wide">
+            {getVersionString()}
+          </p>
         </div>
 
         <div className="relative pt-1 flex-shrink-0">
