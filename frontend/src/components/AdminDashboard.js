@@ -1085,7 +1085,7 @@ const AdminDashboard = ({ user, onClose }) => {
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
                       <div className="flex items-center justify-end space-x-1">
-                        <span>Total Tokens</span>
+                        <span>Total Token</span>
                         <SortIcon field="totalTokens" />
                       </div>
                     </th>
@@ -1094,7 +1094,7 @@ const AdminDashboard = ({ user, onClose }) => {
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
                       <div className="flex items-center justify-end space-x-1">
-                        <span>IN Tokens</span>
+                        <span>Input Token</span>
                         <SortIcon field="inputTokens" />
                       </div>
                     </th>
@@ -1103,7 +1103,7 @@ const AdminDashboard = ({ user, onClose }) => {
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
                       <div className="flex items-center justify-end space-x-1">
-                        <span>OUT Tokens</span>
+                        <span>Output Token</span>
                         <SortIcon field="outputTokens" />
                       </div>
                     </th>
