@@ -7,11 +7,13 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -63,19 +65,21 @@ export default async function handler(req, res) {
         sql: `SELECT setval(pg_get_serial_sequence('food_nutrition_data_table', 'ID'), ${maxId});` });
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Sequence reset information generated',
       instructions: 'Execute these SQL commands in Supabase SQL Editor to reset sequences',
       results
     });
+    return;
 
   } catch (error) {
     console.error('Error checking sequences:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to check sequences',
       error: error.message
     });
+    return;
   }
 }

@@ -17,17 +17,20 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   const { userId } = req.query;
 
   if (!userId) {
-    return res.status(400).json({ success: false, message: 'userId is required' });
+    res.status(400).json({ success: false, message: 'userId is required' });
+    return;
   }
 
   try {
@@ -157,10 +160,11 @@ export default async function handler(req, res) {
     // Set CORS headers even on error
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false, 
       message: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : 'Failed to fetch education summary',
       error: error.message 
     });
+    return;
   }
 }

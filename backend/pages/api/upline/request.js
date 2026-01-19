@@ -6,7 +6,7 @@
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import { getPool, getConnection } from '../../../utils/dbPool.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 
@@ -37,14 +37,6 @@ const sendEmail = async ({ to, subject, html }) => {
   }
 };
 
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'baleed5_wellness'
-};
-
 // Generate 6-digit OTP
 function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -56,7 +48,8 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -65,10 +58,11 @@ export default async function handler(req, res) {
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({
+    res.status(405).json({
       success: false,
       error: 'Method not allowed'
     });
+    return;
   }
 
   try {
@@ -76,119 +70,126 @@ export default async function handler(req, res) {
     const { coachId, email } = req.body;
     
     if (!email) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Email is required'
       });
+      return;
     }
 
     if (!coachId) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Coach ID is required'
       });
+      return;
     }
 
-    // Connect to database
-    const pool = getPool();
-    const connection = await pool.getConnection();
+    // Connect to Supabase
+    const supabase = getSupabaseClient();
 
-    try {
-      await connection.beginTransaction();
+    // Get requester's UserId and details
+    const { data: requesterRows, error: requesterError } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, Email, TeamId, UplineCoachId')
+      .eq('Email', email)
+      .limit(1);
 
-      // Get requester's UserId and details
-      const [requesterRows] = await pool.execute(
-        'SELECT UserId, UserName, Email, TeamId, UplineCoachId FROM team_table WHERE Email = ? LIMIT 1',
-        [email]
-      );
+    if (requesterError) throw requesterError;
 
-      if (requesterRows.length === 0) {
-        await connection.rollback();
-return res.status(404).json({
-          success: false,
-          error: 'User not found'
-        });
-      }
+    if (!requesterRows || requesterRows.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+      return;
+    }
 
-      const requesterId = requesterRows[0].UserId;
+    const requesterId = requesterRows[0].UserId;
 
-      // Prevent self-approval
-      if (coachId === requesterId) {
-        await connection.rollback();
-return res.status(400).json({
-          success: false,
-          error: 'You cannot select yourself as your coach'
-        });
-      }
+    // Prevent self-approval
+    if (coachId === requesterId) {
+      res.status(400).json({
+        success: false,
+        error: 'You cannot select yourself as your coach'
+      });
+      return;
+    }
 
-      const requester = requesterRows[0];
+    const requester = requesterRows[0];
 
-      // Check if user has Team ID
-      if (!requester.TeamId) {
-        await connection.rollback();
-        return res.status(400).json({
-          success: false,
-          error: 'You must claim a Team ID first',
-          redirectTo: '/setup/team'
-        });
-      }
+    // Check if user has Team ID
+    if (!requester.TeamId) {
+      res.status(400).json({
+        success: false,
+        error: 'You must claim a Team ID first',
+        redirectTo: '/setup/team'
+      });
+      return;
+    }
 
-      // Check if user already has an upline coach
-      if (requester.UplineCoachId) {
-        await connection.rollback();
-        return res.status(400).json({
-          success: false,
-          error: 'You already have an upline coach',
-          redirectTo: '/dashboard'
-        });
-      }
+    // Check if user already has an upline coach
+    if (requester.UplineCoachId) {
+      res.status(400).json({
+        success: false,
+        error: 'You already have an upline coach',
+        redirectTo: '/dashboard'
+      });
+      return;
+    }
 
-      // Cancel any existing pending requests for this user
-      await pool.execute(
-        `UPDATE approval_requests_table 
-         SET Status = 'cancelled', ProcessedAt = NOW()
-         WHERE RequesterId = ? AND Status = 'pending'`,
-        [requesterId]
-      );
+    // Cancel any existing pending requests for this user
+    const now = new Date().toISOString();
+    await supabase
+      .from('approval_requests_table')
+      .update({ Status: 'cancelled', ProcessedAt: now })
+      .eq('RequesterId', requesterId)
+      .eq('Status', 'pending');
 
-      // Get coach details
-      const [coachRows] = await pool.execute(
-        'SELECT UserId, UserName, Email, CoachName, Role FROM team_table WHERE UserId = ?',
-        [coachId]
-      );
+    // Get coach details
+    const { data: coachRows, error: coachError } = await supabase
+      .from('team_table')
+      .select('UserId, UserName, Email, CoachName, Role')
+      .eq('UserId', coachId);
 
-      if (coachRows.length === 0) {
-        await connection.rollback();
-        return res.status(404).json({
-          success: false,
-          error: 'Coach not found'
-        });
-      }
+    if (coachError) throw coachError;
 
-      const coach = coachRows[0];
+    if (!coachRows || coachRows.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'Coach not found'
+      });
+      return;
+    }
 
-      // Note: Not checking Role since all users can be coaches
-      // if (coach.Role !== 'admin') {
-      //   await connection.rollback();
-      //   return res.status(400).json({
-      //     success: false,
-      //     error: 'Selected user is not a coach'
-      //   });
-      // }
+    const coach = coachRows[0];
 
-      // Generate 6-digit OTP
-      const otp = generateOTP();
-      const otpHash = await bcrypt.hash(otp, 10);
+    // Generate 6-digit OTP
+    const otp = generateOTP();
+    const otpHash = await bcrypt.hash(otp, 10);
 
-      // Create approval request with 24-hour expiry
-      const [result] = await pool.execute(
-        `INSERT INTO approval_requests_table 
-        (RequesterId, UplineCoachId, Status, OtpHash, OtpExpiresAt, OtpSentAt, OtpAttempts, RequestedAt)
-        VALUES (?, ?, 'pending', ?, DATE_ADD(NOW(), INTERVAL 24 HOUR), NOW(), 0, NOW())`,
-        [requesterId, coachId, otpHash]
-      );
+    // Calculate 24-hour expiry
+    const requestedAt = new Date();
+    const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
 
-      const requestId = result.insertId;
+    // Create approval request with 24-hour expiry
+    const { data: insertResult, error: insertError } = await supabase
+      .from('approval_requests_table')
+      .insert([{
+        RequesterId: requesterId,
+        UplineCoachId: coachId,
+        Status: 'pending',
+        OtpHash: otpHash,
+        OtpExpiresAt: otpExpiresAt.toISOString(),
+        OtpSentAt: requestedAt.toISOString(),
+        OtpAttempts: 0,
+        RequestedAt: requestedAt.toISOString()
+      }])
+      .select('Id');
+
+    if (insertError) throw insertError;
+
+    const requestId = insertResult[0].Id;
 
       // Send OTP email to coach with professional template
       const emailSubject = `🤝 Team Approval Request - Wellness Valley`;
@@ -288,44 +289,37 @@ return res.status(400).json({
         </html>
       `;
 
-      try {
-        await sendEmail({
-          to: coach.Email,
-          subject: emailSubject,
-          html: emailBody
-        });
-      } catch (emailError) {
-        console.error('Failed to send OTP email:', emailError);
-        // Continue even if email fails - user can resend
-      }
-
-      await connection.commit();
-      connection.release();
-
-      return res.status(200).json({
-        success: true,
-        message: 'Request sent successfully. OTP has been emailed to your coach.',
-        requestId: requestId,
-        coachName: coach.CoachName || coach.UserName,
-        coachEmail: coach.Email,
-        expiresIn: '24 hours',
-        nextStep: 'validate-otp',
-        redirectTo: '/setup/validate-otp'
+    try {
+      await sendEmail({
+        to: coach.Email,
+        subject: emailSubject,
+        html: emailBody
       });
-
-    } catch (dbError) {
-      await connection.rollback();
-      connection.release();
-      throw dbError;
+    } catch (emailError) {
+      console.error('Failed to send OTP email:', emailError);
+      // Continue even if email fails - user can resend
     }
+
+    res.status(200).json({
+      success: true,
+      message: 'Request sent successfully. OTP has been emailed to your coach.',
+      requestId: requestId,
+      coachName: coach.CoachName || coach.UserName,
+      coachEmail: coach.Email,
+      expiresIn: '24 hours',
+      nextStep: 'validate-otp',
+      redirectTo: '/setup/validate-otp'
+    });
+    return;
 
   } catch (error) {
     console.error('Error creating approval request:', error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: 'Failed to send request',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+    return;
   }
 }

@@ -14,12 +14,14 @@ export default async function handler(req, res) {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -27,9 +29,10 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Missing required parameter: userId'
       });
+      return;
     }
 
     const supabase = getSupabaseClient();
@@ -54,16 +57,18 @@ export default async function handler(req, res) {
       last_corrected: c.LastCorrected
     }));
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: transformedCorrections,
       count: transformedCorrections.length
     });
+    return;
   } catch (error) {
     console.error('Error fetching food corrections:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Failed to fetch corrections',
       details: error.message 
     });
+    return;
   }
 }

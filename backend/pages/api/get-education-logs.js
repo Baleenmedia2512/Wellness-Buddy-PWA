@@ -12,12 +12,14 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only accept GET
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Get userId from query params
@@ -25,10 +27,11 @@ export default async function handler(req, res) {
 
   // Validation
   if (!userId) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'userId is required'
     });
+    return;
   }
 
   
@@ -47,19 +50,21 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       count: logs?.length || 0,
       logs: logs || []
     });
+    return;
 
   } catch (error) {
 
     console.error('❌ Fetch education logs error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to fetch education logs',
       error: error.message
     });
+    return;
   }
 }

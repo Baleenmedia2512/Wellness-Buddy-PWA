@@ -27,7 +27,8 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -36,10 +37,11 @@ export default async function handler(req, res) {
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({
+    res.status(405).json({
       success: false,
       error: 'Method not allowed'
     });
+    return;
   }
 
   try {
@@ -47,10 +49,11 @@ export default async function handler(req, res) {
     const { email } = req.query;
     
     if (!email) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Email is required'
       });
+      return;
     }
 
     const supabase = getSupabaseClient();
@@ -68,10 +71,11 @@ export default async function handler(req, res) {
     }
 
     if (!user) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         error: 'User not found'
       });
+      return;
     }
     const userId = user.UserId;
     const userRole = user.Role;
@@ -80,7 +84,7 @@ export default async function handler(req, res) {
 
     // ADMIN/DEVELOPER users bypass coach auth flow
     if (userRole === 'admin' || userRole === 'developer') {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: hasTeamId,
@@ -92,11 +96,12 @@ return res.status(200).json({
         redirectTo: '/dashboard',
         message: 'Admin/Developer - setup not required'
       });
+      return;
     }
 
     // STATE 5: Setup complete ✅
     if (hasTeamId && hasUpline) {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: true,
@@ -107,11 +112,12 @@ return res.status(200).json({
         redirectTo: '/dashboard',
         message: 'Setup complete'
       });
+      return;
     }
 
     // STATE 1: No Team ID
     if (!hasTeamId) {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: false,
           hasTeamId: false,
@@ -120,6 +126,7 @@ return res.status(200).json({
           redirectTo: '/setup/team',
           message: 'Please claim a Team ID'
         });
+        return;
       }
 
       // Check for pending approval request using Supabase
@@ -147,7 +154,7 @@ return res.status(200).json({
             .delete()
             .eq('"Id"', request.Id);
 
-          return res.status(200).json({
+          res.status(200).json({
             success: true,
             setupComplete: false,
             hasTeamId: true,
@@ -156,10 +163,11 @@ return res.status(200).json({
             redirectTo: '/setup/upline',
             message: 'Previous request expired. Please send a new request.'
           });
+          return;
         }
 
         // STATE 3: Active pending request
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           setupComplete: false,
           hasTeamId: true,
@@ -174,10 +182,11 @@ return res.status(200).json({
           redirectTo: '/setup/validate-otp',
           message: 'Waiting for OTP validation'
         });
+        return;
       }
 
       // STATE 2: Has Team ID, no request
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         setupComplete: false,
         hasTeamId: true,
@@ -187,13 +196,15 @@ return res.status(200).json({
         redirectTo: '/setup/upline',
         message: 'Please select your upline coach'
       });
+      return;
 
     } catch (error) {
       console.error('Error checking user status:', error);
-return res.status(500).json({
+res.status(500).json({
         success: false,
         error: 'Failed to check user status',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+      return;
     }
 }

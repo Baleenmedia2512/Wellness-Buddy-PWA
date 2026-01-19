@@ -8,11 +8,13 @@ export default async function handler(req, res) {
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -31,24 +33,27 @@ export default async function handler(req, res) {
 
     // Validate required fields
     if (!userId || !email) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         success: false, 
         message: 'userId and email are required' 
       });
+      return;
     }
 
     if (!operationType || !modelName) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         success: false, 
         message: 'operationType and modelName are required' 
       });
+      return;
     }
 
     if (inputTokens === undefined || outputTokens === undefined || totalTokens === undefined) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         success: false, 
         message: 'Token counts (inputTokens, outputTokens, totalTokens) are required' 
       });
+      return;
     }
 
     // Use Supabase REST API (bypasses blocked PostgreSQL ports)
@@ -78,11 +83,12 @@ export default async function handler(req, res) {
       throw error;
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Token usage saved successfully',
       id: data?.ID || data?.id
     });
+    return;
 
   } catch (error) {
     console.error('❌ Error saving token usage:', error);
@@ -100,10 +106,11 @@ export default async function handler(req, res) {
       errorMessage = 'Database connection refused. Please check if database is accessible.';
     }
 
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: errorMessage,
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+    return;
   }
 }

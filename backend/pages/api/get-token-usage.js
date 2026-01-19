@@ -17,11 +17,13 @@ export default async function handler(req, res) {
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -29,7 +31,8 @@ export default async function handler(req, res) {
 
     if (!email) {
       console.log('[get-token-usage] ERROR: No email provided');
-      return res.status(400).json({ success: false, message: 'Email is required' });
+      res.status(400).json({ success: false, message: 'Email is required' });
+      return;
     }
 
     console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange, '| UserToday:', userToday);
@@ -52,19 +55,21 @@ export default async function handler(req, res) {
 
     if (userError || !user) {
       console.log('[get-token-usage] ERROR: User not found in team_table');
-      return res.status(403).json({ 
+      res.status(403).json({ 
         success: false, 
         message: `Access denied. User not found: ${email}` 
       });
+      return;
     }
 
     const userRole = user.Role;
     if (userRole !== 'admin' && userRole !== 'developer') {
       console.log('[get-token-usage] ERROR: User role is not admin/developer:', userRole);
-      return res.status(403).json({ 
+      res.status(403).json({ 
         success: false, 
         message: `Access denied. Admin or Developer role required. Current role: ${userRole}` 
       });
+      return;
     }
 
     console.log('[get-token-usage] User authorized with role:', userRole);

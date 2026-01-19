@@ -17,23 +17,26 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ 
+    res.status(405).json({ 
       success: false, 
       message: 'Method not allowed' 
     });
+    return;
   }
 
   const { email } = req.query;
 
   if (!email) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       message: 'Email is required' 
     });
+    return;
   }
 
   try {
@@ -72,10 +75,11 @@ export default async function handler(req, res) {
 
     if (!originalRows || originalRows.length === 0) {
       console.log('⚠️ [get-latest-token-costs] No token usage records found');
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'No token usage records found'
       });
+      return;
     }
 
     const latestOriginalRecord = originalRows[0];
@@ -118,7 +122,7 @@ export default async function handler(req, res) {
           createdAt: correctedRecord.CreatedAt
         });
 
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           data: {
             inputTokenCost: correctedRecord.InputTokenCost,
@@ -128,6 +132,7 @@ export default async function handler(req, res) {
             isCorrected: true
           }
         });
+        return;
       } else {
         console.log('📊 [get-latest-token-costs] Original record is newer than correction - returning original costs');
       }
@@ -141,7 +146,7 @@ export default async function handler(req, res) {
       createdAt: latestOriginalRecord.CreatedAt
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: {
         inputTokenCost: latestOriginalRecord.InputTokenCost,
@@ -151,13 +156,15 @@ export default async function handler(req, res) {
         isCorrected: false
       }
     });
+    return;
 
   } catch (error) {
     console.error('❌ [get-latest-token-costs] Error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to fetch latest token costs',
       error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
+    return;
   }
 }

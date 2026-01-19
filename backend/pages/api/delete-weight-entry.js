@@ -9,12 +9,14 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'DELETE') {
     console.log('❌ [delete-weight-entry] Method not allowed:', req.method);
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { userId, entryId } = req.body;
@@ -22,9 +24,10 @@ export default async function handler(req, res) {
 
   if (!userId || !entryId) {
     console.log('❌ [delete-weight-entry] Missing required fields');
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Missing required fields: userId, entryId' 
     });
+    return;
   }
 
   try {
@@ -46,10 +49,11 @@ export default async function handler(req, res) {
     
     if (!updateData || updateData.length === 0) {
       console.log('❌ [delete-weight-entry] Entry not found or unauthorized');
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'Weight entry not found or unauthorized'
       });
+      return;
     }
 
     console.log('✅ [delete-weight-entry] Entry deleted successfully');

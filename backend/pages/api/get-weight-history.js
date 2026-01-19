@@ -12,20 +12,23 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { userId, includeImage = 'true' } =
     req.method === 'POST' ? req.body : req.query;
 
   if (!userId) {
-    return res.status(400).json({
+    res.status(400).json({
       message: 'Missing required field: userId',
     });
+    return;
   }
 
   try {

@@ -18,20 +18,23 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
     console.log('❌ [save-background-analysis] Method not allowed:', req.method);
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Check if request body is too large or malformed
   if (!req.body) {
     console.log('❌ [save-background-analysis] Request body is missing or too large');
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Request body is missing or too large. Maximum size is 10MB.' 
     });
+    return;
   }
 
   const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64 } = req.body;
@@ -45,9 +48,10 @@ export default async function handler(req, res) {
 
   if (!userId || !imagePath || !analysisResult) {
     console.log('❌ [save-background-analysis] Missing required fields:', { userId: !!userId, imagePath: !!imagePath, analysisResult: !!analysisResult });
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Missing required fields: userId, imagePath, analysisResult' 
     });
+    return;
   }
 
   try {

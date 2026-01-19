@@ -13,11 +13,13 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { email } = req.query;
@@ -26,10 +28,11 @@ export default async function handler(req, res) {
 
   if (!email) {
     console.log('❌ [get-user-profile] Missing required field: email');
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Missing required query parameter: email',
     });
+    return;
   }
 
   try {
@@ -61,10 +64,11 @@ export default async function handler(req, res) {
 
     if (!user) {
       console.log('❌ [get-user-profile] User not found:', email);
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'User not found',
       });
+      return;
     }
 
     console.log('✅ [get-user-profile] User found:', { userId: user.UserId, userName: user.UserName });

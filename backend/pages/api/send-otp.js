@@ -7,16 +7,21 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { recipient, contactType = 'phone' } = req.body;
 
-  if (!recipient) return res.status(400).json({ message: 'Recipient is required' });
+  if (!recipient) {
+    res.status(400).json({ message: 'Recipient is required' });
+    return;
+  }
 
   try {
     const supabase = getSupabaseClient();

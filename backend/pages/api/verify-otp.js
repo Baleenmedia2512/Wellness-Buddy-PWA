@@ -6,17 +6,20 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { recipient, otp, contactType = 'email' } = req.body;
 
   if (!recipient || !otp) {
-    return res.status(400).json({ message: 'Recipient and OTP are required' });
+    res.status(400).json({ message: 'Recipient and OTP are required' });
+    return;
   }
 
   try {
@@ -35,18 +38,21 @@ export default async function handler(req, res) {
     if (otpError) throw otpError;
 
     if (!rows || rows.length === 0) {
-      return res.status(404).json({ message: 'No active OTP found' });
+      res.status(404).json({ message: 'No active OTP found' });
+      return;
     }
 
     const otpData = rows[0];
 
     if (new Date() > new Date(otpData.ExpiresAt)) {
-      return res.status(400).json({ message: 'OTP expired' });
+      res.status(400).json({ message: 'OTP expired' });
+      return;
     }
 
     const valid = await bcrypt.compare(otp, otpData.OTPHash);
     if (!valid) {
-      return res.status(400).json({ message: 'Invalid OTP' });
+      res.status(400).json({ message: 'Invalid OTP' });
+      return;
     }
 
     // OTP verified - deactivate token

@@ -12,12 +12,14 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Allow both GET and POST requests
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Extract email from query params (GET) or body (POST)
@@ -27,7 +29,8 @@ export default async function handler(req, res) {
 
   if (!email) {
     console.log('❌ [lookup-user-id] Email is required');
-    return res.status(400).json({ message: 'Email is required' });
+    res.status(400).json({ message: 'Email is required' });
+    return;
   }
 
   try {
@@ -38,7 +41,8 @@ export default async function handler(req, res) {
     if (cached) {
       console.log('✅ [lookup-user-id] Cache HIT for:', email);
       res.setHeader('X-Cache', 'HIT');
-      return res.status(200).json(cached);
+      res.status(200).json(cached);
+      return;
     }
 
     // Use Supabase REST API (bypasses blocked PostgreSQL ports)
@@ -64,11 +68,12 @@ export default async function handler(req, res) {
 
     if (!data) {
       console.log('❌ [lookup-user-id] User not found in database');
-      return res.status(404).json({ 
+      res.status(404).json({ 
         success: false, 
         message: 'User not found',
         userNotFound: true
       });
+      return;
     }
 
     const user = data;

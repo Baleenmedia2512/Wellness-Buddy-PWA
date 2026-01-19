@@ -1,38 +1,42 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   console.log('\n🧪🧪🧪 TEST-DB-CONNECTION ENDPOINT HIT 🧪🧪🧪\n');
   
   try {
-    const pool = getPool();
-    console.log('✅ Pool obtained, testing query...\n');
+    const supabase = getSupabaseClient();
+    console.log('✅ Supabase client obtained, testing query...\n');
     
-    const [rows] = await pool.execute('SELECT NOW() as time, current_database() as db, current_user as user_name');
+    // Test connection with a simple count query
+    const { count, error } = await supabase
+      .from('team_table')
+      .select('*', { count: 'exact', head: true });
+    
+    if (error) throw error;
     
     console.log('\n✅✅✅ DATABASE TEST SUCCESSFUL! ✅✅✅');
-    console.log('DB Results:', rows);
+    console.log('✅ team_table count:', count);
     
-    const [teamCount] = await pool.execute('SELECT COUNT(*) as count FROM team_table');
-    console.log('✅ team_table count:', teamCount[0].count);
-    
-    return res.status(200).json({ 
+    res.status(200).json({ 
       success: true,
-      message: 'Database connection successful!',
-      dbInfo: rows[0],
-      teamTableCount: teamCount[0].count
+      message: 'Supabase connection successful!',
+      timestamp: new Date().toISOString(),
+      teamTableCount: count,
+      connectionType: 'Supabase REST API'
     });
+    return;
   } catch (error) {
     console.error('\n❌❌❌ DATABASE TEST FAILED! ❌❌❌');
     console.error('🚨 Error Message:', error.message);
     console.error('📍 Error Code:', error.code);
-    console.error('🔍 Stack:', error.stack);
     console.error('=========================================\n');
     
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false,
-      message: 'Database connection failed!',
+      message: 'Supabase connection failed!',
       error: error.message,
       code: error.code
     });
+    return;
   }
 }

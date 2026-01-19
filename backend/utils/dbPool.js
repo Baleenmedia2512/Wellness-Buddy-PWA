@@ -373,13 +373,6 @@ export function getPool() {
     
     // ===== DATABASE CONNECTION DEBUG LOGS =====
     console.log('\n🔍 ===== DATABASE CONFIGURATION DEBUG =====');
-    console.log('📋 DB_HOST:', dbConfig.host);
-    console.log('👤 DB_USER:', dbConfig.user);
-    console.log('🔐 DB_PASS:', dbConfig.password ? '****** (SET)' : 'EMPTY (default)');
-    console.log('🗄️  DB_NAME:', dbConfig.database);
-    console.log('🔌 DB_PORT:', dbConfig.port);
-    console.log('🔗 SSL Enabled:', dbConfig.ssl ? 'YES' : 'NO');
-    console.log('🏊 Max Pool Connections:', dbConfig.max);
     console.log('==========================================\n');
     
     console.log('🔄 Creating new PostgreSQL connection pool...');

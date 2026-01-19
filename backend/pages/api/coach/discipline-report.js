@@ -24,11 +24,13 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
   
   try {
@@ -36,11 +38,13 @@ export default async function handler(req, res) {
     
     // Validation
     if (!coachId) {
-      return res.status(400).json({ success: false, message: 'Coach ID required' });
+      res.status(400).json({ success: false, message: 'Coach ID required' });
+      return;
     }
     
     if (!dateRange) {
-      return res.status(400).json({ success: false, message: 'Date range required' });
+      res.status(400).json({ success: false, message: 'Date range required' });
+      return;
     }
     
     // Parse date range
@@ -53,16 +57,18 @@ export default async function handler(req, res) {
     // Validate custom date range
     if (dateRange === 'custom') {
       if (!startDate || !endDate) {
-        return res.status(400).json({ 
+        res.status(400).json({ 
           success: false, 
           message: 'Custom date range requires both startDate and endDate' 
         });
+        return;
       }
       if (dates.start > dates.end) {
-        return res.status(400).json({ 
+        res.status(400).json({ 
           success: false, 
           message: 'Start date must be before or equal to end date' 
         });
+        return;
       }
     }
     
@@ -79,7 +85,8 @@ export default async function handler(req, res) {
     
     if (coachError || !coach) {
       console.error('Coach not found:', coachError);
-      return res.status(404).json({ success: false, message: 'Coach not found' });
+      res.status(404).json({ success: false, message: 'Coach not found' });
+      return;
     }
     
     // Step 2: Get all active team members recursively using iterative approach
@@ -314,7 +321,7 @@ export default async function handler(req, res) {
     const teamMembers = allMembers.filter(m => !m.IsLoggedInCoach);
     
     if (allMembers.length === 0) {
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         source: 'realtime',
         lastUpdated: new Date().toISOString(),
@@ -334,6 +341,7 @@ export default async function handler(req, res) {
           needsAttention: []
         }
       });
+      return;
     }
     
     // Helper function to build coach filter options

@@ -7,20 +7,23 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { id, userId } = req.body; // userId optional but recommended for safety
 
   if (!id) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Analysis ID is required'
     });
+    return;
   }
 
   
@@ -39,10 +42,11 @@ export default async function handler(req, res) {
       if (ownerError) throw ownerError;
 
       if (!ownerCheck || ownerCheck.length === 0) {
-        return res.status(403).json({
+        res.status(403).json({
           success: false,
           message: 'You do not have permission to restore this item.'
         });
+        return;
       }
     }
 
@@ -56,10 +60,11 @@ export default async function handler(req, res) {
     if (error) throw error;
     
     if (!data || data.length === 0) {
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'Analysis not found or already active'
       });
+      return;
     }
 
     // Clear nutrition cache only (education is separate domain)
@@ -68,17 +73,19 @@ export default async function handler(req, res) {
       console.log('🗑️ [undo-deleted-analysis] Nutrition cache cleared for user:', userId);
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Analysis restored successfully',
       restoredId: id
     });
+    return;
   } catch (error) {
     console.error('❌ Database undo error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to restore analysis',
       error: error.message
     });
+    return;
   }
 }

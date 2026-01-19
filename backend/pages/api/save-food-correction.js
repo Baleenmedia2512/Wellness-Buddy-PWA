@@ -8,12 +8,14 @@ export default async function handler(req, res) {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -21,10 +23,11 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId || !aiDetected || !userCorrected) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Missing required fields',
         required: ['userId', 'aiDetected', 'userCorrected']
       });
+      return;
     }
 
     // Database connection
@@ -54,7 +57,7 @@ export default async function handler(req, res) {
         .eq('"Id"', correctionId);
 
       if (updateError) throw updateError;
-return res.status(200).json({
+res.status(200).json({
         success: true,
         message: 'Correction updated',
         data: {
@@ -63,6 +66,7 @@ return res.status(200).json({
           action: 'updated'
         }
       });
+      return;
     } else {
       // Insert new correction
       const { data: insertedData, error: insertError } = await supabase
@@ -79,7 +83,7 @@ return res.status(200).json({
       if (insertError) throw insertError;
 
       const result = { insertId: insertedData?.Id };
-return res.status(201).json({
+res.status(201).json({
         success: true,
         message: 'Correction saved',
         data: {
@@ -88,12 +92,14 @@ return res.status(201).json({
           action: 'created'
         }
       });
+      return;
     }
   } catch (error) {
     console.error('Error saving food correction:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Failed to save correction',
       details: error.message 
     });
+    return;
   }
 }

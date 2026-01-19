@@ -5,11 +5,13 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { email, displayName } = req.body;
@@ -18,7 +20,8 @@ export default async function handler(req, res) {
 
   if (!email || !displayName) {
     console.log('❌ [save-google-user] Missing required fields');
-    return res.status(400).json({ message: 'Email and Display Name are required' });
+    res.status(400).json({ message: 'Email and Display Name are required' });
+    return;
   }
 
   try {
@@ -105,7 +108,7 @@ export default async function handler(req, res) {
 
             if (recheckRows && recheckRows.length > 0) {
               console.log('ℹ️ [save-google-user] User was created by concurrent request:', email);
-              return res.json({ 
+              res.json({ 
                 success: true, 
                 message: 'User already exists',
                 isNewUser: false,
@@ -116,14 +119,16 @@ export default async function handler(req, res) {
                   status: recheckRows[0].Status
                 }
               });
+              return;
             } else {
               // Still can't create user - return error
               console.error('❌ [save-google-user] Failed to create user due to duplicate:', insertErr);
-              return res.status(500).json({ 
+              res.status(500).json({ 
                 success: false,
                 message: 'Failed to create user account. Please try again.',
                 error: 'Duplicate entry conflict'
               });
+              return;
             }
           } else {
             // Other insert error
@@ -132,18 +137,19 @@ export default async function handler(req, res) {
         }
         
         console.log('✅ [save-google-user] New user created successfully:', { email, username });
-        return res.json({ 
+        res.json({ 
           success: true, 
           message: 'User created successfully',
           isNewUser: true,
           username: username
         });
+        return;
       } catch (insertErr) {
         throw insertErr;
       }
     } else {
       console.log('ℹ️ [save-google-user] User already exists:', email);
-      return res.json({ 
+      res.json({ 
         success: true, 
         message: 'User already exists',
         isNewUser: false,
@@ -154,6 +160,7 @@ export default async function handler(req, res) {
           status: existingRows[0].Status
         }
       });
+      return;
     }
   } catch (err) {
     console.error('❌ [save-google-user] Error occurred:', err);
@@ -162,10 +169,11 @@ export default async function handler(req, res) {
       stack: err.stack,
       email
     });
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false,
       message: 'Internal server error',
       error: err.message 
     });
+    return;
   }
 }

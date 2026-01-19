@@ -9,11 +9,13 @@ export default async function handler(req, res) {
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { email, name, height, bmr, dietType } = req.body;
@@ -23,10 +25,11 @@ export default async function handler(req, res) {
   // Validate required field
   if (!email) {
     console.log('❌ [update-user-profile] Missing required field: email');
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Missing required field: email',
     });
+    return;
   }
 
   try {
@@ -43,10 +46,11 @@ export default async function handler(req, res) {
 
     if (userError || !user) {
       console.log('❌ [update-user-profile] User not found:', email);
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'User not found',
       });
+      return;
     }
 
     const userId = user.UserId;

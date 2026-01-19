@@ -19,12 +19,14 @@ export default async function handler(req, res) {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -32,9 +34,10 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Missing required parameter: userId'
       });
+      return;
     }
 
     const startTime = Date.now();
@@ -153,15 +156,17 @@ export default async function handler(req, res) {
 
     console.log(`✅ [get-user-context] Context loaded for userId ${userId} in ${context.metadata.queryTimeMs}ms`);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: context
     });
+    return;
   } catch (error) {
     console.error('❌ [get-user-context] Error:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Failed to fetch user context',
       details: error.message 
     });
+    return;
   }
 }

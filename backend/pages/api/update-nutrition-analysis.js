@@ -8,22 +8,26 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'PUT') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   try {
     const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
 
     if (!id || !userId) {
-      return res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
+      res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
+      return;
     }
 
     if (!analysisData || !analysisData.foods || !Array.isArray(analysisData.foods)) {
-      return res.status(400).json({ success: false, message: 'Invalid analysis data format' });
+      res.status(400).json({ success: false, message: 'Invalid analysis data format' });
+      return;
     }
 
     // Database connection
@@ -47,7 +51,8 @@ export default async function handler(req, res) {
     if (error) throw error;
     
     if (!data || data.length === 0) {
-      return res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
+      res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
+      return;
     }
 
     // Clear nutrition cache only (no extra query - PERFORMANCE FIX)

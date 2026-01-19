@@ -11,14 +11,16 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ 
+    res.status(405).json({ 
       success: false, 
       message: 'Method not allowed' 
     });
+    return;
   }
 
   const { 
@@ -30,10 +32,11 @@ export default async function handler(req, res) {
   } = req.body;
 
   if (!email || correctedInputCost === undefined || correctedOutputCost === undefined) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       message: 'Missing required fields: email, correctedInputCost, correctedOutputCost' 
     });
+    return;
   }
 
   try {
@@ -62,10 +65,11 @@ export default async function handler(req, res) {
 
     if (!userRows || userRows.length === 0) {
       console.log('❌ [save-token-correction] User not found in team_table');
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'User not found'
       });
+      return;
     }
 
     const userId = userRows[0].UserId;
@@ -98,7 +102,7 @@ export default async function handler(req, res) {
       totalCost
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Token correction saved successfully',
       data: {
@@ -108,13 +112,15 @@ export default async function handler(req, res) {
         totalTokenCost: totalCost
       }
     });
+    return;
 
   } catch (error) {
     console.error('❌ [save-token-correction] Error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to save token correction',
       error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
+    return;
   }
 }

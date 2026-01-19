@@ -18,19 +18,22 @@ export default async function handler(req, res) {
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Check if request body is too large or malformed
   // Check 
   if (!req.body) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Request body is missing or too large. Maximum size is 10MB.' 
     });
+    return;
   }
 
   const { 
@@ -46,24 +49,27 @@ export default async function handler(req, res) {
 
   // Validate required fields
   if (!userId || !weightValue) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Missing required fields: userId, weightValue' 
     });
+    return;
   }
 
   // Validate weight value
   const weight = parseFloat(weightValue);
   if (isNaN(weight) || weight <= 0 || weight > 500) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Invalid weight value. Must be between 0 and 500.' 
     });
+    return;
   }
 
   // Validate unit
   if (unit !== 'kg' && unit !== 'lbs') {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       message: 'Invalid unit. Must be "kg" or "lbs".' 
     });
+    return;
   }
 
   try {
