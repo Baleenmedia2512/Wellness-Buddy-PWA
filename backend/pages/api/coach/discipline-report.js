@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+﻿import { getPool } from '../../../utils/dbPool.js';
 import { 
   parseDateRange, 
   calculateExpectedPosts,
@@ -10,7 +10,7 @@ import {
 /**
  * API: Get Coach Discipline Report
  * Returns discipline percentages for all team members
- * Uses Supabase REST API (consistent with other working APIs)
+ * Uses direct SQL queries via connection pool
  */
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -66,24 +66,24 @@ export default async function handler(req, res) {
       }
     }
     
-    const supabase = getSupabaseClient();
+    const pool = getPool();
     const coachIdInt = parseInt(coachId);
     
     // Step 1: Get the coach first
-    const { data: coach, error: coachError } = await supabase
-      .from('team_table')
-      .select('*')
-      .eq('UserId', coachIdInt)
-      .eq('Status', 'Active')
-      .maybeSingle();
+    const [coaches] = await pool.query(
+      'SELECT * FROM team_table WHERE UserId = ? AND Status = ?',
+      [coachIdInt, 'Active']
+    );
     
-    if (coachError || !coach) {
-      console.error('Coach not found:', coachError);
+    const coach = coaches && coaches.length > 0 ? coaches[0] : null;
+    
+    if (!coach) {
+      console.error('Coach not found');
       return res.status(404).json({ success: false, message: 'Coach not found' });
     }
     
     // Step 2: Get all active team members recursively using iterative approach
-    // (Supabase REST API doesn't support recursive CTEs, so we do it in JS)
+    // (Database connection doesn't support recursive CTEs, so we do it in JS)
     const allMembers = [];
     const seenUserIds = new Set();
     
@@ -102,16 +102,11 @@ export default async function handler(req, res) {
     const maxLevel = 10;
     
     while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-      const { data: levelMembers, error: levelError } = await supabase
-        .from('team_table')
-        .select('*')
-        .in('UplineCoachId', currentLevelCoachIds)
-        .eq('Status', 'Active');
-      
-      if (levelError) {
-        console.error('Error fetching level members:', levelError);
-        break;
-      }
+      const placeholders = currentLevelCoachIds.map(() => '?').join(',');
+      const [levelMembers] = await pool.query(
+        `SELECT * FROM team_table WHERE UplineCoachId IN (${placeholders}) AND Status = ?`,
+        [...currentLevelCoachIds, 'Active']
+      );
       
       if (!levelMembers || levelMembers.length === 0) break;
       
@@ -143,14 +138,9 @@ export default async function handler(req, res) {
     }
     
     // Step 3: Get time windows
-    const { data: timeWindows, error: twError } = await supabase
-      .from('activity_time_windows_table')
-      .select('*')
-      .is('EffectiveToDate', null);
-    
-    if (twError) {
-      console.error('Error fetching time windows:', twError);
-    }
+    const [timeWindows] = await pool.query(
+      'SELECT * FROM activity_time_windows_table WHERE EffectiveToDate IS NULL'
+    );
     
     // Create time window map
     const timeWindowMap = {};
@@ -174,33 +164,35 @@ export default async function handler(req, res) {
     const allUserIds = allMembers.map(m => m.UserId);
     
     // Fetch all required data in bulk for efficiency
+    const allUserIdsPlaceholders = allUserIds.map(() => '?').join(',');
+    
     const [weightData, educationData, foodData] = await Promise.all([
       // Weight records
-      supabase
-        .from('weight_records_table')
-        .select('UserId, CreatedAt')
-        .in('UserId', allUserIds)
-        .gte('CreatedAt', startDateStr)
-        .lte('CreatedAt', endDateStr + 'T23:59:59')
-        .eq('IsDeleted', 0),
+      pool.query(
+        `SELECT UserId, CreatedAt FROM weight_records_table 
+         WHERE UserId IN (${allUserIdsPlaceholders}) 
+         AND CreatedAt >= ? AND CreatedAt <= ? 
+         AND IsDeleted = 0`,
+        [...allUserIds, startDateStr, endDateStr + 'T23:59:59']
+      ).then(([rows]) => rows),
       
       // Education records
-      supabase
-        .from('education_logs_table')
-        .select('UserId, CreatedAt')
-        .in('UserId', allUserIds)
-        .gte('CreatedAt', startDateStr)
-        .lte('CreatedAt', endDateStr + 'T23:59:59')
-        .eq('IsDeleted', 0),
+      pool.query(
+        `SELECT UserId, CreatedAt FROM education_logs_table 
+         WHERE UserId IN (${allUserIdsPlaceholders}) 
+         AND CreatedAt >= ? AND CreatedAt <= ? 
+         AND IsDeleted = 0`,
+        [...allUserIds, startDateStr, endDateStr + 'T23:59:59']
+      ).then(([rows]) => rows),
       
       // Food/nutrition records
-      supabase
-        .from('food_nutrition_data_table')
-        .select('UserID, CreatedAt')
-        .in('UserID', allUserIds.map(String))
-        .gte('CreatedAt', startDateStr)
-        .lte('CreatedAt', endDateStr + 'T23:59:59')
-        .eq('IsDeleted', 0)
+      pool.query(
+        `SELECT UserID, CreatedAt FROM food_nutrition_data_table 
+         WHERE UserID IN (${allUserIdsPlaceholders}) 
+         AND CreatedAt >= ? AND CreatedAt <= ? 
+         AND IsDeleted = 0`,
+        [...allUserIds.map(String), startDateStr, endDateStr + 'T23:59:59']
+      ).then(([rows]) => rows)
     ]);
     
     // Process discipline data for each member
@@ -241,17 +233,17 @@ export default async function handler(req, res) {
       const userId = member.UserId;
       
       // Weight
-      const weightDates = getUniqueDates(weightData.data || [], userId);
+      const weightDates = getUniqueDates(weightData || [], userId);
       const weightWindow = timeWindowMap.weight || { start: '05:00:00', end: '09:00:00' };
       const weightOnTimeDates = getUniqueOnTimeDates(
-        weightData.data || [], userId, weightWindow.start, weightWindow.end
+        weightData || [], userId, weightWindow.start, weightWindow.end
       );
       
       // Education
-      const educationDates = getUniqueDates(educationData.data || [], userId);
+      const educationDates = getUniqueDates(educationData || [], userId);
       const educationWindow = timeWindowMap.education || { start: '05:00:00', end: '23:00:00' };
       const educationOnTimeDates = getUniqueOnTimeDates(
-        educationData.data || [], userId, educationWindow.start, educationWindow.end
+        educationData || [], userId, educationWindow.start, educationWindow.end
       );
       
       // Meals - need to filter by time to determine meal type
@@ -259,7 +251,7 @@ export default async function handler(req, res) {
         const dates = new Set();
         const onTimeDates = new Set();
         
-        (foodData.data || []).forEach(r => {
+        (foodData || []).forEach(r => {
           if (r.UserID == userId) {
             const date = new Date(r.CreatedAt);
             const time = date.toTimeString().slice(0, 8);
