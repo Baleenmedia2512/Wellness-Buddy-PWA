@@ -79,7 +79,7 @@ res.status(200).json({
           "UserCorrected": userCorrected,
           "TimesCorrected": 1,
           "CreatedAt": currentTime,
-          "UpdatedAt": currentTime
+          "LastCorrected": currentTime
         })
         .select()
         .single();
