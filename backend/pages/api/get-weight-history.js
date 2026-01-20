@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -11,62 +11,43 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { userId, includeImage = 'true' } =
     req.method === 'POST' ? req.body : req.query;
 
   if (!userId) {
-    return res.status(400).json({
+    res.status(400).json({
       message: 'Missing required field: userId',
     });
+    return;
   }
 
   try {
-    // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    // ✅ Get ALL weight history for user (no pagination - load everything)
-    // Optionally exclude WeightImageBase64 for faster queries (duplicate check doesn't need images)
+    // Get weight history using Supabase
     const shouldIncludeImage = includeImage === 'true' || includeImage === true;
-    const historyQuery = shouldIncludeImage 
-      ? `
-        SELECT 
-          ID,
-          UserId, 
-          Weight, 
-          Bmi,
-          BodyFat,
-          MuscleMass,
-          Bmr,
-          WeightImageBase64,
-          CreatedAt 
-        FROM weight_records_table
-        WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-        ORDER BY CreatedAt DESC
-      `
-      : `
-        SELECT 
-          ID,
-          UserId, 
-          Weight, 
-          Bmi,
-          BodyFat,
-          MuscleMass,
-          Bmr,
-          CreatedAt 
-        FROM weight_records_table
-        WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-        ORDER BY CreatedAt DESC
-      `;
+    const selectFields = shouldIncludeImage
+      ? 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt'
+      : 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt';
 
-    const [rows] = await pool.execute(historyQuery, [userId]);
+    const { data: rows, error } = await supabase
+      .from('weight_records_table')
+      .select(selectFields)
+      .eq('UserId', userId)
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
+
+    if (error) throw error;
 
     // ✅ Format CreatedAt as local time string (without UTC conversion)
     // MySQL stores local time, but mysql2 returns Date objects which get serialized as UTC

@@ -58,7 +58,7 @@ export function calculateExpectedPosts(startDate, endDate) {
 
 /**
  * Format date for MySQL query (YYYY-MM-DD)
- * Uses local timezone to prevent date shifting
+ * Uses local timezone to avoid UTC conversion issues
  */
 export function formatDateForMySQL(date) {
   const year = date.getFullYear();

@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -7,51 +7,65 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { id, userId } = req.body;
 
   if (!id) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Education log ID is required'
     });
+    return;
   }
 
   
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Optional safety check: ensure row belongs to user
     if (userId) {
-      const [ownerCheck] = await pool.execute(
-        'SELECT Id FROM education_logs_table WHERE Id = ? AND UserId = ? LIMIT 1',
-        [id, userId]
-      );
-      if (!ownerCheck.length) {
-return res.status(403).json({
+      const { data: ownerCheck, error: ownerError } = await supabase
+        .from('education_logs_table')
+        .select('"Id"')
+        .eq('"Id"', id)
+        .eq('"UserId"', userId)
+        .limit(1);
+
+      if (ownerError) throw ownerError;
+
+      if (!ownerCheck || ownerCheck.length === 0) {
+        res.status(403).json({
           success: false,
           message: 'You do not have permission to restore this item.'
         });
+        return;
       }
     }
 
     // Restore: set IsDeleted back to 0
-    const [result] = await pool.execute(
-      'UPDATE education_logs_table SET IsDeleted = 0 WHERE Id = ?',
-      [id]
-    );
+    const currentTime = getISTTimestamp();
+    const { data, error } = await supabase
+      .from('education_logs_table')
+      .update({ "IsDeleted": 0, "UpdatedAt": currentTime })
+      .eq('"Id"', id)
+      .select();
+
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
-      return res.status(404).json({
+    if (!data || data.length === 0) {
+      res.status(404).json({
         success: false,
         message: 'Education log not found'
       });
+      return;
     }
 
     // Clear cache if userId provided
@@ -60,17 +74,19 @@ if (result.affectedRows === 0) {
       console.log('🗑️ [undo-deleted-education-log] Cache cleared for user:', userId);
     }
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Education log restored successfully',
       restoredId: id
     });
+    return;
   } catch (error) {
     console.error('❌ Database undo error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to restore education log',
       error: error.message
     });
+    return;
   }
 }

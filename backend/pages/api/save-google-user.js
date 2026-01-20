@@ -1,15 +1,17 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { email, displayName } = req.body;
@@ -18,23 +20,27 @@ export default async function handler(req, res) {
 
   if (!email || !displayName) {
     console.log('❌ [save-google-user] Missing required fields');
-    return res.status(400).json({ message: 'Email and Display Name are required' });
+    res.status(400).json({ message: 'Email and Display Name are required' });
+    return;
   }
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    const [existingRows] = await pool.execute(
-      'SELECT UserId, UserName, Email, Status FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    const { data: existingRows, error: existingError } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "Status"')
+      .eq('"Email"', email)
+      .limit(1);
+
+    if (existingError) throw existingError;
 
     console.log('🔍 [save-google-user] Checked for existing user:', { 
       email, 
-      found: existingRows.length > 0 
+      found: existingRows && existingRows.length > 0 
     });
 
-    if (!existingRows.length) {
+    if (!existingRows || existingRows.length === 0) {
       console.log('➕ [save-google-user] Creating new user in database');
       
       // Generate a unique username by checking if it exists
@@ -44,12 +50,15 @@ export default async function handler(req, res) {
       const maxAttempts = 10;
       
       while (usernameExists && attempts < maxAttempts) {
-        const [usernameRows] = await pool.execute(
-          'SELECT UserId FROM team_table WHERE UserName = ? LIMIT 1',
-          [username]
-        );
+        const { data: usernameRows, error: usernameError } = await supabase
+          .from('team_table')
+          .select('"UserId"')
+          .eq('"UserName"', username)
+          .limit(1);
+
+        if (usernameError) throw usernameError;
         
-        if (usernameRows.length === 0) {
+        if (!usernameRows || usernameRows.length === 0) {
           usernameExists = false;
         } else {
           // Append timestamp or increment to make it unique
@@ -66,60 +75,82 @@ export default async function handler(req, res) {
       }
       
       try {
-        await pool.execute(
-          `INSERT INTO team_table
-              (EntryDateTime, EntryUser, UserName, Password, \`TargetWeight(in_kg)\`, CoachName, CoCoachName, Status, CoachApproved, Email)
-          VALUES (NOW(), 'Google Sign-In', ?, 'User@123#', 0, '', '', 'Active', 0, ?)`,
-          [username, email]
-        );
+        const currentTime = getISTTimestamp();
+        const { data: insertData, error: insertErr } = await supabase
+          .from('team_table')
+          .insert({
+            EntryDateTime: currentTime,
+            EntryUser: 'Google Sign-In',
+            UserName: username,
+            Password: 'User@123#',
+            'TargetWeight(in_kg)': 0,
+            CoachName: '',
+            CoCoachName: '',
+            Status: 'Active',
+            CoachApproved: 0,
+            Email: email
+          })
+          .select()
+          .single();
+
+        if (insertErr) {
+          // Handle duplicate entry error gracefully
+          if (insertErr.code === '23505') { // PostgreSQL unique violation
+            console.log('⚠️ [save-google-user] Duplicate entry detected, checking if user exists by email again...');
+            
+            // Check one more time if user was created by another concurrent request
+            const { data: recheckRows, error: recheckError } = await supabase
+              .from('team_table')
+              .select('"UserId", "UserName", "Email", "Status"')
+              .eq('"Email"', email)
+              .limit(1);
+
+            if (recheckError) throw recheckError;
+
+            if (recheckRows && recheckRows.length > 0) {
+              console.log('ℹ️ [save-google-user] User was created by concurrent request:', email);
+              res.json({ 
+                success: true, 
+                message: 'User already exists',
+                isNewUser: false,
+                user: {
+                  userId: recheckRows[0].UserId,
+                  userName: recheckRows[0].UserName,
+                  email: recheckRows[0].Email,
+                  status: recheckRows[0].Status
+                }
+              });
+              return;
+            } else {
+              // Still can't create user - return error
+              console.error('❌ [save-google-user] Failed to create user due to duplicate:', insertErr);
+              res.status(500).json({ 
+                success: false,
+                message: 'Failed to create user account. Please try again.',
+                error: 'Duplicate entry conflict'
+              });
+              return;
+            }
+          } else {
+            // Other insert error
+            throw insertErr;
+          }
+        }
         
         console.log('✅ [save-google-user] New user created successfully:', { email, username });
-res.json({ 
+        res.json({ 
           success: true, 
           message: 'User created successfully',
           isNewUser: true,
           username: username
         });
+        return;
       } catch (insertErr) {
-        // Handle duplicate entry error gracefully
-        if (insertErr.code === 'ER_DUP_ENTRY') {
-          console.log('⚠️ [save-google-user] Duplicate entry detected, checking if user exists by email again...');
-          
-          // Check one more time if user was created by another concurrent request
-          const [recheckRows] = await pool.execute(
-            'SELECT UserId, UserName, Email, Status FROM team_table WHERE Email = ? LIMIT 1',
-            [email]
-          );
-if (recheckRows.length > 0) {
-            console.log('ℹ️ [save-google-user] User was created by concurrent request:', email);
-            res.json({ 
-              success: true, 
-              message: 'User already exists',
-              isNewUser: false,
-              user: {
-                userId: recheckRows[0].UserId,
-                userName: recheckRows[0].UserName,
-                email: recheckRows[0].Email,
-                status: recheckRows[0].Status
-              }
-            });
-          } else {
-            // Still can't create user - return error
-            console.error('❌ [save-google-user] Failed to create user due to duplicate:', insertErr);
-            res.status(500).json({ 
-              success: false,
-              message: 'Failed to create user account. Please try again.',
-              error: 'Duplicate entry conflict'
-            });
-          }
-        } else {
-          // Other insert error
-          throw insertErr;
-        }
+        throw insertErr;
       }
     } else {
       console.log('ℹ️ [save-google-user] User already exists:', email);
-res.json({ 
+      res.json({ 
         success: true, 
         message: 'User already exists',
         isNewUser: false,
@@ -130,6 +161,7 @@ res.json({
           status: existingRows[0].Status
         }
       });
+      return;
     }
   } catch (err) {
     console.error('❌ [save-google-user] Error occurred:', err);
@@ -143,5 +175,6 @@ res.json({
       message: 'Internal server error',
       error: err.message 
     });
+    return;
   }
 }

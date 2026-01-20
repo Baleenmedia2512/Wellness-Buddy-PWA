@@ -16,12 +16,15 @@ import {
   ArrowUp,
   ArrowDown,
   ChevronDown,
-  Check
+  Check,
+  Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { App as CapacitorApp } from '@capacitor/app';
 
 // --- Dynamic Demo Data Generator ---
+// COMMENTED OUT - Demo data disabled
+/*
 const generateDemoData = () => {
   const today = new Date();
   
@@ -190,11 +193,13 @@ const generateDemoData = () => {
     userSpending
   };
 };
+*/
 
 // Generate demo data on load
-const DEMO_DATA = generateDemoData();
+// const DEMO_DATA = generateDemoData();
 
 // Filter demo data based on time range
+/*
 const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndDate = null) => {
   const now = new Date();
   let startDateObj;
@@ -291,6 +296,7 @@ const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndD
     userSpending: filteredUserSpending
   };
 };
+*/
 
 // --- Components ---
 
@@ -465,13 +471,12 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
   );
 };
 
-
-
 const AdminDashboard = ({ user, onClose }) => {
   const [timeRange, setTimeRange] = useState('month');
   const [tokenData, setTokenData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showDemoData, setShowDemoData] = useState(false);
+  const [apiError, setApiError] = useState(null); // Track API errors for display
+  // const [showDemoData, setShowDemoData] = useState(false); // COMMENTED OUT - Demo disabled
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -483,8 +488,16 @@ const AdminDashboard = ({ user, onClose }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
+  const [showEditPopup, setShowEditPopup] = useState(false);
+  const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
+  const [tokenCostInputs, setTokenCostInputs] = useState({ inputCost: '', outputCost: '' });
+  const [originalTokenCosts, setOriginalTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
+  const [savingCorrection, setSavingCorrection] = useState(false);
+  const [showSuccessMessage, setShowSuccessMessage] = useState(false);
 
   const fetchTokenData = async () => {
+    // DEMO DATA DISABLED
+    /*
     if (showDemoData) {
       // Add delay for demo mode to test loading skeleton
       setLoading(true);
@@ -498,31 +511,63 @@ const AdminDashboard = ({ user, onClose }) => {
       setLastUpdated(new Date());
       return;
     }
+    */
 
     try {
+      setLoading(true);
       setRefreshing(true);
+      setApiError(null); // Clear previous errors
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      
+      // Format dates in local timezone to prevent date shifting (YYYY-MM-DD)
+      const formatLocalDate = (date) => {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
       
       // Build URL with custom date range if selected
       let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}`;
       
+      // Always send user's local today date to ensure timezone consistency in production
+      const userToday = formatLocalDate(new Date());
+      url += `&userToday=${userToday}`;
+      
       if (timeRange === 'custom' && customStartDate && customEndDate) {
-        url += `&startDate=${customStartDate.toISOString()}&endDate=${customEndDate.toISOString()}`;
+        url += `&startDate=${formatLocalDate(customStartDate)}&endDate=${formatLocalDate(customEndDate)}`;
       } else {
         url += `&timeRange=${timeRange}`;
       }
       
-      const response = await fetch(url);
+      console.log('[AdminDashboard] Fetching token data from:', url);
       
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          setTokenData(data.data);
-          setLastUpdated(new Date());
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
         }
+      });
+      
+      const data = await response.json();
+      console.log('[AdminDashboard] API Response:', { status: response.status, data });
+      
+      if (response.ok && data.success) {
+        setTokenData(data.data);
+        setLastUpdated(new Date());
+        setApiError(null);
+      } else {
+        // Log the error for debugging - API returned an error
+        console.error('[AdminDashboard] API Error:', data.message || 'Unknown error');
+        setApiError(data.message || `API Error: ${response.status}`);
+        // Still show empty data to indicate something is wrong
+        setTokenData(null);
       }
     } catch (error) {
-      console.error('Error fetching token data:', error);
+      console.error('[AdminDashboard] Network/Fetch error:', error);
+      setApiError(`Network error: ${error.message}`);
+      setTokenData(null);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -532,7 +577,151 @@ const AdminDashboard = ({ user, onClose }) => {
   useEffect(() => {
     fetchTokenData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timeRange, showDemoData, customStartDate, customEndDate]);
+  }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
+
+  // Track if popup was just opened to load initial values
+  const [popupJustOpened, setPopupJustOpened] = useState(false);
+
+  // Fetch token costs when edit popup opens
+  // Logic: Show edited values UNLESS new usage was added after the last edit
+  useEffect(() => {
+    const fetchTokenCosts = async () => {
+      if (showEditPopup && !popupJustOpened) {
+        setPopupJustOpened(true);
+        
+        try {
+          const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+          
+          // Fetch correction data (includes latest usage timestamp for comparison)
+          const correctionResponse = await fetch(
+            `${apiBaseUrl}/api/get-token-correction`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }
+          );
+          
+          if (correctionResponse.ok) {
+            const correctionData = await correctionResponse.json();
+            
+            // Check if we have a saved correction AND it's more recent than latest usage
+            if (correctionData.success && correctionData.data) {
+              const correctionTimestamp = new Date(correctionData.data.correctionTimestamp);
+              const latestUsageTimestamp = correctionData.latestUsageTimestamp 
+                ? new Date(correctionData.latestUsageTimestamp) 
+                : null;
+              
+              // If correction is MORE RECENT than latest usage, show edited values
+              // If new usage was added after correction, show calculated totals instead
+              if (!latestUsageTimestamp || correctionTimestamp >= latestUsageTimestamp) {
+                const costs = {
+                  inputCost: parseFloat(correctionData.data.inputCost || 0),
+                  outputCost: parseFloat(correctionData.data.outputCost || 0)
+                };
+                setTokenCosts(costs);
+                setTokenCostInputs({
+                  inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                  outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+                });
+                setOriginalTokenCosts(costs);
+                console.log('📖 Using saved correction (no new usage since last edit)');
+                return; // Exit early, we have saved values that are still current
+              } else {
+                console.log('📖 New usage detected after last correction, fetching fresh totals');
+              }
+            }
+          }
+          
+          // No valid saved correction OR new usage was added - fetch calculated totals
+          const response = await fetch(
+            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}&timeRange=all`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }
+          );
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.data?.summary) {
+              const summaryData = data.data.summary;
+              const costs = {
+                inputCost: parseFloat(summaryData.totalInputCost || 0),
+                outputCost: parseFloat(summaryData.totalOutputCost || 0)
+              };
+              setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+              });
+              setOriginalTokenCosts(costs);
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching token costs:', error);
+        }
+      } else if (!showEditPopup && popupJustOpened) {
+        // Reset when popup closes
+        setPopupJustOpened(false);
+        const defaultCosts = { inputCost: 0, outputCost: 0 };
+        setTokenCosts(defaultCosts);
+        setTokenCostInputs({ inputCost: '0', outputCost: '0' });
+        setOriginalTokenCosts(defaultCosts);
+      }
+    };
+
+    fetchTokenCosts();
+  }, [showEditPopup, popupJustOpened, user?.email]);
+
+  // Save token correction
+  const handleSaveTokenCorrection = async () => {
+    setSavingCorrection(true);
+    try {
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
+        method: 'POST',
+        cache: 'no-store',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        },
+        body: JSON.stringify({
+          email: user?.email,
+          originalInputCost: originalTokenCosts.inputCost,
+          originalOutputCost: originalTokenCosts.outputCost,
+          correctedInputCost: tokenCosts.inputCost,
+          correctedOutputCost: tokenCosts.outputCost
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success) {
+          console.log('✅ Token correction saved successfully:', data.data);
+          setShowSuccessMessage(true);
+          setTimeout(() => {
+            setShowSuccessMessage(false);
+            setShowEditPopup(false);
+          }, 200);
+        }
+      } else {
+        console.error('Failed to save token correction');
+        // Silently fail - no alert
+      }
+    } catch (error) {
+      console.error('Error saving token correction:', error);
+      // Silently fail - no alert
+    } finally {
+      setSavingCorrection(false);
+    }
+  };
 
   // Android back button handler
   useEffect(() => {
@@ -572,7 +761,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return 'Custom Range';
   };
 
-  const formatCurrency = (val) => `₹${Number(val).toFixed(2)}`;
+  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(4))}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -657,40 +846,31 @@ const AdminDashboard = ({ user, onClose }) => {
             <p className="text-xs text-gray-500 mt-0.5">Track token usage and spending</p>
           </div>
           
-          <button 
-            onClick={fetchTokenData}
-            className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
-          >
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            <button 
+              onClick={() => setShowEditPopup(true)}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+            >
+              <Edit3 className="w-5 h-5" />
+            </button>
+            {showSuccessMessage && (
+              <div className="text-green-600 text-sm mr-2">Saved!</div>
+            )}
+            <button 
+              onClick={fetchTokenData}
+              className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
+            >
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
         </div>
       </div>
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
-        
-        {/* Demo Toggle */}
-        <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-gray-100 shadow-sm">
-          <div className="flex items-center space-x-2 text-sm text-gray-600">
-            <Database className="w-4 h-4" />
-            <span>Demo Data</span>
-          </div>
-          <button
-            onClick={() => setShowDemoData(!showDemoData)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              showDemoData ? 'bg-green-500' : 'bg-gray-200'
-            }`}
-          >
-            <span
-              className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                showDemoData ? 'translate-x-6' : 'translate-x-1'
-              }`}
-            />
-          </button>
-        </div>
 
         {/* Date Range Filter */}
-        <div className="flex space-x-2 overflow-x-auto pb-1 scrollbar-hide">
-          {['today', 'week', 'month', 'all'].map((range) => (
+        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          {['today', 'yesterday', 'week', 'month', 'all'].map((range) => (
             <button
               key={range}
               onClick={() => {
@@ -699,7 +879,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 setCustomEndDate(null);
                 setShowDatePicker(false);
               }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
+              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
                 timeRange === range
                   ? 'bg-green-600 text-white shadow-md shadow-green-200'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -710,7 +890,7 @@ const AdminDashboard = ({ user, onClose }) => {
           ))}
           <button
             onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
+            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
               timeRange === 'custom'
                 ? 'bg-green-600 text-white shadow-md shadow-green-200'
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
@@ -736,16 +916,29 @@ const AdminDashboard = ({ user, onClose }) => {
         {loading ? (
           <>
             {/* Skeleton for Stats Box */}
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-pulse">
-              <div className="h-4 bg-gray-200 rounded w-32 mb-4"></div>
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <div className="h-10 bg-gray-200 rounded w-24 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-28"></div>
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
+              <div className="h-4 bg-gray-200 rounded w-32 mb-4 animate-pulse"></div>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
+                  </div>
                 </div>
-                <div>
-                  <div className="h-10 bg-gray-200 rounded w-24 mb-2"></div>
-                  <div className="h-4 bg-gray-200 rounded w-20"></div>
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-16 animate-pulse"></div>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="h-6 sm:h-8 bg-gray-200 rounded w-16 sm:w-20 mx-auto mb-1 animate-pulse"></div>
+                  <div className="flex items-center justify-center space-x-1">
+                    <div className="w-3 h-3 sm:w-4 sm:h-4 bg-gray-200 rounded animate-pulse"></div>
+                    <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -754,32 +947,50 @@ const AdminDashboard = ({ user, onClose }) => {
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="h-4 bg-gray-200 rounded w-32 animate-pulse"></div>
-                  <div className="h-4 bg-gray-200 rounded w-16 animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-28 animate-pulse"></div>
+                  <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
                 </div>
-                <div className="h-10 bg-gray-100 rounded animate-pulse"></div>
+                <div className="h-10 bg-gray-100 rounded-lg animate-pulse"></div>
               </div>
-              <div className="p-6 space-y-4">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div key={i} className="flex items-center justify-between animate-pulse">
+              <div className="divide-y divide-gray-50">
+                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                  <div key={i} className="px-6 py-4 flex items-center justify-between">
                     <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-32 mb-2"></div>
-                      <div className="h-3 bg-gray-100 rounded w-48"></div>
+                      <div className="h-4 bg-gray-200 rounded w-28 mb-2 animate-pulse"></div>
+                      <div className="h-3 bg-gray-100 rounded w-40 animate-pulse"></div>
                     </div>
-                    <div className="flex gap-8">
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
-                      <div className="h-4 bg-gray-200 rounded w-12"></div>
-                      <div className="h-4 bg-gray-200 rounded w-16"></div>
+                    <div className="flex items-center gap-4">
+                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                      <div className="h-4 bg-gray-200 rounded w-10 animate-pulse"></div>
                     </div>
                   </div>
                 ))}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
+                <div className="h-3 bg-gray-100 rounded w-20 animate-pulse"></div>
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                  <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                </div>
               </div>
             </div>
           </>
         ) : (
           <>
+            {/* Error Alert */}
+            {apiError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4"
+              >
+                <p className="text-red-700 font-medium text-sm">Failed to load data</p>
+                <p className="text-red-600 text-xs mt-1">{apiError}</p>
+              </motion.div>
+            )}
+
             {/* Stats Box */}
             <motion.div 
               initial={{ opacity: 0, y: 20 }}
@@ -787,19 +998,26 @@ const AdminDashboard = ({ user, onClose }) => {
               className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
             >
               <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">Usage Summary</h2>
-              <div className="grid grid-cols-2 gap-8">
-                <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatNumber(summary.requestCount || 0)}</p>
-                  <div className="flex items-center space-x-2">
-                    <Zap className="w-4 h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400">Total Requests</span>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Total Cost</span>
                   </div>
                 </div>
-                <div>
-                  <p className="text-3xl font-bold text-gray-800 mb-2">{formatCurrency(summary.totalCost || 0)}</p>
-                  <div className="flex items-center space-x-2">
-                    <IndianRupee className="w-4 h-4 text-green-500" />
-                    <span className="text-xs text-gray-400">Total Cost</span>
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalInputCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Input Cost</span>
+                  </div>
+                </div>
+                <div className="text-center">
+                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">{formatCurrency(summary.totalOutputCost || 0)}</p>
+                  <div className="flex items-center justify-center space-x-1">
+                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
+                    <span className="text-xs text-gray-400 whitespace-nowrap">Output Cost</span>
                   </div>
                 </div>
               </div>
@@ -854,11 +1072,29 @@ const AdminDashboard = ({ user, onClose }) => {
                       </div>
                     </th>
                     <th 
+                      onClick={() => handleSort('totalCost')}
+                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
+                    >
+                      <div className="flex items-center justify-end space-x-1">
+                        <span>Cost</span>
+                        <SortIcon field="totalCost" />
+                      </div>
+                    </th>
+                    <th 
+                      onClick={() => handleSort('totalTokens')}
+                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
+                    >
+                      <div className="flex items-center justify-end space-x-1">
+                        <span>Total Token</span>
+                        <SortIcon field="totalTokens" />
+                      </div>
+                    </th>
+                    <th 
                       onClick={() => handleSort('inputTokens')}
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
                       <div className="flex items-center justify-end space-x-1">
-                        <span>IN Tokens</span>
+                        <span>Input Token</span>
                         <SortIcon field="inputTokens" />
                       </div>
                     </th>
@@ -867,35 +1103,8 @@ const AdminDashboard = ({ user, onClose }) => {
                       className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                     >
                       <div className="flex items-center justify-end space-x-1">
-                        <span>OUT Tokens</span>
+                        <span>Output Token</span>
                         <SortIcon field="outputTokens" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('totalTokens')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Total Tokens</span>
-                        <SortIcon field="totalTokens" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('requestCount')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Requests</span>
-                        <SortIcon field="requestCount" />
-                      </div>
-                    </th>
-                    <th 
-                      onClick={() => handleSort('totalCost')}
-                      className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                    >
-                      <div className="flex items-center justify-end space-x-1">
-                        <span>Cost</span>
-                        <SortIcon field="totalCost" />
                       </div>
                     </th>
                   </tr>
@@ -910,27 +1119,33 @@ const AdminDashboard = ({ user, onClose }) => {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.inputTokens || 0)}</p>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.outputTokens || 0)}</p>
+                        <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
                         <p className="text-sm font-medium text-gray-800">{formatNumber(user.totalTokens)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.requestCount)}</p>
+                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.inputTokens || 0)}</p>
                       </td>
                       <td className="px-6 py-4 text-right">
-                        <p className="text-sm font-bold text-green-600">{formatCurrency(user.totalCost)}</p>
+                        <p className="text-sm font-medium text-gray-800">{formatNumber(user.outputTokens || 0)}</p>
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <div className="p-6 text-center text-gray-400 text-sm">
-                {searchQuery ? `No users found matching "${searchQuery}"` : 'No user spending data'}
+              <div className="p-6 text-center text-sm">
+                {apiError ? (
+                  <div className="text-red-500">
+                    <p className="font-medium">Error loading data</p>
+                    <p className="text-xs mt-1">{apiError}</p>
+                  </div>
+                ) : searchQuery ? (
+                  <span className="text-gray-400">{`No users found matching "${searchQuery}"`}</span>
+                ) : (
+                  <span className="text-gray-400">No user spending data</span>
+                )}
               </div>
             )}
           </div>
@@ -1066,6 +1281,120 @@ const AdminDashboard = ({ user, onClose }) => {
         )}
 
       </div>
+
+      {/* Edit Token Cost Popup */}
+      <AnimatePresence>
+        {showEditPopup && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/50 flex items-center justify-center p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
+                <button
+                  onClick={() => setShowEditPopup(false)}
+                  className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X className="w-5 h-5 text-gray-500" />
+                </button>
+              </div>
+
+              {/* Success Message */}
+              <AnimatePresence>
+                {showSuccessMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    className="mb-4 p-4 bg-green-500 text-white rounded-lg flex items-center gap-3"
+                  >
+                    <Check className="w-5 h-5" />
+                    <span className="font-medium">Token costs saved successfully!</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Total Input Cost (INR)
+                  </label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="number"
+                      value={tokenCostInputs.inputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, inputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, inputCost: parseFloat(val) || 0 }));
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      placeholder="0.001"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Total Output Cost (INR)
+                  </label>
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+                    <input
+                      type="number"
+                      value={tokenCostInputs.outputCost}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setTokenCostInputs(prev => ({ ...prev, outputCost: val }));
+                        setTokenCosts(prev => ({ ...prev, outputCost: parseFloat(val) || 0 }));
+                      }}
+                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      placeholder="0.004"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {!savingCorrection ? (
+                <div className="flex gap-3 mt-6">
+                  <button
+                    onClick={() => setShowEditPopup(false)}
+                    className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                  >
+                    Close
+                  </button>
+                  <button
+                    onClick={handleSaveTokenCorrection}
+                    className="flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium bg-green-600 hover:bg-green-700"
+                  >
+                    Save
+                  </button>
+                </div>
+              ) : (
+                <div className="flex justify-center mt-6">
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <span>Saving...</span>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

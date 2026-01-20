@@ -7,35 +7,29 @@
  * Also creates entry in coach_teams_table if user is a coach (Role=admin)
  */
 
-import { getPool, getConnection } from '../../../utils/dbPool.js';
-
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'baleed5_wellness'
-};
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+    res.status(200).end();
+    return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({
+    res.status(405).json({
       success: false,
       error: 'Method not allowed'
     });
+    return;
   }
 
   try {
@@ -43,175 +37,168 @@ export default async function handler(req, res) {
     const { email, teamId } = req.body;
 
     if (!email) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Email is required'
       });
+      return;
     }
 
     // Validate Team ID format (10 alphanumeric characters)
     if (!teamId || teamId.length !== 10) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Team ID must be exactly 10 characters'
       });
+      return;
     }
 
     const teamIdPattern = /^[A-Z0-9]{10}$/;
     if (!teamIdPattern.test(teamId)) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid Team ID format. Use only uppercase letters and numbers'
       });
+      return;
     }
 
-    // Connect to database
-    const pool = getPool();
-    const connection = await pool.getConnection();
+    // Connect to Supabase
+    const supabase = getSupabaseClient();
 
-    try {
-      await connection.beginTransaction();
+    // Check if user exists and get their current TeamId and Role
+    const { data: userRows, error: userError } = await supabase
+      .from('team_table')
+      .select('UserId, TeamId, Role')
+      .eq('Email', email);
 
-      // Check if user already has a Team ID
-      const [userRows] = await pool.execute(
-        'SELECT UserId, TeamId, Role FROM team_table WHERE Email = ?',
-        [email]
-      );
+    if (userError) throw userError;
 
-      if (userRows.length === 0) {
-        await connection.rollback();
-        return res.status(404).json({
-          success: false,
-          error: 'User not found'
-        });
-      }
+    if (!userRows || userRows.length === 0) {
+      res.status(404).json({
+        success: false,
+        error: 'User not found'
+      });
+      return;
+    }
 
-      const user = userRows[0];
-      const currentUserId = user.UserId;
+    const user = userRows[0];
+    const currentUserId = user.UserId;
 
-      // If user already has this same TeamId, just proceed (they're continuing setup)
-      if (user.TeamId && user.TeamId === teamId) {
-        await connection.commit();
-        return res.status(200).json({
-          success: true,
-          message: 'Team ID already assigned to you',
-          teamId: teamId,
-          alreadyOwned: true,
-          nextStep: 'search-coach'
-        });
-      }
-
-      // If user has a different TeamId, reject
-      if (user.TeamId && user.TeamId !== teamId) {
-        await connection.rollback();
-        return res.status(400).json({
-          success: false,
-          error: 'You already have a different Team ID',
-          currentTeamId: user.TeamId
-        });
-      }
-
-      // Check Team ID availability in coach_teams_table (both active and inactive)
-      const [allCoachTeams] = await pool.execute(
-        'SELECT CoachId, CoCoachId, Status FROM coach_teams_table WHERE TeamId = ?',
-        [teamId]
-      );
-
-      // Filter only active teams
-      const activeCoachTeams = allCoachTeams.filter(team => team.Status === 'active');
-
-      // Check if Team ID is used by someone else in team_table
-      const [existingTeamId] = await pool.execute(
-        'SELECT UserId FROM team_table WHERE TeamId = ? AND UserId != ?',
-        [teamId, currentUserId]
-      );
-
-      let isJoiningExistingTeam = false;
-      let isReactivatingTeam = false;
-
-      if (existingTeamId.length > 0) {
-        // TeamId exists in team_table - check coach_teams_table
-        if (activeCoachTeams.length > 0) {
-          const team = activeCoachTeams[0];
-          
-          // Check if both slots are filled
-          if (team.CoachId && team.CoCoachId) {
-            await connection.rollback();
-            return res.status(409).json({
-              success: false,
-              error: 'This Team ID is already taken (2 coaches)',
-              status: 'taken'
-            });
-          }
-          // If only 1 slot filled, allow joining as co-coach
-          isJoiningExistingTeam = true;
-        } else if (allCoachTeams.length > 0 && allCoachTeams[0].Status === 'inactive') {
-          // Team exists but is inactive - allow reactivation
-          isReactivatingTeam = true;
-        } else {
-          // TeamId exists but not in coach_teams_table at all
-          await connection.rollback();
-          return res.status(409).json({
-            success: false,
-            error: 'This Team ID is already taken',
-            status: 'taken-by-other'
-          });
-        }
-      }
-
-      // Update user's Team ID
-      await pool.execute(
-        'UPDATE team_table SET TeamId = ? WHERE UserId = ?',
-        [teamId, currentUserId]
-      );
-
-      await connection.commit();
-      connection.release();
-
-      return res.status(200).json({
+    // If user already has this same TeamId, just proceed (they're continuing setup)
+    if (user.TeamId && user.TeamId === teamId) {
+      res.status(200).json({
         success: true,
-        message: isReactivatingTeam ? 'Team ID claimed (was inactive)' : isJoiningExistingTeam ? 'Team ID claimed (will join as co-coach)' : 'Team ID claimed successfully',
+        message: 'Team ID already assigned to you',
         teamId: teamId,
-        joiningExisting: isJoiningExistingTeam,
-        reactivated: isReactivatingTeam,
+        alreadyOwned: true,
         nextStep: 'search-coach'
       });
+      return;
+    }
 
-    } catch (dbError) {
-      await connection.rollback();
-      connection.release();
-      
-      console.error('Database error in claim-id:', dbError);
-      
-      // Handle duplicate key error
-      if (dbError.code === 'ER_DUP_ENTRY') {
-        // Check which constraint failed
-        if (dbError.message.includes('TeamId')) {
-          return res.status(409).json({
+    // If user has a different TeamId, reject
+    if (user.TeamId && user.TeamId !== teamId) {
+      res.status(400).json({
+        success: false,
+        error: 'You already have a different Team ID',
+        currentTeamId: user.TeamId
+      });
+      return;
+    }
+
+    // Check Team ID availability in coach_teams_table (both active and inactive)
+    const { data: allCoachTeams, error: coachTeamsError } = await supabase
+      .from('coach_teams_table')
+      .select('CoachId, CoCoachId, Status')
+      .eq('TeamId', teamId);
+
+    if (coachTeamsError) throw coachTeamsError;
+
+    // Filter only active teams
+    const activeCoachTeams = allCoachTeams ? allCoachTeams.filter(team => team.Status === 'active') : [];
+
+    // Check if Team ID is used by someone else in team_table
+    const { data: existingTeamId, error: existingError } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .eq('TeamId', teamId)
+      .neq('UserId', currentUserId);
+
+    if (existingError) throw existingError;
+
+    let isJoiningExistingTeam = false;
+    let isReactivatingTeam = false;
+
+    if (existingTeamId && existingTeamId.length > 0) {
+      // TeamId exists in team_table - check coach_teams_table
+      if (activeCoachTeams.length > 0) {
+        const team = activeCoachTeams[0];
+        
+        // Check if both slots are filled
+        if (team.CoachId && team.CoCoachId) {
+          res.status(409).json({
             success: false,
-            error: 'This Team ID was just claimed by another user',
-            status: 'taken-by-other'
+            error: 'This Team ID is already taken (2 coaches)',
+            status: 'taken'
           });
+          return;
         }
-        return res.status(409).json({
+        // If only 1 slot filled, allow joining as co-coach
+        isJoiningExistingTeam = true;
+      } else if (allCoachTeams && allCoachTeams.length > 0 && allCoachTeams[0].Status === 'inactive') {
+        // Team exists but is inactive - allow reactivation
+        isReactivatingTeam = true;
+      } else {
+        // TeamId exists but not in coach_teams_table at all
+        res.status(409).json({
           success: false,
-          error: 'Duplicate entry error',
-          status: 'error'
+          error: 'This Team ID is already taken',
+          status: 'taken-by-other'
         });
+        return;
       }
+    }
 
-      throw dbError;
+    // Update user's Team ID using Supabase
+    const { error: updateError } = await supabase
+      .from('team_table')
+      .update({ TeamId: teamId })
+      .eq('UserId', currentUserId);
 
-    } finally {
-}
+    if (updateError) {
+      console.error('Error updating TeamId:', updateError);
+      
+      // Handle potential race condition where TeamId was just claimed
+      if (updateError.code === '23505') { // Unique constraint violation in PostgreSQL
+        res.status(409).json({
+          success: false,
+          error: 'This Team ID was just claimed by another user',
+          status: 'taken-by-other'
+        });
+        return;
+      }
+      
+      throw updateError;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: isReactivatingTeam ? 'Team ID claimed (was inactive)' : isJoiningExistingTeam ? 'Team ID claimed (will join as co-coach)' : 'Team ID claimed successfully',
+      teamId: teamId,
+      joiningExisting: isJoiningExistingTeam,
+      reactivated: isReactivatingTeam,
+      nextStep: 'search-coach'
+    });
+    return;
 
   } catch (error) {
     console.error('Error claiming Team ID:', error);
     
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       error: 'Failed to claim Team ID',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+    return;
   }
 }

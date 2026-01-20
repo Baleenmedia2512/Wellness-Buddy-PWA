@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -7,53 +7,54 @@ export default async function handler(req, res) {
     // Handle CORS - set headers for all requests
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'PUT') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   try {
     const { id, userId, analysisData, totalCalories, totalProtein, totalCarbs, totalFat, totalFiber } = req.body;
 
     if (!id || !userId) {
-      return res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
+      res.status(400).json({ success: false, message: 'Missing meal ID or userId' });
+      return;
     }
 
     if (!analysisData || !analysisData.foods || !Array.isArray(analysisData.foods)) {
-      return res.status(400).json({ success: false, message: 'Invalid analysis data format' });
+      res.status(400).json({ success: false, message: 'Invalid analysis data format' });
+      return;
     }
 
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Update the meal WITH ownership validation (SECURITY + PERFORMANCE FIX)
-    const query = `
-      UPDATE food_nutrition_data_table
-      SET AnalysisData = ?,
-          TotalCalories = ?,
-          TotalProtein = ?,
-          TotalCarbs = ?,
-          TotalFat = ?,
-          TotalFiber = ?
-      WHERE ID = ? AND UserID = ?
-    `;
+    const currentTime = getISTTimestamp();
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .update({
+        "AnalysisData": JSON.stringify(analysisData),
+        "TotalCalories": totalCalories || 0,
+        "TotalProtein": totalProtein || 0,
+        "TotalCarbs": totalCarbs || 0,
+        "TotalFat": totalFat || 0,
+        "TotalFiber": totalFiber || 0,
+        "UpdatedAt": currentTime
+      })
+      .eq('"ID"', id)
+      .eq('"UserID"', userId)
+      .select();
 
-    const [result] = await pool.execute(query, [
-      JSON.stringify(analysisData),
-      totalCalories || 0,
-      totalProtein || 0,
-      totalCarbs || 0,
-      totalFat || 0,
-      totalFiber || 0,
-      id,
-      userId
-    ]);
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
-      return res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
+    if (!data || data.length === 0) {
+      res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
+      return;
     }
 
     // Clear nutrition cache only (no extra query - PERFORMANCE FIX)

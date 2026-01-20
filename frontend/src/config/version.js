@@ -72,20 +72,30 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.5.0',
+  VERSION: '1.6.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 12,
+  VERSION_CODE: 13,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Speed & Stability Update',
+  RELEASE_NAME: 'Token Pricing & Exchange Rate',
   
   // Build date
-  BUILD_DATE: '2026-01-07',
+  BUILD_DATE: '2026-01-19',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.6.0 (Code 13) - 2026-01-19
+ *   💰 Enhanced Token Pricing Configuration with per-million token pricing model
+ *   💱 Live USD to INR exchange rate integration with auto-refresh capability
+ *   📊 Improved Admin Dashboard with detailed cost breakdown and usage analytics
+ *   🔄 Real-time token usage summary with automatic cost calculations
+ *   ✨ Better UI for pricing configuration with visual hierarchy
+ *   🔧 Added reset to defaults functionality for pricing configuration
+ *   📈 Enhanced exchange rate display with loading states and refresh button
+ *   🎨 Implemented clear logo display and branding improvements
  * 
  * Version 1.5.0 (Code 12) - 2026-01-07
  *   🚀 Enhanced food search with smarter variation generation and faster results

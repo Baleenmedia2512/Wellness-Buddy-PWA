@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -11,13 +11,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   // Allow both GET and POST requests
   if (req.method !== 'POST' && req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Extract email from query params (GET) or body (POST)
@@ -27,7 +29,8 @@ export default async function handler(req, res) {
 
   if (!email) {
     console.log('❌ [lookup-user-id] Email is required');
-    return res.status(400).json({ message: 'Email is required' });
+    res.status(400).json({ message: 'Email is required' });
+    return;
   }
 
   try {
@@ -38,33 +41,42 @@ export default async function handler(req, res) {
     if (cached) {
       console.log('✅ [lookup-user-id] Cache HIT for:', email);
       res.setHeader('X-Cache', 'HIT');
-      return res.status(200).json(cached);
+      res.status(200).json(cached);
+      return;
     }
 
-    // Use connection pool to avoid ETIMEDOUT errors
-    const pool = getPool();
-    console.log('📊 [lookup-user-id] Using connection pool');
+    // Use Supabase REST API (bypasses blocked PostgreSQL ports)
+    console.log('📊 [lookup-user-id] Using Supabase REST API');
 
-    // Try to find user by email first (most reliable)
-    let query = 'SELECT UserId, UserName, Email, Status, Role FROM team_table WHERE Email = ?';
-    let params = [email];
-    
-    console.log('🔎 [lookup-user-id] Executing query:', query, 'with params:', params);
+    const supabase = getSupabaseClient();
 
-    const [rows] = await pool.execute(query, params);
+    // Query user by email (note: lowercase column names in PostgreSQL)
+    console.log('🔎 [lookup-user-id] Querying team_table for email:', email);
 
-    console.log('📋 [lookup-user-id] Query results:', { rowCount: rows.length, rows });
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"UserId", "UserName", "Email", "Status", "Role"')
+      .eq('"Email"', email)
+      .maybeSingle();
 
-    if (rows.length === 0) {
+    if (error) {
+      console.error('❌ [lookup-user-id] Supabase query error:', error);
+      throw new Error(error.message);
+    }
+
+    console.log('📋 [lookup-user-id] Query results:', { found: !!data, data });
+
+    if (!data) {
       console.log('❌ [lookup-user-id] User not found in database');
-      return res.status(404).json({ 
+      res.status(404).json({ 
         success: false, 
         message: 'User not found',
         userNotFound: true
       });
+      return;
     }
 
-    const user = rows[0];
+    const user = data;
     const isActive = user.Status === 'Active';
 
     console.log('✅ [lookup-user-id] User found:', {

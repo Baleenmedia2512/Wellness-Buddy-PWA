@@ -192,3 +192,10 @@ firebase-debug.*.log*
 
 # Local Netlify folder
 .netlify
+# Cypress screenshots and videos
+frontend/cypress/screenshots/
+frontend/cypress/videos/
+
+foodnutritiontable.json
+weightrecoredstable.json
+wellnessvalleyDump20260109.sql

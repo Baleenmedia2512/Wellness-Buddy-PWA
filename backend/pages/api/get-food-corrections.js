@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -10,16 +10,18 @@ export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -27,38 +29,46 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Missing required parameter: userId'
       });
+      return;
     }
 
-    // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Fetch user's corrections ordered by frequency
-    const [corrections] = await pool.execute(
-      `SELECT 
-        Id as id,
-        AiDetected as ai_detected,
-        UserCorrected as user_corrected,
-        TimesCorrected as times_corrected,
-        CreatedAt as created_at,
-        LastCorrected as last_corrected
-       FROM food_corrections_table 
-       WHERE UserId = ? 
-       ORDER BY TimesCorrected DESC, LastCorrected DESC`,
-      [userId]
-    );
-return res.status(200).json({
+    const { data: corrections, error } = await supabase
+      .from('food_corrections_table')
+      .select('"Id", "AiDetected", "UserCorrected", "TimesCorrected", "CreatedAt", "LastCorrected"')
+      .eq('"UserId"', userId)
+      .order('"TimesCorrected"', { ascending: false })
+      .order('"LastCorrected"', { ascending: false });
+
+    if (error) throw error;
+
+    // Transform to match expected format
+    const transformedCorrections = (corrections || []).map(c => ({
+      id: c.Id,
+      ai_detected: c.AiDetected,
+      user_corrected: c.UserCorrected,
+      times_corrected: c.TimesCorrected,
+      created_at: c.CreatedAt,
+      last_corrected: c.LastCorrected
+    }));
+
+    res.status(200).json({
       success: true,
-      data: corrections,
-      count: corrections.length
+      data: transformedCorrections,
+      count: transformedCorrections.length
     });
+    return;
   } catch (error) {
     console.error('Error fetching food corrections:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Failed to fetch corrections',
       details: error.message 
     });
+    return;
   }
 }

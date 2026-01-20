@@ -35,7 +35,7 @@ const config = {
       launchAutoHide: true,
       launchFadeOutDuration: 200,
       backgroundColor: '#ffffff',
-      androidScaleType: 'CENTER_CROP',
+      androidScaleType: 'CENTER',
       showSpinner: false
     },
     

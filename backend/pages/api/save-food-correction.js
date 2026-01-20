@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -8,12 +8,14 @@ export default async function handler(req, res) {
 
   // Handle preflight request
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
   }
 
   try {
@@ -21,34 +23,42 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId || !aiDetected || !userCorrected) {
-      return res.status(400).json({ 
+      res.status(400).json({ 
         error: 'Missing required fields',
         required: ['userId', 'aiDetected', 'userCorrected']
       });
+      return;
     }
 
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Check if the same correction already exists for this user
-    const [existingCorrections] = await pool.execute(
-      `SELECT Id, TimesCorrected FROM food_corrections_table 
-       WHERE UserId = ? AND AiDetected = ? AND UserCorrected = ?`,
-      [userId, aiDetected, userCorrected]
-    );
+    const { data: existingCorrections, error: selectError } = await supabase
+      .from('food_corrections_table')
+      .select('"Id", "TimesCorrected"')
+      .eq('"UserId"', userId)
+      .eq('"AiDetected"', aiDetected)
+      .eq('"UserCorrected"', userCorrected);
 
-    if (existingCorrections.length > 0) {
+    if (selectError) throw selectError;
+
+    if (existingCorrections && existingCorrections.length > 0) {
       // Update existing correction (increment times_corrected)
       const correctionId = existingCorrections[0].Id;
       const newCount = existingCorrections[0].TimesCorrected + 1;
+      const currentTime = getISTTimestamp();
 
-      await pool.execute(
-        `UPDATE food_corrections_table 
-         SET TimesCorrected = ?, LastCorrected = CURRENT_TIMESTAMP 
-         WHERE Id = ?`,
-        [newCount, correctionId]
-      );
-return res.status(200).json({
+      const { error: updateError } = await supabase
+        .from('food_corrections_table')
+        .update({ 
+          "TimesCorrected": newCount,
+          "LastCorrected": currentTime
+        })
+        .eq('"Id"', correctionId);
+
+      if (updateError) throw updateError;
+res.status(200).json({
         success: true,
         message: 'Correction updated',
         data: {
@@ -57,14 +67,27 @@ return res.status(200).json({
           action: 'updated'
         }
       });
+      return;
     } else {
       // Insert new correction
-      const [result] = await pool.execute(
-        `INSERT INTO food_corrections_table (UserId, AiDetected, UserCorrected, TimesCorrected) 
-         VALUES (?, ?, ?, 1)`,
-        [userId, aiDetected, userCorrected]
-      );
-return res.status(201).json({
+      const currentTime = getISTTimestamp();
+      const { data: insertedData, error: insertError } = await supabase
+        .from('food_corrections_table')
+        .insert({
+          "UserId": userId,
+          "AiDetected": aiDetected,
+          "UserCorrected": userCorrected,
+          "TimesCorrected": 1,
+          "CreatedAt": currentTime,
+          "LastCorrected": currentTime
+        })
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      const result = { insertId: insertedData?.Id };
+res.status(201).json({
         success: true,
         message: 'Correction saved',
         data: {
@@ -73,12 +96,14 @@ return res.status(201).json({
           action: 'created'
         }
       });
+      return;
     }
   } catch (error) {
     console.error('Error saving food correction:', error);
-    return res.status(500).json({ 
+    res.status(500).json({ 
       error: 'Failed to save correction',
       details: error.message 
     });
+    return;
   }
 }

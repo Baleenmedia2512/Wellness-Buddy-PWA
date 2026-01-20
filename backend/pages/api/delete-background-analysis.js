@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -7,37 +7,46 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'DELETE') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { id, userId } = req.body;
 
   if (!id || !userId) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false,
       message: 'Analysis ID and userId are required' 
     });
+    return;
   }
 
   try {
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Delete the analysis record WITH ownership validation (SECURITY FIX)
-    const [result] = await pool.execute(
-      'UPDATE food_nutrition_data_table SET IsDeleted = 1 WHERE ID = ? AND UserID = ?',
-      [id, userId]
-    );
+    const currentTime = getISTTimestamp();
+    const { data, error } = await supabase
+      .from('food_nutrition_data_table')
+      .update({ "IsDeleted": 1, "UpdatedAt": currentTime })
+      .eq('"ID"', id)
+      .eq('"UserID"', userId)
+      .select();
+
+    if (error) throw error;
     
-if (result.affectedRows === 0) {
-      return res.status(403).json({
+    if (!data || data.length === 0) {
+      res.status(403).json({
         success: false,
         message: 'Unauthorized or analysis not found'
       });
+      return;
     }
 
     // Clear nutrition cache only (no extra query needed - PERFORMANCE FIX)

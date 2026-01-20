@@ -1,36 +1,49 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   try {
-    // Test database connection using pool
-    const pool = getPool();
+    // Test Supabase connection
+    const supabase = getSupabaseClient();
 
-    // Test a simple query
-    const [rows] = await pool.execute('SELECT 1 as test');
+    // Get service statistics
+    const { count: totalCount, error: totalError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true });
 
-    // Get service statistics using the same pool
-    const [totalCount] = await pool.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table'
-    );
+    if (totalError) throw totalError;
 
-    const [todayCount] = await pool.execute(
-      'SELECT COUNT(*) as today FROM food_nutrition_data_table WHERE DATE(CreatedAt) = CURDATE()'
-    );
+    // Get today's count (using local date)
+    const today = new Date();
+    const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    
+    const { count: todayCount, error: todayError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .gte('CreatedAt', todayStr)
+      .lt('CreatedAt', new Date(today.getTime() + 86400000).toISOString().split('T')[0]);
 
-    const [backgroundCount] = await pool.execute(
-      'SELECT COUNT(*) as background FROM food_nutrition_data_table WHERE ProcessedBy = "background_service"'
-    );
+    if (todayError) throw todayError;
+
+    // Get background service count
+    const { count: backgroundCount, error: backgroundError } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact', head: true })
+      .eq('ProcessedBy', 'background_service');
+
+    if (backgroundError) throw backgroundError;
 
     res.status(200).json({
       status: 'healthy',

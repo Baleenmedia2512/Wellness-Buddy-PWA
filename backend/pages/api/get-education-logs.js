@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -11,13 +11,15 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   // Only accept GET
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   // Get userId from query params
@@ -25,41 +27,44 @@ export default async function handler(req, res) {
 
   // Validation
   if (!userId) {
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'userId is required'
     });
+    return;
   }
 
   
   try {
     // Database connection
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
     // Fetch education logs (exclude soft-deleted)
-    const [logs] = await pool.execute(
-      `SELECT Id, Platform, Topic, 
-       DATE_FORMAT(CreatedAt, '%Y-%m-%dT%H:%i:%s') as CreatedAt,
-       Confidence, ImageBase64
-       FROM education_logs_table
-       WHERE UserId = ? AND (IsDeleted IS NULL OR IsDeleted = 0)
-       ORDER BY CreatedAt DESC
-       LIMIT 100`,
-      [userId]
-    );
-return res.status(200).json({
+    const { data: logs, error } = await supabase
+      .from('education_logs_table')
+      .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"')
+      .eq('"UserId"', userId)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    res.status(200).json({
       success: true,
-      count: logs.length,
-      logs: logs
+      count: logs?.length || 0,
+      logs: logs || []
     });
+    return;
 
   } catch (error) {
 
     console.error('❌ Fetch education logs error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to fetch education logs',
       error: error.message
     });
+    return;
   }
 }
