@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     const processedAt = getISTTimestamp();
     await supabase
       .from('approval_requests_table')
-      .update({ Status: 'cancelled', ProcessedAt: processedAt, UpdatedAt: processedAt })
+      .update({ Status: 'cancelled', ProcessedAt: processedAt })
       .eq('RequesterId', userId)
       .eq('Status', 'pending');
 

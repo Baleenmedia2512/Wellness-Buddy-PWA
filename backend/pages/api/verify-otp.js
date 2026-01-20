@@ -44,7 +44,13 @@ export default async function handler(req, res) {
 
     const otpData = rows[0];
 
-    if (new Date() > new Date(otpData.ExpiresAt)) {
+    // Compare current IST time with stored expiry time (both in IST)
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const currentIST = new Date(now.getTime() + istOffset);
+    const expiresAt = new Date(otpData.ExpiresAt + 'Z'); // Add Z to parse as UTC, then compare
+    
+    if (currentIST > expiresAt) {
       res.status(400).json({ message: 'OTP expired' });
       return;
     }
@@ -56,13 +62,11 @@ export default async function handler(req, res) {
     }
 
     // OTP verified - deactivate token
-    const currentTime = getISTTimestamp();
     const { error: updateError } = await supabase
       .from('otp_tokens_table')
       .update({ 
         Verified: true, 
-        IsActive: false,
-        UpdatedAt: currentTime
+        IsActive: false
       })
       .eq('"ID"', otpData.ID);
 

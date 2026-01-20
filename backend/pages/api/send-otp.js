@@ -27,10 +27,9 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Invalidate old OTPs
-    const currentTime = getISTTimestamp();
     const { error: updateError } = await supabase
       .from('otp_tokens_table')
-      .update({ IsActive: false, UpdatedAt: currentTime })
+      .update({ IsActive: false })
       .eq('"Recipient"', recipient)
       .eq('"ContactType"', contactType)
       .eq('"IsActive"', true);
@@ -39,7 +38,12 @@ export default async function handler(req, res) {
 
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const otpHash = await bcrypt.hash(otp, 10);
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 mins
+    
+    // Calculate expiry time in IST (5 minutes from now)
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const expiresAt = new Date(now.getTime() + istOffset + 5 * 60 * 1000);
+    const expiresAtIST = expiresAt.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
     const currentTime = getISTTimestamp();
 
     const { error: insertError } = await supabase
@@ -47,10 +51,10 @@ export default async function handler(req, res) {
       .insert({
         Recipient: recipient,
         OTPHash: otpHash,
-        ExpiresAt: expiresAt.toISOString(),
+        ExpiresAt: expiresAtIST,
         ContactType: contactType,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
+        IsActive: true,
+        CreatedAt: currentTime
       });
 
     if (insertError) throw insertError;

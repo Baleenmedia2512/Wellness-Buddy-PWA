@@ -273,7 +273,7 @@ export default async function handler(req, res) {
     const processedAt = getISTTimestamp();
     await supabase
       .from('approval_requests_table')
-      .update({ Status: 'approved', ProcessedAt: processedAt, UpdatedAt: processedAt })
+      .update({ Status: 'approved', ProcessedAt: processedAt })
       .eq('Id', request.Id);
 
     // Get requester and coach details for response

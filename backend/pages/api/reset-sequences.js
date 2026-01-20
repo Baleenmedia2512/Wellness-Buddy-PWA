@@ -65,6 +65,21 @@ export default async function handler(req, res) {
         sql: `SELECT setval(pg_get_serial_sequence('food_nutrition_data_table', 'ID'), ${maxId});` });
     }
 
+    // Reset approval_requests_table sequence
+    const { data: maxApproval, error: approvalError } = await supabase
+      .from('approval_requests_table')
+      .select('Id')
+      .order('Id', { ascending: false })
+      .limit(1);
+
+    if (approvalError) {
+      results.push({ table: 'approval_requests_table', status: 'error', error: approvalError.message });
+    } else {
+      const maxId = maxApproval && maxApproval.length > 0 ? maxApproval[0].Id : 0;
+      results.push({ table: 'approval_requests_table', maxId, status: 'needs_manual_reset',
+        sql: `SELECT setval('approval_requests_table_id_seq', ${maxId});` });
+    }
+
     res.status(200).json({
       success: true,
       message: 'Sequence reset information generated',

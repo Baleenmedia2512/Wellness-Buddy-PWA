@@ -53,8 +53,7 @@ export default async function handler(req, res) {
         .from('food_corrections_table')
         .update({ 
           "TimesCorrected": newCount,
-          "LastCorrected": currentTime,
-          "UpdatedAt": currentTime
+          "LastCorrected": currentTime
         })
         .eq('"Id"', correctionId);
 

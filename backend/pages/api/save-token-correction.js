@@ -94,8 +94,7 @@ export default async function handler(req, res) {
         "InputTokenCost": correctedInputCost,
         "OutputTokenCost": correctedOutputCost,
         "TotalTokenCost": totalCost,
-        "CreatedAt": currentTime,
-        "UpdatedAt": currentTime
+        "CreatedAt": currentTime
       });
 
     if (insertError) throw insertError;

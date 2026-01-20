@@ -184,9 +184,7 @@ export default async function handler(req, res) {
         OtpExpiresAt: otpExpiresAt.toISOString(),
         OtpSentAt: requestedAt.toISOString(),
         OtpAttempts: 0,
-        RequestedAt: requestedAt.toISOString(),
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
+        RequestedAt: requestedAt.toISOString()
       }])
       .select('Id');
 
