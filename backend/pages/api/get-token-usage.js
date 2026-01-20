@@ -26,8 +26,6 @@ export default async function handler(req, res) {
     return;
   }
 
-  const pool = getPool();
-
   try {
     const { email, timeRange = 'month', operationType, model, startDate, endDate, userToday } = req.query;
 
