@@ -17,6 +17,7 @@ import Header from './components/Header';
 import { getUserContext, clearContextCache } from './services/userContextService';
 import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
 import { getUserId, clearUserIdCache } from './services/getUserId';
+import { getVersionString } from './config/version';
 import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
 import { geminiService } from './services/geminiService';
 import { imageTypeDetector } from './services/imageTypeDetector';
@@ -2167,6 +2168,13 @@ function WellnessValleyApp() {
         </div>
 
         <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
+      </div>
+
+      {/* Version badge - positioned in header area like web view */}
+      <div className="fixed top-12 right-4 z-10">
+        <p className="text-[9px] sm:text-[10px] font-light tracking-wide opacity-50" style={{ color: '#888888' }}>
+          {getVersionString()}
+        </p>
       </div>
 
       {/* Inactive User Modal */}

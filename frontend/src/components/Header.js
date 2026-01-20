@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
-import { getVersionString } from '../config/version';
+import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
@@ -69,25 +69,33 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
 
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500">
-      <div className="max-w-md mx-auto px-4 py-3 flex justify-between items-start">
+      <div className="max-w-md mx-auto px-2 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0">
-          <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 flex items-center space-x-2">
+          <div className="flex items-center space-x-1">
             <img 
               src={wellnessValleyIcon} 
               alt="Wellness Valley" 
-              className="h-12 w-12 sm:h-12 sm:w-12 object-contain"
+              className="h-12 w-12 sm:h-12 sm:w-12 object-contain flex-shrink-0"
             />
-            <span className="truncate">Wellness Valley</span>
-          </h1>
-          <p className="text-xs sm:text-sm text-green-600 -mt-2 ml-14 sm:ml-14 truncate">
-            Track your meals effortlessly
-          </p>
-          <p className="text-[9px] font-light text-gray-400 text-center tracking-wide">
-            {getVersionString()}
-          </p>
+            <div className="flex-1 min-w-0 -ml-1">
+              <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
+                Wellness Valley
+                <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
+                  <span className="text-gray-500">V{APP_VERSION.VERSION.split('.')[0]}</span>
+                  <span className="text-gray-400">.</span>
+                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[1]}</span>
+                  <span className="text-gray-400">.</span>
+                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span>
+                </span>
+              </h1>
+              <p className="text-xs sm:text-sm text-green-600 truncate">
+                Track your meals effortlessly 
+              </p>
+            </div>
+          </div>
         </div>
 
-        <div className="relative pt-1 flex-shrink-0">
+        <div className="relative flex-shrink-0">
           <button
             onClick={toggleMenu}
             className="focus:outline-none"
@@ -201,7 +209,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 {/* Version info at bottom */}
                 <div className="px-4 py-2.5 border-t border-gray-200 bg-gray-50 rounded-b-xl">
                   <p className="text-[11px] font-medium text-gray-400 text-center tracking-wide">
-                    {getVersionString()}
+                    Version {APP_VERSION.VERSION}
                   </p>
                 </div>
               </div>
