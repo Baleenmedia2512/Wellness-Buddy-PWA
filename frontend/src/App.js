@@ -2171,11 +2171,11 @@ function WellnessValleyApp() {
       </div>
 
       {/* Version badge - positioned in header area like web view */}
-      <div className="fixed top-12 right-4 z-10">
+      {/* <div className="fixed top-12 right-4 z-10">
         <p className="text-[9px] sm:text-[10px] font-light tracking-wide opacity-50" style={{ color: '#888888' }}>
           {getVersionString()}
         </p>
-      </div>
+      </div> */}
 
       {/* Inactive User Modal */}
       {showInactiveModal && (
