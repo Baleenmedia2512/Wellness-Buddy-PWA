@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
  * API: Get Token Correction
@@ -15,73 +15,81 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ 
+    res.status(405).json({ 
       success: false, 
       message: 'Method not allowed' 
     });
+    return;
   }
 
   try {
-    // Use connection pool
-    const pool = getPool();
+    // Use Supabase client
+    const supabase = getSupabaseClient();
 
-    console.log('📖 [get-token-correction] Using connection pool');
+    console.log('📖 [get-token-correction] Using Supabase REST API');
 
     // Get the latest correction record (most recent by CreatedAt)
-    const [correctionRows] = await pool.execute(
-      `SELECT 
-        InputTokenCost as inputCost,
-        OutputTokenCost as outputCost,
-        TotalTokenCost as totalCost,
-        CreatedAt as correctionTimestamp
-      FROM token_correction_table 
-      ORDER BY CreatedAt DESC 
-      LIMIT 1`
-    );
+    const { data: correctionRows, error: correctionError } = await supabase
+      .from('token_correction_table')
+      .select('"InputTokenCost", "OutputTokenCost", "TotalTokenCost", "CreatedAt"')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
+
+    if (correctionError) throw correctionError;
 
     // Get the latest usage timestamp from ai_token_usage_table
-    const [usageRows] = await pool.execute(
-      `SELECT CreatedAt as latestUsageTimestamp 
-       FROM ai_token_usage_table 
-       ORDER BY CreatedAt DESC 
-       LIMIT 1`
-    );
+    const { data: usageRows, error: usageError } = await supabase
+      .from('ai_token_usage_table')
+      .select('"CreatedAt"')
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
 
-    const latestUsageTimestamp = usageRows.length > 0 ? usageRows[0].latestUsageTimestamp : null;
+    if (usageError) throw usageError;
 
-    if (correctionRows.length === 0) {
+    const latestUsageTimestamp = (usageRows && usageRows.length > 0) ? usageRows[0].CreatedAt : null;
+
+    if (!correctionRows || correctionRows.length === 0) {
       console.log('📖 [get-token-correction] No correction record found');
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         data: null,
         latestUsageTimestamp,
         message: 'No correction record found'
       });
+      return;
     }
 
-    const correction = correctionRows[0];
+    const correction = {
+      inputCost: correctionRows[0].InputTokenCost,
+      outputCost: correctionRows[0].OutputTokenCost,
+      totalCost: correctionRows[0].TotalTokenCost,
+      correctionTimestamp: correctionRows[0].CreatedAt
+    };
     console.log('📖 [get-token-correction] Found correction:', correction);
     console.log('📖 [get-token-correction] Latest usage timestamp:', latestUsageTimestamp);
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: correction,
       latestUsageTimestamp
     });
+    return;
 
   } catch (error) {
     console.error('❌ [get-token-correction] Error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Database error',
       error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
+    return;
   }
 }

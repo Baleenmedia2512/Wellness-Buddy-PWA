@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 /**
  * API: Get Latest Token Costs
@@ -14,69 +14,72 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ 
+    res.status(405).json({ 
       success: false, 
       message: 'Method not allowed' 
     });
+    return;
   }
 
   const { email } = req.query;
 
   if (!email) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       message: 'Email is required' 
     });
+    return;
   }
 
   try {
-    // Use connection pool
-    const pool = getPool();
+    // Use Supabase client
+    const supabase = getSupabaseClient();
 
-    console.log('📊 [get-latest-token-costs] Using connection pool');
+    console.log('📊 [get-latest-token-costs] Using Supabase REST API');
     console.log('📊 [get-latest-token-costs] Fetching latest token costs for:', email);
 
     // First, get the UserId from team_table
-    const [userRows] = await pool.execute(
-      'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    const { data: userRows, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .eq('"Email"', email)
+      .limit(1);
+
+    if (userError) throw userError;
 
     let userId = null;
-    if (userRows.length > 0) {
+    if (userRows && userRows.length > 0) {
       userId = userRows[0].UserId;
       console.log('📊 [get-latest-token-costs] Found UserId:', userId);
     }
 
     // Get the latest original record from ai_token_usage_table
-    const [originalRows] = await pool.execute(
-      `SELECT 
-        InputTokenCost,
-        OutputTokenCost,
-        TotalTokenCost,
-        CreatedAt
-      FROM ai_token_usage_table 
-      WHERE Email = ?
-      ORDER BY CreatedAt DESC 
-      LIMIT 1`,
-      [email]
-    );
+    const { data: originalRows, error: originalError } = await supabase
+      .from('ai_token_usage_table')
+      .select('"InputTokenCost", "OutputTokenCost", "TotalTokenCost", "CreatedAt"')
+      .eq('"Email"', email)
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1);
+
+    if (originalError) throw originalError;
 
     console.log('📊 [get-latest-token-costs] Original token usage query result:', originalRows);
 
-    if (originalRows.length === 0) {
+    if (!originalRows || originalRows.length === 0) {
       console.log('⚠️ [get-latest-token-costs] No token usage records found');
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'No token usage records found'
       });
+      return;
     }
 
     const latestOriginalRecord = originalRows[0];
@@ -86,20 +89,16 @@ export default async function handler(req, res) {
     let correctedRecord = null;
 
     if (userId) {
-      const [correctionRows] = await pool.execute(
-        `SELECT 
-          InputTokenCost,
-          OutputTokenCost,
-          TotalTokenCost,
-          CreatedAt
-        FROM token_correction_table 
-        WHERE UserId = ?
-        ORDER BY CreatedAt DESC 
-        LIMIT 1`,
-        [userId]
-      );
+      const { data: correctionRows, error: correctionError } = await supabase
+        .from('token_correction_table')
+        .select('"InputTokenCost", "OutputTokenCost", "TotalTokenCost", "CreatedAt"')
+        .eq('"UserId"', userId)
+        .order('"CreatedAt"', { ascending: false })
+        .limit(1);
 
-      if (correctionRows.length > 0) {
+      if (correctionError) throw correctionError;
+
+      if (correctionRows && correctionRows.length > 0) {
         correctedRecord = correctionRows[0];
         console.log('📊 [get-latest-token-costs] Found corrected costs:', correctedRecord);
       }
@@ -123,7 +122,7 @@ export default async function handler(req, res) {
           createdAt: correctedRecord.CreatedAt
         });
 
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           data: {
             inputTokenCost: correctedRecord.InputTokenCost,
@@ -133,6 +132,7 @@ export default async function handler(req, res) {
             isCorrected: true
           }
         });
+        return;
       } else {
         console.log('📊 [get-latest-token-costs] Original record is newer than correction - returning original costs');
       }
@@ -146,7 +146,7 @@ export default async function handler(req, res) {
       createdAt: latestOriginalRecord.CreatedAt
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       data: {
         inputTokenCost: latestOriginalRecord.InputTokenCost,
@@ -156,13 +156,15 @@ export default async function handler(req, res) {
         isCorrected: false
       }
     });
+    return;
 
   } catch (error) {
     console.error('❌ [get-latest-token-costs] Error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to fetch latest token costs',
       error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
+    return;
   }
 }

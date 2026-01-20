@@ -1,9 +1,10 @@
-﻿import { getPool, getConnection } from '../../../utils/dbPool.js';
+﻿import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 
 /**
  * API: Admin Time Windows Management
  * GET: Fetch current active time windows
  * POST: Update time window with versioning
+ * Uses Supabase REST API (consistent with other working APIs)
  */
 export default async function handler(req, res) {
   // Handle CORS
@@ -11,41 +12,49 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
+
+  const supabase = getSupabaseClient();
 
   // GET: Fetch current time windows
   if (req.method === 'GET') {
     try {
-      const pool = getPool();
+      const { data: rows, error } = await supabase
+        .from('activity_time_windows_table')
+        .select('ActivityType, WindowStartTime, WindowEndTime, EffectiveFromDate, EffectiveToDate, ChangedBy, ChangeReason, CreatedAt')
+        .is('EffectiveToDate', null)
+        .order('ActivityType');
 
-      const [rows] = await pool.query(`
-        SELECT 
-          ActivityType,
-          WindowStartTime,
-          WindowEndTime,
-          EffectiveFromDate,
-          EffectiveToDate,
-          ChangedBy,
-          ChangeReason,
-          CreatedAt as LastUpdated
-        FROM activity_time_windows_table
-        WHERE EffectiveToDate IS NULL
-        ORDER BY 
-          FIELD(ActivityType, 'weight', 'education', 'breakfast', 'lunch', 'dinner')
-      `);
-return res.status(200).json({
-        success: true,
-        timeWindows: rows
+      if (error) {
+        console.error('Error fetching time windows:', error);
+        throw error;
+      }
+
+      // Sort by activity type order
+      const activityOrder = ['weight', 'education', 'breakfast', 'lunch', 'dinner'];
+      const sortedRows = (rows || []).sort((a, b) => {
+        return activityOrder.indexOf(a.ActivityType) - activityOrder.indexOf(b.ActivityType);
       });
+
+      res.status(200).json({
+        success: true,
+        timeWindows: sortedRows.map(row => ({
+          ...row,
+          LastUpdated: row.CreatedAt
+        }))
+      });
+      return;
 
     } catch (error) {
       console.error('Error fetching time windows:', error);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: 'Internal server error',
         message: error.message
       });
+      return;
     }
   }
 
@@ -63,30 +72,33 @@ return res.status(200).json({
 
       // Validation
       if (!activityType || !windowStartTime || !windowEndTime || !effectiveFromDate || !changedBy) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Missing required fields',
           required: ['activityType', 'windowStartTime', 'windowEndTime', 'effectiveFromDate', 'changedBy']
         });
+        return;
       }
 
       // Validate activity type
       const validActivities = ['weight', 'education', 'breakfast', 'lunch', 'dinner'];
       if (!validActivities.includes(activityType)) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Invalid activity type',
           validTypes: validActivities
         });
+        return;
       }
 
       // Validate time format (HH:MM:SS or HH:MM)
       const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)(:[0-5]\d)?$/;
       if (!timeRegex.test(windowStartTime) || !timeRegex.test(windowEndTime)) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Invalid time format. Use HH:MM or HH:MM:SS'
         });
+        return;
       }
 
       // Ensure times have seconds
@@ -95,34 +107,36 @@ return res.status(200).json({
       
       // Validate start time is before end time
       if (startTime >= endTime) {
-        return res.status(400).json({
+        res.status(400).json({
           success: false,
           error: 'Start time must be before end time',
           details: `Start: ${startTime}, End: ${endTime}`
         });
+        return;
       }
       
       // Validate meal time windows don't overlap (only for meals)
       if (['breakfast', 'lunch', 'dinner'].includes(activityType)) {
-        const pool = getPool();
-        
-        const [existingWindows] = await pool.query(`
-          SELECT ActivityType, WindowStartTime, WindowEndTime
-          FROM activity_time_windows_table
-          WHERE EffectiveToDate IS NULL
-            AND ActivityType IN ('breakfast', 'lunch', 'dinner')
-            AND ActivityType != ?
-        `, [activityType]);
+        const { data: existingWindows, error: existingError } = await supabase
+          .from('activity_time_windows_table')
+          .select('ActivityType, WindowStartTime, WindowEndTime')
+          .is('EffectiveToDate', null)
+          .in('ActivityType', ['breakfast', 'lunch', 'dinner'])
+          .neq('ActivityType', activityType);
+
+        if (existingError) {
+          console.error('Error checking existing windows:', existingError);
+          throw existingError;
+        }
         
         // Check for overlaps with other meal windows
-        for (const existing of existingWindows) {
+        for (const existing of (existingWindows || [])) {
           const existingStart = existing.WindowStartTime;
           const existingEnd = existing.WindowEndTime;
           
           // Check if new window overlaps with existing window
-          // Overlap occurs if: (newStart < existingEnd) AND (newEnd > existingStart)
           if (startTime < existingEnd && endTime > existingStart) {
-            return res.status(400).json({
+            res.status(400).json({
               success: false,
               error: 'Time window overlaps with existing meal window',
               details: {
@@ -131,70 +145,66 @@ return res.status(200).json({
                 requestedWindow: `${startTime} - ${endTime}`
               }
             });
+            return;
           }
         }
       }
 
-      const pool = getPool();
-      const connection = await pool.getConnection();
+      // Close previous window by setting EffectiveToDate
+      const { error: updateError } = await supabase
+        .from('activity_time_windows_table')
+        .update({ EffectiveToDate: effectiveFromDate })
+        .eq('ActivityType', activityType)
+        .is('EffectiveToDate', null);
 
-      try {
-        await connection.beginTransaction();
-
-        // Close previous window by setting EffectiveToDate
-        await connection.query(`
-          UPDATE activity_time_windows_table
-          SET EffectiveToDate = ?
-          WHERE ActivityType = ?
-            AND EffectiveToDate IS NULL
-        `, [effectiveFromDate, activityType]);
-
-        // Insert new window
-        const [result] = await connection.query(`
-          INSERT INTO activity_time_windows_table
-          (ActivityType, WindowStartTime, WindowEndTime, EffectiveFromDate, ChangedBy, ChangeReason)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `, [
-          activityType,
-          startTime,
-          endTime,
-          effectiveFromDate,
-          changedBy,
-          changeReason || null
-        ]);
-
-        await connection.commit();
-        connection.release();
-        
-        return res.status(200).json({
-          success: true,
-          message: 'Time window updated successfully',
-          newWindowId: result.insertId
-        });
-
-      } catch (error) {
-        await connection.rollback();
-        connection.release();
-        console.error('Error updating time window:', error);
-        return res.status(500).json({
-          success: false,
-          error: 'Internal server error',
-          message: error.message
-        });
+      if (updateError) {
+        console.error('Error closing previous window:', updateError);
+        throw updateError;
       }
+
+      // Insert new window
+      const currentTime = getISTTimestamp();
+      const { data: insertResult, error: insertError } = await supabase
+        .from('activity_time_windows_table')
+        .insert({
+          ActivityType: activityType,
+          WindowStartTime: startTime,
+          WindowEndTime: endTime,
+          EffectiveFromDate: effectiveFromDate,
+          ChangedBy: changedBy,
+          ChangeReason: changeReason || null,
+          CreatedAt: currentTime
+        })
+        .select('Id')
+        .single();
+
+      if (insertError) {
+        console.error('Error inserting new window:', insertError);
+        throw insertError;
+      }
+      
+      res.status(200).json({
+        success: true,
+        message: 'Time window updated successfully',
+        newWindowId: insertResult?.Id
+      });
+      return;
+
     } catch (error) {
       console.error('Error in time windows:', error);
-      return res.status(500).json({
+      res.status(500).json({
         success: false,
         error: 'Internal server error',
         message: error.message
       });
+      return;
     }
   }
 
-  return res.status(405).json({ 
+  res.status(405).json({ 
     success: false, 
     error: 'Method not allowed',
     allowedMethods: ['GET', 'POST']
   });
+  return;
 }

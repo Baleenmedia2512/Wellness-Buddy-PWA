@@ -957,9 +957,15 @@ function WellnessValleyApp() {
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
     try {
+      console.log('🔵 [App] Starting nutrition save:', { 
+        userId: saveData.userId, 
+        imagePath: saveData.imagePath, 
+        hasImageBase64: !!saveData.imageBase64 
+      });
       setSaveLoading(true);
       
       const saveRes = await saveNutritionAnalysis(saveData);
+      console.log('✅ [App] Save successful:', saveRes);
 
       if (process.env.NODE_ENV !== 'production') {
         // console.log('✅ Save successful:', saveRes);
@@ -967,16 +973,20 @@ function WellnessValleyApp() {
       
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
+      console.log('✅ [App] Meal ID stored:', saveRes.id || saveRes.insertId);
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
-      console.error('❌ Save failed:', err.message);
+      console.error('❌ [App] Save failed:', err);
+      console.error('❌ [App] Error message:', err.message);
+      console.error('❌ [App] Error stack:', err.stack);
       const friendlySaveError = getFriendlyErrorMessage(err);
       setSaveError(friendlySaveError);
       throw err;
     } finally {
       setSaveLoading(false);
+      console.log('✅ [App] Save loading finished');
     }
   };
 

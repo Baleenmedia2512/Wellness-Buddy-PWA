@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -9,11 +9,13 @@ export default async function handler(req, res) {
 
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { email, name, height, bmr, dietType } = req.body;
@@ -23,66 +25,67 @@ export default async function handler(req, res) {
   // Validate required field
   if (!email) {
     console.log('❌ [update-user-profile] Missing required field: email');
-    return res.status(400).json({
+    res.status(400).json({
       success: false,
       message: 'Missing required field: email',
     });
+    return;
   }
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    console.log('📊 [update-user-profile] Using connection pool');
+    console.log('📊 [update-user-profile] Using Supabase REST API');
 
     // First, get the user to verify they exist and get their UserId
-    const [userRows] = await pool.execute(
-      `SELECT UserId FROM team_table WHERE Email = ? LIMIT 1`,
-      [email]
-    );
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('UserId')
+      .eq('Email', email)
+      .maybeSingle();
 
-    if (userRows.length === 0) {
+    if (userError || !user) {
       console.log('❌ [update-user-profile] User not found:', email);
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'User not found',
       });
+      return;
     }
 
-    const userId = userRows[0].UserId;
+    const userId = user.UserId;
     console.log('✅ [update-user-profile] User found:', { userId });
 
-    // Build dynamic UPDATE query for team_table
-    const updateFields = [];
-    const updateValues = [];
+    // Build update data object for team_table
+    const updateData = {};
 
     if (name !== undefined && name !== null) {
-      updateFields.push('UserName = ?');
-      updateValues.push(name);
+      updateData.UserName = name;
     }
 
     if (height !== undefined && height !== null) {
-      updateFields.push('Height = ?');
-      updateValues.push(parseFloat(height));
+      updateData.Height = parseFloat(height);
     }
 
     if (dietType !== undefined && dietType !== null) {
       // Validate diet type
       const validDietTypes = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Pescatarian'];
       if (validDietTypes.includes(dietType)) {
-        updateFields.push('DietType = ?');
-        updateValues.push(dietType);
+        updateData.DietType = dietType;
       } else {
         console.log('⚠️ [update-user-profile] Invalid diet type:', dietType);
       }
     }
 
     // Update team_table if there are fields to update
-    if (updateFields.length > 0) {
-      updateValues.push(email); // For WHERE clause
-      const updateQuery = `UPDATE team_table SET ${updateFields.join(', ')} WHERE Email = ?`;
+    if (Object.keys(updateData).length > 0) {
+      console.log('📝 [update-user-profile] Updating team_table:', updateData);
+      const { error: updateError } = await supabase
+        .from('team_table')
+        .update(updateData)
+        .eq('Email', email);
       
-      console.log('📝 [update-user-profile] Updating team_table:', { updateFields });
-      await pool.execute(updateQuery, updateValues);
+      if (updateError) throw updateError;
       console.log('✅ [update-user-profile] team_table updated successfully');
     }
 
@@ -92,17 +95,24 @@ export default async function handler(req, res) {
       const bmrValue = parseFloat(bmr);
       if (!isNaN(bmrValue) && bmrValue >= 1100 && bmrValue <= 2200) {
         // Check if user has any weight records
-        const [weightRecords] = await pool.execute(
-          `SELECT ID FROM weight_records_table WHERE UserId = ? ORDER BY CreatedAt DESC LIMIT 1`,
-          [userId]
-        );
+        const { data: weightRecords, error: weightError } = await supabase
+          .from('weight_records_table')
+          .select('ID')
+          .eq('UserId', userId)
+          .order('CreatedAt', { ascending: false })
+          .limit(1);
 
-        if (weightRecords.length > 0) {
+        if (weightError) throw weightError;
+
+        if (weightRecords && weightRecords.length > 0) {
           // Update the latest weight record with BMR
-          await pool.execute(
-            `UPDATE weight_records_table SET Bmr = ? WHERE ID = ?`,
-            [bmrValue, weightRecords[0].ID]
-          );
+          const currentTime = getISTTimestamp();
+          const { error: bmrUpdateError } = await supabase
+            .from('weight_records_table')
+            .update({ Bmr: bmrValue, UpdatedAt: currentTime })
+            .eq('ID', weightRecords[0].ID);
+          
+          if (bmrUpdateError) throw bmrUpdateError;
           console.log('✅ [update-user-profile] BMR updated in latest weight record:', bmrValue);
           savedBmr = bmrValue;
         } else {

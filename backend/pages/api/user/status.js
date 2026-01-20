@@ -13,15 +13,7 @@
  * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
  */
 
-import { getPool } from '../../../utils/dbPool.js';
-
-// Database configuration
-const dbConfig = {
-  host: process.env.DB_HOST || 'localhost',
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASS || '',
-  database: process.env.DB_NAME || 'baleed5_wellness'
-};
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -34,20 +26,22 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization, cache-control, pragma');
 
   // Only allow GET requests
   if (req.method !== 'GET') {
-    return res.status(405).json({
+    res.status(405).json({
       success: false,
       error: 'Method not allowed'
     });
+    return;
   }
 
   try {
@@ -55,29 +49,34 @@ export default async function handler(req, res) {
     const { email } = req.query;
     
     if (!email) {
-      return res.status(400).json({
+      res.status(400).json({
         success: false,
         error: 'Email is required'
       });
+      return;
     }
 
-    // Connect to database
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    // Get user's UserId from team_table
-    const [userRows] = await pool.execute(
-      'SELECT UserId, TeamId, UplineCoachId, Role FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    // Get user's details from team_table using Supabase
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId", "TeamId", "UplineCoachId", "Role"')
+      .eq('"Email"', email)
+      .maybeSingle();
 
-    if (userRows.length === 0) {
-return res.status(404).json({
+    if (userError) {
+      console.error('❌ [status] Query error:', userError);
+      throw new Error(userError.message);
+    }
+
+    if (!user) {
+      res.status(404).json({
         success: false,
         error: 'User not found'
       });
+      return;
     }
-
-    const user = userRows[0];
     const userId = user.UserId;
     const userRole = user.Role;
     const hasTeamId = !!user.TeamId;
@@ -85,7 +84,7 @@ return res.status(404).json({
 
     // ADMIN/DEVELOPER users bypass coach auth flow
     if (userRole === 'admin' || userRole === 'developer') {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: hasTeamId,
@@ -97,11 +96,12 @@ return res.status(200).json({
         redirectTo: '/dashboard',
         message: 'Admin/Developer - setup not required'
       });
+      return;
     }
 
     // STATE 5: Setup complete ✅
     if (hasTeamId && hasUpline) {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: true,
         hasTeamId: true,
@@ -112,11 +112,12 @@ return res.status(200).json({
         redirectTo: '/dashboard',
         message: 'Setup complete'
       });
+      return;
     }
 
     // STATE 1: No Team ID
     if (!hasTeamId) {
-return res.status(200).json({
+res.status(200).json({
         success: true,
         setupComplete: false,
           hasTeamId: false,
@@ -125,32 +126,35 @@ return res.status(200).json({
           redirectTo: '/setup/team',
           message: 'Please claim a Team ID'
         });
+        return;
       }
 
-      // Check for pending approval request
-      const [requestRows] = await pool.execute(
-        `SELECT Id, UplineCoachId, Status, OtpExpiresAt, RequestedAt
-         FROM approval_requests_table
-         WHERE RequesterId = ?
-         AND Status = 'pending'
-         ORDER BY RequestedAt DESC
-         LIMIT 1`,
-        [userId]
-      );
+      // Check for pending approval request using Supabase
+      const { data: requestRows, error: requestError } = await supabase
+        .from('approval_requests_table')
+        .select('"Id", "UplineCoachId", "Status", "OtpExpiresAt", "RequestedAt"')
+        .eq('"RequesterId"', userId)
+        .eq('"Status"', 'pending')
+        .order('"RequestedAt"', { ascending: false })
+        .limit(1);
 
-      if (requestRows.length > 0) {
+      if (requestError) {
+        console.error('❌ [status] Request query error:', requestError);
+      }
+
+      if (requestRows && requestRows.length > 0) {
         const request = requestRows[0];
         const now = new Date();
         const expiresAt = new Date(request.OtpExpiresAt);
 
         // STATE 4: Expired request - delete it
         if (now > expiresAt) {
-          await pool.execute(
-            'DELETE FROM approval_requests_table WHERE Id = ?',
-            [request.Id]
-          );
+          await supabase
+            .from('approval_requests_table')
+            .delete()
+            .eq('"Id"', request.Id);
 
-          return res.status(200).json({
+          res.status(200).json({
             success: true,
             setupComplete: false,
             hasTeamId: true,
@@ -159,10 +163,11 @@ return res.status(200).json({
             redirectTo: '/setup/upline',
             message: 'Previous request expired. Please send a new request.'
           });
+          return;
         }
 
         // STATE 3: Active pending request
-        return res.status(200).json({
+        res.status(200).json({
           success: true,
           setupComplete: false,
           hasTeamId: true,
@@ -177,10 +182,11 @@ return res.status(200).json({
           redirectTo: '/setup/validate-otp',
           message: 'Waiting for OTP validation'
         });
+        return;
       }
 
       // STATE 2: Has Team ID, no request
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         setupComplete: false,
         hasTeamId: true,
@@ -190,13 +196,15 @@ return res.status(200).json({
         redirectTo: '/setup/upline',
         message: 'Please select your upline coach'
       });
+      return;
 
     } catch (error) {
       console.error('Error checking user status:', error);
-return res.status(500).json({
+res.status(500).json({
         success: false,
         error: 'Failed to check user status',
         details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
+      return;
     }
 }

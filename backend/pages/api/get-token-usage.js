@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   console.log('========== [get-token-usage] API Called ==========');
@@ -17,11 +17,13 @@ export default async function handler(req, res) {
   
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
-    res.status(200).end(); return;
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
     res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   const pool = getPool();
@@ -32,18 +34,20 @@ export default async function handler(req, res) {
     if (!email) {
       console.log('[get-token-usage] ERROR: No email provided');
       res.status(400).json({ success: false, message: 'Email is required' });
+      return;
     }
 
     console.log('[get-token-usage] Email:', email, '| TimeRange:', timeRange, '| UserToday:', userToday);
-    console.log('[get-token-usage] Using SQL connection pool');
+
+    const supabase = getSupabaseClient();
+    console.log('[get-token-usage] Using Supabase REST API');
 
     // Verify user has admin or developer role
-    const [userRows] = await pool.query(
-      'SELECT Role FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
-
-    const user = userRows[0];
+    const { data: user, error: userError } = await supabase
+      .from('team_table')
+      .select('Role')
+      .eq('Email', email)
+      .maybeSingle();
 
     console.log('[get-token-usage] User lookup:', { 
       email, 
@@ -51,12 +55,13 @@ export default async function handler(req, res) {
       role: user?.Role || 'N/A' 
     });
 
-    if (!user) {
+    if (userError || !user) {
       console.log('[get-token-usage] ERROR: User not found in team_table');
       res.status(403).json({ 
         success: false, 
         message: `Access denied. User not found: ${email}` 
       });
+      return;
     }
 
     const userRole = user.Role;
@@ -66,6 +71,7 @@ export default async function handler(req, res) {
         success: false, 
         message: `Access denied. Admin or Developer role required. Current role: ${userRole}` 
       });
+      return;
     }
 
     console.log('[get-token-usage] User authorized with role:', userRole);
@@ -73,25 +79,20 @@ export default async function handler(req, res) {
     // Calculate date range using server's local timezone
     const now = new Date();
     
-    // Helper function to parse date string in local timezone (prevents date shifting)
+    // Helper function to parse date string in local timezone
     const parseLocalDate = (dateStr) => {
-      // If already a Date object, return it
       if (dateStr instanceof Date) return dateStr;
-      
-      // Parse YYYY-MM-DD format in local timezone
       const parts = dateStr.split('-');
       if (parts.length === 3) {
         return new Date(
-          parseInt(parts[0], 10),      // year
-          parseInt(parts[1], 10) - 1,  // month (0-indexed)
-          parseInt(parts[2], 10)       // day
+          parseInt(parts[0], 10),
+          parseInt(parts[1], 10) - 1,
+          parseInt(parts[2], 10)
         );
       }
-      // Fallback to standard parsing
       return new Date(dateStr);
     };
     
-    // Helper to get start of day in local timezone
     const getStartOfDay = (date) => {
       const d = new Date(date);
       d.setHours(0, 0, 0, 0);
@@ -151,23 +152,27 @@ export default async function handler(req, res) {
       endDate: endDateObj.toISOString()
     });
 
-    // Build SQL query with filters
-    let sqlQuery = 'SELECT * FROM ai_token_usage_table WHERE CreatedAt >= ? AND CreatedAt <= ?';
-    const queryParams = [startDateObj, endDateObj];
+    // Build Supabase query with filters
+    let query = supabase
+      .from('ai_token_usage_table')
+      .select('*')
+      .gte('CreatedAt', startDateObj.toISOString())
+      .lte('CreatedAt', endDateObj.toISOString());
 
     if (operationType && operationType !== 'all') {
-      sqlQuery += ' AND OperationType = ?';
-      queryParams.push(operationType);
+      query = query.eq('OperationType', operationType);
     }
 
     if (model && model !== 'all') {
-      sqlQuery += ' AND ModelName = ?';
-      queryParams.push(model);
+      query = query.eq('ModelName', model);
     }
 
-    sqlQuery += ' ORDER BY CreatedAt DESC';
+    const { data: allRecords, error: recordsError } = await query.order('CreatedAt', { ascending: false });
 
-    const [allRecords] = await pool.query(sqlQuery, queryParams);
+    if (recordsError) {
+      console.error('[get-token-usage] Error fetching records:', recordsError);
+      throw recordsError;
+    }
 
     const records = allRecords || [];
     console.log('[get-token-usage] Fetched records:', records.length);
@@ -318,13 +323,12 @@ export default async function handler(req, res) {
     if (userSpending.length > 0) {
       const userIds = userSpending.map(u => u.userId).filter(id => id);
       if (userIds.length > 0) {
-        const placeholders = userIds.map(() => '?').join(',');
-        const [users] = await pool.query(
-          `SELECT UserId, UserName FROM team_table WHERE UserId IN (${placeholders})`,
-          userIds
-        );
+        const { data: users } = await supabase
+          .from('team_table')
+          .select('UserId, UserName')
+          .in('UserId', userIds);
 
-        if (users && users.length > 0) {
+        if (users) {
           const userNameMap = {};
           users.forEach(u => { userNameMap[u.UserId] = u.UserName; });
           userSpending.forEach(u => {

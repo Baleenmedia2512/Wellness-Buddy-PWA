@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 /**
@@ -16,18 +16,21 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ success: false, message: 'Method not allowed' });
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
 
   const { userId } = req.query;
 
   if (!userId) {
-    return res.status(400).json({ success: false, message: 'userId is required' });
+    res.status(400).json({ success: false, message: 'userId is required' });
+    return;
   }
 
   try {
@@ -37,76 +40,67 @@ export default async function handler(req, res) {
     
     if (cached) {
       res.setHeader('X-Cache', 'HIT');
-      return res.status(200).json(cached);
+      res.status(200).json(cached);
+      return;
     }
 
     // Use connection pool to avoid ETIMEDOUT errors
-    const pool = getPool();
+    const supabase = getSupabaseClient();
 
-    // Get total sessions count
-    const [totalResult] = await pool.execute(
-      `SELECT COUNT(*) as totalSessions 
-       FROM education_logs_table 
-       WHERE UserId = ? AND IsDeleted = 0`,
-      [userId]
-    );
+    // Get all education logs for calculations (limit to recent for performance)
+    const { data: allLogs, error: allLogsError } = await supabase
+      .from('education_logs_table')
+      .select('"CreatedAt", "Platform"')
+      .eq('"UserId"', userId)
+      .eq('"IsDeleted"', 0)
+      .order('"CreatedAt"', { ascending: false })
+      .limit(1000);
 
-    // Get this month count
-    const [monthResult] = await pool.execute(
-      `SELECT COUNT(*) as monthCount 
-       FROM education_logs_table 
-       WHERE UserId = ? 
-       AND IsDeleted = 0 
-       AND YEAR(CreatedAt) = YEAR(CURDATE()) 
-       AND MONTH(CreatedAt) = MONTH(CURDATE())`,
-      [userId]
-    );
+    if (allLogsError) throw allLogsError;
 
-    // Get platform usage counts
-    const [platformsResult] = await pool.execute(
-      `SELECT Platform, COUNT(*) as count 
-       FROM education_logs_table 
-       WHERE UserId = ? AND IsDeleted = 0 
-       GROUP BY Platform 
-       ORDER BY count DESC`,
-      [userId]
-    );
+    const logs = allLogs || [];
 
-    // Get last 7 days activity (which days had sessions)
-    const [last7DaysResult] = await pool.execute(
-      `SELECT DATE(CreatedAt) as sessionDate 
-       FROM education_logs_table 
-       WHERE UserId = ? 
-       AND IsDeleted = 0 
-       AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)
-       GROUP BY DATE(CreatedAt)`,
-      [userId]
-    );
+    // Calculate total sessions count
+    const totalSessions = logs.length;
 
-    // Get total sessions count in last 7 days
-    const [last7DaysCountResult] = await pool.execute(
-      `SELECT COUNT(*) as sessionCount 
-       FROM education_logs_table 
-       WHERE UserId = ? 
-       AND IsDeleted = 0 
-       AND CreatedAt >= DATE_SUB(CURDATE(), INTERVAL 6 DAY)`,
-      [userId]
-    );
+    // Calculate this month count
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+    const monthCount = logs.filter(log => {
+      const logDate = new Date(log.CreatedAt);
+      return logDate.getMonth() === currentMonth && logDate.getFullYear() === currentYear;
+    }).length;
 
-    // Calculate streak (consecutive days with sessions)
-    const [streakResult] = await pool.execute(
-      `SELECT DATE(CreatedAt) as sessionDate 
-       FROM education_logs_table 
-       WHERE UserId = ? AND IsDeleted = 0 
-       ORDER BY CreatedAt DESC 
-       LIMIT 100`,
-      [userId]
-    );
+    // Calculate platform usage counts
+    const platformCounts = {};
+    logs.forEach(log => {
+      platformCounts[log.Platform] = (platformCounts[log.Platform] || 0) + 1;
+    });
+    const platformsResult = Object.entries(platformCounts)
+      .map(([platform, count]) => ({ Platform: platform, count }))
+      .sort((a, b) => b.count - a.count);
+
+    // Get last 7 days activity
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+    sevenDaysAgo.setHours(0, 0, 0, 0);
+
+    const last7DaysLogs = logs.filter(log => new Date(log.CreatedAt) >= sevenDaysAgo);
+    const last7DaysCount = last7DaysLogs.length;
+    
+    const last7DaysDateSet = new Set();
+    last7DaysLogs.forEach(log => {
+      const date = new Date(log.CreatedAt);
+      date.setHours(0, 0, 0, 0);
+      last7DaysDateSet.add(date.toISOString().split('T')[0]);
+    });
+    const last7DaysDates = Array.from(last7DaysDateSet).sort();
 
     // Calculate current streak
     let currentStreak = 0;
-    if (streakResult.length > 0) {
-      const dates = streakResult.map(row => new Date(row.sessionDate).toDateString());
+    if (logs.length > 0) {
+      const dates = logs.map(row => new Date(row.CreatedAt).toDateString());
       const uniqueDates = [...new Set(dates)].sort((a, b) => new Date(b) - new Date(a));
       
       const today = new Date();
@@ -134,12 +128,8 @@ export default async function handler(req, res) {
       }
     }
 
-    const totalSessions = totalResult[0].totalSessions;
-    const monthCount = monthResult[0].monthCount;
     const topPlatform = platformsResult.length > 0 ? platformsResult[0].Platform : null;
     const platformsInUse = platformsResult.length;
-    const last7DaysCount = last7DaysCountResult[0].sessionCount;
-    const last7DaysDates = last7DaysResult.map(row => row.sessionDate);
 
     // Set CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -161,7 +151,8 @@ export default async function handler(req, res) {
     cache.set(cacheKey, response, 180000);
     res.setHeader('X-Cache', 'MISS');
     
-    return res.status(200).json(response);
+    res.status(200).json(response);
+    return;
 
   } catch (error) {
     console.error('❌ Error fetching education summary:', error);
@@ -169,10 +160,11 @@ export default async function handler(req, res) {
     // Set CORS headers even on error
     res.setHeader('Access-Control-Allow-Origin', '*');
     
-    return res.status(500).json({ 
+    res.status(500).json({ 
       success: false, 
       message: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : 'Failed to fetch education summary',
       error: error.message 
     });
+    return;
   }
 }

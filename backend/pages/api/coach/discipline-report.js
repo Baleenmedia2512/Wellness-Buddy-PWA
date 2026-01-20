@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../../utils/dbPool.js';
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { 
   parseDateRange, 
   calculateExpectedPosts,
@@ -10,7 +10,7 @@ import {
 /**
  * API: Get Coach Discipline Report
  * Returns discipline percentages for all team members
- * Uses direct SQL queries via connection pool
+ * Uses Supabase REST API (consistent with other working APIs)
  */
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
@@ -24,11 +24,13 @@ export default async function handler(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
-    res.status(200).end(); return;
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
     res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
   }
   
   try {
@@ -37,10 +39,12 @@ export default async function handler(req, res) {
     // Validation
     if (!coachId) {
       res.status(400).json({ success: false, message: 'Coach ID required' });
+      return;
     }
     
     if (!dateRange) {
       res.status(400).json({ success: false, message: 'Date range required' });
+      return;
     }
     
     // Parse date range
@@ -57,33 +61,36 @@ export default async function handler(req, res) {
           success: false, 
           message: 'Custom date range requires both startDate and endDate' 
         });
+        return;
       }
       if (dates.start > dates.end) {
         res.status(400).json({ 
           success: false, 
           message: 'Start date must be before or equal to end date' 
         });
+        return;
       }
     }
     
-    const pool = getPool();
+    const supabase = getSupabaseClient();
     const coachIdInt = parseInt(coachId);
     
     // Step 1: Get the coach first
-    const [coaches] = await pool.query(
-      'SELECT * FROM team_table WHERE UserId = ? AND Status = ?',
-      [coachIdInt, 'Active']
-    );
+    const { data: coach, error: coachError } = await supabase
+      .from('team_table')
+      .select('*')
+      .eq('UserId', coachIdInt)
+      .eq('Status', 'Active')
+      .maybeSingle();
     
-    const coach = coaches && coaches.length > 0 ? coaches[0] : null;
-    
-    if (!coach) {
-      console.error('Coach not found');
-      return res.status(404).json({ success: false, message: 'Coach not found' });
+    if (coachError || !coach) {
+      console.error('Coach not found:', coachError);
+      res.status(404).json({ success: false, message: 'Coach not found' });
+      return;
     }
     
     // Step 2: Get all active team members recursively using iterative approach
-    // (Database connection doesn't support recursive CTEs, so we do it in JS)
+    // (Supabase REST API doesn't support recursive CTEs, so we do it in JS)
     const allMembers = [];
     const seenUserIds = new Set();
     
@@ -102,11 +109,16 @@ export default async function handler(req, res) {
     const maxLevel = 10;
     
     while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-      const placeholders = currentLevelCoachIds.map(() => '?').join(',');
-      const [levelMembers] = await pool.query(
-        `SELECT * FROM team_table WHERE UplineCoachId IN (${placeholders}) AND Status = ?`,
-        [...currentLevelCoachIds, 'Active']
-      );
+      const { data: levelMembers, error: levelError } = await supabase
+        .from('team_table')
+        .select('*')
+        .in('UplineCoachId', currentLevelCoachIds)
+        .eq('Status', 'Active');
+      
+      if (levelError) {
+        console.error('Error fetching level members:', levelError);
+        break;
+      }
       
       if (!levelMembers || levelMembers.length === 0) break;
       
@@ -138,9 +150,14 @@ export default async function handler(req, res) {
     }
     
     // Step 3: Get time windows
-    const [timeWindows] = await pool.query(
-      'SELECT * FROM activity_time_windows_table WHERE EffectiveToDate IS NULL'
-    );
+    const { data: timeWindows, error: twError } = await supabase
+      .from('activity_time_windows_table')
+      .select('*')
+      .is('EffectiveToDate', null);
+    
+    if (twError) {
+      console.error('Error fetching time windows:', twError);
+    }
     
     // Create time window map
     const timeWindowMap = {};
@@ -164,35 +181,33 @@ export default async function handler(req, res) {
     const allUserIds = allMembers.map(m => m.UserId);
     
     // Fetch all required data in bulk for efficiency
-    const allUserIdsPlaceholders = allUserIds.map(() => '?').join(',');
-    
     const [weightData, educationData, foodData] = await Promise.all([
       // Weight records
-      pool.query(
-        `SELECT UserId, CreatedAt FROM weight_records_table 
-         WHERE UserId IN (${allUserIdsPlaceholders}) 
-         AND CreatedAt >= ? AND CreatedAt <= ? 
-         AND IsDeleted = 0`,
-        [...allUserIds, startDateStr, endDateStr + 'T23:59:59']
-      ).then(([rows]) => rows),
+      supabase
+        .from('weight_records_table')
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0),
       
       // Education records
-      pool.query(
-        `SELECT UserId, CreatedAt FROM education_logs_table 
-         WHERE UserId IN (${allUserIdsPlaceholders}) 
-         AND CreatedAt >= ? AND CreatedAt <= ? 
-         AND IsDeleted = 0`,
-        [...allUserIds, startDateStr, endDateStr + 'T23:59:59']
-      ).then(([rows]) => rows),
+      supabase
+        .from('education_logs_table')
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0),
       
       // Food/nutrition records
-      pool.query(
-        `SELECT UserID, CreatedAt FROM food_nutrition_data_table 
-         WHERE UserID IN (${allUserIdsPlaceholders}) 
-         AND CreatedAt >= ? AND CreatedAt <= ? 
-         AND IsDeleted = 0`,
-        [...allUserIds.map(String), startDateStr, endDateStr + 'T23:59:59']
-      ).then(([rows]) => rows)
+      supabase
+        .from('food_nutrition_data_table')
+        .select('UserID, CreatedAt')
+        .in('UserID', allUserIds.map(String))
+        .gte('CreatedAt', startDateStr)
+        .lte('CreatedAt', endDateStr + 'T23:59:59')
+        .eq('IsDeleted', 0)
     ]);
     
     // Process discipline data for each member
@@ -233,17 +248,17 @@ export default async function handler(req, res) {
       const userId = member.UserId;
       
       // Weight
-      const weightDates = getUniqueDates(weightData || [], userId);
+      const weightDates = getUniqueDates(weightData.data || [], userId);
       const weightWindow = timeWindowMap.weight || { start: '05:00:00', end: '09:00:00' };
       const weightOnTimeDates = getUniqueOnTimeDates(
-        weightData || [], userId, weightWindow.start, weightWindow.end
+        weightData.data || [], userId, weightWindow.start, weightWindow.end
       );
       
       // Education
-      const educationDates = getUniqueDates(educationData || [], userId);
+      const educationDates = getUniqueDates(educationData.data || [], userId);
       const educationWindow = timeWindowMap.education || { start: '05:00:00', end: '23:00:00' };
       const educationOnTimeDates = getUniqueOnTimeDates(
-        educationData || [], userId, educationWindow.start, educationWindow.end
+        educationData.data || [], userId, educationWindow.start, educationWindow.end
       );
       
       // Meals - need to filter by time to determine meal type
@@ -251,7 +266,7 @@ export default async function handler(req, res) {
         const dates = new Set();
         const onTimeDates = new Set();
         
-        (foodData || []).forEach(r => {
+        (foodData.data || []).forEach(r => {
           if (r.UserID == userId) {
             const date = new Date(r.CreatedAt);
             const time = date.toTimeString().slice(0, 8);
@@ -306,7 +321,7 @@ export default async function handler(req, res) {
     const teamMembers = allMembers.filter(m => !m.IsLoggedInCoach);
     
     if (allMembers.length === 0) {
-      return res.status(200).json({
+      res.status(200).json({
         success: true,
         source: 'realtime',
         lastUpdated: new Date().toISOString(),
@@ -326,6 +341,7 @@ export default async function handler(req, res) {
           needsAttention: []
         }
       });
+      return;
     }
     
     // Helper function to build coach filter options

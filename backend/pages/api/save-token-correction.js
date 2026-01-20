@@ -1,4 +1,4 @@
-import { getPool } from '../../utils/dbPool.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 
 /**
  * API: Save Token Correction
@@ -8,17 +8,19 @@ export default async function handler(req, res) {
   // CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
 
   if (req.method === 'OPTIONS') {
-    return res.status(200).end();
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ 
+    res.status(405).json({ 
       success: false, 
       message: 'Method not allowed' 
     });
+    return;
   }
 
   const { 
@@ -30,17 +32,18 @@ export default async function handler(req, res) {
   } = req.body;
 
   if (!email || correctedInputCost === undefined || correctedOutputCost === undefined) {
-    return res.status(400).json({ 
+    res.status(400).json({ 
       success: false, 
       message: 'Missing required fields: email, correctedInputCost, correctedOutputCost' 
     });
+    return;
   }
 
   try {
-    // Use connection pool
-    const pool = getPool();
+    // Use Supabase client
+    const supabase = getSupabaseClient();
 
-    console.log('💾 [save-token-correction] Using connection pool');
+    console.log('💾 [save-token-correction] Using Supabase REST API');
     console.log('💾 [save-token-correction] Saving token correction for:', email);
     console.log('💾 [save-token-correction] Request data:', {
       originalInputCost,
@@ -50,19 +53,23 @@ export default async function handler(req, res) {
     });
 
     // Get UserId from team_table
-    const [userRows] = await pool.execute(
-      'SELECT UserId FROM team_table WHERE Email = ? LIMIT 1',
-      [email]
-    );
+    const { data: userRows, error: userError } = await supabase
+      .from('team_table')
+      .select('"UserId"')
+      .eq('"Email"', email)
+      .limit(1);
+
+    if (userError) throw userError;
 
     console.log('💾 [save-token-correction] User lookup result:', userRows);
 
-    if (userRows.length === 0) {
+    if (!userRows || userRows.length === 0) {
       console.log('❌ [save-token-correction] User not found in team_table');
-      return res.status(404).json({
+      res.status(404).json({
         success: false,
         message: 'User not found'
       });
+      return;
     }
 
     const userId = userRows[0].UserId;
@@ -79,24 +86,25 @@ export default async function handler(req, res) {
     });
 
     // Always insert a new record (no update - track all changes)
-    await pool.execute(
-      `INSERT INTO token_correction_table 
-       (UserId, InputTokenCost, OutputTokenCost, TotalTokenCost)
-       VALUES (?, ?, ?, ?)`,
-      [
-        userId,
-        correctedInputCost,
-        correctedOutputCost,
-        totalCost
-      ]
-    );
+    const currentTime = getISTTimestamp();
+    const { error: insertError } = await supabase
+      .from('token_correction_table')
+      .insert({
+        "UserId": userId,
+        "InputTokenCost": correctedInputCost,
+        "OutputTokenCost": correctedOutputCost,
+        "TotalTokenCost": totalCost,
+        "CreatedAt": currentTime
+      });
+
+    if (insertError) throw insertError;
 
     console.log('✅ [save-token-correction] Inserted new record:', {
       userId,
       totalCost
     });
 
-    return res.status(200).json({
+    res.status(200).json({
       success: true,
       message: 'Token correction saved successfully',
       data: {
@@ -106,13 +114,15 @@ export default async function handler(req, res) {
         totalTokenCost: totalCost
       }
     });
+    return;
 
   } catch (error) {
     console.error('❌ [save-token-correction] Error:', error);
-    return res.status(500).json({
+    res.status(500).json({
       success: false,
       message: 'Failed to save token correction',
       error: error.code === 'ETIMEDOUT' ? 'Database connection timeout. Please try again.' : error.message
     });
+    return;
   }
 }

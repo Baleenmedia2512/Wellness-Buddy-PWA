@@ -1,4 +1,4 @@
-﻿import { getPool } from '../../utils/dbPool.js';
+﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -11,22 +11,25 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
-    return res.status(200).end();
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+    res.status(200).end();
+    return;
   }
 
   if (req.method !== 'GET') {
-    return res.status(405).json({ message: 'Method not allowed' });
+    res.status(405).json({ message: 'Method not allowed' });
+    return;
   }
 
   const { userId, limit = 50, offset = 0 } = req.query;
 
   if (!userId) {
-    return res.status(400).json({ message: 'UserId is required' }); 
+    res.status(400).json({ message: 'UserId is required' });
+    return;
   }
 
   try {
-    const pool = getPool();
+    const supabase = getSupabaseClient();
     
     // Get pagination params
     const limitInt = parseInt(limit) || 50;
@@ -35,30 +38,25 @@ export default async function handler(req, res) {
     // Note: Removed caching for paginated responses since cache hit rate is low
     // Users rarely request the same page twice, making caching ineffective
     
-    // Use proper SQL pagination (CRITICAL FIX: was fetching all rows and slicing)
-    const [rows] = await pool.execute(
-      `SELECT *
-       FROM food_nutrition_data_table 
-       WHERE UserID = ? AND IsDeleted = 0
-       ORDER BY CreatedAt DESC
-       LIMIT ? OFFSET ?`,
-      [userId, limitInt, offsetInt]
-    );
+    // Use proper pagination
+    const { data: rows, error, count } = await supabase
+      .from('food_nutrition_data_table')
+      .select('*', { count: 'exact' })
+      .eq('"UserID"', userId)
+      .eq('"IsDeleted"', 0)
+      .order('"CreatedAt"', { ascending: false })
+      .range(offsetInt, offsetInt + limitInt - 1);
 
-    // Get total count for pagination
-    const [countResult] = await pool.execute(
-      'SELECT COUNT(*) as total FROM food_nutrition_data_table WHERE UserID = ? AND IsDeleted = 0',
-      [userId]
-    );
+    if (error) throw error;
     
     const response = {
       success: true,
-      data: rows,
+      data: rows || [],
       pagination: {
-        total: countResult[0].total,
+        total: count || 0,
         limit: limitInt,
         offset: offsetInt,
-        hasMore: (offsetInt + limitInt) < countResult[0].total
+        hasMore: (offsetInt + limitInt) < (count || 0)
       }
     };
     

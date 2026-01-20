@@ -195,3 +195,7 @@ firebase-debug.*.log*
 # Cypress screenshots and videos
 frontend/cypress/screenshots/
 frontend/cypress/videos/
+
+foodnutritiontable.json
+weightrecoredstable.json
+wellnessvalleyDump20260109.sql
