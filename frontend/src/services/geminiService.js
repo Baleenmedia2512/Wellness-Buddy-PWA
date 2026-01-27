@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "./userContextService";
+import { applyGlobalAutoCorrections } from "./foodCorrectionService";
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -437,6 +438,14 @@ class GeminiService {
         });
       }
       console.log("============================================");
+
+      // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
+      // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
+      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
+        nutritionData.foods = await applyGlobalAutoCorrections(
+          nutritionData.foods,
+        );
+      }
 
       return this.transformOptimizedResponse(nutritionData, "image");
     } catch (error) {

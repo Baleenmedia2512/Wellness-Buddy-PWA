@@ -625,15 +625,26 @@ const EditableFoodItem = forwardRef(
           console.log("[CORRECTION DEBUG] User ID:", userId);
 
           if (userId) {
+            // 🔗 CORRECTION CHAIN SUPPORT
+            // Use the ORIGINAL AI name if available, otherwise use current name
+            // This allows: "Golden Milk" → "Formula 1" → "Juice" chains
+            const aiDetectedName =
+              originalFoodRef.current?.originalAiName || originalName;
+
             console.log("✏️ ========== USER CORRECTION ==========");
-            console.log("🔴 AI Originally Detected:", originalName);
+            console.log("🔴 Original AI/Previous Name:", aiDetectedName);
             console.log("🟢 User Changed It To:", newName);
             console.log("👤 User ID:", userId);
+            if (originalFoodRef.current?.wasAutoCorrected) {
+              console.log(
+                "🔗 This is a CORRECTION CHAIN (previous was auto-corrected)",
+              );
+            }
             console.log("=======================================");
 
             console.log("[CORRECTION DEBUG] Calling saveFoodCorrection API...");
-            // Save correction asynchronously (don't block UI)
-            saveFoodCorrection(userId, originalName, newName)
+            // Save correction with the original AI detected name
+            saveFoodCorrection(userId, aiDetectedName, newName)
               .then((response) => {
                 console.log("[CORRECTION DEBUG] ✅ API Response:", response);
                 if (response.success) {
@@ -1173,6 +1184,15 @@ const EditableFoodItem = forwardRef(
               <span className="font-medium text-gray-900 text-base">
                 {foodItem.name}
               </span>
+              {/* 🎯 GLOBAL AUTO-CORRECTION BADGE */}
+              {foodItem.wasAutoCorrected && (
+                <span
+                  className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200"
+                  title={`Auto-corrected from "${foodItem.originalAiName}" · ${foodItem.correctionSource}`}
+                >
+                  ✓ Auto
+                </span>
+              )}
               {servingDesc && (
                 <span className="text-sm text-gray-600">{servingDesc}</span>
               )}
