@@ -314,6 +314,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [teamFilter, setTeamFilter] = useState('all');
   const [sortOrder, setSortOrder] = useState('desc');
+  const [selectedCoachId, setSelectedCoachId] = useState(null); // For hierarchical drill-down in "All Teams" view
   const filterRef = useRef(null);
 
   // Close filter dropdown when clicking outside
@@ -435,6 +436,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }, [teamData]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
+    if (!user?.id) return [];
+    
     return allMembers
       .filter(member => {
         // Search filter
@@ -448,16 +451,25 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
         if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
         
-        // Team filter
+        // Team filter with hierarchical drill-down support
         let matchesTeam = true;
-        if (teamFilter === 'myTeam') {
+        if (teamFilter === 'all') {
+          // "All Teams" hierarchical drill-down logic
+          if (selectedCoachId === null) {
+            // Show only coaches (not their team members)
+            matchesTeam = (member.role && member.role.toLowerCase() === 'coach') || member.isLoggedInCoach;
+          } else {
+            // Show selected coach + their team members
+            matchesTeam = member.userId === selectedCoachId || member.uplineCoachId === selectedCoachId;
+          }
+        } else if (teamFilter === 'myTeam') {
           // For coach, they manage their own team
           if (member.isLoggedInCoach) {
             matchesTeam = true;
           } else {
             matchesTeam = member.uplineCoachId === user.id;
           }
-        } else if (teamFilter !== 'all') {
+        } else {
           // For specific coach filter
           if (member.isLoggedInCoach) {
             matchesTeam = false; // Don't show logged-in coach in other coach filters
@@ -473,12 +485,18 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         if (a.isLoggedInCoach) return -1;
         if (b.isLoggedInCoach) return 1;
         
+        // When drilling down in All Teams, keep the selected coach at the top
+        if (teamFilter === 'all' && selectedCoachId !== null) {
+          if (a.userId === selectedCoachId) return -1;
+          if (b.userId === selectedCoachId) return 1;
+        }
+        
         // Sort by discipline score
         const scoreA = a.periodDiscipline.percentage;
         const scoreB = b.periodDiscipline.percentage;
         return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
       });
-  }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, user.id]);
+  }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, selectedCoachId, user?.id]);
 
   // Activity Icons Map
   const activityIcons = {
