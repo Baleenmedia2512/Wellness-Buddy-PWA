@@ -957,6 +957,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 acc[member.userId] = member.periodDiscipline.percentage;
                 return acc;
               }, {})}
+              memberActivities={allMembers.reduce((acc, member) => {
+                acc[member.userId] = member.activities;
+                return acc;
+              }, {})}
               emptyMessage="No team members found"
             />
           ) : (
