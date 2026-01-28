@@ -11,6 +11,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
@@ -202,6 +203,20 @@ function WellnessValleyApp() {
     setToast({ message, visible: true });
     setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
+
+  // ✅ CRITICAL FIX: Force splash screen dismissal on app load
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      // Double-check splash screen is hidden after React renders
+      const timer = setTimeout(() => {
+        SplashScreen.hide().catch(err => {
+          console.log('Splash screen already hidden');
+        });
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
 
   // Initialize back button handler
   useEffect(() => {

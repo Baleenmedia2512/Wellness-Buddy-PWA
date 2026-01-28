@@ -221,7 +221,12 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     alt="Wellness Valley" 
                     className="w-full h-full object-contain brand-logo"
                     draggable="false"
-                    style={{ WebkitUserSelect: 'none', userSelect: 'none', pointerEvents: 'none' }}
+                    style={{ 
+                      WebkitUserSelect: 'none', 
+                      userSelect: 'none',
+                      WebkitTouchCallout: 'none',
+                      WebkitUserDrag: 'none'
+                    }}
                 />
             </div>
             </div>

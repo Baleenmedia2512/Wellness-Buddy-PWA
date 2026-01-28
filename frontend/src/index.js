@@ -2,6 +2,16 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 import WellnessValleyApp from './App';
+import { SplashScreen } from '@capacitor/splash-screen';
+import { Capacitor } from '@capacitor/core';
+
+// ✅ CRITICAL FIX: Explicitly hide splash screen to prevent text selection overlay issue
+if (Capacitor.isNativePlatform()) {
+  // Hide splash screen immediately to remove window layer
+  SplashScreen.hide().catch(err => {
+    console.warn('Splash screen already hidden:', err);
+  });
+}
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 

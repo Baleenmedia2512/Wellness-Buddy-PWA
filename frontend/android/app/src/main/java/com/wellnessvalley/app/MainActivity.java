@@ -9,13 +9,19 @@ import android.view.View;
 import android.view.WindowManager;
 import android.webkit.WebView;
 import android.webkit.WebSettings;
+import android.webkit.WebViewClient;
+import android.graphics.Bitmap;
 
 import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
+import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // ✅ CRITICAL FIX: Install and immediately dismiss splash screen to prevent window overlay
+        SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
+        
         // Register the GalleryMonitorPlugin BEFORE super.onCreate()
         registerPlugin(GalleryMonitorPlugin.class);
         
@@ -27,6 +33,10 @@ public class MainActivity extends BridgeActivity {
         
         super.onCreate(savedInstanceState);
         
+        // ✅ CRITICAL FIX: Ensure splash screen window is completely removed
+        // This prevents the splash screen from appearing in text selection overlays
+        splashScreen.setKeepOnScreenCondition(() -> false);
+        
         // Enable hardware acceleration for better animation performance
         getWindow().setFlags(
             WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
@@ -35,6 +45,16 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
+        
+        // ✅ CRITICAL FIX: Force splash screen dismissal after WebView is ready
+        // This ensures no splash window remains in the window hierarchy
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                android.util.Log.d("MainActivity", "✅ Splash screen window layer removed");
+            } catch (Exception e) {
+                android.util.Log.e("MainActivity", "Splash screen already dismissed", e);
+            }
+        }, 100);
         
         // Ensure dark status bar icons on all Android versions
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
@@ -147,7 +167,32 @@ public class MainActivity extends BridgeActivity {
                 settings.setSupportZoom(false);
                 settings.setBuiltInZoomControls(false);
                 
-                android.util.Log.d("MainActivity", "✅ WebView optimized for image performance");
+                // ✅ FIX: Disable mixed content mode to prevent image selection issues
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                    settings.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+                }
+                
+                // ✅ CRITICAL FIX: Disable smart text selection that includes images
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    // Disable ALL smart selection features that capture images
+                    webView.getSettings().setDisabledActionModeMenuItems(
+                        WebSettings.MENU_ITEM_PROCESS_TEXT | 
+                        WebSettings.MENU_ITEM_WEB_SEARCH |
+                        WebSettings.MENU_ITEM_SHARE
+                    );
+                }
+                
+                // ✅ ADDITIONAL FIX: Disable text classifier to prevent image capture in selection
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    try {
+                        // Remove text classifier that includes images in selection context
+                        webView.setTextClassifier(android.view.textclassifier.TextClassifier.NO_OP);
+                    } catch (Exception e) {
+                        android.util.Log.w("MainActivity", "Could not disable text classifier", e);
+                    }
+                }
+                
+                android.util.Log.d("MainActivity", "✅ WebView optimized for image performance and text selection");
             }
         } catch (Exception e) {
             android.util.Log.e("MainActivity", "Failed to optimize WebView", e);

@@ -77,7 +77,16 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
               alt="Wellness Valley" 
               className="h-12 w-12 sm:h-12 sm:w-12 object-contain flex-shrink-0 header-logo app-logo"
               draggable="false"
-              style={{ WebkitUserSelect: 'none', userSelect: 'none', pointerEvents: 'none' }}
+              role="presentation"
+              aria-hidden="true"
+              style={{ 
+                WebkitUserSelect: 'none', 
+                userSelect: 'none', 
+                WebkitTouchCallout: 'none',
+                WebkitUserDrag: 'none',
+                pointerEvents: 'none',
+                WebkitTapHighlightColor: 'transparent'
+              }}
             />
             <div className="flex-1 min-w-0 -ml-1">
               <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
