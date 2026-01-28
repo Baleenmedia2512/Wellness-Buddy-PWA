@@ -24,9 +24,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { disciplineReportService } from "../services/disciplineReportService";
-import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
-import HierarchicalTeamView from "./HierarchicalTeamView";
 // Removed LoadingSpinner import as we are using custom skeleton
 
 // --- DateRangePicker Component (Exact Copy from AI Token Monitor) ---
@@ -361,9 +359,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [teamFilter, setTeamFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [selectedCoachId, setSelectedCoachId] = useState(null); // For hierarchical drill-down in "All Teams" view
-  const [hierarchyData, setHierarchyData] = useState(null);
-  const [loadingHierarchy, setLoadingHierarchy] = useState(false);
   const filterRef = useRef(null);
 
   // Close filter dropdown when clicking outside
@@ -429,27 +424,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   useEffect(() => {
     loadDisciplineReportCallback();
   }, [loadDisciplineReportCallback]);
-
-  // Load hierarchy when "All Teams" is selected
-  useEffect(() => {
-    const loadHierarchy = async () => {
-      if (teamFilter === "all" && user?.id) {
-        setLoadingHierarchy(true);
-        try {
-          const data = await teamHierarchyService.getTeamHierarchy(
-            user.id,
-            false,
-          );
-          setHierarchyData(data);
-        } catch (err) {
-          console.error("Failed to load hierarchy:", err);
-        } finally {
-          setLoadingHierarchy(false);
-        }
-      }
-    };
-    loadHierarchy();
-  }, [teamFilter, user?.id]);
 
   // Scroll active date range button into view after data loads
   useEffect(() => {
@@ -543,21 +517,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           matchesDiscipline = discipline >= 60 && discipline < 80;
         if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
 
-        // Team filter with hierarchical drill-down support
+        // Team filter - simple logic
         let matchesTeam = true;
         if (teamFilter === "all") {
-          // "All Teams" hierarchical drill-down logic
-          if (selectedCoachId === null) {
-            // Show only coaches (not their team members)
-            matchesTeam =
-              (member.role && member.role.toLowerCase() === "coach") ||
-              member.isLoggedInCoach;
-          } else {
-            // Show selected coach + their team members
-            matchesTeam =
-              member.userId === selectedCoachId ||
-              member.uplineCoachId === selectedCoachId;
-          }
+          // Show all members - coaches, co-coaches, and members
+          matchesTeam = true;
         } else if (teamFilter === "myTeam") {
           // For coach, they manage their own team
           if (member.isLoggedInCoach) {
@@ -577,17 +541,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         return matchesSearch && matchesDiscipline && matchesTeam;
       })
       .sort((a, b) => {
-        // Keep logged-in coach at the top always
-        if (a.isLoggedInCoach) return -1;
-        if (b.isLoggedInCoach) return 1;
-
-        // When drilling down in All Teams, keep the selected coach at the top
-        if (teamFilter === "all" && selectedCoachId !== null) {
-          if (a.userId === selectedCoachId) return -1;
-          if (b.userId === selectedCoachId) return 1;
-        }
-
-        // Sort by discipline score
+        // Sort by discipline score (highest to lowest by default)
         const scoreA = a.periodDiscipline.percentage;
         const scoreB = b.periodDiscipline.percentage;
         return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
@@ -598,7 +552,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     disciplineFilter,
     teamFilter,
     sortOrder,
-    selectedCoachId,
     user?.id,
   ]);
 
@@ -940,206 +893,166 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
         )}
 
-        {/* Hierarchical View for "All Teams" */}
-        {teamFilter === "all" ? (
-          loadingHierarchy ? (
-            <div className="text-center py-12">
-              <div className="w-12 h-12 border-4 border-green-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <p className="text-gray-500 text-sm mt-4">
-                Loading team hierarchy...
-              </p>
-            </div>
-          ) : hierarchyData?.hierarchy ? (
-            <HierarchicalTeamView
-              hierarchy={hierarchyData.hierarchy}
-              showDisciplineScores={true}
-              disciplineScores={allMembers.reduce((acc, member) => {
-                acc[member.userId] = member.periodDiscipline.percentage;
-                return acc;
-              }, {})}
-              memberActivities={allMembers.reduce((acc, member) => {
-                acc[member.userId] = member.activities;
-                return acc;
-              }, {})}
-              emptyMessage="No team members found"
-            />
-          ) : (
-            <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Search className="h-8 w-8 text-gray-300" />
-              </div>
-              <h3 className="text-gray-900 font-medium">
-                No team hierarchy found
-              </h3>
-              <p className="text-gray-500 text-sm mt-1">
-                Your team structure will appear here
-              </p>
-            </div>
-          )
-        ) : (
-          /* Member List for specific team filters */
-          <div className="space-y-3">
-            <AnimatePresence>
-              {filteredAndSortedMembers.map((member) => (
-                <motion.div
-                  key={member.userId}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  layout
-                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
+        {/* Member List */}
+        <div className="space-y-3">
+          <AnimatePresence>
+            {filteredAndSortedMembers.map((member) => (
+              <motion.div
+                key={member.userId}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                layout
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
+              >
+                {/* Card Header / Main Info */}
+                <div
+                  onClick={() =>
+                    setExpandedMemberId(
+                      expandedMemberId === member.userId ? null : member.userId,
+                    )
+                  }
+                  className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
                 >
-                  {/* Card Header / Main Info */}
-                  <div
-                    onClick={() =>
-                      setExpandedMemberId(
-                        expandedMemberId === member.userId
-                          ? null
-                          : member.userId,
-                      )
-                    }
-                    className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      {/* Avatar / Initials */}
-                      <div
-                        className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
-                          member.periodDiscipline.percentage,
-                        ).replace("bg-", "bg-opacity-10 bg-")}`}
-                      >
-                        {member.userName.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-900 text-[15px]">
-                            {member.userName}
-                          </h3>
-                          {member.isLoggedInCoach && (
-                            <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                              YOU
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {member.email}
-                        </p>
-
-                        {/* Coach Badge - Don't show for logged-in coach */}
-                        {!member.isLoggedInCoach && member.uplineCoachName && (
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            Coach:{" "}
-                            <span className="text-gray-600 font-medium">
-                              {member.uplineCoachName}
-                              {member.uplineCoachId === user.id ? " (You)" : ""}
-                            </span>
-                          </p>
-                        )}
-
-                        {member.isLoggedInCoach && (
-                          <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                            My Performance
-                          </p>
-                        )}
-                      </div>
+                  <div className="flex items-center gap-3">
+                    {/* Avatar / Initials */}
+                    <div
+                      className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
+                        member.periodDiscipline.percentage,
+                      ).replace("bg-", "bg-opacity-10 bg-")}`}
+                    >
+                      {member.userName.charAt(0).toUpperCase()}
                     </div>
-
-                    <div className="flex items-center gap-4">
-                      <div className="text-right">
-                        <div
-                          className={`text-xl font-bold ${getScoreColorText(
-                            member.periodDiscipline.percentage,
-                          )}`}
-                        >
-                          {member.periodDiscipline.percentage}%
-                        </div>
-                        <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                          Score
-                        </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-gray-900 text-[15px]">
+                          {member.userName}
+                        </h3>
+                        {member.isLoggedInCoach && (
+                          <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                            YOU
+                          </span>
+                        )}
                       </div>
-                      {expandedMemberId === member.userId ? (
-                        <ChevronUp className="h-5 w-5 text-gray-300" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5 text-gray-300" />
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        {member.email}
+                      </p>
+
+                      {/* Coach Badge - Don't show for logged-in coach */}
+                      {!member.isLoggedInCoach && member.uplineCoachName && (
+                        <p className="text-[11px] text-gray-400 mt-1">
+                          Coach:{" "}
+                          <span className="text-gray-600 font-medium">
+                            {member.uplineCoachName}
+                            {member.uplineCoachId === user.id ? " (You)" : ""}
+                          </span>
+                        </p>
+                      )}
+
+                      {member.isLoggedInCoach && (
+                        <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
+                          My Performance
+                        </p>
                       )}
                     </div>
                   </div>
 
-                  {/* Expanded Details */}
-                  <AnimatePresence>
-                    {expandedMemberId === member.userId && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-gray-50 bg-gray-50/30"
+                  <div className="flex items-center gap-4">
+                    <div className="text-right">
+                      <div
+                        className={`text-xl font-bold ${getScoreColorText(
+                          member.periodDiscipline.percentage,
+                        )}`}
                       >
-                        <div className="p-4 grid grid-cols-5 gap-2">
-                          {[
-                            "weight",
-                            "education",
-                            "breakfast",
-                            "lunch",
-                            "dinner",
-                          ].map((activityKey) => {
-                            const activity = member.activities[activityKey];
-                            return (
-                              <div
-                                key={activityKey}
-                                className="flex flex-col items-center gap-2"
-                              >
-                                <div
-                                  className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
-                                    activity.percentage >= 80
-                                      ? "bg-green-50 border-green-200 text-green-700"
-                                      : activity.percentage >= 60
-                                      ? "bg-yellow-50 border-yellow-200 text-yellow-700"
-                                      : "bg-red-50 border-red-200 text-red-700"
-                                  }`}
-                                >
-                                  {activityIcons[activityKey]}
-                                </div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                                  {activityKey.slice(0, 3)}
-                                </span>
-                                <span
-                                  className={`text-xs font-bold ${getScoreColorText(
-                                    activity.percentage,
-                                  )}`}
-                                >
-                                  {activity.percentage}%
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="px-4 pb-4 pt-0 text-center">
-                          <p className="text-xs text-gray-400 font-medium">
-                            {member.periodDiscipline.onTimePosts} on-time posts
-                            out of {member.periodDiscipline.expectedPosts}{" "}
-                            expected
-                          </p>
-                        </div>
-                      </motion.div>
+                        {member.periodDiscipline.percentage}%
+                      </div>
+                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                        Score
+                      </div>
+                    </div>
+                    {expandedMemberId === member.userId ? (
+                      <ChevronUp className="h-5 w-5 text-gray-300" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-gray-300" />
                     )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-
-            {filteredAndSortedMembers.length === 0 && (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Search className="h-8 w-8 text-gray-300" />
+                  </div>
                 </div>
-                <h3 className="text-gray-900 font-medium">No members found</h3>
-                <p className="text-gray-500 text-sm mt-1">
-                  Try adjusting your search or filters
-                </p>
+
+                {/* Expanded Details */}
+                <AnimatePresence>
+                  {expandedMemberId === member.userId && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-gray-50 bg-gray-50/30"
+                    >
+                      <div className="p-4 grid grid-cols-5 gap-2">
+                        {[
+                          "weight",
+                          "education",
+                          "breakfast",
+                          "lunch",
+                          "dinner",
+                        ].map((activityKey) => {
+                          const activity = member.activities[activityKey];
+                          return (
+                            <div
+                              key={activityKey}
+                              className="flex flex-col items-center gap-2"
+                            >
+                              <div
+                                className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
+                                  activity.percentage >= 80
+                                    ? "bg-green-50 border-green-200 text-green-700"
+                                    : activity.percentage >= 60
+                                    ? "bg-yellow-50 border-yellow-200 text-yellow-700"
+                                    : "bg-red-50 border-red-200 text-red-700"
+                                }`}
+                              >
+                                {activityIcons[activityKey]}
+                              </div>
+                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                                {activityKey.slice(0, 3)}
+                              </span>
+                              <span
+                                className={`text-xs font-bold ${getScoreColorText(
+                                  activity.percentage,
+                                )}`}
+                              >
+                                {activity.percentage}%
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <div className="px-4 pb-4 pt-0 text-center">
+                        <p className="text-xs text-gray-400 font-medium">
+                          {member.periodDiscipline.onTimePosts} on-time posts
+                          out of {member.periodDiscipline.expectedPosts}{" "}
+                          expected
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            ))}
+          </AnimatePresence>
+
+          {filteredAndSortedMembers.length === 0 && (
+            <div className="text-center py-12">
+              <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Search className="h-8 w-8 text-gray-300" />
               </div>
-            )}
-          </div>
-        )}
+              <h3 className="text-gray-900 font-medium">No members found</h3>
+              <p className="text-gray-500 text-sm mt-1">
+                Try adjusting your search or filters
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Time Window Settings Modal - Admin Only */}
         <TimeWindowSettingsModal

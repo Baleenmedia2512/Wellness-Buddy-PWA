@@ -35,13 +35,13 @@ const TeamNode = ({
   const indentWidth = level * 24; // 24px per level
 
   // Debug logging
-  console.log('TeamNode render:', {
+  console.log("TeamNode render:", {
     name: node.userName,
     userId: node.userId,
     hasChildren,
     childCount: node.teamMembers?.length || 0,
     isExpanded,
-    level
+    level,
   });
 
   const roleIcon = {
@@ -94,7 +94,7 @@ const TeamNode = ({
         className={`
           bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow
         `}
-        style={{ marginLeft: `${indentWidth}px`, marginBottom: '12px' }}
+        style={{ marginLeft: `${indentWidth}px`, marginBottom: "12px" }}
       >
         {/* Card Header */}
         <div
@@ -189,42 +189,52 @@ const TeamNode = ({
               className="border-t border-gray-50 bg-gray-50/30"
             >
               <div className="p-4 grid grid-cols-5 gap-2">
-                {['weight', 'education', 'breakfast', 'lunch', 'dinner'].map((activityKey) => {
-                  const activity = activities[activityKey];
-                  if (!activity) return null;
-                  return (
-                    <div
-                      key={activityKey}
-                      className="flex flex-col items-center gap-2"
-                    >
+                {["weight", "education", "breakfast", "lunch", "dinner"].map(
+                  (activityKey) => {
+                    const activity = activities[activityKey];
+                    if (!activity) return null;
+                    return (
                       <div
-                        className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
-                          activity.percentage >= 80
-                            ? 'bg-green-50 border-green-200 text-green-700'
-                            : activity.percentage >= 60
-                            ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
-                            : 'bg-red-50 border-red-200 text-red-700'
-                        }`}
+                        key={activityKey}
+                        className="flex flex-col items-center gap-2"
                       >
-                        {activityIcons[activityKey]}
+                        <div
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
+                            activity.percentage >= 80
+                              ? "bg-green-50 border-green-200 text-green-700"
+                              : activity.percentage >= 60
+                              ? "bg-yellow-50 border-yellow-200 text-yellow-700"
+                              : "bg-red-50 border-red-200 text-red-700"
+                          }`}
+                        >
+                          {activityIcons[activityKey]}
+                        </div>
+                        <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                          {activityKey.slice(0, 3)}
+                        </span>
+                        <span
+                          className={`text-xs font-bold ${getScoreColorText(
+                            activity.percentage,
+                          )}`}
+                        >
+                          {activity.percentage}%
+                        </span>
                       </div>
-                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                        {activityKey.slice(0, 3)}
-                      </span>
-                      <span
-                        className={`text-xs font-bold ${getScoreColorText(activity.percentage)}`}
-                      >
-                        {activity.percentage}%
-                      </span>
-                    </div>
-                  );
-                })}
+                    );
+                  },
+                )}
               </div>
               <div className="px-4 pb-4 pt-0 text-center">
                 <p className="text-xs text-gray-400 font-medium">
                   {(() => {
-                    const totalOnTime = Object.values(activities).reduce((sum, act) => sum + (act.onTimePosts || 0), 0);
-                    const totalExpected = Object.values(activities).reduce((sum, act) => sum + (act.expectedPosts || 0), 0);
+                    const totalOnTime = Object.values(activities).reduce(
+                      (sum, act) => sum + (act.onTimePosts || 0),
+                      0,
+                    );
+                    const totalExpected = Object.values(activities).reduce(
+                      (sum, act) => sum + (act.expectedPosts || 0),
+                      0,
+                    );
                     return `${totalOnTime} on-time posts out of ${totalExpected} expected`;
                   })()}
                 </p>
