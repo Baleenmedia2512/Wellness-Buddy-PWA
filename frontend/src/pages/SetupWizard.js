@@ -219,7 +219,9 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                 <img 
                     src={wellnessValleyIcon} 
                     alt="Wellness Valley" 
-                    className="w-full h-full object-contain"
+                    className="w-full h-full object-contain brand-logo"
+                    draggable="false"
+                    style={{ WebkitUserSelect: 'none', userSelect: 'none', pointerEvents: 'none' }}
                 />
             </div>
             </div>
