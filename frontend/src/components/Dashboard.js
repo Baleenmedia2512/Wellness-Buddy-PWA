@@ -125,9 +125,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
 
           {/* Tab navigation */}
           <div className="flex border-b border-gray-200">
-            <button
+            <TouchFeedbackButton
               onClick={() => handleTabChange('nutrition')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'nutrition'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -142,11 +142,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                 }}
               />
               <span>Nutrition</span>
-            </button>
+            </TouchFeedbackButton>
 
-            <button
+            <TouchFeedbackButton
               onClick={() => handleTabChange('weight')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'weight'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -154,11 +154,11 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
             >
               <WeighingScaleIcon className="h-4 w-4" />
               <span>Weight</span>
-            </button>
+            </TouchFeedbackButton>
 
-            <button
+            <TouchFeedbackButton
               onClick={() => handleTabChange('education')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'education'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -166,7 +166,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
             >
               <EducationIcon className="h-4 w-4" />
               <span>Education</span>
-            </button>
+            </TouchFeedbackButton>
           </div>
         </div>
       </div>

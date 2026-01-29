@@ -69,6 +69,15 @@ const TouchFeedbackButton = ({
     // Get touch position for ripple
     const touch = e.touches[0];
     createRipple(touch);
+    
+    // Haptic feedback on mobile
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(10);
+      } catch (err) {
+        // Ignore vibration errors
+      }
+    }
   };
 
   const handleTouchEnd = () => {
@@ -111,8 +120,15 @@ const TouchFeedbackButton = ({
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseLeave}
       className={`relative overflow-hidden transition-all duration-150 ${className} ${
-        isPressed ? 'scale-95 opacity-80' : 'scale-100 opacity-100'
+        isPressed ? 'scale-[0.92] brightness-95' : 'scale-100 brightness-100'
       }`}
+      style={{
+        transition: 'all 150ms cubic-bezier(0.4, 0, 0.2, 1)',
+        touchAction: 'manipulation',
+        WebkitTapHighlightColor: 'transparent',
+        userSelect: 'none',
+        WebkitUserSelect: 'none',
+      }}
       aria-label={ariaLabel}
       {...rest}
     >
@@ -131,12 +147,25 @@ const TouchFeedbackButton = ({
             height: ripple.size,
             transform: 'translate(-50%, -50%)',
             borderRadius: '50%',
-            backgroundColor: 'rgba(0, 0, 0, 0.1)',
+            backgroundColor: 'rgba(0, 0, 0, 0.15)',
             pointerEvents: 'none',
-            animation: 'ripple-animation 600ms ease-out',
+            animation: 'ripple-animation 600ms cubic-bezier(0.4, 0, 0.2, 1)',
           }}
         />
       ))}
+      
+      {/* Press overlay effect */}
+      {isPressed && (
+        <span
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.05)',
+            pointerEvents: 'none',
+            animation: 'fade-in 150ms ease-out',
+          }}
+        />
+      )}
       
       {/* Ripple animation keyframes */}
       <style>{`
@@ -148,6 +177,14 @@ const TouchFeedbackButton = ({
           100% {
             transform: translate(-50%, -50%) scale(1);
             opacity: 0;
+          }
+        }
+        @keyframes fade-in {
+          from {
+            opacity: 0;
+          }
+          to {
+            opacity: 1;
           }
         }
       `}</style>

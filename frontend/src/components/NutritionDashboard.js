@@ -2166,7 +2166,7 @@ const NutritionDashboard = ({
                   ) : (
                     // Delete button when not editing
                     <div className="p-4 pt-0">
-                      <button
+                      <TouchFeedbackButton
                         disabled={deletingId === selectedMeal?.ID}
                         className={`w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
                           deletingId === selectedMeal?.ID
@@ -2311,7 +2311,7 @@ const NutritionDashboard = ({
                             Delete
                           </>
                         )}
-                      </button>
+                      </TouchFeedbackButton>
                     </div>
                   )}
                 </div>

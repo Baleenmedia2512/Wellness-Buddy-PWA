@@ -545,8 +545,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
           // Search filter
           const matchesSearch =
-            member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            member.email.toLowerCase().includes(searchQuery.toLowerCase());
+            (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+            (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
 
           // Discipline score filter
           const discipline = member.periodDiscipline.percentage || 0;
@@ -573,8 +573,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
         // Search filter
         const matchesSearch =
-          member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          member.email.toLowerCase().includes(searchQuery.toLowerCase());
+          (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+          (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
 
         // Discipline score filter
         const discipline = member.periodDiscipline.percentage || 0;
@@ -734,16 +734,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </div>
           </div>
 
-          {/* Date Range Selector (Scrollable Pills) */}
+          {/* Date Range Selector (Pills) */}
           <div
-            className="mt-3 flex gap-2 overflow-x-auto no-scrollbar pb-1"
+            className="flex gap-2 overflow-x-auto sm:overflow-visible pb-2 scrollbar-hide mt-3 items-center sm:justify-center"
             id="date-range-container"
           >
             {[
               { id: "today", label: "Today" },
               { id: "yesterday", label: "Yesterday" },
-              { id: "last7days", label: "Last 7 Days" },
-              { id: "last30days", label: "Last 30 Days" },
+              { id: "last7days", label: "Week" },
+              { id: "last30days", label: "Month" },
             ].map((range) => (
               <TouchFeedbackButton
                 key={range.id}
@@ -754,10 +754,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   setCustomStartDate(null);
                   setCustomEndDate(null);
                 }}
-                className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                   dateRange === range.id
-                    ? "bg-green-600 text-white border-green-600 shadow-md shadow-green-100"
-                    : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                    ? "bg-green-600 text-white shadow-md shadow-green-200"
+                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
                 }`}
               >
                 {range.label}
@@ -768,16 +768,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               onClick={() => {
                 setShowDatePicker(!showDatePicker);
               }}
-              className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border flex items-center space-x-1 ${
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
                 dateRange === "custom"
-                  ? "bg-green-600 text-white border-green-600 shadow-md shadow-green-100"
-                  : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"
+                  ? "bg-green-600 text-white shadow-md shadow-green-200"
+                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
               }`}
             >
               <CalendarIcon className="w-4 h-4" />
-              <span>
-                {dateRange === "custom" ? getDateRangeLabel() : "Custom"}
-              </span>
+              <span>Custom</span>
             </TouchFeedbackButton>
           </div>
 
@@ -802,17 +800,17 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
           <div className="grid grid-cols-3 divide-x divide-gray-50">
             {/* Average & Posts */}
-            <div className="p-4 flex flex-col items-center justify-center text-center">
-              <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-1">
+            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
+              <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Avg Score
               </div>
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-2xl font-bold text-gray-900">
+              <div className="flex items-baseline justify-center gap-0.5 my-1">
+                <span className="text-xl sm:text-2xl font-bold text-gray-900">
                   {(getSummary()?.averagePeriodDiscipline || getSummary()?.averageDiscipline || 0).toFixed(0)}
                 </span>
                 <span className="text-xs text-gray-400">%</span>
               </div>
-              <div className="text-[10px] text-green-600 font-medium mt-1 bg-green-50 px-2 py-0.5 rounded-full">
+              <div className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full">
                 {(() => {
                   const allMembers = [...(teamData?.teamMembers || [])];
                   if (teamData?.coachPerformance) {
@@ -835,38 +833,45 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </div>
 
             {/* Top Performer (Middle) */}
-            <div className="p-4 flex flex-col items-center justify-center text-center">
-              <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">
+            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
+              <div className="text-[10px] sm:text-xs font-bold text-green-600 uppercase tracking-wider">
                 Top Star
               </div>
               {getSummary()?.topPerformer ? (
                 <>
-                  <div className="flex items-baseline gap-0.5">
-                    <span className="text-2xl font-bold text-gray-900">
+                  <div className="flex items-baseline justify-center gap-0.5 my-1">
+                    <span className="text-xl sm:text-2xl font-bold text-gray-900">
                       {getSummary().topPerformer.discipline}
                     </span>
                     <span className="text-xs text-gray-400">%</span>
                   </div>
-                  <div className="text-xs text-gray-500 font-medium truncate w-full px-1 mt-1">
+                  <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
                     {getSummary().topPerformer.userName.split(" ")[0]}
                   </div>
                 </>
               ) : (
-                <span className="text-gray-300">-</span>
+                <>
+                  <div className="flex items-baseline justify-center gap-0.5 my-1">
+                    <span className="text-gray-300">-</span>
+                  </div>
+                  <div className="text-[10px] sm:text-xs text-gray-300">
+                    N/A
+                  </div>
+                </>
               )}
             </div>
 
             {/* At Risk (Right) */}
-            <div className="p-4 flex flex-col items-center justify-center text-center">
-              <div className="text-[10px] font-bold text-red-400 uppercase tracking-wider mb-1">
+            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
+              <div className="text-[10px] sm:text-xs font-bold text-red-400 uppercase tracking-wider">
                 At Risk
               </div>
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-2xl font-bold text-red-600">
+              <div className="flex items-baseline justify-center gap-0.5 my-1">
+                <span className="text-xl sm:text-2xl font-bold text-red-600">
                   {getSummary()?.needsAttention?.length || 0}
                 </span>
               </div>
-              <div className="text-[10px] text-gray-400 font-medium mt-1">
+              <div className="text-[10px] sm:text-xs text-gray-400 font-medium">
                 of {getSummary()?.totalMembers || 0} Members
               </div>
             </div>
@@ -1018,7 +1023,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   <div className="flex items-center gap-3">
                     {/* Avatar / Initials */}
                     <div
-                      className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
+                      className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
                         member.periodDiscipline?.percentage || 0,
                       ).replace("bg-", "bg-opacity-10 bg-")}`}
                     >
@@ -1026,16 +1031,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h3 className="font-bold text-gray-900 text-[15px]">
+                        <h3 className="font-bold text-gray-900 text-sm sm:text-[15px]">
                           {member.userName}
                         </h3>
                         {member.isLoggedInCoach && (
-                          <span className="text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                          <span className="text-[9px] sm:text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
                             YOU
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-500 mt-0.5">
+                      <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                         {member.email}
                       </p>
 
@@ -1059,23 +1064,23 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 sm:gap-4">
                     <div className="text-right">
                       <div
-                        className={`text-xl font-bold ${getScoreColorText(
+                        className={`text-lg sm:text-xl font-bold ${getScoreColorText(
                           member.periodDiscipline?.percentage || 0,
                         )}`}
                       >
                         {member.periodDiscipline?.percentage ?? 0}%
                       </div>
-                      <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                      <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
                         Score
                       </div>
                     </div>
                     {expandedMemberId === member.userId ? (
-                      <ChevronUp className="h-5 w-5 text-gray-300" />
+                      <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
                     ) : (
-                      <ChevronDown className="h-5 w-5 text-gray-300" />
+                      <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
                     )}
                   </div>
                 </div>
@@ -1089,7 +1094,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       exit={{ height: 0, opacity: 0 }}
                       className="border-t border-gray-50 bg-gray-50/30"
                     >
-                      <div className="p-4 grid grid-cols-5 gap-2">
+                      <div className="p-4 grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-2">
                         {[
                           "weight",
                           "education",
@@ -1105,7 +1110,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               className="flex flex-col items-center gap-2"
                             >
                               <div
-                                className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
+                                className={`w-10 h-10 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-sm border ${
                                   percentage >= 80
                                     ? "bg-green-50 border-green-200 text-green-700"
                                     : percentage >= 60
@@ -1115,11 +1120,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               >
                                 {activityIcons[activityKey]}
                               </div>
-                              <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                              <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide">
                                 {activityKey.slice(0, 3)}
                               </span>
                               <span
-                                className={`text-xs font-bold ${getScoreColorText(
+                                className={`text-xs sm:text-xs font-bold ${getScoreColorText(
                                   percentage,
                                 )}`}
                               >
@@ -1127,10 +1132,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               </span>
                             </div>
                           );
-                        })}
+                        })}  
                       </div>
                       <div className="px-4 pb-4 pt-0 text-center">
-                        <p className="text-xs text-gray-400 font-medium">
+                        <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
                           {member.periodDiscipline?.onTimePosts ?? 0} on-time posts
                           out of {member.periodDiscipline?.expectedPosts ?? 0}{" "}
                           expected

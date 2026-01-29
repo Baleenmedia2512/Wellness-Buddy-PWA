@@ -953,7 +953,7 @@ const AdminDashboard = ({ user, onClose }) => {
         {/* Date Range Filter */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {['today', 'yesterday', 'week', 'month', 'all'].map((range) => (
-            <button
+            <TouchFeedbackButton
               key={range}
               onClick={() => {
                 setTimeRange(range);
@@ -966,21 +966,23 @@ const AdminDashboard = ({ user, onClose }) => {
                   ? 'bg-green-600 text-white shadow-md shadow-green-200'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
+              ariaLabel={`Filter by ${range}`}
             >
               {range.charAt(0).toUpperCase() + range.slice(1)}
-            </button>
+            </TouchFeedbackButton>
           ))}
-          <button
+          <TouchFeedbackButton
             onClick={() => setShowDatePicker(!showDatePicker)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
               timeRange === 'custom'
                 ? 'bg-green-600 text-white shadow-md shadow-green-200'
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
             }`}
+            ariaLabel="Custom date range"
           >
             <CalendarIcon className="w-4 h-4" />
             <span>{timeRange === 'custom' ? getDateRangeLabel() : 'Custom'}</span>
-          </button>
+          </TouchFeedbackButton>
         </div>
 
         {/* Date Range Picker */}
@@ -1389,12 +1391,13 @@ const AdminDashboard = ({ user, onClose }) => {
                     </p>
                   )}
                 </div>
-                <button
+                <TouchFeedbackButton
                   onClick={() => setShowEditPopup(false)}
                   className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  ariaLabel="Close modal"
                 >
                   <X className="w-5 h-5 text-gray-500" />
-                </button>
+                </TouchFeedbackButton>
               </div>
 
               {/* Success Message */}
@@ -1507,18 +1510,20 @@ const AdminDashboard = ({ user, onClose }) => {
 
               {!savingCorrection ? (
                 <div className="flex gap-3 mt-6">
-                  <button
+                  <TouchFeedbackButton
                     onClick={() => setShowEditPopup(false)}
                     className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                    ariaLabel="Close without saving"
                   >
                     Close
-                  </button>
-                  <button
+                  </TouchFeedbackButton>
+                  <TouchFeedbackButton
                     onClick={handleSaveTokenCorrection}
                     className="flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium bg-green-600 hover:bg-green-700"
+                    ariaLabel="Save token costs"
                   >
                     Save
-                  </button>
+                  </TouchFeedbackButton>
                 </div>
               ) : (
                 <div className="flex justify-center mt-6">
