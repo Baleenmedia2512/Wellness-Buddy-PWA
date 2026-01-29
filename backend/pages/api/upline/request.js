@@ -1,37 +1,40 @@
 ﻿/**
  * Send Upline Coach Approval Request
  * POST /api/upline/request
- * 
+ *
  * Creates approval request, generates OTP, sends email to coach
  * Stores request in approval_requests_table with 24-hour expiry
  */
 
-import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
-import bcrypt from 'bcryptjs';
-import nodemailer from 'nodemailer';
+import {
+  getSupabaseClient,
+  getISTTimestamp,
+} from "../../../utils/supabaseClient.js";
+import bcrypt from "bcryptjs";
+import nodemailer from "nodemailer";
 
 // Production email service using nodemailer (same as send-otp.js)
 const sendEmail = async ({ to, subject, html }) => {
   try {
     const transporter = nodemailer.createTransport({
-      service: 'gmail',
+      service: "gmail",
       auth: {
         user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
+        pass: process.env.SMTP_PASS,
+      },
     });
 
     await transporter.sendMail({
       from: '"Wellness Valley" <easy2work.india@gmail.com>',
       to: to,
       subject: subject,
-      html: html
+      html: html,
     });
 
-    console.log('✅ OTP email sent successfully to:', to);
+    console.log("✅ OTP email sent successfully to:", to);
     return { success: true };
   } catch (error) {
-    console.error('❌ Email sending failed:', error.message);
+    console.error("❌ Email sending failed:", error.message);
     // Don't throw - allow request creation to succeed even if email fails
     return { success: false, error: error.message };
   }
@@ -44,23 +47,26 @@ function generateOTP() {
 
 export default async function handler(req, res) {
   // Handle CORS
-  if (req.method === 'OPTIONS') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+  if (req.method === "OPTIONS") {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, authorization",
+    );
     res.status(200).end();
     return;
   }
 
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, authorization');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, authorization");
 
   // Only allow POST requests
-  if (req.method !== 'POST') {
+  if (req.method !== "POST") {
     res.status(405).json({
       success: false,
-      error: 'Method not allowed'
+      error: "Method not allowed",
     });
     return;
   }
@@ -68,11 +74,11 @@ export default async function handler(req, res) {
   try {
     // Get email and coachId from body
     const { coachId, email } = req.body;
-    
+
     if (!email) {
       res.status(400).json({
         success: false,
-        error: 'Email is required'
+        error: "Email is required",
       });
       return;
     }
@@ -80,7 +86,7 @@ export default async function handler(req, res) {
     if (!coachId) {
       res.status(400).json({
         success: false,
-        error: 'Coach ID is required'
+        error: "Coach ID is required",
       });
       return;
     }
@@ -90,9 +96,9 @@ export default async function handler(req, res) {
 
     // Get requester's UserId and details
     const { data: requesterRows, error: requesterError } = await supabase
-      .from('team_table')
-      .select('UserId, UserName, Email, TeamId, UplineCoachId')
-      .eq('Email', email)
+      .from("team_table")
+      .select("UserId, UserName, Email, TeamId, UplineCoachId")
+      .eq("Email", email)
       .limit(1);
 
     if (requesterError) throw requesterError;
@@ -100,7 +106,7 @@ export default async function handler(req, res) {
     if (!requesterRows || requesterRows.length === 0) {
       res.status(404).json({
         success: false,
-        error: 'User not found'
+        error: "User not found",
       });
       return;
     }
@@ -111,29 +117,29 @@ export default async function handler(req, res) {
     if (coachId === requesterId) {
       res.status(400).json({
         success: false,
-        error: 'You cannot select yourself as your coach'
+        error: "You cannot select yourself as your coach",
       });
       return;
     }
 
     const requester = requesterRows[0];
 
-    // Check if user has Team ID
-    if (!requester.TeamId) {
-      res.status(400).json({
-        success: false,
-        error: 'You must claim a Team ID first',
-        redirectTo: '/setup/team'
-      });
-      return;
-    }
+    // Team ID is now OPTIONAL - users can proceed without one
+    // if (!requester.TeamId) {
+    //   res.status(400).json({
+    //     success: false,
+    //     error: 'You must claim a Team ID first',
+    //     redirectTo: '/setup/team'
+    //   });
+    //   return;
+    // }
 
     // Check if user already has an upline coach
     if (requester.UplineCoachId) {
       res.status(400).json({
         success: false,
-        error: 'You already have an upline coach',
-        redirectTo: '/dashboard'
+        error: "You already have an upline coach",
+        redirectTo: "/dashboard",
       });
       return;
     }
@@ -141,23 +147,23 @@ export default async function handler(req, res) {
     // Cancel any existing pending requests for this user
     const now = new Date().toISOString();
     await supabase
-      .from('approval_requests_table')
-      .update({ Status: 'cancelled', ProcessedAt: now })
-      .eq('RequesterId', requesterId)
-      .eq('Status', 'pending');
+      .from("approval_requests_table")
+      .update({ Status: "cancelled", ProcessedAt: now })
+      .eq("RequesterId", requesterId)
+      .eq("Status", "pending");
 
     // Get coach details
     const { data: coachRows, error: coachError } = await supabase
-      .from('team_table')
-      .select('UserId, UserName, Email, CoachName, Role')
-      .eq('UserId', coachId);
+      .from("team_table")
+      .select("UserId, UserName, Email, CoachName, Role")
+      .eq("UserId", coachId);
 
     if (coachError) throw coachError;
 
     if (!coachRows || coachRows.length === 0) {
       res.status(404).json({
         success: false,
-        error: 'Coach not found'
+        error: "Coach not found",
       });
       return;
     }
@@ -175,26 +181,28 @@ export default async function handler(req, res) {
 
     // Create approval request with 24-hour expiry
     const { data: insertResult, error: insertError } = await supabase
-      .from('approval_requests_table')
-      .insert([{
-        RequesterId: requesterId,
-        UplineCoachId: coachId,
-        Status: 'pending',
-        OtpHash: otpHash,
-        OtpExpiresAt: otpExpiresAt.toISOString(),
-        OtpSentAt: requestedAt.toISOString(),
-        OtpAttempts: 0,
-        RequestedAt: requestedAt.toISOString()
-      }])
-      .select('Id');
+      .from("approval_requests_table")
+      .insert([
+        {
+          RequesterId: requesterId,
+          UplineCoachId: coachId,
+          Status: "pending",
+          OtpHash: otpHash,
+          OtpExpiresAt: otpExpiresAt.toISOString(),
+          OtpSentAt: requestedAt.toISOString(),
+          OtpAttempts: 0,
+          RequestedAt: requestedAt.toISOString(),
+        },
+      ])
+      .select("Id");
 
     if (insertError) throw insertError;
 
     const requestId = insertResult[0].Id;
 
-      // Send OTP email to coach with professional template
-      const emailSubject = `🤝 Team Approval Request - Wellness Valley`;
-      const emailBody = `
+    // Send OTP email to coach with professional template
+    const emailSubject = `🤝 Team Approval Request - Wellness Valley`;
+    const emailBody = `
         <!DOCTYPE html>
         <html>
         <head>
@@ -294,32 +302,32 @@ export default async function handler(req, res) {
       await sendEmail({
         to: coach.Email,
         subject: emailSubject,
-        html: emailBody
+        html: emailBody,
       });
     } catch (emailError) {
-      console.error('Failed to send OTP email:', emailError);
+      console.error("Failed to send OTP email:", emailError);
       // Continue even if email fails - user can resend
     }
 
     res.status(200).json({
       success: true,
-      message: 'Request sent successfully. OTP has been emailed to your coach.',
+      message: "Request sent successfully. OTP has been emailed to your coach.",
       requestId: requestId,
       coachName: coach.CoachName || coach.UserName,
       coachEmail: coach.Email,
-      expiresIn: '24 hours',
-      nextStep: 'validate-otp',
-      redirectTo: '/setup/validate-otp'
+      expiresIn: "24 hours",
+      nextStep: "validate-otp",
+      redirectTo: "/setup/validate-otp",
     });
     return;
-
   } catch (error) {
-    console.error('Error creating approval request:', error);
-    
+    console.error("Error creating approval request:", error);
+
     res.status(500).json({
       success: false,
-      error: 'Failed to send request',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: "Failed to send request",
+      details:
+        process.env.NODE_ENV === "development" ? error.message : undefined,
     });
     return;
   }

@@ -209,11 +209,11 @@ function WellnessValleyApp() {
     if (Capacitor.isNativePlatform()) {
       // Double-check splash screen is hidden after React renders
       const timer = setTimeout(() => {
-        SplashScreen.hide().catch(err => {
-          console.log('Splash screen already hidden');
+        SplashScreen.hide().catch((err) => {
+          console.log("Splash screen already hidden");
         });
       }, 500);
-      
+
       return () => clearTimeout(timer);
     }
   }, []);
@@ -2509,6 +2509,9 @@ function WellnessValleyApp() {
       {showSetupWizard && (
         <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
           <SetupWizard
+            userEmail={
+              user?.email || user?.Email || localStorage.getItem("userEmail")
+            }
             onClose={() => setShowSetupWizard(false)}
             onNavigateToOTP={() => {
               setShowSetupWizard(false);
