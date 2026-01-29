@@ -553,6 +553,17 @@ function WellnessValleyApp() {
           // Check setup wizard status for active users
           if (isActive && userEmail) {
             console.log("🔄 [Auth State] Checking setup wizard status...");
+
+            // Check if user manually skipped setup
+            const setupSkipped = localStorage.getItem("setupSkipped");
+            if (setupSkipped === "true") {
+              console.log(
+                "⏭️ [Auth State] User skipped setup, bypassing wizard",
+              );
+              // Don't show setup wizard - user chose to skip
+              return;
+            }
+
             try {
               const statusResponse = await fetch(
                 `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
