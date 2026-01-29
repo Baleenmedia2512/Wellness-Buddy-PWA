@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
+import TouchFeedbackButton from "./TouchFeedbackButton";
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -1112,12 +1113,13 @@ const NutritionDashboard = ({
           <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
             <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
               <div className="flex items-center justify-between p-4 md:p-6">
-                <button
+                <TouchFeedbackButton
                   onClick={onBack}
                   className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
+                  ariaLabel="Go back"
                 >
                   <ArrowLeft className="h-5 w-5 text-gray-700" />
-                </button>
+                </TouchFeedbackButton>
 
                 <div className="text-center">
                   <h1 className="text-lg md:text-xl font-semibold text-gray-900">
@@ -1212,12 +1214,13 @@ const NutritionDashboard = ({
             </div>
           ) : (
             <div className="flex items-center px-4 py-3 md:px-6 md:py-2">
-              <button
+              <TouchFeedbackButton
                 onClick={() => navigateDate(-1)}
                 className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 mr-2 md:mr-3 backdrop-blur-sm border border-white/20"
+                ariaLabel="Previous day"
               >
                 <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </button>
+              </TouchFeedbackButton>
 
               <div className="flex-1 overflow-hidden">
                 <div className="flex items-center justify-center space-x-1 md:space-x-2">
@@ -1239,7 +1242,7 @@ const NutritionDashboard = ({
                           </div>
                         </div>
                       )}
-                      <button
+                      <TouchFeedbackButton
                         onClick={() =>
                           !day.isFuture && setSelectedDate(day.date)
                         }
@@ -1254,6 +1257,7 @@ const NutritionDashboard = ({
                               ? "text-gray-300 cursor-not-allowed bg-white/10 border-white/10"
                               : "text-gray-600 hover:bg-white/30 bg-white/20 border-white/20"
                           }`}
+                        ariaLabel={`${day.dayName} ${day.dayNumber}`}
                       >
                         <div className="text-xs font-medium mb-0.5 md:mb-1">
                           {day.dayName}
@@ -1268,13 +1272,13 @@ const NutritionDashboard = ({
                             }`}
                           />
                         )}
-                      </button>
+                      </TouchFeedbackButton>
                     </React.Fragment>
                   ))}
                 </div>
               </div>
 
-              <button
+              <TouchFeedbackButton
                 onClick={() => navigateDate(1)}
                 disabled={(() => {
                   const nextDay = new Date(selectedDate);
@@ -1282,9 +1286,10 @@ const NutritionDashboard = ({
                   return nextDay > new Date();
                 })()}
                 className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 ml-2 md:ml-3 disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm border border-white/20"
+                ariaLabel="Next day"
               >
                 <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </button>
+              </TouchFeedbackButton>
             </div>
           )}
         </div>
@@ -1304,16 +1309,17 @@ const NutritionDashboard = ({
           <div className="bg-white rounded-2xl border-0 md:border md:border-grey-100">
             {/* Calendar Header */}
             <div className="flex items-center justify-between p-4 border-b border-grey-100">
-              <button
+              <TouchFeedbackButton
                 onClick={() => {
                   const prevMonth = new Date(calendarMonth);
                   prevMonth.setMonth(prevMonth.getMonth() - 1);
                   setCalendarMonth(prevMonth);
                 }}
                 className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
+                ariaLabel="Previous month"
               >
                 <ChevronLeft className="w-5 h-5 text-grey-600" />
-              </button>
+              </TouchFeedbackButton>
 
               <h3 className="text-lg font-semibold text-grey-900">
                 {calendarMonth.toLocaleDateString("en-US", {
@@ -1322,16 +1328,17 @@ const NutritionDashboard = ({
                 })}
               </h3>
 
-              <button
+              <TouchFeedbackButton
                 onClick={() => {
                   const nextMonth = new Date(calendarMonth);
                   nextMonth.setMonth(nextMonth.getMonth() + 1);
                   setCalendarMonth(nextMonth);
                 }}
                 className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
+                ariaLabel="Next month"
               >
                 <ChevronRight className="w-5 h-5 text-grey-600" />
-              </button>
+              </TouchFeedbackButton>
             </div>
 
             {/* Days of Week Headers */}
@@ -1412,7 +1419,7 @@ const NutritionDashboard = ({
                   const isDisabled = day.isFuture;
 
                   return (
-                    <button
+                    <TouchFeedbackButton
                       key={index}
                       onClick={() => {
                         if (!isDisabled) {
@@ -1444,7 +1451,7 @@ const NutritionDashboard = ({
                       {day.isToday && !day.isSelected && (
                         <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-emerald-500" />
                       )}
-                    </button>
+                    </TouchFeedbackButton>
                   );
                 });
               })()}

@@ -10,6 +10,7 @@ import React, {
 import { geminiService } from "../services/geminiService";
 import { saveFoodCorrection } from "../services/foodCorrectionService";
 import { getUserContext } from "../services/userContextService";
+import TouchFeedbackButton from "./TouchFeedbackButton";
 import {
   Search,
   Edit2,
@@ -1214,7 +1215,7 @@ const EditableFoodItem = forwardRef(
               {foodItem.nutrition?.fat || foodItem.fat || 0}g
             </div>
           </div>
-          <button
+          <TouchFeedbackButton
             onClick={handleEdit}
             disabled={disabled}
             className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
@@ -1222,10 +1223,11 @@ const EditableFoodItem = forwardRef(
                 ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                 : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
             }`}
+            ariaLabel="Edit food item"
           >
             <Edit2 className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Edit</span>
-          </button>
+          </TouchFeedbackButton>
         </div>
       );
     }

@@ -23,6 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { getUsdToInrRate } from '../services/tokenCost/tokenCostConfig';
 import { clearUserPricingCache } from '../services/tokenCost/userPricingManager';
 import { App as CapacitorApp } from '@capacitor/app';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 // --- Dynamic Demo Data Generator ---
 // COMMENTED OUT - Demo data disabled
@@ -912,12 +913,13 @@ const AdminDashboard = ({ user, onClose }) => {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-4">
         <div className="flex items-center justify-between">
-          <button 
+          <TouchFeedbackButton 
             onClick={onClose}
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors text-gray-700"
+            ariaLabel="Go back"
           >
             <ChevronLeft className="w-6 h-6" />
-          </button>
+          </TouchFeedbackButton>
           
           <div className="flex-1 text-center">
             <h1 className="text-lg font-bold text-gray-800">AI Monitor</h1>
@@ -925,21 +927,23 @@ const AdminDashboard = ({ user, onClose }) => {
           </div>
           
           <div className="flex items-center gap-1">
-            <button 
+            <TouchFeedbackButton 
               onClick={() => setShowEditPopup(true)}
               className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+              ariaLabel="Edit token pricing"
             >
               <Edit3 className="w-5 h-5" />
-            </button>
+            </TouchFeedbackButton>
             {showSuccessMessage && (
               <div className="text-green-600 text-sm mr-2">Saved!</div>
             )}
-            <button 
+            <TouchFeedbackButton 
               onClick={fetchTokenData}
               className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
+              ariaLabel="Refresh data"
             >
               <RefreshCw className="w-5 h-5" />
-            </button>
+            </TouchFeedbackButton>
           </div>
         </div>
       </div>

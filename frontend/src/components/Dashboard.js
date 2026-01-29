@@ -1,6 +1,7 @@
 // src/components/Dashboard.js
 import React, { useState, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
@@ -93,12 +94,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {/* Top bar with back button and title */}
           <div className="flex items-center justify-between p-4 md:p-6 pb-3">
-            <button 
+            <TouchFeedbackButton 
               onClick={onBack} 
               className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
+              ariaLabel="Go back"
             >
               <ArrowLeft className="h-5 w-5 text-gray-700" />
-            </button>
+            </TouchFeedbackButton>
 
             <div className="text-center">
               <h1 className="text-lg md:text-xl font-semibold text-gray-900">Dashboard</h1>
@@ -107,12 +109,13 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
 
             {/* Calendar button - only show for nutrition tab */}
             {activeTab === 'nutrition' && (
-              <button 
+              <TouchFeedbackButton 
                 onClick={() => setShowCalendar(!showCalendar)} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
+                ariaLabel="Toggle calendar"
               >
                 <Calendar className="h-5 w-5 text-gray-700" />
-              </button>
+              </TouchFeedbackButton>
             )}
             {/* Empty space for weight and education tabs to maintain layout */}
             {(activeTab === 'weight' || activeTab === 'education') && (
@@ -179,31 +182,33 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
           <div className="bg-white rounded-2xl border-0 md:border md:border-grey-100">
             {/* Calendar Header */}
             <div className="flex items-center justify-between p-4 border-b border-grey-100">
-              <button
+              <TouchFeedbackButton
                 onClick={() => {
                   const prevMonth = new Date(calendarMonth);
                   prevMonth.setMonth(prevMonth.getMonth() - 1);
                   setCalendarMonth(prevMonth);
                 }}
                 className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
+                ariaLabel="Previous month"
               >
                 <ChevronLeft className="w-5 h-5 text-grey-600" />
-              </button>
+              </TouchFeedbackButton>
               
               <h3 className="text-lg font-semibold text-grey-900">
                 {calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
               </h3>
               
-              <button
+              <TouchFeedbackButton
                 onClick={() => {
                   const nextMonth = new Date(calendarMonth);
                   nextMonth.setMonth(nextMonth.getMonth() + 1);
                   setCalendarMonth(nextMonth);
                 }}
                 className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
+                ariaLabel="Next month"
               >
                 <ChevronRight className="w-5 h-5 text-grey-600" />
-              </button>
+              </TouchFeedbackButton>
             </div>
             
             {/* Days of Week Headers */}
@@ -274,7 +279,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                   const isDisabled = day.isFuture;
                   
                   return (
-                    <button
+                    <TouchFeedbackButton
                       key={index}
                       onClick={() => {
                         if (!isDisabled) {
@@ -318,7 +323,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                           activeTab === 'nutrition' ? 'green-500' : 'emerald-500'
                         }`} />
                       )}
-                    </button>
+                    </TouchFeedbackButton>
                   );
                 });
               })()}

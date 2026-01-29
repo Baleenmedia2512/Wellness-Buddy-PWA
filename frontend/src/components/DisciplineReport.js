@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { disciplineReportService } from "../services/disciplineReportService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
+import TouchFeedbackButton from "./TouchFeedbackButton";
 // Removed LoadingSpinner import as we are using custom skeleton
 
 // --- DateRangePicker Component (Exact Copy from AI Token Monitor) ---
@@ -359,6 +360,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [teamFilter, setTeamFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [adminView, setAdminView] = useState("allMembers"); // 'myTeam' or 'allMembers' - start with All Teams for admin
+  const [allMembersData, setAllMembersData] = useState(null); // Store all members data for admin
   const filterRef = useRef(null);
 
   // Close filter dropdown when clicking outside
@@ -376,8 +379,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const loadDisciplineReportCallback = React.useCallback(
     async (isBackground = false) => {
       if (!user?.id) {
-        setLoading(false);
-        setError("User ID not found. Please login again.");
+        // User not loaded yet, keep loading state
+        if (!isBackground) {
+          setLoading(true);
+        }
         return;
       }
 
@@ -397,12 +402,33 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           };
         }
 
-        const data = await disciplineReportService.getDisciplineReport(
-          user.id,
-          dateRange,
-          customRange,
-        );
-        setTeamData(data);
+        // For admin/developer, fetch both team and all members data
+        if (userRole === 'admin' || userRole === 'developer') {
+          // Fetch coach team data (My Team)
+          const teamDataResponse = await disciplineReportService.getDisciplineReport(
+            user.id,
+            dateRange,
+            customRange,
+          );
+          
+          // Fetch all members data (All Teams)
+          const allMembersResponse = await disciplineReportService.getAllMembersDisciplineReport(
+            user.id,
+            dateRange,
+            customRange,
+          );
+          
+          setTeamData(teamDataResponse);
+          setAllMembersData(allMembersResponse);
+        } else {
+          // Regular coach - only fetch their team
+          const data = await disciplineReportService.getDisciplineReport(
+            user.id,
+            dateRange,
+            customRange,
+          );
+          setTeamData(data);
+        }
       } catch (err) {
         console.error("Failed to load discipline report:", err);
         setError(
@@ -418,7 +444,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         }
       }
     },
-    [user?.id, dateRange, customStartDate, customEndDate],
+    [user?.id, userRole, dateRange, customStartDate, customEndDate],
   );
 
   useEffect(() => {
@@ -466,7 +492,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   function handleExportCSV() {
-    if (teamData) {
+    // For admin/developer viewing All Teams, export all members data
+    if ((userRole === 'admin' || userRole === 'developer') && adminView === 'allMembers' && allMembersData) {
+      disciplineReportService.exportToCSV(allMembersData, dateRange);
+    } else if (teamData) {
       disciplineReportService.exportToCSV(teamData, dateRange);
     }
   }
@@ -486,9 +515,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   // Filter and sort team members (including coach)
   const allMembers = React.useMemo(() => {
-    if (!teamData) return [];
+    // For admin/developer viewing All Teams
+    if ((userRole === 'admin' || userRole === 'developer') && adminView === 'allMembers' && allMembersData) {
+      return allMembersData.allMembers || [];
+    }
 
-    // Combine coach and team members
+    // For admin/developer viewing My Team OR regular coach
+    if (!teamData) return [];
+    
     const combined = [];
     if (teamData.coachPerformance) {
       combined.push(teamData.coachPerformance);
@@ -497,20 +531,53 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       combined.push(...teamData.teamMembers);
     }
     return combined;
-  }, [teamData]);
+  }, [teamData, allMembersData, userRole, adminView] );
 
   const filteredAndSortedMembers = React.useMemo(() => {
     if (!user?.id) return [];
 
+    // For admin/developer viewing All Teams, use simpler filtering (no team filters)
+    if ((userRole === 'admin' || userRole === 'developer') && adminView === 'allMembers') {
+      return allMembers
+        .filter((member) => {
+          // Skip members without discipline data
+          if (!member.periodDiscipline) return false;
+
+          // Search filter
+          const matchesSearch =
+            member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            member.email.toLowerCase().includes(searchQuery.toLowerCase());
+
+          // Discipline score filter
+          const discipline = member.periodDiscipline.percentage || 0;
+          let matchesDiscipline = true;
+          if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
+          if (disciplineFilter === "medium")
+            matchesDiscipline = discipline >= 60 && discipline < 80;
+          if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
+
+          return matchesSearch && matchesDiscipline;
+        })
+        .sort((a, b) => {
+          const scoreA = a.periodDiscipline.percentage;
+          const scoreB = b.periodDiscipline.percentage;
+          return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+        });
+    }
+
+    // For admin viewing My Team OR regular coach, use existing team filtering logic
     return allMembers
       .filter((member) => {
+        // Skip members without discipline data
+        if (!member.periodDiscipline) return false;
+
         // Search filter
         const matchesSearch =
           member.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
           member.email.toLowerCase().includes(searchQuery.toLowerCase());
 
         // Discipline score filter
-        const discipline = member.periodDiscipline.percentage;
+        const discipline = member.periodDiscipline.percentage || 0;
         let matchesDiscipline = true;
         if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
         if (disciplineFilter === "medium")
@@ -553,6 +620,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     teamFilter,
     sortOrder,
     user?.id,
+    userRole,
+    adminView,
   ]);
 
   // Activity Icons Map
@@ -570,6 +639,18 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     { id: "medium", label: "Medium (60-79%)", color: "text-yellow-700" },
     { id: "low", label: "Low (<60%)", color: "text-red-700" },
   ];
+
+  // Helper to get summary data (handles both admin and coach responses)
+  const getSummary = () => {
+    // For admin/developer viewing All Teams
+    if ((userRole === 'admin' || userRole === 'developer') && adminView === 'allMembers' && allMembersData) {
+      return allMembersData.summary || {};
+    }
+    
+    // For admin/developer viewing My Team or regular coach
+    if (!teamData) return null;
+    return teamData.teamSummary || {};
+  };
 
   if (loading) {
     return <LoadingSkeleton />;
@@ -599,19 +680,24 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <button
+              <TouchFeedbackButton
                 onClick={onBack}
                 className="p-2 -ml-2 hover:bg-gray-50 rounded-full transition-colors"
+                ariaLabel="Go back"
               >
                 <ArrowLeft className="h-6 w-6 text-gray-700" />
-              </button>
+              </TouchFeedbackButton>
               <div>
                 <h1 className="text-lg font-bold text-gray-900 leading-tight">
-                  Discipline Report
+                  {userRole === 'admin' && adminView === 'allMembers' ? 'All Members Report' : 'Discipline Report'}
                 </h1>
                 <p className="text-xs text-gray-500 font-medium">
-                  {teamData?.teamSummary.totalMembers} Members •{" "}
-                  {new Date(teamData?.lastUpdated).toLocaleTimeString([], {
+                  {getSummary()?.totalMembers || 0} Members •{" "}
+                  {new Date(
+                    (userRole === 'admin' && adminView === 'allMembers' && allMembersData) 
+                      ? allMembersData?.lastUpdated 
+                      : teamData?.lastUpdated
+                  ).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
                   })}
@@ -619,31 +705,31 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
             </div>
             <div className="flex items-center gap-2">
-              <button
+              <TouchFeedbackButton
                 onClick={() => loadDisciplineReportCallback(true)}
                 disabled={refreshing}
                 className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600 disabled:opacity-50"
-                title="Refresh"
+                ariaLabel="Refresh"
               >
                 <RefreshCw
                   className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
                 />
-              </button>
-              <button
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
                 onClick={handleExportCSV}
                 className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
-                title="Export CSV"
+                ariaLabel="Export CSV"
               >
                 <Download className="h-5 w-5" />
-              </button>
+              </TouchFeedbackButton>
               {(userRole === "admin" || userRole === "developer") && (
-                <button
+                <TouchFeedbackButton
                   onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
                   className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
-                  title="Configure Time Windows"
+                  ariaLabel="Configure Time Windows"
                 >
                   <Settings className="h-5 w-5" />
-                </button>
+                </TouchFeedbackButton>
               )}
             </div>
           </div>
@@ -659,7 +745,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               { id: "last7days", label: "Last 7 Days" },
               { id: "last30days", label: "Last 30 Days" },
             ].map((range) => (
-              <button
+              <TouchFeedbackButton
                 key={range.id}
                 id={`date-range-${range.id}`}
                 onClick={() => {
@@ -675,9 +761,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 }`}
               >
                 {range.label}
-              </button>
+              </TouchFeedbackButton>
             ))}
-            <button
+            <TouchFeedbackButton
               id="date-range-custom"
               onClick={() => {
                 setShowDatePicker(!showDatePicker);
@@ -692,7 +778,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <span>
                 {dateRange === "custom" ? getDateRangeLabel() : "Custom"}
               </span>
-            </button>
+            </TouchFeedbackButton>
           </div>
 
           {/* Date Range Picker */}
@@ -722,7 +808,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
               <div className="flex items-baseline gap-0.5">
                 <span className="text-2xl font-bold text-gray-900">
-                  {teamData?.teamSummary.averagePeriodDiscipline.toFixed(0)}
+                  {(getSummary()?.averagePeriodDiscipline || getSummary()?.averageDiscipline || 0).toFixed(0)}
                 </span>
                 <span className="text-xs text-gray-400">%</span>
               </div>
@@ -753,16 +839,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <div className="text-[10px] font-bold text-green-600 uppercase tracking-wider mb-1">
                 Top Star
               </div>
-              {teamData?.teamSummary.topPerformer ? (
+              {getSummary()?.topPerformer ? (
                 <>
                   <div className="flex items-baseline gap-0.5">
                     <span className="text-2xl font-bold text-gray-900">
-                      {teamData.teamSummary.topPerformer.discipline}
+                      {getSummary().topPerformer.discipline}
                     </span>
                     <span className="text-xs text-gray-400">%</span>
                   </div>
                   <div className="text-xs text-gray-500 font-medium truncate w-full px-1 mt-1">
-                    {teamData.teamSummary.topPerformer.userName.split(" ")[0]}
+                    {getSummary().topPerformer.userName.split(" ")[0]}
                   </div>
                 </>
               ) : (
@@ -777,11 +863,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
               <div className="flex items-baseline gap-0.5">
                 <span className="text-2xl font-bold text-red-600">
-                  {teamData?.teamSummary.needsAttention.length}
+                  {getSummary()?.needsAttention?.length || 0}
                 </span>
               </div>
               <div className="text-[10px] text-gray-400 font-medium mt-1">
-                of {teamData?.teamSummary.totalMembers} Members
+                of {getSummary()?.totalMembers || 0} Members
               </div>
             </div>
           </div>
@@ -791,7 +877,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             <div
               className="h-full bg-green-500 transition-all duration-500"
               style={{
-                width: `${teamData?.teamSummary.averagePeriodDiscipline}%`,
+                width: `${getSummary()?.averagePeriodDiscipline || getSummary()?.averageDiscipline || 0}%`,
               }}
             />
           </div>
@@ -869,27 +955,42 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
 
           {/* Sort Button */}
-          <button
+          <TouchFeedbackButton
             onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
             className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
-            title={sortOrder === "desc" ? "Highest First" : "Lowest First"}
+            ariaLabel={sortOrder === "desc" ? "Highest First" : "Lowest First"}
           >
             {sortOrder === "desc" ? (
               <ArrowDown className="h-4 w-4" />
             ) : (
               <ArrowUp className="h-4 w-4" />
             )}
-          </button>
+          </TouchFeedbackButton>
         </div>
 
-        {/* Team Filter Pills */}
-        {teamData?.coachFilters && teamData.coachFilters.length > 0 && (
-          <div className="mb-4">
-            <TeamFilterPills
-              filters={teamData.coachFilters}
-              activeFilter={teamFilter}
-              onChange={setTeamFilter}
-            />
+        {/* Admin View Tabs - My Team vs All Teams */}
+        {(userRole === 'admin' || userRole === 'developer') && (
+          <div className="mb-4 flex gap-2">
+            <TouchFeedbackButton
+              onClick={() => setAdminView('allMembers')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                adminView === 'allMembers'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              All Teams
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
+              onClick={() => setAdminView('myTeam')}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                adminView === 'myTeam'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              My Team ({teamData?.teamSummary?.totalMembers || 0})
+            </TouchFeedbackButton>
           </div>
         )}
 
@@ -918,7 +1019,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     {/* Avatar / Initials */}
                     <div
                       className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
-                        member.periodDiscipline.percentage,
+                        member.periodDiscipline?.percentage || 0,
                       ).replace("bg-", "bg-opacity-10 bg-")}`}
                     >
                       {member.userName.charAt(0).toUpperCase()}
@@ -962,10 +1063,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     <div className="text-right">
                       <div
                         className={`text-xl font-bold ${getScoreColorText(
-                          member.periodDiscipline.percentage,
+                          member.periodDiscipline?.percentage || 0,
                         )}`}
                       >
-                        {member.periodDiscipline.percentage}%
+                        {member.periodDiscipline?.percentage ?? 0}%
                       </div>
                       <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
                         Score
@@ -996,7 +1097,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                           "lunch",
                           "dinner",
                         ].map((activityKey) => {
-                          const activity = member.activities[activityKey];
+                          const activity = member.activities?.[activityKey] || { percentage: 0 };
+                          const percentage = activity.percentage ?? 0;
                           return (
                             <div
                               key={activityKey}
@@ -1004,9 +1106,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                             >
                               <div
                                 className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
-                                  activity.percentage >= 80
+                                  percentage >= 80
                                     ? "bg-green-50 border-green-200 text-green-700"
-                                    : activity.percentage >= 60
+                                    : percentage >= 60
                                     ? "bg-yellow-50 border-yellow-200 text-yellow-700"
                                     : "bg-red-50 border-red-200 text-red-700"
                                 }`}
@@ -1018,10 +1120,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               </span>
                               <span
                                 className={`text-xs font-bold ${getScoreColorText(
-                                  activity.percentage,
+                                  percentage,
                                 )}`}
                               >
-                                {activity.percentage}%
+                                {percentage}%
                               </span>
                             </div>
                           );
@@ -1029,8 +1131,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       </div>
                       <div className="px-4 pb-4 pt-0 text-center">
                         <p className="text-xs text-gray-400 font-medium">
-                          {member.periodDiscipline.onTimePosts} on-time posts
-                          out of {member.periodDiscipline.expectedPosts}{" "}
+                          {member.periodDiscipline?.onTimePosts ?? 0} on-time posts
+                          out of {member.periodDiscipline?.expectedPosts ?? 0}{" "}
                           expected
                         </p>
                       </div>
