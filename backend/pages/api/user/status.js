@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // Get user's details from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from("team_table")
-      .select('"UserId", "TeamId", "UplineCoachId", "Role"')
+      .select('"UserId", "TeamId", "UplineCoachId", "Role", "SetupSkipped"')
       .eq('"Email"', email)
       .maybeSingle();
 
@@ -90,6 +90,26 @@ export default async function handler(req, res) {
     const userRole = user.Role;
     const hasTeamId = !!user.TeamId;
     const hasUpline = !!user.UplineCoachId;
+    const setupSkipped = user.SetupSkipped || false;
+
+    // Check if user skipped setup - treat as complete
+    if (setupSkipped) {
+      res.status(200).json({
+        success: true,
+        setupComplete: true,
+        setupSkipped: true,
+        hasTeamId: hasTeamId,
+        hasUpline: hasUpline,
+        teamId: user.TeamId || null,
+        uplineCoachId: user.UplineCoachId || null,
+        pendingRequest: null,
+        redirectTo: "/dashboard",
+        message: hasUpline 
+          ? "Setup skipped - coach relationship saved" 
+          : "Setup skipped by user",
+      });
+      return;
+    }
 
     // ADMIN/DEVELOPER users bypass coach auth flow
     if (userRole === "admin" || userRole === "developer") {

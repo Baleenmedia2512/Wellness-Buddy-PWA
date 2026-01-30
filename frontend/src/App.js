@@ -554,11 +554,11 @@ function WellnessValleyApp() {
           if (isActive && userEmail) {
             console.log("🔄 [Auth State] Checking setup wizard status...");
 
-            // Check if user manually skipped setup
+            // Check if user manually skipped setup (check localStorage first for quick bypass)
             const setupSkipped = localStorage.getItem("setupSkipped");
             if (setupSkipped === "true") {
               console.log(
-                "⏭️ [Auth State] User skipped setup, bypassing wizard",
+                "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
               // Don't show setup wizard - user chose to skip
               return;
@@ -574,6 +574,15 @@ function WellnessValleyApp() {
               if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
                 console.log("📋 [Auth State] Setup status:", statusData);
+
+                // Check if user skipped setup (from database)
+                if (statusData.setupSkipped) {
+                  console.log(
+                    "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
+                  );
+                  localStorage.setItem("setupSkipped", "true");
+                  return;
+                }
 
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {

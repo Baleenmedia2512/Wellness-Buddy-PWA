@@ -216,16 +216,37 @@ const SetupWizard = ({
         return;
       }
 
-      // If Team ID is empty, skip the entire setup (no OTP email)
+      // If Team ID is empty, skip the entire setup (no OTP email, no approval request)
       if (!teamId || teamId.trim() === "") {
-        console.log("⏭️ Team ID empty - skipping setup without sending OTP");
-        localStorage.setItem("setupSkipped", "true");
-        setSuccess("Setup skipped!");
-        setTimeout(() => {
-          if (onClose) {
-            onClose();
-          }
-        }, 1000);
+        console.log("⏭️ Team ID empty - skipping setup without sending OTP or approval request");
+        console.log("👥 Coach selected:", selectedCoach?.userId || "none");
+        
+        try {
+          // Store skip status in database so it persists across sessions
+          // If coach was selected, save that relationship even though we're skipping Team ID
+          await axios.post(`${API_BASE}/api/user/skip-setup`, {
+            email: userEmail,
+            coachId: selectedCoach?.userId || null,
+          });
+          
+          localStorage.setItem("setupSkipped", "true");
+          setSuccess("Setup skipped! You can continue using the app.");
+          
+          setTimeout(() => {
+            if (onClose) {
+              onClose();
+            }
+          }, 1500);
+        } catch (skipError) {
+          console.error("Error recording skip status:", skipError);
+          // Still close wizard even if API fails
+          localStorage.setItem("setupSkipped", "true");
+          setTimeout(() => {
+            if (onClose) {
+              onClose();
+            }
+          }, 500);
+        }
         return;
       }
 
@@ -298,11 +319,26 @@ const SetupWizard = ({
       >
         {/* Skip Setup Button */}
         <button
-          onClick={() => {
-            // Mark setup as skipped in localStorage
-            localStorage.setItem("setupSkipped", "true");
-            console.log("✅ Setup skipped by user");
-            onClose();
+          onClick={async () => {
+            try {
+              const userEmail = propUserEmail || localStorage.getItem("userEmail");
+              
+              // Store skip status in database (no coach since user skipped entirely)
+              await axios.post(`${API_BASE}/api/user/skip-setup`, {
+                email: userEmail,
+                coachId: null,
+              });
+              
+              // Mark setup as skipped in localStorage
+              localStorage.setItem("setupSkipped", "true");
+              console.log("✅ Setup skipped by user (via Skip button)");
+              onClose();
+            } catch (error) {
+              console.error("Error recording skip status:", error);
+              // Still allow skip even if API fails
+              localStorage.setItem("setupSkipped", "true");
+              onClose();
+            }
           }}
           className="absolute left-4 top-4 z-10 text-gray-400 hover:text-green-600 transition-colors px-3 py-2 rounded-lg hover:bg-green-50 text-sm font-medium"
           title="Skip Setup and Continue"
