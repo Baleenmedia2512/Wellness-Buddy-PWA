@@ -94,11 +94,18 @@ Return ONLY this JSON:
   "reason": "brief 5-word explanation"
 }`;
 
+      console.log('🔵 [API CALL 1/2] DETECTION API');
+      console.log('🔵 Model: gemini-2.5-flash-lite');
+      console.log('🔵 Prompt:', detectionPrompt);
+      console.log('🔵 Image size:', imageBase64.length, 'bytes');
+      console.log('🔵 Calling Gemini API for detection...');
       
       const detectionResult = await this.model.generateContent([detectionPrompt, imagePart]);
       const detectionResponse = await detectionResult.response;
       const detectionText = detectionResponse.text();
+      console.log('🤖 [DEBUG] Detection API Raw Response:', detectionText);
       const detectionData = this.parseJsonResponse(detectionText);
+      console.log('🤖 [DEBUG] Parsed Detection Data:', detectionData);
       const detectionTime = Date.now() - startTime;
 
       
@@ -128,6 +135,12 @@ RULES:
 - Weight range: 20-300 kg or 44-660 lbs
 - Set null for values not visible`;
 
+        console.log('🟢 [API CALL 2/2] WEIGHT ANALYSIS API');
+        console.log('🟢 Model: gemini-2.5-flash-lite');
+        console.log('🟢 Operation: weight_detection');
+        console.log('🟢 Prompt:', analysisPrompt);
+        console.log('🟢 Calling Gemini API for weight analysis...');
+
       } else if (detectionData.type === 'education') {
         operationType = 'education_detection';
         analysisPrompt = `Extract meeting details from this virtual meeting screenshot.
@@ -137,6 +150,12 @@ Return ONLY this JSON:
   "platform": "Google Meet" or "Zoom" or "MS Teams" or "WebEx" or "Online Meeting",
   "topic": "meeting title if visible, or null"
 }`;
+
+        console.log('🟢 [API CALL 2/2] EDUCATION ANALYSIS API');
+        console.log('🟢 Model: gemini-2.5-flash-lite');
+        console.log('🟢 Operation: education_detection');
+        console.log('🟢 Prompt:', analysisPrompt);
+        console.log('🟢 Calling Gemini API for education analysis...');
 
       } else {
         operationType = 'image_analysis';
@@ -175,13 +194,22 @@ RULES:
 - Estimate portions based on plate/container size
 - Use standard nutrition values
 - Liquids (juice, soup) use volume_ml, solids use weight_g`;
+
+        console.log('🟢 [API CALL 2/2] FOOD ANALYSIS API');
+        console.log('🟢 Model: gemini-2.5-flash-lite');
+        console.log('🟢 Operation: image_analysis (FOOD)');
+        console.log('🟢 Prompt:', analysisPrompt);
+        console.log('🟢 Calling Gemini API for food analysis...');
       }
 
       
       const analysisResult = await this.model.generateContent([analysisPrompt, imagePart]);
       const analysisResponse = await analysisResult.response;
       const analysisText = analysisResponse.text();
+      console.log('🤖 [DEBUG] Analysis API Raw Response:', analysisText);
       const analysisData = this.parseJsonResponse(analysisText);
+      console.log('🤖 [DEBUG] Parsed Analysis Data:', analysisData);
+      console.log('🤖 [DEBUG] Foods array:', analysisData.foods);
       const analysisTime = Date.now() - analysisStartTime;
       const totalTime = Date.now() - startTime;
 
@@ -238,6 +266,11 @@ RULES:
       }
 
       // Default to food
+      console.log('🍽️ [DEBUG] Returning FOOD result:', {
+        foodsCount: analysisData.foods?.length || 0,
+        foods: analysisData.foods,
+        total: analysisData.total
+      });
       return {
         type: 'food',
         confidence: detectionData.confidence || 0.5,
@@ -250,7 +283,13 @@ RULES:
       };
 
     } catch (error) {
-      console.error('❌ Image type detection failed:', error);
+      console.error('❌ [DEBUG] Image type detection failed:', error);
+      console.error('❌ [DEBUG] Error stack:', error.stack);
+      console.error('❌ [DEBUG] Error details:', {
+        message: error.message,
+        name: error.name,
+        code: error.code
+      });
       
       // Default to food on error (safer assumption)
       return {

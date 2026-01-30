@@ -1313,6 +1313,13 @@ function WellnessValleyApp() {
 
       // ✅ Detect image type using Gemini AI (single unified call)
       const detectedType = await imageTypeDetector.detectImageType(file);
+      console.log('🔍 [DEBUG] Image Type Detection Result:', {
+        type: detectedType.type,
+        confidence: detectedType.confidence,
+        hasDetails: !!detectedType.details,
+        hasFoods: detectedType.details?.foods?.length || 0,
+        fullResponse: detectedType
+      });
 
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
       if (detectedType.type === "education" && detectedType.confidence > 0.7) {
@@ -1427,6 +1434,13 @@ function WellnessValleyApp() {
 
       // It's a food image - use nutrition data from unified detection
       setImageType("food");
+      console.log('🍽️ [DEBUG] Processing as FOOD image');
+      console.log('🍽️ [DEBUG] Food details check:', {
+        hasDetails: !!detectedType.details,
+        hasFoodsArray: !!detectedType.details?.foods,
+        foodsLength: detectedType.details?.foods?.length || 0,
+        foodsData: detectedType.details?.foods
+      });
 
       try {
         // Use nutrition data already extracted from unified detection (no second API call)
@@ -1542,7 +1556,9 @@ function WellnessValleyApp() {
           };
         } else {
           // Fallback: No food data extracted, show error
-          console.warn("⚠️ No food data extracted from image");
+          console.error("❌ [DEBUG] No food data extracted from image");
+          console.error("❌ [DEBUG] Detection details:", detectedType.details);
+          console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
           setError(
             "Could not detect any food items in the image. Please try again with a clearer photo.",
           );
