@@ -77,7 +77,8 @@ export default async function handler(req, res) {
       .select('UserId, UserName, Email, CoachName, TeamId')
       .eq('Status', 'Active')
       .neq('Email', currentUserEmail || '')
-      .or(`"UserName".ilike.%${searchQuery}%,"Email".ilike.%${searchQuery}%`)
+      .or(`UserName.ilike.%${searchQuery}%,Email.ilike.%${searchQuery}%`)
+      // .or(`"UserName".ilike.%${searchQuery}%,"Email".ilike.%${searchQuery}%`)
       .order('UserName', { ascending: true })
       .limit(20);
 
