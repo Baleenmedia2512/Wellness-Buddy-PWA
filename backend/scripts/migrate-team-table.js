@@ -103,7 +103,7 @@ async function migrateTeamTable() {
         await client.query(`
           INSERT INTO team_table 
           (entry_date_time, entry_user, user_id, user_name, password, 
-           target_weight_in_kg, coach_name, co_coach_name, status, 
+           TargetWeightInKg, coach_name, co_coach_name, status, 
            coach_approved, email, role, diet_type, height, team_id, upline_coach_id)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         `, [
@@ -112,7 +112,7 @@ async function migrateTeamTable() {
           record.UserId,
           record.UserName,
           record.Password || null,
-          record['TargetWeight(in_kg)'] || 0,
+          record['TargetWeightInKg'] || 0,
           record.CoachName || null,
           record.CoCoachName || null,
           record.Status || 'Active',

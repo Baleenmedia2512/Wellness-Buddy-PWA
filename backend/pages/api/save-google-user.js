@@ -83,7 +83,7 @@ export default async function handler(req, res) {
             EntryUser: 'Google Sign-In',
             UserName: username,
             Password: 'User@123#',
-            'TargetWeight(in_kg)': 0,
+            TargetWeightInKg: 0,
             CoachName: '',
             CoCoachName: '',
             Status: 'Active',
