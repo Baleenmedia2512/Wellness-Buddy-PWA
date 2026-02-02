@@ -20,7 +20,10 @@ import {
   Edit3
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getUsdToInrRate } from '../services/tokenCost/tokenCostConfig';
+import { clearUserPricingCache } from '../services/tokenCost/userPricingManager';
 import { App as CapacitorApp } from '@capacitor/app';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 // --- Dynamic Demo Data Generator ---
 // COMMENTED OUT - Demo data disabled
@@ -494,6 +497,11 @@ const AdminDashboard = ({ user, onClose }) => {
   const [originalTokenCosts, setOriginalTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
   const [savingCorrection, setSavingCorrection] = useState(false);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
+  const [popupJustOpened, setPopupJustOpened] = useState(false);
+  const [currentExchangeRate, setCurrentExchangeRate] = useState(null);
+  const [perMillionCosts, setPerMillionCosts] = useState({ inputPerMillion: 0.10, outputPerMillion: 0.40 });
+  const [perMillionInputs, setPerMillionInputs] = useState({ inputPerMillion: '0.10', outputPerMillion: '0.40' });
+  const [totalTokenCounts, setTotalTokenCounts] = useState({ inputTokens: 0, outputTokens: 0 });
 
   const fetchTokenData = async () => {
     // DEMO DATA DISABLED
@@ -579,9 +587,6 @@ const AdminDashboard = ({ user, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
 
-  // Track if popup was just opened to load initial values
-  const [popupJustOpened, setPopupJustOpened] = useState(false);
-
   // Fetch token costs when edit popup opens
   // Logic: Show edited values UNLESS new usage was added after the last edit
   useEffect(() => {
@@ -590,7 +595,39 @@ const AdminDashboard = ({ user, onClose }) => {
         setPopupJustOpened(true);
         
         try {
+          // Fetch current exchange rate
+          const exchangeRate = await getUsdToInrRate();
+          setCurrentExchangeRate(exchangeRate);
+          
           const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+          
+          // Fetch custom pricing configuration
+          const pricingResponse = await fetch(
+            `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(user?.email)}&modelName=gemini-2.5-flash-lite`,
+            {
+              cache: 'no-store',
+              headers: {
+                'Cache-Control': 'no-cache',
+                'Pragma': 'no-cache'
+              }
+            }
+          );
+          
+          if (pricingResponse.ok) {
+            const pricingData = await pricingResponse.json();
+            if (pricingData.success && pricingData.data) {
+              const pricing = pricingData.data;
+              setPerMillionCosts({
+                inputPerMillion: pricing.inputPerMillion,
+                outputPerMillion: pricing.outputPerMillion
+              });
+              setPerMillionInputs({
+                inputPerMillion: pricing.inputPerMillion.toFixed(2),
+                outputPerMillion: pricing.outputPerMillion.toFixed(2)
+              });
+              console.log('📊 Loaded pricing config:', pricing);
+            }
+          }
           
           // Fetch correction data (includes latest usage timestamp for comparison)
           const correctionResponse = await fetch(
@@ -655,6 +692,13 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputCost: parseFloat(summaryData.totalInputCost || 0),
                 outputCost: parseFloat(summaryData.totalOutputCost || 0)
               };
+              
+              // Store total token counts for recalculation
+              setTotalTokenCounts({
+                inputTokens: summaryData.totalInputTokens || 0,
+                outputTokens: summaryData.totalOutputTokens || 0
+              });
+              
               setTokenCosts(costs);
               setTokenCostInputs({
                 inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
@@ -679,6 +723,35 @@ const AdminDashboard = ({ user, onClose }) => {
     fetchTokenCosts();
   }, [showEditPopup, popupJustOpened, user?.email]);
 
+  // Recalculate INR costs when per million costs change
+  const recalculateINRCosts = (inputPerMillion, outputPerMillion, exchangeRate) => {
+    if (!exchangeRate || exchangeRate <= 0) return;
+    
+    // Calculate INR costs: (tokens / 1,000,000) × USD_per_million × exchange_rate
+    const newInputCost = (totalTokenCounts.inputTokens / 1000000) * inputPerMillion * exchangeRate;
+    const newOutputCost = (totalTokenCounts.outputTokens / 1000000) * outputPerMillion * exchangeRate;
+    
+    setTokenCosts({
+      inputCost: newInputCost,
+      outputCost: newOutputCost
+    });
+    
+    setTokenCostInputs({
+      inputCost: newInputCost === 0 ? '0' : newInputCost.toFixed(4),
+      outputCost: newOutputCost === 0 ? '0' : newOutputCost.toFixed(4)
+    });
+    
+    console.log('🔄 Recalculated INR costs:', {
+      inputTokens: totalTokenCounts.inputTokens,
+      outputTokens: totalTokenCounts.outputTokens,
+      inputPerMillion,
+      outputPerMillion,
+      exchangeRate,
+      newInputCost: newInputCost.toFixed(4),
+      newOutputCost: newOutputCost.toFixed(4)
+    });
+  };
+
   // Save token correction
   const handleSaveTokenCorrection = async () => {
     setSavingCorrection(true);
@@ -697,7 +770,9 @@ const AdminDashboard = ({ user, onClose }) => {
           originalInputCost: originalTokenCosts.inputCost,
           originalOutputCost: originalTokenCosts.outputCost,
           correctedInputCost: tokenCosts.inputCost,
-          correctedOutputCost: tokenCosts.outputCost
+          correctedOutputCost: tokenCosts.outputCost,
+          inputPerMillion: perMillionCosts.inputPerMillion,
+          outputPerMillion: perMillionCosts.outputPerMillion
         })
       });
 
@@ -705,6 +780,10 @@ const AdminDashboard = ({ user, onClose }) => {
         const data = await response.json();
         if (data.success) {
           console.log('✅ Token correction saved successfully:', data.data);
+          
+          // Clear pricing cache so new pricing is fetched on next use
+          clearUserPricingCache(user?.email);
+          
           setShowSuccessMessage(true);
           setTimeout(() => {
             setShowSuccessMessage(false);
@@ -834,12 +913,13 @@ const AdminDashboard = ({ user, onClose }) => {
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-4">
         <div className="flex items-center justify-between">
-          <button 
+          <TouchFeedbackButton 
             onClick={onClose}
             className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors text-gray-700"
+            ariaLabel="Go back"
           >
             <ChevronLeft className="w-6 h-6" />
-          </button>
+          </TouchFeedbackButton>
           
           <div className="flex-1 text-center">
             <h1 className="text-lg font-bold text-gray-800">AI Monitor</h1>
@@ -847,21 +927,23 @@ const AdminDashboard = ({ user, onClose }) => {
           </div>
           
           <div className="flex items-center gap-1">
-            <button 
+            <TouchFeedbackButton 
               onClick={() => setShowEditPopup(true)}
               className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+              ariaLabel="Edit token pricing"
             >
               <Edit3 className="w-5 h-5" />
-            </button>
+            </TouchFeedbackButton>
             {showSuccessMessage && (
               <div className="text-green-600 text-sm mr-2">Saved!</div>
             )}
-            <button 
+            <TouchFeedbackButton 
               onClick={fetchTokenData}
               className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${refreshing ? 'animate-spin text-green-600' : 'text-gray-500'}`}
+              ariaLabel="Refresh data"
             >
               <RefreshCw className="w-5 h-5" />
-            </button>
+            </TouchFeedbackButton>
           </div>
         </div>
       </div>
@@ -871,7 +953,7 @@ const AdminDashboard = ({ user, onClose }) => {
         {/* Date Range Filter */}
         <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
           {['today', 'yesterday', 'week', 'month', 'all'].map((range) => (
-            <button
+            <TouchFeedbackButton
               key={range}
               onClick={() => {
                 setTimeRange(range);
@@ -884,21 +966,23 @@ const AdminDashboard = ({ user, onClose }) => {
                   ? 'bg-green-600 text-white shadow-md shadow-green-200'
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
+              ariaLabel={`Filter by ${range}`}
             >
               {range.charAt(0).toUpperCase() + range.slice(1)}
-            </button>
+            </TouchFeedbackButton>
           ))}
-          <button
+          <TouchFeedbackButton
             onClick={() => setShowDatePicker(!showDatePicker)}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
               timeRange === 'custom'
                 ? 'bg-green-600 text-white shadow-md shadow-green-200'
                 : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
             }`}
+            ariaLabel="Custom date range"
           >
             <CalendarIcon className="w-4 h-4" />
             <span>{timeRange === 'custom' ? getDateRangeLabel() : 'Custom'}</span>
-          </button>
+          </TouchFeedbackButton>
         </div>
 
         {/* Date Range Picker */}
@@ -1299,13 +1383,21 @@ const AdminDashboard = ({ user, onClose }) => {
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-6">
-                <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
-                <button
+                <div>
+                  <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
+                  {currentExchangeRate && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Current Rate: $1 USD = ₹{currentExchangeRate.toFixed(2)} INR
+                    </p>
+                  )}
+                </div>
+                <TouchFeedbackButton
                   onClick={() => setShowEditPopup(false)}
                   className="p-1 rounded-full hover:bg-gray-100 transition-colors"
+                  ariaLabel="Close modal"
                 >
                   <X className="w-5 h-5 text-gray-500" />
-                </button>
+                </TouchFeedbackButton>
               </div>
 
               {/* Success Message */}
@@ -1324,6 +1416,57 @@ const AdminDashboard = ({ user, onClose }) => {
               </AnimatePresence>
 
               <div className="space-y-4">
+                {/* Per Million Token Costs */}
+                <div className="grid grid-cols-2 gap-3 p-4 bg-gray-50 rounded-xl">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Input (USD per 1M tokens)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-sm text-gray-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={perMillionInputs.inputPerMillion}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const numVal = parseFloat(val) || 0;
+                          setPerMillionInputs(prev => ({ ...prev, inputPerMillion: val }));
+                          setPerMillionCosts(prev => ({ ...prev, inputPerMillion: numVal }));
+                          // Recalculate INR costs automatically
+                          recalculateINRCosts(numVal, perMillionCosts.outputPerMillion, currentExchangeRate);
+                        }}
+                        className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="0.10"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                      Output (USD per 1M tokens)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-2 top-1/2 transform -translate-y-1/2 text-sm text-gray-400">$</span>
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={perMillionInputs.outputPerMillion}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const numVal = parseFloat(val) || 0;
+                          setPerMillionInputs(prev => ({ ...prev, outputPerMillion: val }));
+                          setPerMillionCosts(prev => ({ ...prev, outputPerMillion: numVal }));
+                          // Recalculate INR costs automatically
+                          recalculateINRCosts(perMillionCosts.inputPerMillion, numVal, currentExchangeRate);
+                        }}
+                        className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="0.40"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Total Costs in INR */}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Total Input Cost (INR)
@@ -1367,18 +1510,20 @@ const AdminDashboard = ({ user, onClose }) => {
 
               {!savingCorrection ? (
                 <div className="flex gap-3 mt-6">
-                  <button
+                  <TouchFeedbackButton
                     onClick={() => setShowEditPopup(false)}
                     className="flex-1 px-4 py-3 text-gray-700 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors font-medium"
+                    ariaLabel="Close without saving"
                   >
                     Close
-                  </button>
-                  <button
+                  </TouchFeedbackButton>
+                  <TouchFeedbackButton
                     onClick={handleSaveTokenCorrection}
                     className="flex-1 px-4 py-3 text-white rounded-xl transition-colors font-medium bg-green-600 hover:bg-green-700"
+                    ariaLabel="Save token costs"
                   >
                     Save
-                  </button>
+                  </TouchFeedbackButton>
                 </div>
               ) : (
                 <div className="flex justify-center mt-6">

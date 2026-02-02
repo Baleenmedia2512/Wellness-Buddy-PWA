@@ -3,6 +3,7 @@ import React, { forwardRef, useRef, useState, useEffect, useImperativeHandle } f
 import { AnimatePresence, motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null }, ref) => {
   const cameraInputRef = useRef(null);
@@ -284,20 +285,22 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
           </div>
 
           <div className="grid grid-cols-2 gap-3">
-            <button
+            <TouchFeedbackButton
               onClick={triggerCamera}
               disabled={loading}
               className="bg-blue-100 text-blue-700 py-3 px-4 rounded-lg font-medium hover:bg-blue-200 transition-colors duration-200 border border-blue-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              ariaLabel="Take Photo"
             >
               📷 Take Photo
-            </button>
-            <button
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
               onClick={triggerGallery}
               disabled={loading}
               className="bg-green-100 text-green-700 py-3 px-4 rounded-lg font-medium hover:bg-green-200 transition-colors duration-200 border border-green-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              ariaLabel="From Gallery"
             >
               🖼️ From Gallery
-            </button>
+            </TouchFeedbackButton>
           </div>
         </div>
       ) : (
@@ -308,18 +311,20 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
             <p className="text-gray-600 mb-4 text-sm">Take a photo with camera or select from gallery</p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <button
+              <TouchFeedbackButton
                 onClick={triggerCamera}
                 className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex items-center justify-center gap-2"
+                ariaLabel="Take Photo"
               >
                 📷 Take Photo
-              </button>
-              <button
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
                 onClick={triggerGallery}
                 className="bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-6 rounded-lg font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex items-center justify-center gap-2"
+                ariaLabel="From Gallery"
               >
                 🖼️ From Gallery
-              </button>
+              </TouchFeedbackButton>
             </div>
 
             <div className="mt-4 text-xs text-gray-500">

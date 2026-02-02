@@ -1,34 +1,52 @@
 // src/App.js
-import React, { useState, useRef, useEffect, useCallback, lazy, Suspense } from 'react';
-import { useIonRouter } from '@ionic/react';
-import { Capacitor } from '@capacitor/core';
-import { App } from '@capacitor/app';
-import { PushNotifications } from '@capacitor/push-notifications';
-import { Bug } from 'lucide-react';
-import ImageUpload from './components/ImageUpload';
-import NutritionCard from './components/NutritionCard';
-import EducationLogCard from './components/EducationLogCard';
-import TestImageGuide from './components/TestImageGuide';
-import LoadingSpinner from './components/LoadingSpinner';
-import Login from './components/Login';
-import InactiveUserModal from './components/InactiveUserModal';
-import UserNotFoundModal from './components/UserNotFoundModal';
-import Header from './components/Header';
-import { getUserContext, clearContextCache } from './services/userContextService';
-import { initializeBackButton, cleanupBackButton } from './utils/backButtonHandler';
-import { getUserId, clearUserIdCache } from './services/getUserId';
-import { getVersionString } from './config/version';
-import { saveNutritionAnalysis, deleteNutritionAnalysis } from './services/nutritionSaveService';
-import { geminiService } from './services/geminiService';
-import { imageTypeDetector } from './services/imageTypeDetector';
-import { weightDetectionService } from './services/weightDetectionService';
-import { educationDetectionService } from './services/educationDetectionService';
-import { duplicateDetectionService } from './services/duplicateDetectionService';
-import ManualWeightEntryModal from './components/ManualWeightEntryModal';
-import DuplicateFoodModal from './components/DuplicateFoodModal';
-import UserProfileModal from './components/UserProfileModal';
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
+import { useIonRouter } from "@ionic/react";
+import { Capacitor } from "@capacitor/core";
+import { App } from "@capacitor/app";
+import { PushNotifications } from "@capacitor/push-notifications";
+import { SplashScreen } from "@capacitor/splash-screen";
+import { Bug } from "lucide-react";
+import ImageUpload from "./components/ImageUpload";
+import NutritionCard from "./components/NutritionCard";
+import EducationLogCard from "./components/EducationLogCard";
+import TestImageGuide from "./components/TestImageGuide";
+import LoadingSpinner from "./components/LoadingSpinner";
+import Login from "./components/Login";
+import InactiveUserModal from "./components/InactiveUserModal";
+import UserNotFoundModal from "./components/UserNotFoundModal";
+import Header from "./components/Header";
+import {
+  getUserContext,
+  clearContextCache,
+} from "./services/userContextService";
+import {
+  initializeBackButton,
+  cleanupBackButton,
+} from "./utils/backButtonHandler";
+import { getUserId, clearUserIdCache } from "./services/getUserId";
+import { getVersionString } from "./config/version";
+import {
+  saveNutritionAnalysis,
+  deleteNutritionAnalysis,
+} from "./services/nutritionSaveService";
+import { geminiService } from "./services/geminiService";
+import { imageTypeDetector } from "./services/imageTypeDetector";
+import { weightDetectionService } from "./services/weightDetectionService";
+import { educationDetectionService } from "./services/educationDetectionService";
+import { duplicateDetectionService } from "./services/duplicateDetectionService";
+import { applyUserCorrections } from "./services/foodCorrectionService";
+import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
+import DuplicateFoodModal from "./components/DuplicateFoodModal";
+import UserProfileModal from "./components/UserProfileModal";
 
-import GalleryMonitor from './services/galleryMonitor';
+import GalleryMonitor from "./services/galleryMonitor";
 import {
   signInWithGoogle,
   signInWithGooglePopup,
@@ -37,37 +55,37 @@ import {
   onAuthStateChange,
   isGoogleUser,
   isMobileDevice,
-  cleanup
-} from './services/firebase';
+  cleanup,
+} from "./services/firebase";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
-const Dashboard = lazy(() => import('./components/Dashboard'));
-const AdminDashboard = lazy(() => import('./components/AdminDashboard'));
-const DisciplineReport = lazy(() => import('./components/DisciplineReport'));
-const SetupWizard = lazy(() => import('./pages/SetupWizard'));
-const ValidateOTP = lazy(() => import('./pages/ValidateOTP'));
+const Dashboard = lazy(() => import("./components/Dashboard"));
+const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
+const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const SetupWizard = lazy(() => import("./pages/SetupWizard"));
+const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
 function WellnessValleyApp() {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL ;
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
   const [savedNutritionMealId, setSavedNutritionMealId] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [loadingState, setLoadingState] = useState('analyzing'); // 'analyzing' | 'saving'
+  const [loadingState, setLoadingState] = useState("analyzing"); // 'analyzing' | 'saving'
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
-    localStorage.getItem('currentPage') === 'dashboard' || 
-    localStorage.getItem('currentPage') === 'nutrition-dashboard' ||
-    localStorage.getItem('currentPage') === 'weight-tracking' ||
-    localStorage.getItem('currentPage') === 'weight-insights'
+    localStorage.getItem("currentPage") === "dashboard" ||
+      localStorage.getItem("currentPage") === "nutrition-dashboard" ||
+      localStorage.getItem("currentPage") === "weight-tracking" ||
+      localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
-    localStorage.getItem('isOtpVerified') === 'true'
+    localStorage.getItem("isOtpVerified") === "true",
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
@@ -78,33 +96,34 @@ function WellnessValleyApp() {
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
-  
+
   // Duplicate food detection state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState(null);
   const [pendingSaveData, setPendingSaveData] = useState(null);
 
   // Duplicate weight detection state
-  const [showDuplicateWeightModal, setShowDuplicateWeightModal] = useState(false);
+  const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
+    useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
-  
+
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
 
   // User role state - for role-based access control
-  const [userRole, setUserRole] = useState('user');
+  const [userRole, setUserRole] = useState("user");
 
   // Admin dashboard state
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Discipline report state (for coaches) - with localStorage persistence
   const [showDisciplineReport, setShowDisciplineReport] = useState(
-    localStorage.getItem('currentPage') === 'discipline-report'
+    localStorage.getItem("currentPage") === "discipline-report",
   );
 
   // Setup wizard state
@@ -167,8 +186,8 @@ function WellnessValleyApp() {
   //     if (analysisId != null) {
   //       localStorage.setItem('wellnessBuddy_lastBgNutritionId', String(analysisId));
   //     }
-      // clearBgCache(); // ensure it won’t repaint on refresh
-    // } catch {}
+  // clearBgCache(); // ensure it won’t repaint on refresh
+  // } catch {}
   // };
 
   // --------------------------------------------------------------------
@@ -177,13 +196,40 @@ function WellnessValleyApp() {
   const ionRouter = useIonRouter();
 
   // Toast state for back button exit message
-  const [toast, setToast] = useState({ message: '', visible: false });
+  const [toast, setToast] = useState({ message: "", visible: false });
 
   // Show toast message
   const showToast = (message) => {
     setToast({ message, visible: true });
-    setTimeout(() => setToast({ message: '', visible: false }), 2000);
+    setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
+
+  // ✅ CRITICAL FIX: Force splash screen dismissal on app load
+
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) {
+      // Double-check splash screen is hidden after React renders
+      const timer = setTimeout(() => {
+        SplashScreen.hide().catch(err => {
+          console.log('Splash screen already hidden');
+        });
+      }, 500);
+      
+      return () => clearTimeout(timer);
+    }
+  }, []);
+  // useEffect(() => {
+  //   if (Capacitor.isNativePlatform()) {
+  //     // Double-check splash screen is hidden after React renders
+  //     const timer = setTimeout(() => {
+  //       SplashScreen.hide().catch((err) => {
+  //         console.log("Splash screen already hidden");
+  //       });
+  //     }, 500);
+
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, []);
 
   // Initialize back button handler
   useEffect(() => {
@@ -198,19 +244,21 @@ function WellnessValleyApp() {
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
-    
-    initializeBackButton(goBack, showToast, !showDashboard && !showDisciplineReport);
+
+    initializeBackButton(
+      goBack,
+      showToast,
+      !showDashboard && !showDisciplineReport,
+    );
     return () => cleanupBackButton();
   }, [ionRouter, showDashboard, showDisciplineReport]);
 
-
-
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
-  
+
   // Add a ref to track if status check is in progress
   const statusCheckInProgress = useRef(false);
-  
+
   // Add a ref to track if sign-out is in progress
   const signOutInProgress = useRef(false);
 
@@ -218,77 +266,81 @@ function WellnessValleyApp() {
   const imageProcessingInProgress = useRef(false);
 
   // Check user status (Active/Inactive) using lookup-user-id API
-  const checkUserStatus = useCallback(async (user) => {
-    if (!user) {
-      return true; // If no user, skip check
-    }
-    
-    // Skip status check if this is a fresh Google sign-in that's being saved
-    const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-    if (isFreshSignIn) {
-      return true; // Skip check, allow access - sign-in handler will check after save
-    }
-    
-    // Prevent multiple simultaneous checks
-    if (statusCheckInProgress.current) {
-      return true; // Skip if already checking
-    }
-    
-    try {
-      statusCheckInProgress.current = true;
-      
-      const userEmail = user.email || user.Email;
-      
-      if (!userEmail) {
+  const checkUserStatus = useCallback(
+    async (user) => {
+      if (!user) {
+        return true; // If no user, skip check
+      }
+
+      // Skip status check if this is a fresh Google sign-in that's being saved
+      const isFreshSignIn =
+        sessionStorage.getItem("freshGoogleSignIn") === "true";
+      if (isFreshSignIn) {
+        return true; // Skip check, allow access - sign-in handler will check after save
+      }
+
+      // Prevent multiple simultaneous checks
+      if (statusCheckInProgress.current) {
+        return true; // Skip if already checking
+      }
+
+      try {
+        statusCheckInProgress.current = true;
+
+        const userEmail = user.email || user.Email;
+
+        if (!userEmail) {
+          return true;
+        }
+
+        const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: userEmail }),
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // User not found in database
+        if (!data.success || data.userNotFound) {
+          setShowUserNotFoundModal(true);
+          setIsUserActive(false);
+          return false;
+        }
+
+        // User found but inactive
+        if (data.success && !data.isActive) {
+          setShowInactiveModal(true);
+          setIsUserActive(false);
+          return false;
+        }
+
+        // User is active - clear any modal states and store role
+        setShowInactiveModal(false);
+        setShowUserNotFoundModal(false);
+        setIsUserActive(true);
+
+        // Store user role for access control
+        if (data.role) {
+          setUserRole(data.role);
+        }
+
         return true;
+      } catch (error) {
+        console.error("Error checking user status:", error);
+        // On error, allow user to continue (fail-open)
+        setIsUserActive(true);
+        return true;
+      } finally {
+        statusCheckInProgress.current = false;
       }
-      
-      const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: userEmail })
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      
-      // User not found in database
-      if (!data.success || data.userNotFound) {
-        setShowUserNotFoundModal(true);
-        setIsUserActive(false);
-        return false;
-      }
-      
-      // User found but inactive
-      if (data.success && !data.isActive) {
-        setShowInactiveModal(true);
-        setIsUserActive(false);
-        return false;
-      }
-      
-      // User is active - clear any modal states and store role
-      setShowInactiveModal(false);
-      setShowUserNotFoundModal(false);
-      setIsUserActive(true);
-      
-      // Store user role for access control
-      if (data.role) {
-        setUserRole(data.role);
-      }
-      
-      return true;
-    } catch (error) {
-      console.error('Error checking user status:', error);
-      // On error, allow user to continue (fail-open)
-      setIsUserActive(true);
-      return true;
-    } finally {
-      statusCheckInProgress.current = false;
-    }
-  }, [apiBaseUrl]);
+    },
+    [apiBaseUrl],
+  );
 
   // Helper functions for navigation with localStorage persistence
   const showDashboardPage = useCallback(async () => {
@@ -296,34 +348,36 @@ function WellnessValleyApp() {
     if (user) {
       const isActive = await checkUserStatus(user);
       if (!isActive) {
-        setError('Your account is inactive. Please contact support to reactivate.');
+        setError(
+          "Your account is inactive. Please contact support to reactivate.",
+        );
         return;
       }
     }
-    
+
     // Clear nutrition data and image preview when switching to dashboard
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
-    
+
     // Set the initial tab based on the last analyzed image type
-    if (imageType === 'weight') {
-      setDashboardInitialTab('weight');
-    } else if (imageType === 'food') {
-      setDashboardInitialTab('nutrition');
-    } else if (imageType === 'education') {
-      setDashboardInitialTab('education');
+    if (imageType === "weight") {
+      setDashboardInitialTab("weight");
+    } else if (imageType === "food") {
+      setDashboardInitialTab("nutrition");
+    } else if (imageType === "education") {
+      setDashboardInitialTab("education");
     } else {
       setDashboardInitialTab(null); // Use default/last used tab
     }
     setShowDashboard(true);
-    localStorage.setItem('currentPage', 'dashboard');
+    localStorage.setItem("currentPage", "dashboard");
   }, [user, checkUserStatus, nutritionData, imagePreview, imageType]);
 
   const showMainPage = () => {
     setShowDashboard(false);
     setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
-    localStorage.setItem('currentPage', 'main');
+    localStorage.setItem("currentPage", "main");
   };
 
   const requestAllPermissions = async () => {
@@ -331,29 +385,27 @@ function WellnessValleyApp() {
     try {
       await PushNotifications.requestPermissions();
     } catch (err) {
-      console.warn('❌ Permission request failed:', err);
+      console.warn("❌ Permission request failed:", err);
     }
   };
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
-    
+
     // Add small delay to ensure modal is visible before sign out
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     await handleSignOut();
   };
 
   const handleUserNotFoundModalClose = async () => {
     setShowUserNotFoundModal(false);
-    
+
     // Add small delay to ensure modal is visible before sign out
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     await handleSignOut();
   };
-
-
 
   const handleSaveUserCache = async (user) => {
     if (user && Capacitor.isNativePlatform()) {
@@ -363,7 +415,7 @@ function WellnessValleyApp() {
           GalleryMonitor.setCurrentUser(String(dbUserId), user.email);
         }
       } catch (err) {
-        console.warn('Failed to set current user for background service:', err);
+        console.warn("Failed to set current user for background service:", err);
       }
     }
   };
@@ -371,12 +423,12 @@ function WellnessValleyApp() {
   // Set up StatusBar to appear above content (not overlaid)
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
-      import('@capacitor/status-bar')
+      import("@capacitor/status-bar")
         .then(({ StatusBar }) => {
           StatusBar.setOverlaysWebView({ overlay: false });
         })
         .catch((err) => {
-          console.warn('StatusBar plugin not available:', err);
+          console.warn("StatusBar plugin not available:", err);
         });
     }
   }, []);
@@ -386,18 +438,23 @@ function WellnessValleyApp() {
       if (Capacitor.isNativePlatform()) {
         await GalleryMonitor.initialize();
 
-        App.addListener('appStateChange', ({ isActive }) => {
+        App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
           }
         });
 
-        const { GalleryMonitorPlugin } = await import('./plugins/galleryMonitorPlugin');
-        const listener = await GalleryMonitorPlugin.addListener('notificationClicked', (data) => {
-          if (data && data.action === 'openBackgroundHistory') {
-            showDashboardPage();
-          }
-        });
+        const { GalleryMonitorPlugin } = await import(
+          "./plugins/galleryMonitorPlugin"
+        );
+        const listener = await GalleryMonitorPlugin.addListener(
+          "notificationClicked",
+          (data) => {
+            if (data && data.action === "openBackgroundHistory") {
+              showDashboardPage();
+            }
+          },
+        );
 
         return () => {
           listener.remove();
@@ -426,14 +483,17 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(resultUser);
           if (dbUserId) {
             resultUser.id = dbUserId;
-            console.log('✅ [Redirect] Attached database UserId to user object:', resultUser.id);
+            console.log(
+              "✅ [Redirect] Attached database UserId to user object:",
+              resultUser.id,
+            );
           }
           setUser(resultUser);
           setAuthLoading(false);
         }
       } catch (error) {
-        console.error('❌ Redirect result error:', error);
-        setError('Authentication failed. Please try again.');
+        console.error("❌ Redirect result error:", error);
+        setError("Authentication failed. Please try again.");
         setAuthLoading(false);
       }
     };
@@ -454,40 +514,47 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(user);
           if (dbUserId) {
             user.id = dbUserId;
-            console.log('✅ [Auth State] Attached database UserId to user object:', user.id);
+            console.log(
+              "✅ [Auth State] Attached database UserId to user object:",
+              user.id,
+            );
           }
         }
-        
+
         // Store user email in localStorage for API calls
         const userEmail = user.email || user.Email;
         if (userEmail) {
-          localStorage.setItem('userEmail', userEmail);
-          console.log('✅ [Auth State] Stored user email in localStorage:', userEmail);
+          localStorage.setItem("userEmail", userEmail);
+          console.log(
+            "✅ [Auth State] Stored user email in localStorage:",
+            userEmail,
+          );
         }
-        
+
         // Load user context for AI personalization
         if (user.id) {
-          console.log('🔄 [Auth State] Loading user context...');
+          console.log("🔄 [Auth State] Loading user context...");
           setUserContextLoading(true);
           try {
             const context = await getUserContext(user.id);
             setUserContext(context);
-            console.log('✅ [Auth State] User context stored in state');
+            console.log("✅ [Auth State] User context stored in state");
           } catch (error) {
-            console.error('❌ [Auth State] Failed to load context:', error);
+            console.error("❌ [Auth State] Failed to load context:", error);
           } finally {
             setUserContextLoading(false);
           }
         }
-        
+
         // Skip status check if this is a fresh Google sign-in that's being saved
         // The handleSignIn/handlePopupSignIn functions will handle status check after save
-        const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
-        
+        const isFreshSignIn =
+          sessionStorage.getItem("freshGoogleSignIn") === "true";
+
         if (!isFreshSignIn) {
           // Check user status before allowing access (for existing sessions)
           const isActive = await checkUserStatus(user);
-          
+
           if (!isActive) {
             // Don't clear user state immediately - let modal show first
             // Modal close handler will sign out and clear state
@@ -495,72 +562,113 @@ function WellnessValleyApp() {
             setAuthLoading(false);
             return;
           }
-          
+
           // Check setup wizard status for active users
           if (isActive && userEmail) {
-            console.log('🔄 [Auth State] Checking setup wizard status...');
+            console.log("🔄 [Auth State] Checking setup wizard status...");
+
+            // // Check if user manually skipped setup (check localStorage first for quick bypass)
+            // const setupSkipped = localStorage.getItem("setupSkipped");
+            // if (setupSkipped === "true") {
+            //   console.log(
+            //     "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
+            //   );
+            //   // Don't show setup wizard - user chose to skip
+            //   return;
+            // }
+
             try {
-              const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
-              
+              const statusResponse = await fetch(
+                `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
+                  userEmail,
+                )}`,
+              );
+
               if (statusResponse.ok) {
                 const statusData = await statusResponse.json();
-                console.log('📋 [Auth State] Setup status:', statusData);
-                
+                console.log("📋 [Auth State] Setup status:", statusData);
+
+                // // Check if user skipped setup (from database)
+                // if (statusData.setupSkipped) {
+                //   console.log(
+                //     "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
+                //   );
+                //   localStorage.setItem("setupSkipped", "true");
+                //   return;
+                // }
+
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {
                   if (statusData.pendingRequest) {
                     // User has pending OTP validation
-                    console.log('📧 [Auth State] Pending OTP detected, showing OTP modal');
+                    console.log(
+                      "📧 [Auth State] Pending OTP detected, showing OTP modal",
+                    );
                     setShowValidateOTP(true);
                   } else {
                     // User needs to complete setup wizard
-                    console.log('🔧 [Auth State] Setup incomplete, showing setup wizard');
+                    console.log(
+                      "🔧 [Auth State] Setup incomplete, showing setup wizard",
+                    );
                     setShowSetupWizard(true);
                   }
                 } else {
-                  console.log('✅ [Auth State] Setup already complete');
+                  console.log("✅ [Auth State] Setup already complete");
                 }
               } else {
-                console.warn('⚠️ [Auth State] Setup status check failed:', statusResponse.status);
+                console.warn(
+                  "⚠️ [Auth State] Setup status check failed:",
+                  statusResponse.status,
+                );
               }
             } catch (setupError) {
-              console.warn('⚠️ [Auth State] Failed to check setup status:', setupError);
+              console.warn(
+                "⚠️ [Auth State] Failed to check setup status:",
+                setupError,
+              );
               // Continue without blocking - setup check is not critical
             }
           }
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
-          console.log('🔐 [Auth State] Fresh sign-in detected, skipping status check');
+          console.log(
+            "🔐 [Auth State] Fresh sign-in detected, skipping status check",
+          );
         }
       }
-      
+
       setUser(user);
       setAuthLoading(false);
-      
+
       // Skip handleSaveUserCache for fresh sign-ins - let sign-in handler do it after save
-      const isFreshSignIn = sessionStorage.getItem('freshGoogleSignIn') === 'true';
+      const isFreshSignIn =
+        sessionStorage.getItem("freshGoogleSignIn") === "true";
       if (user && Capacitor.isNativePlatform() && !isFreshSignIn) {
         handleSaveUserCache(user);
       } else if (isFreshSignIn) {
-        console.log('🔐 [Auth State] Skipping handleSaveUserCache for fresh sign-in');
+        console.log(
+          "🔐 [Auth State] Skipping handleSaveUserCache for fresh sign-in",
+        );
       }
     });
     return () => unsubscribe();
   }, [checkUserStatus]);
-  
+
   // Subscribe to user context updates (from profile edits, food corrections, etc.)
   useEffect(() => {
     if (!user?.id) return;
-    
-    const { subscribeToContextUpdates } = require('./services/userContextService');
+
+    const {
+      subscribeToContextUpdates,
+    } = require("./services/userContextService");
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
-      console.log('✅ [App] User context updated in state:', {
+      console.log("✅ [App] User context updated in state:", {
         corrections: updatedContext?.personalCorrections?.length || 0,
-        diet: updatedContext?.dietPreference
+        diet: updatedContext?.dietPreference,
       });
       setUserContext(updatedContext);
     });
-    
+
     return unsubscribe;
   }, [user?.id]);
 
@@ -576,57 +684,63 @@ function WellnessValleyApp() {
   useEffect(() => {
     const restoreOtpUser = async () => {
       if (isOtpVerified && !user) {
-        const otpUser = localStorage.getItem('otpUser');
-        
+        const otpUser = localStorage.getItem("otpUser");
+
         if (otpUser) {
           try {
             const parsedUser = JSON.parse(otpUser);
-            
+
             // Get database UserId if not already attached
             if (!parsedUser.id) {
               const dbUserId = await getUserId(parsedUser);
               if (dbUserId) {
                 parsedUser.id = dbUserId;
-                console.log('✅ [OTP Restore] Attached database UserId to user object:', parsedUser.id);
+                console.log(
+                  "✅ [OTP Restore] Attached database UserId to user object:",
+                  parsedUser.id,
+                );
               }
             }
-            
+
             // Load user context for AI personalization
             if (parsedUser.id) {
-              console.log('🔄 [OTP Restore] Loading user context...');
+              console.log("🔄 [OTP Restore] Loading user context...");
               setUserContextLoading(true);
               try {
                 const context = await getUserContext(parsedUser.id);
                 setUserContext(context);
-                console.log('✅ [OTP Restore] User context stored in state');
+                console.log("✅ [OTP Restore] User context stored in state");
               } catch (error) {
-                console.error('❌ [OTP Restore] Failed to load context:', error);
+                console.error(
+                  "❌ [OTP Restore] Failed to load context:",
+                  error,
+                );
               } finally {
                 setUserContextLoading(false);
               }
             }
-            
+
             // Check user status before restoring
             const isActive = await checkUserStatus(parsedUser);
-            
+
             if (!isActive) {
               // Set user state so modal can show
               setUser(parsedUser);
               // Modal close handler will clear localStorage
               return;
             }
-            
+
             setUser(parsedUser);
             handleSaveUserCache(parsedUser);
           } catch (error) {
-            console.error('Failed to restore OTP user:', error);
-            localStorage.removeItem('otpUser');
+            console.error("Failed to restore OTP user:", error);
+            localStorage.removeItem("otpUser");
             setIsOtpVerified(false);
           }
         }
       }
     };
-    
+
     restoreOtpUser();
   }, [isOtpVerified, user, checkUserStatus]);
 
@@ -645,46 +759,62 @@ function WellnessValleyApp() {
   useEffect(() => {
     const checkSetupStatus = async () => {
       if (!user || !isUserActive) return;
-      
+
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
-      
-      console.log('🔄 [Setup Check] Checking setup wizard status for existing user...');
-      
+
+      console.log(
+        "🔄 [Setup Check] Checking setup wizard status for existing user...",
+      );
+
       try {
-        const statusResponse = await fetch(`${apiBaseUrl}/api/user/status?email=${encodeURIComponent(userEmail)}`);
-        
+        const statusResponse = await fetch(
+          `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
+            userEmail,
+          )}`,
+        );
+
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
-          console.log('📋 [Setup Check] Setup status:', statusData);
-          
+          console.log("📋 [Setup Check] Setup status:", statusData);
+
           // Show setup wizard if not complete
           if (!statusData.setupComplete) {
             if (statusData.pendingRequest) {
               // User has pending OTP validation
-              console.log('📧 [Setup Check] Pending OTP detected, showing OTP modal');
+              console.log(
+                "📧 [Setup Check] Pending OTP detected, showing OTP modal",
+              );
               setShowValidateOTP(true);
             } else {
               // User needs to complete setup wizard
-              console.log('🔧 [Setup Check] Setup incomplete, showing setup wizard');
+              console.log(
+                "🔧 [Setup Check] Setup incomplete, showing setup wizard",
+              );
               setShowSetupWizard(true);
             }
           } else {
-            console.log('✅ [Setup Check] Setup already complete');
+            console.log("✅ [Setup Check] Setup already complete");
           }
         } else {
-          console.warn('⚠️ [Setup Check] Setup status check failed:', statusResponse.status);
+          console.warn(
+            "⚠️ [Setup Check] Setup status check failed:",
+            statusResponse.status,
+          );
         }
       } catch (setupError) {
-        console.warn('⚠️ [Setup Check] Failed to check setup status:', setupError);
+        console.warn(
+          "⚠️ [Setup Check] Failed to check setup status:",
+          setupError,
+        );
       }
     };
-    
+
     // Run check after a short delay to ensure auth is fully complete
     const timeoutId = setTimeout(() => {
       checkSetupStatus();
     }, 1000);
-    
+
     return () => clearTimeout(timeoutId);
   }, [user, isUserActive, apiBaseUrl]);
 
@@ -694,7 +824,6 @@ function WellnessValleyApp() {
       cleanup();
     };
   }, []);
-
 
   // Auto-dismiss save error after 5 seconds
   useEffect(() => {
@@ -711,46 +840,47 @@ function WellnessValleyApp() {
   const compressImage = (base64, quality = 0.7, maxWidth = 1920) => {
     return new Promise((resolve, reject) => {
       try {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d', { 
-          alpha: false,  // Disable alpha for JPEG (faster)
-          willReadFrequently: false 
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d", {
+          alpha: false, // Disable alpha for JPEG (faster)
+          willReadFrequently: false,
         });
         const img = new Image();
-        
+
         img.onload = () => {
           try {
             // Calculate new dimensions
             let { width, height } = img;
-            
+
             if (width > maxWidth) {
               height = Math.floor((height * maxWidth) / width);
               width = maxWidth;
             }
-            
+
             canvas.width = width;
             canvas.height = height;
-            
+
             // Use faster rendering
             ctx.imageSmoothingEnabled = true;
-            ctx.imageSmoothingQuality = 'high';
+            ctx.imageSmoothingQuality = "high";
             ctx.drawImage(img, 0, 0, width, height);
-            
+
             // Convert to JPEG with specified quality
-            const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
-            
+            const compressedBase64 = canvas.toDataURL("image/jpeg", quality);
+
             // Clean up
             canvas.width = 0;
             canvas.height = 0;
-            img.src = '';
-            
+            img.src = "";
+
             resolve(compressedBase64);
           } catch (err) {
             reject(err);
           }
         };
-        
-        img.onerror = (err) => reject(new Error('Failed to load image for compression'));
+
+        img.onerror = (err) =>
+          reject(new Error("Failed to load image for compression"));
         img.src = base64;
       } catch (err) {
         reject(err);
@@ -761,16 +891,20 @@ function WellnessValleyApp() {
   /**
    * Perform actual weight save to database (called after duplicate check)
    */
-  const performWeightSave = async (weightData, imageBase64, cachedUserId = null) => {
+  const performWeightSave = async (
+    weightData,
+    imageBase64,
+    cachedUserId = null,
+  ) => {
     try {
       // Use cached userId if provided, otherwise get it
       let userId = cachedUserId || user?.id;
       if (!userId) {
         userId = await getUserId(user);
       }
-      
+
       if (!userId) {
-        throw new Error('User not authenticated or not found in database');
+        throw new Error("User not authenticated or not found in database");
       }
 
       const payload = {
@@ -781,42 +915,39 @@ function WellnessValleyApp() {
         bodyFat: weightData.bodyFat,
         muscleMass: weightData.muscleMass,
         bmr: weightData.bmr,
-        imageBase64ToSave: imageBase64
+        imageBase64ToSave: imageBase64,
       };
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
       const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
       });
-      
+
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to save weight entry');
+        throw new Error(data.message || "Failed to save weight entry");
       }
 
-      console.log('✅ Weight entry saved successfully');
-      
+      console.log("✅ Weight entry saved successfully");
+
       // Hide saving overlay
       setSaveLoading(false);
-      setLoadingState('idle');
-      
+      setLoadingState("idle");
+
       // Show success popup (similar to nutrition save)
       setError(null);
-      
 
-      
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
-      
     } catch (err) {
-      console.error('❌ Save weight error:', err);
+      console.error("❌ Save weight error:", err);
       setSaveLoading(false);
-      setLoadingState('idle');
-      setError(err.message || 'Failed to save weight entry');
+      setLoadingState("idle");
+      setError(err.message || "Failed to save weight entry");
       throw err;
     }
   };
@@ -831,44 +962,47 @@ function WellnessValleyApp() {
       if (!userId) {
         userId = await getUserId(user);
       }
-      
+
       if (!userId) {
-        throw new Error('User not authenticated or not found in database');
+        throw new Error("User not authenticated or not found in database");
       }
 
       // Check for duplicate weight before saving (fail-safe: proceed if check fails)
       try {
-        const duplicateCheck = await duplicateDetectionService.checkForDuplicateWeight({
-          userId: userId,
-          weightValue: weightData.weightValue,
-          unit: weightData.unit || 'kg'
-        });
-        
+        const duplicateCheck =
+          await duplicateDetectionService.checkForDuplicateWeight({
+            userId: userId,
+            weightValue: weightData.weightValue,
+            unit: weightData.unit || "kg",
+          });
+
         if (duplicateCheck.isDuplicate) {
           // Found duplicate - hide saving overlay and show confirmation modal
           // console.log('⚠️ Duplicate weight detected:', duplicateCheck);
           setSaveLoading(false); // Hide saving overlay while showing duplicate modal
-          setLoadingState('idle');
+          setLoadingState("idle");
           setDuplicateWeightInfo(duplicateCheck);
           setPendingWeightSaveData({
             weightData: weightData,
             imageBase64: imageBase64,
-            userId: userId  // Cache userId for later use
+            userId: userId, // Cache userId for later use
           });
           setShowDuplicateWeightModal(true);
           return; // Stop here to wait for user confirmation
         }
       } catch (duplicateCheckErr) {
         // If duplicate check fails, log it but continue with save (fail-open)
-        console.warn('⚠️ Duplicate check failed, proceeding with save:', duplicateCheckErr);
+        console.warn(
+          "⚠️ Duplicate check failed, proceeding with save:",
+          duplicateCheckErr,
+        );
       }
-      
+
       // No duplicate or duplicate check failed - proceed with save (pass cached userId)
       await performWeightSave(weightData, imageBase64, userId);
-      
     } catch (err) {
-      console.error('❌ Save weight error:', err);
-      setError(err.message || 'Failed to save weight entry');
+      console.error("❌ Save weight error:", err);
+      setError(err.message || "Failed to save weight entry");
       throw err;
     }
   };
@@ -879,10 +1013,10 @@ function WellnessValleyApp() {
   const handleManualWeightSave = async (manualData) => {
     try {
       setShowManualWeightModal(false); // Close modal first
-      setLoadingState('saving');
+      setLoadingState("saving");
       setSaveLoading(true); // Show saving overlay
-      setImageType('weight'); // Ensure weight type is set
-      
+      setImageType("weight"); // Ensure weight type is set
+
       await saveWeightEntry(
         {
           weightValue: manualData.weightValue,
@@ -890,16 +1024,15 @@ function WellnessValleyApp() {
           bmi: null,
           bodyFat: null,
           muscleMass: null,
-          bmr: manualData.bmr || null
+          bmr: manualData.bmr || null,
         },
-        currentWeightImage
+        currentWeightImage,
       );
-      
+
       setCurrentWeightImage(null);
       setLoading(false);
-      
     } catch (err) {
-      console.error('❌ Manual weight save error:', err);
+      console.error("❌ Manual weight save error:", err);
       throw err; // Re-throw to show error in modal
     }
   };
@@ -911,82 +1044,83 @@ function WellnessValleyApp() {
    */
   const saveEducationLog = async (educationData, imageBase64) => {
     try {
-      console.log('💾 Auto-saving education log:', educationData);
-      
+      console.log("💾 Auto-saving education log:", educationData);
+
       // Get the actual database UserId
       let userId = user?.id;
       if (!userId) {
         userId = await getUserId(user);
       }
-      
+
       if (!userId) {
-        throw new Error('User not authenticated or not found in database');
+        throw new Error("User not authenticated or not found in database");
       }
 
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
           imageBase64: imageBase64,
           platform: educationData.platform,
           topic: educationData.topic,
           confidence: educationData.confidence,
-          deviceInfo: window.navigator.userAgent
-        })
+          deviceInfo: window.navigator.userAgent,
+        }),
       });
 
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || 'Failed to save education log');
+        throw new Error(data.message || "Failed to save education log");
       }
 
-      console.log('✅ Education log auto-saved successfully:', data.id);
+      console.log("✅ Education log auto-saved successfully:", data.id);
       setSaveLoading(false);
-      setLoadingState('idle');
-
+      setLoadingState("idle");
     } catch (error) {
-      console.error('❌ Failed to auto-save education log:', error);
-      setError(error.message || 'Failed to save education log. Please try again.');
+      console.error("❌ Failed to auto-save education log:", error);
+      setError(
+        error.message || "Failed to save education log. Please try again.",
+      );
       setSaveLoading(false);
-      setLoadingState('idle');
+      setLoadingState("idle");
     }
   };
 
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
     try {
-      console.log('🔵 [App] Starting nutrition save:', { 
-        userId: saveData.userId, 
-        imagePath: saveData.imagePath, 
-        hasImageBase64: !!saveData.imageBase64 
+      console.log("🔵 [App] Starting nutrition save:", {
+        userId: saveData.userId,
+        imagePath: saveData.imagePath,
+        hasImageBase64: !!saveData.imageBase64,
       });
       setSaveLoading(true);
-      
-      const saveRes = await saveNutritionAnalysis(saveData);
-      console.log('✅ [App] Save successful:', saveRes);
 
-      if (process.env.NODE_ENV !== 'production') {
+      const saveRes = await saveNutritionAnalysis(saveData);
+      console.log("✅ [App] Save successful:", saveRes);
+
+      if (process.env.NODE_ENV !== "production") {
         // console.log('✅ Save successful:', saveRes);
       }
-      
+
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
-      console.log('✅ [App] Meal ID stored:', saveRes.id || saveRes.insertId);
+      console.log("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
     } catch (err) {
-      console.error('❌ [App] Save failed:', err);
-      console.error('❌ [App] Error message:', err.message);
-      console.error('❌ [App] Error stack:', err.stack);
+      console.error("❌ [App] Save failed:", err);
+      console.error("❌ [App] Error message:", err.message);
+      console.error("❌ [App] Error stack:", err.stack);
       const friendlySaveError = getFriendlyErrorMessage(err);
       setSaveError(friendlySaveError);
       throw err;
     } finally {
       setSaveLoading(false);
-      console.log('✅ [App] Save loading finished');
+      console.log("✅ [App] Save loading finished");
     }
   };
 
@@ -994,33 +1128,33 @@ function WellnessValleyApp() {
   const handleDuplicateConfirm = async () => {
     // Edge case: Prevent double-click/double-tap
     if (!showDuplicateModal) {
-      console.warn('Duplicate confirm called but modal already closed');
+      console.warn("Duplicate confirm called but modal already closed");
       return;
     }
-    
+
     // Edge case: No pending data (shouldn't happen but be safe)
     if (!pendingSaveData) {
-      console.error('No pending save data found');
+      console.error("No pending save data found");
       setShowDuplicateModal(false);
       setSaveLoading(false);
       return;
     }
-    
+
     // Edge case: Validate pending data structure
     if (!pendingSaveData.userId || !pendingSaveData.analysisResult) {
-      console.error('Invalid pending save data:', pendingSaveData);
+      console.error("Invalid pending save data:", pendingSaveData);
       setShowDuplicateModal(false);
       setSaveLoading(false);
       setPendingSaveData(null);
       setDuplicateInfo(null);
       return;
     }
-    
+
     try {
       await performNutritionSave(pendingSaveData);
     } catch (err) {
       // Error already handled in performNutritionSave
-      console.error('Error during duplicate confirm save:', err);
+      console.error("Error during duplicate confirm save:", err);
     } finally {
       // Close modal and cleanup state after save completes
       setShowDuplicateModal(false);
@@ -1033,21 +1167,21 @@ function WellnessValleyApp() {
   const handleDuplicateCancel = () => {
     // Edge case: Prevent double-click/double-tap
     if (!showDuplicateModal) {
-      console.warn('Duplicate cancel called but modal already closed');
+      console.warn("Duplicate cancel called but modal already closed");
       return;
     }
-    
+
     setShowDuplicateModal(false);
     setPendingSaveData(null);
     setDuplicateInfo(null);
     setSaveLoading(false);
-    
+
     // Clear the analysis and image to allow new upload
     // Edge case: Check if states exist before clearing
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
     if (selectedImage) setSelectedImage(null);
-    
+
     // Reset ALL file inputs to allow selecting the same image again
     if (fileInputRef.current && fileInputRef.current.resetInputs) {
       fileInputRef.current.resetInputs();
@@ -1059,15 +1193,18 @@ function WellnessValleyApp() {
     if (pendingWeightSaveData) {
       try {
         setSaveLoading(true); // Show saving overlay
-        setLoadingState('saving');
+        setLoadingState("saving");
         // Use cached userId from pendingWeightSaveData
         await performWeightSave(
-          pendingWeightSaveData.weightData, 
+          pendingWeightSaveData.weightData,
           pendingWeightSaveData.imageBase64,
-          pendingWeightSaveData.userId
+          pendingWeightSaveData.userId,
         );
       } catch (err) {
-        console.error('❌ Weight save error after duplicate confirmation:', err);
+        console.error(
+          "❌ Weight save error after duplicate confirmation:",
+          err,
+        );
       } finally {
         // Close modal and reset state after save completes
         setShowDuplicateWeightModal(false);
@@ -1083,12 +1220,12 @@ function WellnessValleyApp() {
     setPendingWeightSaveData(null);
     setDuplicateWeightInfo(null);
     setLoading(false);
-    
+
     // Clear the weight data and image to allow new upload
     setWeightResult(null);
     setImagePreview(null);
     setSelectedImage(null);
-    
+
     // Reset ALL file inputs to allow selecting the same image again
     if (fileInputRef.current && fileInputRef.current.resetInputs) {
       fileInputRef.current.resetInputs();
@@ -1096,15 +1233,16 @@ function WellnessValleyApp() {
   };
 
   const handleImageSelect = async (file) => {
-    
     if (imageProcessingInProgress.current) {
-      console.log('Image processing already in progress, skipping duplicate call');
+      console.log(
+        "Image processing already in progress, skipping duplicate call",
+      );
       return;
     }
     imageProcessingInProgress.current = true;
 
     if (!user) {
-      setError('Please sign in to analyze food images');
+      setError("Please sign in to analyze food images");
       imageProcessingInProgress.current = false;
       return;
     }
@@ -1112,14 +1250,18 @@ function WellnessValleyApp() {
     // Re-check user status in real-time before analysis
     const isActive = await checkUserStatus(user);
     if (!isActive) {
-      setError('Your account is inactive. Please contact support to reactivate.');
+      setError(
+        "Your account is inactive. Please contact support to reactivate.",
+      );
       imageProcessingInProgress.current = false;
       return;
     }
 
     // Check file size (10MB limit)
     if (file.size > 10 * 1024 * 1024) {
-      setError('📸 Image file is too large. Please choose a smaller image (max 10MB).');
+      setError(
+        "📸 Image file is too large. Please choose a smaller image (max 10MB).",
+      );
       imageProcessingInProgress.current = false;
       return;
     }
@@ -1130,30 +1272,31 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setImageType(null);
     setSaveError(null);
-    setLoadingState('analyzing'); // Reset to analyzing state
+    setLoadingState("analyzing"); // Reset to analyzing state
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
       setLoading(true); // Show loading immediately
-      
+
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      
+
       // ✅ ANDROID PERFORMANCE: Intelligent compression based on platform and size
       const isAndroid = Capacitor.isNativePlatform();
       const imageSizeMB = imageBase64.length / (1024 * 1024);
-      
+
       let processedImage = imageBase64;
       let compressionApplied = false;
-      
+
       // Aggressive compression for Android or large images
       if (isAndroid) {
         // Android: Always compress for speed
-        if (imageSizeMB > 0.5) { // > 500KB
+        if (imageSizeMB > 0.5) {
+          // > 500KB
           const maxWidth = 1280; // Optimal for Android
           const quality = imageSizeMB > 2 ? 0.75 : 0.85; // More aggressive for larger images
           processedImage = await compressImage(imageBase64, quality, maxWidth);
@@ -1161,17 +1304,18 @@ function WellnessValleyApp() {
         }
       } else {
         // Web: Compress only if needed
-        if (imageSizeMB > 2) { // > 2MB
+        if (imageSizeMB > 2) {
+          // > 2MB
           processedImage = await compressImage(imageBase64, 0.8, 1920);
           compressionApplied = true;
         }
       }
-      
-      if (compressionApplied && process.env.NODE_ENV !== 'production') {
+
+      if (compressionApplied && process.env.NODE_ENV !== "production") {
         const newSizeMB = processedImage.length / (1024 * 1024);
         // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
       }
-      
+
       // Set preview immediately for better UX
       setImagePreview(processedImage);
 
@@ -1182,150 +1326,213 @@ function WellnessValleyApp() {
 
       // ✅ Detect image type using Gemini AI (single unified call)
       const detectedType = await imageTypeDetector.detectImageType(file);
-      
+      console.log('🔍 [DEBUG] Image Type Detection Result:', {
+        type: detectedType.type,
+        confidence: detectedType.confidence,
+        hasDetails: !!detectedType.details,
+        hasFoods: detectedType.details?.foods?.length || 0,
+        fullResponse: detectedType
+      });
+
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
-      if (detectedType.type === 'education' && detectedType.confidence > 0.7) {
-        console.log('🎓 Education meeting detected, analyzing...');
-        setImageType('education');
-        
+      if (detectedType.type === "education" && detectedType.confidence > 0.7) {
+        console.log("🎓 Education meeting detected, analyzing...");
+        setImageType("education");
+
         try {
           // Use data from unified detection (no second API call needed)
           const educationData = {
             success: true,
-            platform: detectedType.details.platform || 'Online Meeting',
-            topic: detectedType.details.topic || 'Education Meeting',
+            platform: detectedType.details.platform || "Online Meeting",
+            topic: detectedType.details.topic || "Education Meeting",
             confidence: detectedType.confidence || 0,
-            participantCount: detectedType.details.participantCount || null
+            participantCount: detectedType.details.participantCount || null,
           };
 
           if (educationData && educationData.success) {
-            console.log('✅ Education data extracted:', educationData);
-            
+            console.log("✅ Education data extracted:", educationData);
+
             setEducationResult({
               platform: educationData.platform,
               topic: educationData.topic, // Already has fallback to "Education Meeting"
               confidence: educationData.confidence,
-              participantCount: educationData.participantCount
+              participantCount: educationData.participantCount,
             });
-            
+
             // AUTO-SAVE to database immediately
-            setLoadingState('saving');
+            setLoadingState("saving");
             setSaveLoading(true);
             await saveEducationLog(educationData, processedImage);
           } else {
-            setError('Unable to analyze meeting screenshot. Please try again.');
+            setError("Unable to analyze meeting screenshot. Please try again.");
           }
         } catch (err) {
-          console.error('❌ Education analysis failed:', err);
-          setError('Failed to analyze meeting screenshot: ' + err.message);
+          console.error("❌ Education analysis failed:", err);
+          setError("Failed to analyze meeting screenshot: " + err.message);
         }
-        
+
         setLoading(false);
         return;
       }
-      
+
       // ✅ PRIORITY 2: Check for weight scale
-      if (detectedType.type === 'weight' && detectedType.confidence > 0.6) {
+      if (detectedType.type === "weight" && detectedType.confidence > 0.6) {
         // It's a weight scale - try to extract weight
-        console.log('🔍 Weight scale detected, extracting metrics...');
-        setImageType('weight');
+        console.log("🔍 Weight scale detected, extracting metrics...");
+        setImageType("weight");
 
         // Use weight data from unified detection (no second API call needed)
         let detectedWeight;
-        
+
         if (detectedType.details?.weightValue) {
           // Weight was already extracted in the unified detection call
-          console.log('✅ Using weight data from unified detection');
+          console.log("✅ Using weight data from unified detection");
           detectedWeight = {
             success: true,
             weightValue: detectedType.details.weightValue,
-            unit: detectedType.details.unit || 'kg',
+            unit: detectedType.details.unit || "kg",
             confidence: detectedType.confidence,
             bmi: detectedType.details.bmi,
             bodyFat: detectedType.details.bodyFat,
             muscleMass: detectedType.details.muscleMass,
-            bmr: detectedType.details.bmr
+            bmr: detectedType.details.bmr,
           };
         } else {
           // Fallback: Weight value not extracted, need manual entry
-          console.log('⚠️ Weight value not detected in unified call, opening manual entry');
+          console.log(
+            "⚠️ Weight value not detected in unified call, opening manual entry",
+          );
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
           return;
         }
-        
+
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
           // console.log('✅ Weight detected:', detectedWeight);
-          
+
           // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
-          if (detectedWeight.unit === 'lbs') {
-            console.log(`🔄 Converting ${detectedWeight.weightValue} lbs to kg...`);
-            weightToSave.weightValue = weightDetectionService.convertWeight(
-              detectedWeight.weightValue, 
-              'lbs', 
-              'kg'
+          if (detectedWeight.unit === "lbs") {
+            console.log(
+              `🔄 Converting ${detectedWeight.weightValue} lbs to kg...`,
             );
-            weightToSave.unit = 'kg';
+            weightToSave.weightValue = weightDetectionService.convertWeight(
+              detectedWeight.weightValue,
+              "lbs",
+              "kg",
+            );
+            weightToSave.unit = "kg";
             console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
-          
+
           setWeightResult(weightToSave); // Store for display below upload box
-          setLoadingState('saving');
+          setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           await saveWeightEntry(weightToSave, processedImage);
           // Don't clear imagePreview or return - let it show like food images
         } else {
           // Weight detection failed - show manual entry modal
-          console.log('⚠️ Weight detection failed, opening manual entry modal');
+          console.log("⚠️ Weight detection failed, opening manual entry modal");
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
           return;
         }
-        
+
         setLoading(false);
         return;
       }
-      
+
       // It's a food image - use nutrition data from unified detection
-      setImageType('food');
+      setImageType("food");
+      console.log('🍽️ [DEBUG] Processing as FOOD image');
+      console.log('🍽️ [DEBUG] Food details check:', {
+        hasDetails: !!detectedType.details,
+        hasFoodsArray: !!detectedType.details?.foods,
+        foodsLength: detectedType.details?.foods?.length || 0,
+        foodsData: detectedType.details?.foods
+      });
 
       try {
         // Use nutrition data already extracted from unified detection (no second API call)
         let result;
-        
-        if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
-          console.log('✅ Using nutrition data from unified detection');
-          
-          const foods = detectedType.details.foods;
-          const total = detectedType.details.total || foods.reduce((acc, food) => ({
-            calories: acc.calories + (food.nutrition?.calories || 0),
-            protein: acc.protein + (food.nutrition?.protein || 0),
-            carbs: acc.carbs + (food.nutrition?.carbs || 0),
-            fat: acc.fat + (food.nutrition?.fat || 0),
-            fiber: acc.fiber + (food.nutrition?.fiber || 0)
-          }), { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 });
-          
+
+        if (
+          detectedType.details?.foods &&
+          detectedType.details.foods.length > 0
+        ) {
+          console.log("✅ Using nutrition data from unified detection");
+
+          let foods = detectedType.details.foods;
+
+          // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
+          console.log("📋 [CORRECTION] Starting auto-correction process...");
+          console.log(
+            "📋 [CORRECTION] Foods before correction:",
+            foods.map((f) => f.name),
+          );
+          try {
+            const userId = user?.id || (await getUserId(user));
+            console.log("📋 [CORRECTION] User ID for corrections:", userId);
+            if (userId) {
+              const correctedFoods = await applyUserCorrections(foods, userId);
+              console.log(
+                "📋 [CORRECTION] Foods after correction:",
+                correctedFoods.map((f) => f.name),
+              );
+              foods = correctedFoods;
+            } else {
+              console.warn(
+                "⚠️ [CORRECTION] No userId available, skipping corrections",
+              );
+            }
+          } catch (error) {
+            console.error(
+              "❌ [CORRECTION] Failed to apply corrections:",
+              error,
+            );
+            console.warn(
+              "⚠️ Failed to apply corrections, using original AI detection:",
+              error,
+            );
+          }
+          console.log(
+            "📋 [CORRECTION] Final foods to be used:",
+            foods.map((f) => f.name),
+          );
+
+          const total =
+            detectedType.details.total ||
+            foods.reduce(
+              (acc, food) => ({
+                calories: acc.calories + (food.nutrition?.calories || 0),
+                protein: acc.protein + (food.nutrition?.protein || 0),
+                carbs: acc.carbs + (food.nutrition?.carbs || 0),
+                fat: acc.fat + (food.nutrition?.fat || 0),
+                fiber: acc.fiber + (food.nutrition?.fiber || 0),
+              }),
+              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+            );
+
           // Generate category name from food items
-          let categoryName = '';
+          let categoryName = "";
           const count = foods.length;
           if (count === 0) {
-            categoryName = 'Unknown Food';
+            categoryName = "Unknown Food";
           } else if (count === 1) {
-            categoryName = (foods[0]?.name || 'Unknown Food').trim();
+            categoryName = (foods[0]?.name || "Unknown Food").trim();
           } else if (count === 2) {
-            const first = (foods[0]?.name || 'Unknown Food').trim();
-            const second = (foods[1]?.name || 'another item').trim();
+            const first = (foods[0]?.name || "Unknown Food").trim();
+            const second = (foods[1]?.name || "another item").trim();
             categoryName = `${first} & ${second}`;
           } else {
-            const first = (foods[0]?.name || 'Unknown Food').trim();
+            const first = (foods[0]?.name || "Unknown Food").trim();
             const others = count - 1;
             categoryName = `${first} + ${others} more`;
           }
-          
+
           // Transform to format expected by NutritionCard
           result = {
             nutrition: {
@@ -1333,125 +1540,143 @@ function WellnessValleyApp() {
               protein: Math.round(total.protein || 0),
               carbs: Math.round(total.carbs || 0),
               fat: Math.round(total.fat || 0),
-              fiber: Math.round(total.fiber || 0)
+              fiber: Math.round(total.fiber || 0),
             },
             category: {
-              name: categoryName
+              name: categoryName,
             },
-            source: 'Google Gemini AI - Unified Analysis',
+            source: "Google Gemini AI - Unified Analysis",
             isRealData: true,
             itemCount: foods.length,
-            confidence: detectedType.confidence > 0.8 ? 'high' : detectedType.confidence > 0.5 ? 'medium' : 'low',
-            detailedItems: foods.map(food => ({
+            confidence:
+              detectedType.confidence > 0.8
+                ? "high"
+                : detectedType.confidence > 0.5
+                ? "medium"
+                : "low",
+            detailedItems: foods.map((food) => ({
               name: food.name,
-              portionDescription: food.portion || 'Unknown portion',
-              estimatedWeight: food.weight_g || food.volume_ml || 'Unknown',
-              unit: food.unit || (food.volume_ml ? 'ml' : 'g'),
+              portionDescription: food.portion || "Unknown portion",
+              estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
+              unit: food.unit || (food.volume_ml ? "ml" : "g"),
               isLiquid: food.isLiquid || false,
               calories: Math.round(food.nutrition?.calories || 0),
               protein: Math.round(food.nutrition?.protein || 0),
               carbs: Math.round(food.nutrition?.carbs || 0),
               fat: Math.round(food.nutrition?.fat || 0),
-              fiber: Math.round(food.nutrition?.fiber || 0)
-            }))
+              fiber: Math.round(food.nutrition?.fiber || 0),
+            })),
           };
         } else {
           // Fallback: No food data extracted, show error
-          console.warn('⚠️ No food data extracted from image');
-          setError('Could not detect any food items in the image. Please try again with a clearer photo.');
+          console.error("❌ [DEBUG] No food data extracted from image");
+          console.error("❌ [DEBUG] Detection details:", detectedType.details);
+          console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
+          setError(
+            "Could not detect any food items in the image. Please try again with a clearer photo.",
+          );
           setLoading(false);
           return;
         }
-        
+
         setNutritionData(result);
 
         // Check for duplicate food before saving
-        setLoadingState('saving'); // Switch to saving state
+        setLoadingState("saving"); // Switch to saving state
         setSaveLoading(true);
         try {
           // Edge case: User might be null or invalid
           if (!user) {
-            console.error('No user available for duplicate check');
-            throw new Error('Please sign in to save nutrition data');
+            console.error("No user available for duplicate check");
+            throw new Error("Please sign in to save nutrition data");
           }
-          
-          const userIdentifier = user.email || user.id || user.uid || 'anonymous';
-          
+
+          const userIdentifier =
+            user.email || user.id || user.uid || "anonymous";
+
           // Get actual userId for duplicate check
           let actualUserId = user?.id;
           if (!actualUserId) {
             try {
               actualUserId = await getUserId(user);
             } catch (userIdError) {
-              console.error('Failed to get userId:', userIdError);
+              console.error("Failed to get userId:", userIdError);
               // Edge case: If userId lookup fails, proceed without duplicate check
               await performNutritionSave({
                 userId: userIdentifier,
                 imagePath: file.name,
                 imageBase64: processedImage,
                 analysisResult: result,
-                deviceInfo: window.navigator.userAgent
+                deviceInfo: window.navigator.userAgent,
               });
               return;
             }
           }
-          
+
           // Edge case: userId still invalid after lookup
           if (!actualUserId) {
-            console.warn('Could not determine userId, skipping duplicate check');
+            console.warn(
+              "Could not determine userId, skipping duplicate check",
+            );
             await performNutritionSave({
               userId: userIdentifier,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
-              deviceInfo: window.navigator.userAgent
+              deviceInfo: window.navigator.userAgent,
             });
             return;
           }
-          
+
           // Check for duplicates in current meal time slot
           let duplicateCheck;
           try {
-            duplicateCheck = await duplicateDetectionService.checkForDuplicateFood({
-              userId: actualUserId,
-              analysisResult: result
-            });
+            duplicateCheck =
+              await duplicateDetectionService.checkForDuplicateFood({
+                userId: actualUserId,
+                analysisResult: result,
+              });
           } catch (duplicateError) {
             // Edge case: Duplicate check failed (network error, etc.)
-            console.error('Duplicate check failed, proceeding with save:', duplicateError);
+            console.error(
+              "Duplicate check failed, proceeding with save:",
+              duplicateError,
+            );
             await performNutritionSave({
               userId: userIdentifier,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
-              deviceInfo: window.navigator.userAgent
+              deviceInfo: window.navigator.userAgent,
             });
             return;
           }
-          
+
           // Edge case: Invalid duplicate check response
-          if (!duplicateCheck || typeof duplicateCheck !== 'object') {
-            console.warn('Invalid duplicate check response, proceeding with save');
+          if (!duplicateCheck || typeof duplicateCheck !== "object") {
+            console.warn(
+              "Invalid duplicate check response, proceeding with save",
+            );
             await performNutritionSave({
               userId: userIdentifier,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
-              deviceInfo: window.navigator.userAgent
+              deviceInfo: window.navigator.userAgent,
             });
             return;
           }
-          
+
           if (duplicateCheck.isDuplicate) {
             // Found duplicate - show confirmation modal
-            console.log('⚠️ Duplicate food detected:', duplicateCheck);
+            console.log("⚠️ Duplicate food detected:", duplicateCheck);
             setDuplicateInfo(duplicateCheck);
             setPendingSaveData({
               userId: userIdentifier,
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
-              deviceInfo: window.navigator.userAgent
+              deviceInfo: window.navigator.userAgent,
             });
             setShowDuplicateModal(true);
             setSaveLoading(false);
@@ -1462,13 +1687,13 @@ function WellnessValleyApp() {
               imagePath: file.name,
               imageBase64: processedImage,
               analysisResult: result,
-              deviceInfo: window.navigator.userAgent
+              deviceInfo: window.navigator.userAgent,
             });
           }
         } catch (err) {
           // Handle save errors
-          console.error('❌ Save failed:', err.message);
-          
+          console.error("❌ Save failed:", err.message);
+
           const friendlySaveError = getFriendlyErrorMessage(err);
           setSaveError(friendlySaveError);
           setSaveLoading(false);
@@ -1476,28 +1701,32 @@ function WellnessValleyApp() {
       } catch (err) {
         const friendlyMessage = getFriendlyErrorMessage(err);
         setError(friendlyMessage);
-        console.error('❌ Gemini analysis error:', err);
+        console.error("❌ Gemini analysis error:", err);
       }
     } catch (err) {
       // Better error handling for undefined or missing error messages
-      let errorMessage = 'Unknown error occurred';
+      let errorMessage = "Unknown error occurred";
       if (err) {
         if (err.message) {
           errorMessage = err.message;
-        } else if (typeof err === 'string') {
+        } else if (typeof err === "string") {
           errorMessage = err;
-        } else if (err.toString && err.toString() !== '[object Object]') {
+        } else if (err.toString && err.toString() !== "[object Object]") {
           errorMessage = err.toString();
         }
       }
-      
+
       // Provide more specific error messages for common Android gallery issues
-      if (errorMessage === 'Unknown error occurred' || errorMessage.includes('undefined')) {
-        errorMessage = 'Could not read the selected image. Please try selecting a different image or use the camera.';
+      if (
+        errorMessage === "Unknown error occurred" ||
+        errorMessage.includes("undefined")
+      ) {
+        errorMessage =
+          "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
-      
-      setError('Failed to process image: ' + errorMessage);
-      console.error('❌ Image processing error:', err);
+
+      setError("Failed to process image: " + errorMessage);
+      console.error("❌ Image processing error:", err);
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
@@ -1505,40 +1734,51 @@ function WellnessValleyApp() {
   };
 
   const getFriendlyErrorMessage = (error) => {
-    const rawMessage = error.message || '';
-    
+    const rawMessage = error.message || "";
+
     // Server and network errors
-    if (rawMessage.includes('503') || rawMessage.includes('overloaded')) {
-      return '⚡ Server is currently busy. Please try again in a few minutes.';
-    } else if (rawMessage.includes('Server returned an unexpected response format')) {
-      return '💾 Unable to save your analysis right now. Your food data is still displayed above!';
-    } else if (rawMessage.includes('Image file is too large')) {
-      return '📸 Image file is too large. Please try with a smaller photo (max 10MB).';
-    } else if (rawMessage.includes('network') || rawMessage.includes('Failed to fetch')) {
-      return '🌐 Network issue. Please check your internet connection and try again.';
-    } else if (rawMessage.includes('500') || rawMessage.includes('Internal Server Error')) {
-      return '⚙️ Server error occurred. Please try again in a few moments.';
-    } else if (rawMessage.includes('timeout')) {
-      return '⏱️ Request timed out. Please try again with better internet connection.';
+    if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+      return "⚡ Server is currently busy. Please try again in a few minutes.";
+    } else if (
+      rawMessage.includes("Server returned an unexpected response format")
+    ) {
+      return "💾 Unable to save your analysis right now. Your food data is still displayed above!";
+    } else if (rawMessage.includes("Image file is too large")) {
+      return "📸 Image file is too large. Please try with a smaller photo (max 10MB).";
+    } else if (
+      rawMessage.includes("network") ||
+      rawMessage.includes("Failed to fetch")
+    ) {
+      return "🌐 Network issue. Please check your internet connection and try again.";
+    } else if (
+      rawMessage.includes("500") ||
+      rawMessage.includes("Internal Server Error")
+    ) {
+      return "⚙️ Server error occurred. Please try again in a few moments.";
+    } else if (rawMessage.includes("timeout")) {
+      return "⏱️ Request timed out. Please try again with better internet connection.";
     }
-    
+
     // AI analysis errors
-    else if (rawMessage.includes('No food items detected')) {
-      return '⚠️ No food items were detected in the image. Try with a clearer photo.';
-    } else if (rawMessage.includes('Invalid response format')) {
-      return '🤖 AI returned unexpected data. Please try analyzing the image again.';
-    } else if (rawMessage.includes('API key is not configured')) {
-      return '⚙️ AI service is not available right now. Please try again later.';
-    } else if (rawMessage.includes('models/') && rawMessage.includes('not found')) {
-      return '🤖 AI model is not available. Please try again later.';
+    else if (rawMessage.includes("No food items detected")) {
+      return "⚠️ No food items were detected in the image. Try with a clearer photo.";
+    } else if (rawMessage.includes("Invalid response format")) {
+      return "🤖 AI returned unexpected data. Please try analyzing the image again.";
+    } else if (rawMessage.includes("API key is not configured")) {
+      return "⚙️ AI service is not available right now. Please try again later.";
+    } else if (
+      rawMessage.includes("models/") &&
+      rawMessage.includes("not found")
+    ) {
+      return "🤖 AI model is not available. Please try again later.";
     }
-    
+
     // Generic fallback
-    else if (rawMessage.toLowerCase().includes('analysis')) {
-      return '🍽️ Unable to save your food analysis. The nutrition data is still shown above!';
+    else if (rawMessage.toLowerCase().includes("analysis")) {
+      return "🍽️ Unable to save your food analysis. The nutrition data is still shown above!";
     }
-    
-    return '❌ Something went wrong. Please try again later.';
+
+    return "❌ Something went wrong. Please try again later.";
   };
 
   const resetApp = () => {
@@ -1549,8 +1789,8 @@ function WellnessValleyApp() {
     setUser(null);
     setIsOtpVerified(false);
     setSaveError(null);
-    setLoadingState('analyzing'); // Reset loading state
-    
+    setLoadingState("analyzing"); // Reset loading state
+
     // Clear weight-related states
     setWeightResult(null);
     setEducationResult(null); // Clear education results
@@ -1560,18 +1800,18 @@ function WellnessValleyApp() {
     setShowDuplicateWeightModal(false);
     setDuplicateWeightInfo(null);
     setPendingWeightSaveData(null);
-    
+
     // Clear duplicate food states
     setShowDuplicateModal(false);
     setDuplicateInfo(null);
     setPendingSaveData(null);
-    
-    localStorage.removeItem('isOtpVerified');
-    localStorage.removeItem('otpUser');
-    localStorage.removeItem('currentPage');
+
+    localStorage.removeItem("isOtpVerified");
+    localStorage.removeItem("otpUser");
+    localStorage.removeItem("currentPage");
 
     if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+      fileInputRef.current.value = "";
     }
   };
 
@@ -1579,64 +1819,64 @@ function WellnessValleyApp() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Flag should already be set by Login component
       // But set it here too for redirect flow safety
-      if (!sessionStorage.getItem('freshGoogleSignIn')) {
-        sessionStorage.setItem('freshGoogleSignIn', 'true');
+      if (!sessionStorage.getItem("freshGoogleSignIn")) {
+        sessionStorage.setItem("freshGoogleSignIn", "true");
       }
-      
+
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
       const safetyTimeout = setTimeout(() => {
-        sessionStorage.removeItem('freshGoogleSignIn');
+        sessionStorage.removeItem("freshGoogleSignIn");
       }, 30000);
-      
+
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
         try {
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          console.log('📦 [handleSignIn] saveResult:', saveResult);
+          console.log("📦 [handleSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          console.log('🆕 [handleSignIn] isNewUser:', isNewUser);
-          
+          console.log("🆕 [handleSignIn] isNewUser:", isNewUser);
+
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
-          
+
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
-            sessionStorage.removeItem('freshGoogleSignIn');
+            sessionStorage.removeItem("freshGoogleSignIn");
             return;
           }
-          
+
           // ✅ CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
-          sessionStorage.removeItem('freshGoogleSignIn');
-          
+          sessionStorage.removeItem("freshGoogleSignIn");
+
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
             await handleSaveUserCache(user);
-            
+
             // Check again if sign-out was triggered
             if (signOutInProgress.current) {
               return;
             }
           }
-          
+
           // Now check user status after ensuring DB record exists
           // Flag is cleared, so checkUserStatus will actually run the check
           const isActive = await checkUserStatus(user);
-          
+
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
             return;
           }
-          
+
           if (isActive) {
             setUser(user);
             // Show profile modal for new users to complete their profile
             if (isNewUser) {
-              console.log('🆕 [handleSignIn] New user - showing profile modal');
+              console.log("🆕 [handleSignIn] New user - showing profile modal");
               // Small delay to ensure user state is set before showing modal
               setTimeout(() => {
                 setShowNewUserProfileModal(true);
@@ -1648,36 +1888,45 @@ function WellnessValleyApp() {
           }
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
-          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
-          setError('Warning: Could not verify account status. You can still use the app.');
+          console.error(
+            "⚠️ Backend save/check failed, allowing user access:",
+            saveError,
+          );
+          setError(
+            "Warning: Could not verify account status. You can still use the app.",
+          );
           setUser(user); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
-          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
+          sessionStorage.removeItem("freshGoogleSignIn"); // Clean up flag
         }
-        
+
         // Flag is already cleared above - no need to clear again
       } else {
-        console.log('🔄 Redirect initiated, waiting for result...');
+        console.log("🔄 Redirect initiated, waiting for result...");
         // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
-      console.error('❌ Sign in error:', error);
-      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
-      
-      if (error.code === 'auth/popup-blocked') {
-        setError('Popup blocked by your browser. Please enable popups for this site in your browser settings, then try again.');
+      console.error("❌ Sign in error:", error);
+      sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
+
+      if (error.code === "auth/popup-blocked") {
+        setError(
+          "Popup blocked by your browser. Please enable popups for this site in your browser settings, then try again.",
+        );
         setLoading(false);
         return;
       }
-      
-      if (error.message?.includes('Popup was blocked')) {
-        setError('Popup blocked. Please enable popups for this site in your browser settings.');
+
+      if (error.message?.includes("Popup was blocked")) {
+        setError(
+          "Popup blocked. Please enable popups for this site in your browser settings.",
+        );
         setLoading(false);
         return;
       }
-      
-      if (error.code === 'auth/popup-closed-by-user') {
-        setError('Sign-in popup was closed. Please try again.');
+
+      if (error.code === "auth/popup-closed-by-user") {
+        setError("Sign-in popup was closed. Please try again.");
         setLoading(false);
         return;
       }
@@ -1691,60 +1940,62 @@ function WellnessValleyApp() {
     try {
       setLoading(true);
       setError(null);
-      
+
       // Flag is already set by Login component before this function is called
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
       const safetyTimeout = setTimeout(() => {
-        sessionStorage.removeItem('freshGoogleSignIn');
+        sessionStorage.removeItem("freshGoogleSignIn");
       }, 30000);
-      
+
       const user = await signInWithGooglePopup();
-      
+
       if (user) {
         try {
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          console.log('📦 [handlePopupSignIn] saveResult:', saveResult);
+          console.log("📦 [handlePopupSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          console.log('🆕 [handlePopupSignIn] isNewUser:', isNewUser);
-          
+          console.log("🆕 [handlePopupSignIn] isNewUser:", isNewUser);
+
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
-          
+
           // ⚠️ CRITICAL: Check if sign-out was triggered while we were saving
           if (signOutInProgress.current) {
-            sessionStorage.removeItem('freshGoogleSignIn');
+            sessionStorage.removeItem("freshGoogleSignIn");
             return;
           }
-          
+
           // ✅ CRITICAL: Clear the fresh sign-in flag NOW
           // This ensures checkUserStatus will run (not skip) for user validation
-          sessionStorage.removeItem('freshGoogleSignIn');
-          
+          sessionStorage.removeItem("freshGoogleSignIn");
+
           // Now set up GalleryMonitor with the saved user
           if (Capacitor.isNativePlatform()) {
             await handleSaveUserCache(user);
-            
+
             // Check again if sign-out was triggered
             if (signOutInProgress.current) {
               return;
             }
           }
-          
+
           // Now check user status after ensuring DB record exists
           // Flag is cleared, so checkUserStatus will actually run the check
           const isActive = await checkUserStatus(user);
-          
+
           // Check again if sign-out was triggered during status check
           if (signOutInProgress.current) {
             return;
           }
-          
+
           if (isActive) {
             setUser(user);
             // Show profile modal for new users to complete their profile
             if (isNewUser) {
-              console.log('🆕 [handlePopupSignIn] New user - showing profile modal');
+              console.log(
+                "🆕 [handlePopupSignIn] New user - showing profile modal",
+              );
               // Small delay to ensure user state is set before showing modal
               setTimeout(() => {
                 setShowNewUserProfileModal(true);
@@ -1756,18 +2007,23 @@ function WellnessValleyApp() {
           }
         } catch (saveError) {
           // If save fails, still allow user to proceed (fail-open for backend issues)
-          console.error('⚠️ Backend save/check failed, allowing user access:', saveError);
-          setError('Warning: Could not verify account status. You can still use the app.');
+          console.error(
+            "⚠️ Backend save/check failed, allowing user access:",
+            saveError,
+          );
+          setError(
+            "Warning: Could not verify account status. You can still use the app.",
+          );
           setUser(user); // Allow access despite backend failure
           clearTimeout(safetyTimeout); // Clear timeout even on error
-          sessionStorage.removeItem('freshGoogleSignIn'); // Clean up flag
+          sessionStorage.removeItem("freshGoogleSignIn"); // Clean up flag
         }
-        
+
         // Flag is already cleared above - no need to clear again
       }
     } catch (error) {
-      console.error('❌ Popup sign-in error:', error);
-      sessionStorage.removeItem('freshGoogleSignIn'); // Clean up on error
+      console.error("❌ Popup sign-in error:", error);
+      sessionStorage.removeItem("freshGoogleSignIn"); // Clean up on error
       setError(getAuthErrorMessage(error));
     } finally {
       setLoading(false);
@@ -1776,59 +2032,69 @@ function WellnessValleyApp() {
 
   const getAuthErrorMessage = (error) => {
     switch (error.code) {
-      case 'auth/popup-blocked':
-        return 'Popup blocked by your browser. Please enable popups for this site in your browser settings.';
-      case 'auth/popup-closed-by-user':
-        return 'Sign in was cancelled. Please try again.';
-      case 'auth/network-request-failed':
-        return 'Network error. Please check your connection and try again.';
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Please wait a moment and try again.';
-      case 'auth/user-disabled':
-        return 'This account has been disabled. Please contact support.';
+      case "auth/popup-blocked":
+        return "Popup blocked by your browser. Please enable popups for this site in your browser settings.";
+      case "auth/popup-closed-by-user":
+        return "Sign in was cancelled. Please try again.";
+      case "auth/network-request-failed":
+        return "Network error. Please check your connection and try again.";
+      case "auth/too-many-requests":
+        return "Too many attempts. Please wait a moment and try again.";
+      case "auth/user-disabled":
+        return "This account has been disabled. Please contact support.";
       default:
         // Check for popup-related error messages
-        if (error.message?.toLowerCase().includes('popup')) {
-          return 'Popup blocked. Please enable popups for this site in your browser settings.';
+        if (error.message?.toLowerCase().includes("popup")) {
+          return "Popup blocked. Please enable popups for this site in your browser settings.";
         }
-        return error.message || 'Authentication failed. Please try again.';
+        return error.message || "Authentication failed. Please try again.";
     }
   };
 
   const saveUserToBackend = async (user) => {
     try {
-      
       const response = await fetch(`${apiBaseUrl}/api/save-google-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: user.email,
-          displayName: user.displayName || user.email.split('@')[0],
+          displayName: user.displayName || user.email.split("@")[0],
           photoURL: user.photoURL || null,
-          uid: user.uid
-        })
+          uid: user.uid,
+        }),
       });
-      
+
       if (!response.ok) {
         throw new Error(`Failed to save user: ${response.status}`);
       }
-      
+
       const data = await response.json();
-      
+
       if (data.success) {
-        console.log('✅ [saveUserToBackend] User saved successfully, isNewUser:', data.isNewUser);
-        
+        console.log(
+          "✅ [saveUserToBackend] User saved successfully, isNewUser:",
+          data.isNewUser,
+        );
+
         // If this is a new user, trigger the profile modal
         if (data.isNewUser) {
-          console.log('🆕 [saveUserToBackend] New user detected, will show profile modal');
+          console.log(
+            "🆕 [saveUserToBackend] New user detected, will show profile modal",
+          );
         }
       } else {
-        console.warn('⚠️ [saveUserToBackend] Save completed with warning:', data);
+        console.warn(
+          "⚠️ [saveUserToBackend] Save completed with warning:",
+          data,
+        );
       }
-      
+
       return data;
     } catch (error) {
-      console.error('❌ [saveUserToBackend] Failed to save user to backend:', error);
+      console.error(
+        "❌ [saveUserToBackend] Failed to save user to backend:",
+        error,
+      );
       throw error; // Re-throw so caller can handle
     }
   };
@@ -1836,36 +2102,39 @@ function WellnessValleyApp() {
   const handleSignOut = async () => {
     try {
       setLoading(true);
-      
+
       // Set sign-out in progress flag to prevent concurrent sign-in
       signOutInProgress.current = true;
-      
+
       // Clear the fresh sign-in flag immediately to prevent re-login issues
-      sessionStorage.removeItem('freshGoogleSignIn');
-      
+      sessionStorage.removeItem("freshGoogleSignIn");
+
       // Clear user context cache
       clearContextCache();
       setUserContext(null);
       setUserContextLoading(false);
-      console.log('🗑️ [Sign Out] User context cache and state cleared');
-      
+      console.log("🗑️ [Sign Out] User context cache and state cleared");
+
       // Clear userId session cache
       clearUserIdCache();
-      console.log('🗑️ [Sign Out] UserId cache cleared');
-      
+      console.log("🗑️ [Sign Out] UserId cache cleared");
+
       if (Capacitor.isNativePlatform()) {
         try {
           await GalleryMonitor.clearCurrentUser();
         } catch (clearError) {
-          console.error('⚠️ Failed to clear GalleryMonitor user (method may not exist):', clearError);
+          console.error(
+            "⚠️ Failed to clear GalleryMonitor user (method may not exist):",
+            clearError,
+          );
           // Continue with sign out even if this fails
         }
       }
       await signOutUser();
       resetApp();
     } catch (error) {
-      console.error('❌ Sign out error:', error);
-      setError('Failed to sign out. Please try again.');
+      console.error("❌ Sign out error:", error);
+      setError("Failed to sign out. Please try again.");
     } finally {
       setLoading(false);
       // Reset the sign-out flag after a delay to allow cleanup
@@ -1876,18 +2145,18 @@ function WellnessValleyApp() {
   };
 
   const handleOtpVerified = async (isNewUser = false) => {
-    console.log('🔐 [handleOtpVerified] Called with isNewUser:', isNewUser);
-    
+    console.log("🔐 [handleOtpVerified] Called with isNewUser:", isNewUser);
+
     // Get the OTP user from localStorage
-    const otpUser = localStorage.getItem('otpUser');
-    
+    const otpUser = localStorage.getItem("otpUser");
+
     if (otpUser) {
       try {
         const parsedUser = JSON.parse(otpUser);
-        
+
         // Check user status before allowing access
         const isActive = await checkUserStatus(parsedUser);
-        
+
         if (!isActive) {
           // Set user state so modal can show user email
           setUser(parsedUser);
@@ -1896,25 +2165,27 @@ function WellnessValleyApp() {
           // Don't set isOtpVerified to true - keep at login screen with modal
           return;
         }
-        
+
         setIsOtpVerified(true);
-        localStorage.setItem('isOtpVerified', 'true');
+        localStorage.setItem("isOtpVerified", "true");
         setUser(parsedUser);
-        
+
         // Show profile modal for new users
         if (isNewUser || parsedUser.isNewUser) {
-          console.log('🆕 [handleOtpVerified] New user - showing profile modal');
+          console.log(
+            "🆕 [handleOtpVerified] New user - showing profile modal",
+          );
           setTimeout(() => {
             setShowNewUserProfileModal(true);
           }, 500);
         }
       } catch (error) {
-        console.error('Failed to check OTP user status:', error);
+        console.error("Failed to check OTP user status:", error);
       }
     } else {
       // No OTP user found, proceed with verification
       setIsOtpVerified(true);
-      localStorage.setItem('isOtpVerified', 'true');
+      localStorage.setItem("isOtpVerified", "true");
     }
   };
 
@@ -1975,8 +2246,6 @@ function WellnessValleyApp() {
     );
   }
 
-
-
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
   if (showDashboard) {
     return (
@@ -1994,12 +2263,14 @@ function WellnessValleyApp() {
   // Discipline Report for all users
   if (showDisciplineReport) {
     return (
-      <Suspense fallback={<LoadingSpinner message="Loading discipline report..." />}>
+      <Suspense
+        fallback={<LoadingSpinner message="Loading discipline report..." />}
+      >
         <DisciplineReport
           user={user}
           onBack={() => {
             setShowDisciplineReport(false);
-            localStorage.setItem('currentPage', 'main');
+            localStorage.setItem("currentPage", "main");
           }}
           apiBaseUrl={apiBaseUrl}
           userRole={userRole}
@@ -2014,10 +2285,14 @@ function WellnessValleyApp() {
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
-        onShowAdminDashboard={(userRole === 'admin' || userRole === 'developer') ? () => setShowAdminDashboard(true) : null}
+        onShowAdminDashboard={
+          userRole === "admin" || userRole === "developer"
+            ? () => setShowAdminDashboard(true)
+            : null
+        }
         onShowDisciplineReport={() => {
           setShowDisciplineReport(true);
-          localStorage.setItem('currentPage', 'discipline-report');
+          localStorage.setItem("currentPage", "discipline-report");
         }}
         onSignOut={handleSignOut}
       />
@@ -2049,23 +2324,25 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        {imageType === 'food' && nutritionData && <NutritionCard 
-          data={nutritionData} 
-          user={user} 
-          imagePreview={imagePreview} 
-          selectedImage={selectedImage}
-          savedMealId={savedNutritionMealId}
-          onClose={() => {
-            setNutritionData(null);
-            setImagePreview(null);
-            setSelectedImage(null);
-            setSavedNutritionMealId(null);
-          }}
-        />}
-        
+        {imageType === "food" && nutritionData && (
+          <NutritionCard
+            data={nutritionData}
+            user={user}
+            imagePreview={imagePreview}
+            selectedImage={selectedImage}
+            savedMealId={savedNutritionMealId}
+            onClose={() => {
+              setNutritionData(null);
+              setImagePreview(null);
+              setSelectedImage(null);
+              setSavedNutritionMealId(null);
+            }}
+          />
+        )}
+
         {/* Education Meeting Result */}
-        {imageType === 'education' && educationResult && (
-          <EducationLogCard 
+        {imageType === "education" && educationResult && (
+          <EducationLogCard
             educationData={educationResult}
             onClose={() => {
               setEducationResult(null);
@@ -2074,46 +2351,49 @@ function WellnessValleyApp() {
             }}
           />
         )}
-        
-        {imageType === 'weight' && weightResult && (
+
+        {imageType === "weight" && weightResult && (
           <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-              <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
+            <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
               Weight Analysis
             </h2>
-            
+
             {/* <div className="grid grid-cols-2 gap-4"> */}
             <div className="">
               <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-  <p className="text-sm text-purple-600 font-medium mb-1">Weight</p>
+                <p className="text-sm text-purple-600 font-medium mb-1">
+                  Weight
+                </p>
 
-  <p className="text-3xl font-bold text-purple-700">
-    {weightResult.weightValue}
-    <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
-  </p>
+                <p className="text-3xl font-bold text-purple-700">
+                  {weightResult.weightValue}
+                  <span className="text-lg font-normal ml-1">
+                    {weightResult.unit}
+                  </span>
+                </p>
+              </div>
 
-</div>
-              
               {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
                 <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
                 <p className="text-3xl font-bold text-blue-700">
                   {weightResult.bmi || '--'}
                 </p>
               </div> */}
-              
+
               {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
                 <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
                 <p className="text-3xl font-bold text-green-700">
                   {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
                 </p>
               </div> */}
-              
+
               {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
                 <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
                 <p className="text-3xl font-bold text-orange-700">
                   {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
                 </p>
               </div> */}
-              
+
               {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
                 <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
                 <p className="text-3xl font-bold text-red-700">
@@ -2121,7 +2401,7 @@ function WellnessValleyApp() {
                 </p>
               </div> */}
             </div>
-            
+
             {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
               <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
               <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
@@ -2129,21 +2409,19 @@ function WellnessValleyApp() {
           </div>
         )}
 
-
-
         {/* Saving Toast */}
         {saveLoading && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
             <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-              {imageType === 'weight' 
-                ? 'Saving your weight progress...' 
-                : imageType === 'education' 
-                ? 'Saving your study session...' 
-                : 'Saving your nutrition analysis...'}
+              {imageType === "weight"
+                ? "Saving your weight progress..."
+                : imageType === "education"
+                ? "Saving your study session..."
+                : "Saving your nutrition analysis..."}
             </div>
           </div>
         )}
-        
+
         {/* Error Toast */}
         {saveError && (
           <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
@@ -2157,27 +2435,41 @@ function WellnessValleyApp() {
           <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3>
           <div className="space-y-3">
             <div>
-              <h4 className="font-medium text-green-600 mb-1">📸 Image Analysis:</h4>
+              <h4 className="font-medium text-green-600 mb-1">
+                📸 Image Analysis:
+              </h4>
               <ol className="text-sm text-gray-600 space-y-1 ml-4">
                 <li>1. Take a clear photo of your food or weight</li>
-                <li>2. Make sure the food or weight are well-lit and visible</li>
-                <li>3. View detailed nutrition breakdown for detected foods or weights</li>
+                <li>
+                  2. Make sure the food or weight are well-lit and visible
+                </li>
+                <li>
+                  3. View detailed nutrition breakdown for detected foods or
+                  weights
+                </li>
               </ol>
             </div>
           </div>
 
           <div className="mt-3 pt-3 border-t border-gray-200">
-            <h4 className="font-semibold text-green-700 mb-2">💡 Tips for better results:</h4>
+            <h4 className="font-semibold text-green-700 mb-2">
+              💡 Tips for better results:
+            </h4>
             <ul className="text-xs text-gray-600 space-y-1">
               <li>• Take photos in good lighting conditions </li>
               <li>• Ensure food items or weights are clearly visible</li>
               <li>• Avoid cluttered backgrounds </li>
-              <li>• For text queries, be specific about preparation methods </li>
+              <li>
+                • For text queries, be specific about preparation methods{" "}
+              </li>
             </ul>
           </div>
         </div>
 
-        <TestImageGuide isVisible={showTestGuide} onClose={() => setShowTestGuide(false)} />
+        <TestImageGuide
+          isVisible={showTestGuide}
+          onClose={() => setShowTestGuide(false)}
+        />
       </div>
 
       {/* Version badge - positioned in header area like web view */}
@@ -2189,17 +2481,17 @@ function WellnessValleyApp() {
 
       {/* Inactive User Modal */}
       {showInactiveModal && (
-        <InactiveUserModal 
-          userEmail={user?.email || user?.Email || 'your account'}
-          onClose={handleInactiveModalClose} 
+        <InactiveUserModal
+          userEmail={user?.email || user?.Email || "your account"}
+          onClose={handleInactiveModalClose}
         />
       )}
-      
+
       {/* User Not Found Modal */}
       {showUserNotFoundModal && (
-        <UserNotFoundModal 
-          userEmail={user?.email || user?.Email || 'your account'}
-          onClose={handleUserNotFoundModalClose} 
+        <UserNotFoundModal
+          userEmail={user?.email || user?.Email || "your account"}
+          onClose={handleUserNotFoundModalClose}
         />
       )}
 
@@ -2218,8 +2510,11 @@ function WellnessValleyApp() {
       {/* Duplicate Food Modal */}
       {showDuplicateModal && duplicateInfo && (
         <DuplicateFoodModal
-          foodName={duplicateInfo.originalFoodName || duplicateInfo.duplicateFoodName}
+          foodName={
+            duplicateInfo.duplicateFoodName || duplicateInfo.originalFoodName
+          }
           mealType={duplicateInfo.mealType}
+          duplicateCount={duplicateInfo.duplicateCount}
           onConfirm={handleDuplicateConfirm}
           onCancel={handleDuplicateCancel}
         />
@@ -2243,13 +2538,15 @@ function WellnessValleyApp() {
         onClose={() => setShowNewUserProfileModal(false)}
         user={user}
         onProfileUpdate={() => {
-          console.log('✅ [NewUserProfile] Profile updated successfully');
+          console.log("✅ [NewUserProfile] Profile updated successfully");
         }}
       />
 
       {/* Admin Dashboard */}
       {showAdminDashboard && (
-        <Suspense fallback={<LoadingSpinner message="Loading admin dashboard..." />}>
+        <Suspense
+          fallback={<LoadingSpinner message="Loading admin dashboard..." />}
+        >
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
@@ -2260,7 +2557,10 @@ function WellnessValleyApp() {
       {/* Setup Wizard - Team ID + Coach Selection */}
       {showSetupWizard && (
         <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
-          <SetupWizard 
+          <SetupWizard
+            userEmail={
+              user?.email || user?.Email || localStorage.getItem("userEmail")
+            }
             onClose={() => setShowSetupWizard(false)}
             onNavigateToOTP={() => {
               setShowSetupWizard(false);
@@ -2274,7 +2574,7 @@ function WellnessValleyApp() {
       {/* OTP Validation Page */}
       {showValidateOTP && (
         <Suspense fallback={<LoadingSpinner message="Loading validation..." />}>
-          <ValidateOTP 
+          <ValidateOTP
             onClose={() => {
               setShowValidateOTP(false);
               setShowSetupWizard(true);

@@ -33,6 +33,36 @@ export const disciplineReportService = {
       throw error;
     }
   },
+
+  /**
+   * Fetch ALL members discipline report (Admin Only)
+   * @param {number} userId - Admin's user ID
+   * @param {string} dateRange - 'today' | 'yesterday' | 'last7days' | 'last30days' | 'custom'
+   * @param {object} customRange - { start: 'YYYY-MM-DD', end: 'YYYY-MM-DD' }
+   * @returns {Promise<object>} All members discipline report data
+   */
+  async getAllMembersDisciplineReport(userId, dateRange, customRange = null) {
+    const params = {
+      userId,
+      dateRange
+    };
+    
+    if (dateRange === 'custom' && customRange) {
+      params.startDate = customRange.start;
+      params.endDate = customRange.end;
+    }
+    
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/admin/all-members-discipline`, {
+        params
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching all members discipline report:', error);
+      throw error;
+    }
+  },
   
   /**
    * Export report to CSV

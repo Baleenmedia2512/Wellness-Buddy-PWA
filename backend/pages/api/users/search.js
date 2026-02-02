@@ -78,6 +78,7 @@ export default async function handler(req, res) {
       .eq('Status', 'Active')
       .neq('Email', currentUserEmail || '')
       .or(`UserName.ilike.%${searchQuery}%,Email.ilike.%${searchQuery}%`)
+      // .or(`"UserName".ilike.%${searchQuery}%,"Email".ilike.%${searchQuery}%`)
       .order('UserName', { ascending: true })
       .limit(20);
 

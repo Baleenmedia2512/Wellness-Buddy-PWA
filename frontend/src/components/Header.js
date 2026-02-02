@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
+import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
+
 
 const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport }) => {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -75,7 +77,18 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
             <img 
               src={wellnessValleyIcon} 
               alt="Wellness Valley" 
-              className="h-12 w-12 sm:h-12 sm:w-12 object-contain flex-shrink-0"
+              className="h-12 w-12 sm:h-12 sm:w-12 object-contain flex-shrink-0 header-logo app-logo"
+              draggable="false"
+              role="presentation"
+              aria-hidden="true"
+              style={{ 
+                WebkitUserSelect: 'none', 
+                userSelect: 'none', 
+                WebkitTouchCallout: 'none',
+                WebkitUserDrag: 'none',
+                pointerEvents: 'none',
+                WebkitTapHighlightColor: 'transparent'
+              }}
             />
             <div className="flex-1 min-w-0 -ml-1">
               <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
@@ -96,17 +109,18 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
         </div>
 
         <div className="relative flex-shrink-0">
-          <button
+          <TouchFeedbackButton
             onClick={toggleMenu}
-            className="focus:outline-none"
+            className="focus:outline-none rounded-full"
             title="User Menu"
+            ariaLabel="User Menu"
           >
             <img
               src={avatarUrl}
               alt="User Avatar"
               className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
             />
-          </button>
+          </TouchFeedbackButton>
 
           {menuOpen && (
             <>
@@ -119,12 +133,12 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
               {/* Menu dropdown */}
               <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
                 {/* User info section - clickable to open profile */}
-                <button
+                <TouchFeedbackButton
                   onClick={() => {
                     setShowProfileModal(true);
                     closeMenu();
                   }}
-                  className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left"
+                  className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left rounded-lg"
                 >
                   <div className="flex items-center space-x-3">
                     <User className="h-5 w-5 text-gray-400" />
@@ -139,71 +153,75 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       )}
                     </div>
                   </div>
-                </button>
+                </TouchFeedbackButton>
 
                 {/* Menu items */}
                 <div className="py-2">
-                  <button
+                  <TouchFeedbackButton
                     onClick={() => {
                       onShowBackgroundHistory();
                       closeMenu();
                     }}
                     className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-gray-50 text-left transition-colors"
+                    ariaLabel="View Dashboard"
                   >
                     <LayoutDashboard className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800">Dashboard</p>
                       <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
-                  </button>
+                  </TouchFeedbackButton>
 
                   {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
-                    <button
+                    <TouchFeedbackButton
                       onClick={() => {
                         onShowAdminDashboard();
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-blue-50 text-left transition-colors"
+                      ariaLabel="Open AI Token Monitor"
                     >
                       <Shield className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">AI Token Monitor</p>
                         <p className="text-xs text-gray-500">Token usage analytics</p>
                       </div>
-                    </button>
+                    </TouchFeedbackButton>
                   )}
 
                   {/* Discipline Report - shown for coach/admin/developer roles only */}
                   {onShowDisciplineReport && (
-                    <button
+                    <TouchFeedbackButton
                       onClick={() => {
                         onShowDisciplineReport();
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-purple-50 text-left transition-colors"
+                      ariaLabel="Open Discipline Report"
                     >
                       <FileBarChart className="h-5 w-5 text-purple-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
                         <p className="text-xs text-gray-500">Track team performance</p>
                       </div>
-                    </button>
+                    </TouchFeedbackButton>
                   )}
                   
-                  <button
+                  <TouchFeedbackButton
                     onClick={() => {
                       onSignOut();
                       closeMenu();
                     }}
                     className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-gray-50 text-left transition-colors"
+                    ariaLabel="Sign Out"
                   >
                     <LogOut className="h-5 w-5 text-red-600 mt-1 flex-shrink-0" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-800">Sign Out</p>
                       <p className="text-xs text-gray-500">Logout from your account</p>
                     </div>
-                  </button>
+                  </TouchFeedbackButton>
                 </div>
 
                 {/* Version info at bottom */}

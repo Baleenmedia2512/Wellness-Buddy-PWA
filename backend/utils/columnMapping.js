@@ -87,6 +87,11 @@ export const columnMapping = {
   'FeatureCategory': 'feature_category',
   'ResponseTimeMs': 'response_time_ms',
   
+  // token_pricing_config_table
+  'InputPerMillion': 'input_per_million',
+  'OutputPerMillion': 'output_per_million',
+  'UpdatedAt': 'updated_at',
+  
   // data_table
   'Name': 'name',
   'Date': 'date',

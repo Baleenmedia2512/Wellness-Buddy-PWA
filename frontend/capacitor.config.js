@@ -10,7 +10,15 @@ const config = {
     captureInput: true,
     webContentsDebuggingEnabled: false,
     backgroundColor: '#ffffff',
-    loggingBehavior: 'none'
+    loggingBehavior: 'none',
+    
+    // ✅ FIX: Android text selection settings
+    // These preferences help prevent images from appearing in text selection
+    preferences: {
+      'AndroidInsecureFileModeEnabled': 'false',
+      'AndroidXAutoCompleteEnabled': 'true',
+      'DisallowOverscroll': 'true'
+    }
   },
   
   // ✅ Use HTTPS scheme for hardware acceleration

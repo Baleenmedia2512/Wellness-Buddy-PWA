@@ -1,5 +1,6 @@
 import React from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 /**
  * Format date
@@ -133,7 +134,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
 
         {/* Delete button */}
         <div className="p-4 pt-0">
-          <button
+          <TouchFeedbackButton
             disabled={isDeleting}
             className={`w-full flex items-center justify-center gap-2 rounded-lg text-white text-sm font-medium px-4 py-2 shadow-sm transition-all duration-200 ${
               isDeleting
@@ -160,7 +161,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
                 Delete
               </>
             )}
-          </button>
+          </TouchFeedbackButton>
         </div>
       </div>
     </div>

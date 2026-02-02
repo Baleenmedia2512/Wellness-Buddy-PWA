@@ -28,7 +28,9 @@ export default async function handler(req, res) {
     originalInputCost,
     originalOutputCost,
     correctedInputCost,
-    correctedOutputCost
+    correctedOutputCost,
+    inputPerMillion,
+    outputPerMillion
   } = req.body;
 
   if (!email || correctedInputCost === undefined || correctedOutputCost === undefined) {
@@ -103,6 +105,34 @@ export default async function handler(req, res) {
       userId,
       totalCost
     });
+
+    // Save or update pricing configuration if provided
+    if (inputPerMillion !== undefined && outputPerMillion !== undefined) {
+      console.log('💾 [save-token-correction] Saving pricing config:', {
+        inputPerMillion,
+        outputPerMillion
+      });
+
+      const { error: pricingError } = await supabase
+        .from('token_pricing_config_table')
+        .upsert({
+          "UserId": userId,
+          "Email": email,
+          "ModelName": 'gemini-2.5-flash-lite',
+          "InputPerMillion": parseFloat(inputPerMillion),
+          "OutputPerMillion": parseFloat(outputPerMillion),
+          "UpdatedAt": currentTime
+        }, {
+          onConflict: 'UserId,ModelName'
+        });
+
+      if (pricingError) {
+        console.error('⚠️ [save-token-correction] Pricing config save failed:', pricingError);
+        // Don't fail the entire request - pricing config is optional
+      } else {
+        console.log('✅ [save-token-correction] Pricing config saved successfully');
+      }
+    }
 
     res.status(200).json({
       success: true,

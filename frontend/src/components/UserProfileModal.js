@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, Save, CheckCircle, Flame, ChevronDown } from 'lucide-react';
 import { getUserContext } from '../services/userContextService';
+import TouchFeedbackButton from './TouchFeedbackButton';
 
 /**
  * User Profile Modal
@@ -217,13 +218,14 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
               <p className="text-sm text-gray-500">{user?.email}</p>
             </div>
           </div>
-          <button
+          <TouchFeedbackButton
             onClick={handleCancel}
             disabled={isSaving}
             className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            ariaLabel="Close"
           >
             <X className="w-5 h-5 text-gray-500" />
-          </button>
+          </TouchFeedbackButton>
         </div>
 
         {/* Content */}
@@ -394,18 +396,20 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         {/* Footer Actions */}
         {!isLoading && (
           <div className="flex items-center gap-3 p-6 border-t border-gray-200 bg-gray-50">
-            <button
+            <TouchFeedbackButton
               onClick={handleCancel}
               disabled={isSaving}
               className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-semibold hover:bg-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              ariaLabel="Cancel"
             >
               <X className="w-5 h-5" />
               {hasSaved ? 'Close' : 'Cancel'}
-            </button>
-            <button
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
               onClick={handleSave}
               disabled={isSaving}
               className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
+              ariaLabel="Save profile"
             >
               {isSaving ? (
                 <>
@@ -418,7 +422,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                   Save
                 </>
               )}
-            </button>
+            </TouchFeedbackButton>
           </div>
         )}
       </div>

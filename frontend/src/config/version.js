@@ -72,20 +72,24 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.0',
+  VERSION: '1.6.1',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 13,
+  VERSION_CODE: 14,
   
   // Release name (for Play Store)
   RELEASE_NAME: 'Token Pricing & Exchange Rate',
   
   // Build date
-  BUILD_DATE: '2026-01-19',
+  BUILD_DATE: '2026-02-02',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.6.1 (Code 14) - 2026-02-02
+ *   🔧 Minor bug fixes and improvements
+ *   📱 Version bump for maintenance release
  * 
  * Version 1.6.0 (Code 13) - 2026-01-19
  *   💰 Enhanced Token Pricing Configuration with per-million token pricing model

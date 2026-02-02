@@ -203,3 +203,66 @@ code {
     -ms-overflow-style: none;  /* IE and Edge */
     scrollbar-width: none;  /* Firefox */
 }
+
+/* ==========================================
+   🔧 Android Text Selection Fix
+   ========================================== */
+
+/* Prevent logo and decorative images from being selectable on Android */
+img[alt*="Wellness Valley"],
+img[alt*="logo"],
+img[alt*="Logo"],
+img[class*="logo"],
+.header-logo,
+.brand-logo,
+.app-logo {
+  /* Disable text/image selection */
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  
+  /* Prevent touch callout on iOS/Android */
+  -webkit-touch-callout: none !important;
+  
+  /* Disable drag */
+  -webkit-user-drag: none;
+  -khtml-user-drag: none;
+  -moz-user-drag: none;
+  -o-user-drag: none;
+  user-drag: none;
+  
+  /* Prevent image from being copied */
+  -webkit-user-modify: read-only;
+  
+  /* ✅ CRITICAL FIX: Make logo completely non-interactive */
+  pointer-events: none !important;
+  -webkit-tap-highlight-color: transparent !important;
+  
+  /* ✅ NUCLEAR OPTION: Hide from selection context */
+  will-change: auto;
+  contain: layout;
+}
+
+/* Allow pointer events for interactive images (not decorative ones) */
+img[class*="food"],
+img[class*="meal"],
+img[alt*="food"],
+img[alt*="meal"],
+img[alt*="weight"],
+img[alt*="chart"] {
+  pointer-events: auto;
+}
+
+/* Android WebView specific: Prevent images in headers from text selection */
+header img,
+.header img,
+[class*="header"] img {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+  -webkit-user-drag: none !important;
+}
+

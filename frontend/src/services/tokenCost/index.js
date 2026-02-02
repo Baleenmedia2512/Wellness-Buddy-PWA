@@ -48,3 +48,10 @@ export {
   calculateTokenCosts, 
   extractTokenMetadata 
 } from './tokenCostCalculator';
+
+// User-specific pricing management
+export {
+  fetchUserPricing,
+  clearUserPricingCache,
+  getModelPricing as getUserModelPricing
+} from './userPricingManager';
