@@ -1,13 +1,8 @@
 ﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
+import { largeBodyConfig as config } from '../../utils/apiConfig.js';
 
-export const config = {
-  api: {
-    bodyParser: {
-      sizeLimit: '10mb',
-    },
-  },
-};
+export { config };
 
 export default async function handler(req, res) {
   console.log('🔵 [save-education-log] Request received:', { method: req.method });

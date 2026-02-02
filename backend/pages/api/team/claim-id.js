@@ -1,4 +1,4 @@
-﻿// /**
+﻿/**
  * Claim Team ID
  * POST /api/team/claim-id
  * 
