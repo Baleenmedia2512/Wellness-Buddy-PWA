@@ -14,9 +14,12 @@ import android.graphics.Bitmap;
 
 import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
+import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
+    private InAppUpdateManager updateManager;
+    
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // ✅ CRITICAL FIX: Install and immediately dismiss splash screen to prevent window overlay
@@ -24,6 +27,9 @@ public class MainActivity extends BridgeActivity {
         
         // Register the GalleryMonitorPlugin BEFORE super.onCreate()
         registerPlugin(GalleryMonitorPlugin.class);
+        
+        // ✅ Register InAppUpdatePlugin for Play Store updates
+        registerPlugin(InAppUpdatePlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
@@ -97,6 +103,9 @@ public class MainActivity extends BridgeActivity {
         // ✅ Schedule periodic heartbeat to ensure service stays alive
         com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
         android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
+        
+        // ✅ Check for app updates after app is fully initialized
+        checkForAppUpdates();
         
         // Check if app was opened from notification
         handleNotificationIntent(getIntent());
@@ -218,6 +227,87 @@ public class MainActivity extends BridgeActivity {
                 };
             }
             requestPermissions(permissions, 1001);
+        }
+    }
+    
+    /**
+     * ✅ IN-APP UPDATES: Check for app updates on launch
+     */
+    private void checkForAppUpdates() {
+        // Delay update check to not interfere with app initialization
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                updateManager = new InAppUpdateManager(this);
+                updateManager.setUpdateListener(new InAppUpdateManager.UpdateListener() {
+                    @Override
+                    public void onUpdateAvailable(int updateType, int availableVersionCode) {
+                        android.util.Log.d("MainActivity", "✅ Update available: " + availableVersionCode);
+                    }
+                    
+                    @Override
+                    public void onUpdateNotAvailable() {
+                        android.util.Log.d("MainActivity", "✅ App is up to date");
+                    }
+                    
+                    @Override
+                    public void onUpdateDownloading(long bytesDownloaded, long totalBytes) {
+                        int progress = totalBytes > 0 ? (int) ((bytesDownloaded * 100) / totalBytes) : 0;
+                        android.util.Log.d("MainActivity", "⬇️ Downloading update: " + progress + "%");
+                    }
+                    
+                    @Override
+                    public void onUpdateDownloaded() {
+                        android.util.Log.d("MainActivity", "✅ Update downloaded, ready to install");
+                    }
+                    
+                    @Override
+                    public void onUpdateInstalling() {
+                        android.util.Log.d("MainActivity", "⚙️ Installing update...");
+                    }
+                    
+                    @Override
+                    public void onUpdateInstalled() {
+                        android.util.Log.d("MainActivity", "✅ Update installed successfully");
+                    }
+                    
+                    @Override
+                    public void onUpdateFailed(int errorCode, String message) {
+                        android.util.Log.e("MainActivity", "❌ Update failed: " + message);
+                    }
+                    
+                    @Override
+                    public void onUpdateCanceled() {
+                        android.util.Log.w("MainActivity", "⚠️ Update canceled by user");
+                    }
+                });
+                
+                updateManager.checkForUpdate();
+                android.util.Log.d("MainActivity", "✅ Update check initiated");
+            } catch (Exception e) {
+                android.util.Log.e("MainActivity", "Failed to check for updates", e);
+            }
+        }, 2000); // 2 second delay
+    }
+    
+    /**
+     * ✅ IN-APP UPDATES: Handle onResume for immediate updates
+     */
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (updateManager != null) {
+            updateManager.onResume();
+        }
+    }
+    
+    /**
+     * ✅ IN-APP UPDATES: Handle activity result
+     */
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (updateManager != null) {
+            updateManager.handleActivityResult(requestCode, resultCode);
         }
     }
 
