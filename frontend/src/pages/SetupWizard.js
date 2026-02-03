@@ -264,8 +264,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
               >
                 <div className="mb-6">
                   {/* find your coach */}
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">Person who invited you for this program</h3>
-                  <p className="text-gray-500 text-sm mb-4">Search for the person who invited you to Wellness Valley. They will be your mentor.</p>
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">Person who invited you for this Program</h3>
+                  {/* <p className="text-gray-500 text-sm mb-4">Search for the person who invited you to Wellness Valley. They will be your mentor.</p> */}
                   
                   <div className="relative group">
                     <input
