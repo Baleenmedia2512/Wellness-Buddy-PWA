@@ -72,20 +72,24 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.1',
+  VERSION: '1.6.2',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 14,
+  VERSION_CODE: 15,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Token Pricing & Exchange Rate',
+  RELEASE_NAME: 'Android In-App Updates',
   
   // Build date
-  BUILD_DATE: '2026-02-02',
+  BUILD_DATE: '2026-02-03',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.6.2 (Code 15) - 2026-02-03
+ *   ✨ New features and improvements
+ *   🔧 Minor enhancements
  * 
  * Version 1.6.1 (Code 14) - 2026-02-02
  *   🔧 Minor bug fixes and improvements
