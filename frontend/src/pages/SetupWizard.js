@@ -263,7 +263,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                 transition={{ duration: 0.2 }}
               >
                 <div className="mb-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-1">Find your Coach</h3>
+                  {/* find your coach */}
+                  <h3 className="text-lg font-bold text-gray-900 mb-1">Person who invited you for this program</h3>
                   <p className="text-gray-500 text-sm mb-4">Search for the person who invited you to Wellness Valley. They will be your mentor.</p>
                   
                   <div className="relative group">

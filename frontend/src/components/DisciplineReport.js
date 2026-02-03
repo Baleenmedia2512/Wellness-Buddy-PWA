@@ -692,7 +692,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   {userRole === 'admin' && adminView === 'allMembers' ? 'All Members Report' : 'Discipline Report'}
                 </h1>
                 <p className="text-xs text-gray-500 font-medium">
-                  {getSummary()?.totalMembers || 0} Members •{" "}
+                  {/* {getSummary()?.totalMembers || 0} Members •{" "} */}
                   {new Date(
                     (userRole === 'admin' && adminView === 'allMembers' && allMembersData) 
                       ? allMembersData?.lastUpdated 
@@ -984,7 +984,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              All Teams
+              All My Team ({allMembersData?.summary?.totalMembers || 0})
+              {/* All Teams */}
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={() => setAdminView('myTeam')}
@@ -994,7 +995,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
               }`}
             >
-              My Team ({teamData?.teamSummary?.totalMembers || 0})
+                My Direct Team ({teamData?.teamSummary?.totalMembers || 0})
+              {/* My Team ({teamData?.teamSummary?.totalMembers || 0}) */}
             </TouchFeedbackButton>
           </div>
         )}
