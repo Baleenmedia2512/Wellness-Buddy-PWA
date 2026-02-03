@@ -72,10 +72,10 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.2',
+  VERSION: '1.6.3',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 15,
+  VERSION_CODE: 16,
   
   // Release name (for Play Store)
   RELEASE_NAME: 'Android In-App Updates',
