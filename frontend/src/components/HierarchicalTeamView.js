@@ -136,7 +136,8 @@ const TeamNode = ({
                 className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
               >
                 <Users className="w-3 h-3" />
-                View {node.directMemberCount} team members
+                View {node.teamMembers?.length || 0} team member
+                {node.teamMembers?.length !== 1 ? "s" : ""}
               </button>
             )}
             {hasChildren && isExpanded && (
@@ -148,29 +149,34 @@ const TeamNode = ({
                 className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
               >
                 <ChevronUp className="w-3 h-3" />
-                Hide {node.directMemberCount} team members
+                Hide {node.teamMembers?.length || 0} team member
+                {node.teamMembers?.length !== 1 ? "s" : ""}
               </button>
             )}
           </div>
 
           {/* Score and Chevron */}
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div
-                className={`text-xl font-bold ${
-                  score >= 80
-                    ? "text-green-700"
-                    : score >= 60
-                    ? "text-yellow-700"
-                    : "text-red-700"
-                }`}
-              >
-                {score}%
+            {showDisciplineScores && (
+              <div className="text-right">
+                <div
+                  className={`text-xl font-bold ${
+                    score !== undefined && score >= 80
+                      ? "text-green-700"
+                      : score !== undefined && score >= 60
+                      ? "text-yellow-700"
+                      : score !== undefined
+                      ? "text-red-700"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                </div>
+                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  Score
+                </div>
               </div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                Score
-              </div>
-            </div>
+            )}
             {showActivities ? (
               <ChevronUp className="h-5 w-5 text-gray-300" />
             ) : (
@@ -291,18 +297,6 @@ const HierarchicalTeamView = ({
 }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
 
-  const handleToggleExpand = (nodeId) => {
-    setExpandedNodes((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
-  };
-
   const expandAll = () => {
     const allNodeIds = new Set();
 
@@ -324,6 +318,44 @@ const HierarchicalTeamView = ({
     setExpandedNodes(new Set());
   };
 
+  // Auto-expand all nodes on initial load
+  React.useEffect(() => {
+    if (hierarchy) {
+      console.log("Auto-expanding hierarchy:", hierarchy);
+      const allNodeIds = new Set();
+
+      const collectIds = (node) => {
+        console.log(
+          "Collecting node:",
+          node.userId,
+          node.userName,
+          "has children:",
+          node.teamMembers?.length,
+        );
+        if (node.teamMembers && node.teamMembers.length > 0) {
+          allNodeIds.add(node.userId);
+          node.teamMembers.forEach((child) => collectIds(child));
+        }
+      };
+
+      collectIds(hierarchy);
+      console.log("All expanded node IDs:", Array.from(allNodeIds));
+      setExpandedNodes(allNodeIds);
+    }
+  }, [hierarchy]);
+
+  const handleToggleExpand = (nodeId) => {
+    setExpandedNodes((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  };
+
   if (!hierarchy) {
     return (
       <div className="text-center py-12">
@@ -335,22 +367,6 @@ const HierarchicalTeamView = ({
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex justify-end gap-2 px-4">
-        <button
-          onClick={expandAll}
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 hover:bg-blue-50 rounded-lg transition-colors"
-        >
-          Expand All
-        </button>
-        <button
-          onClick={collapseAll}
-          className="text-xs text-gray-600 hover:text-gray-700 font-medium px-3 py-1.5 hover:bg-gray-50 rounded-lg transition-colors"
-        >
-          Collapse All
-        </button>
-      </div>
-
       {/* Hierarchy Tree */}
       <div className="px-4">
         <TeamNode
