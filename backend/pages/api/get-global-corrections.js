@@ -4,6 +4,11 @@ import { getSupabaseClient } from "../../utils/supabaseClient.js";
  * API: Get Global Auto-Corrections
  * Returns corrections that should be applied automatically across all users
  * Threshold: 1+ users (ANY correction becomes global)
+ * 
+ * This enables correction chaining:
+ * - User A: "juice" → "water" (affects all users)
+ * - User B: "water" → "sprite" (overrides, affects all users)
+ * - Result: All users now see "sprite" when AI detects "juice"
  */
 export default async function handler(req, res) {
   // Set CORS headers

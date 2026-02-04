@@ -628,19 +628,32 @@ const EditableFoodItem = forwardRef(
           if (userId) {
             // 🔗 CORRECTION CHAIN SUPPORT
             // Use the ORIGINAL AI name if available, otherwise use current name
-            // This allows: "Golden Milk" → "Formula 1" → "Juice" chains
+            // This allows correction chains: "juice" (AI) → "water" (User A) → "sprite" (User B)
+            // ALL corrections are saved against the ORIGINAL AI detection
             const aiDetectedName =
               originalFoodRef.current?.originalAiName || originalName;
 
             console.log("✏️ ========== USER CORRECTION ==========");
-            console.log("🔴 Original AI/Previous Name:", aiDetectedName);
-            console.log("🟢 User Changed It To:", newName);
+            console.log("🔴 Original AI Detection:", aiDetectedName);
+            console.log("📝 Currently Displayed:", originalName);
+            console.log("🟢 User Changing To:", newName);
             console.log("👤 User ID:", userId);
             if (originalFoodRef.current?.wasAutoCorrected) {
               console.log(
-                "🔗 This is a CORRECTION CHAIN (previous was auto-corrected)",
+                "🔗 CORRECTION CHAIN: Previous was auto-corrected",
+              );
+              console.log(
+                "   Correction Type:",
+                originalFoodRef.current?.correctionType,
+              );
+              console.log(
+                "   Source:",
+                originalFoodRef.current?.correctionSource,
               );
             }
+            console.log(
+              "💾 Saving: '" + aiDetectedName + "' → '" + newName + "'",
+            );
             console.log("=======================================");
 
             console.log("[CORRECTION DEBUG] Calling saveFoodCorrection API...");

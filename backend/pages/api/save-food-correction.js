@@ -33,6 +33,11 @@ export default async function handler(req, res) {
       return;
     }
 
+    console.log("💾 [SAVE CORRECTION] Request received:");
+    console.log("   User ID:", userId);
+    console.log("   AI Detected:", aiDetected);
+    console.log("   User Corrected:", userCorrected);
+
     // Database connection
     const supabase = getSupabaseClient();
 

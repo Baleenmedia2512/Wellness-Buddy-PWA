@@ -103,9 +103,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // Convert to array and filter by user count >= 3
+    // Convert to array and filter by user count >= 1 (ANY correction becomes global)
+    // This allows correction chaining: juice → water → sprite
     const globalPatterns = Array.from(globalPatternsMap.values())
-      .filter(p => p.users.size >= 3)
+      .filter(p => p.users.size >= 1)  // Changed from 3 to 1: single user corrections affect all users
       .map(p => ({
         ai_detected: p.ai_detected,
         user_corrected: p.user_corrected,
@@ -113,10 +114,11 @@ export default async function handler(req, res) {
         total_corrections: p.total_corrections
       }))
       .sort((a, b) => {
-        if (b.user_count !== a.user_count) return b.user_count - a.user_count;
-        return b.total_corrections - a.total_corrections;
+        // Sort by total corrections first (most frequent), then by user count
+        if (b.total_corrections !== a.total_corrections) return b.total_corrections - a.total_corrections;
+        return b.user_count - a.user_count;
       })
-      .slice(0, 5);
+      .slice(0, 20);  // Increased from 5 to 20 to show more patterns
 
     // Parse recent meals to extract food names
     const recentMeals = (recentMealsResult.data || []).map(meal => {

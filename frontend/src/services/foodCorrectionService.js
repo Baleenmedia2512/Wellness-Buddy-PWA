@@ -163,6 +163,7 @@ export const applyUserCorrections = async (foods, userId) => {
     }
 
     // STEP 3: Apply corrections with priority: User > Global > Original
+    // Global corrections now include single-user corrections (threshold = 1)
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedName = originalName.toLowerCase().trim();
@@ -183,11 +184,12 @@ export const applyUserCorrections = async (foods, userId) => {
         };
       }
 
-      // Priority 2: Global community correction
+      // Priority 2: Global community correction (includes single-user corrections)
       if (globalCorrectionMap.has(normalizedName)) {
         const correction = globalCorrectionMap.get(normalizedName);
+        const userLabel = correction.userCount === 1 ? '1 user' : `${correction.userCount} users`;
         console.log(
-          `✅ [GLOBAL] "${originalName}" → "${correction.correctedName}" (community: ${correction.userCount} users, ${correction.totalCorrections} corrections)`,
+          `✅ [GLOBAL] "${originalName}" → "${correction.correctedName}" (${userLabel}, ${correction.totalCorrections} correction${correction.totalCorrections > 1 ? 's' : ''})`,
         );
         return {
           ...food,
@@ -195,7 +197,7 @@ export const applyUserCorrections = async (foods, userId) => {
           originalAiName: originalName,
           wasAutoCorrected: true,
           correctionType: "global",
-          correctionSource: `Community (${correction.userCount} users)`,
+          correctionSource: `Community (${userLabel})`,
         };
       }
 
