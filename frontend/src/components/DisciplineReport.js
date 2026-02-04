@@ -539,30 +539,71 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   // Filter and sort team members (including coach)
   const allMembers = React.useMemo(() => {
     // For viewing All My Team - use hierarchical team data only
-    if (
-      adminView === "allMembers" &&
-      hierarchyData
-    ) {
-      // Flatten hierarchy to get only YOUR team members (not entire organization)
+    if (adminView === "allMembers" && hierarchyData) {
+      // Check if logged-in user is a co-coach (has an upline coach)
+      const loggedInUserData = allMembersData?.allMembers?.find(
+        (m) => m.userId === user.id,
+      );
+      const isCoCoach =
+        loggedInUserData?.uplineCoachId && loggedInUserData.uplineCoachId > 0;
+
+      if (isCoCoach) {
+        // For Co-Coach: Restructure to show them at root, parent coach underneath, then members
+        const parentCoachData = allMembersData?.allMembers?.find(
+          (m) => m.userId === loggedInUserData.uplineCoachId,
+        );
+
+        const restructuredMembers = [];
+
+        // 1. Add co-coach (you) at the top
+        restructuredMembers.push({
+          ...loggedInUserData,
+          isCoCoachRoot: true, // Flag to identify restructured hierarchy
+        });
+
+        // 2. Add parent coach
+        if (parentCoachData) {
+          restructuredMembers.push({
+            ...parentCoachData,
+            isParentCoach: true,
+          });
+        }
+
+        // 3. Add all other members (excluding co-coach and parent coach)
+        if (allMembersData?.allMembers) {
+          const otherMembers = allMembersData.allMembers.filter(
+            (m) =>
+              m.userId !== user.id && // Not the co-coach
+              m.userId !== loggedInUserData.uplineCoachId, // Not the parent coach
+          );
+          restructuredMembers.push(...otherMembers);
+        }
+
+        return restructuredMembers;
+      }
+
+      // For Main Coach: Flatten hierarchy normally
       const flattenHierarchy = (node, members = []) => {
         if (!node) return members;
-        
+
         // Add current node's discipline data
         if (allMembersData?.allMembers) {
-          const memberData = allMembersData.allMembers.find(m => m.userId === node.userId);
+          const memberData = allMembersData.allMembers.find(
+            (m) => m.userId === node.userId,
+          );
           if (memberData) {
             members.push(memberData);
           }
         }
-        
+
         // Recursively add all team members
         if (node.teamMembers && node.teamMembers.length > 0) {
-          node.teamMembers.forEach(child => flattenHierarchy(child, members));
+          node.teamMembers.forEach((child) => flattenHierarchy(child, members));
         }
-        
+
         return members;
       };
-      
+
       return flattenHierarchy(hierarchyData.hierarchy);
     }
 
@@ -577,75 +618,91 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       combined.push(...teamData.teamMembers);
     }
     return combined;
-    }, [teamData, allMembersData, hierarchyData, adminView]);
+  }, [teamData, allMembersData, hierarchyData, adminView, user]);
   // Sort hierarchy by discipline scores and apply filters
   const sortedHierarchy = React.useMemo(() => {
-    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers) return hierarchyData?.hierarchy;
-    
+    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers)
+      return hierarchyData?.hierarchy;
+
     const sortHierarchyRecursive = (node) => {
       if (!node) return node;
-      
+
       const newNode = { ...node };
-      
+
       // Sort and filter team members if they exist
       if (newNode.teamMembers && newNode.teamMembers.length > 0) {
         newNode.teamMembers = [...newNode.teamMembers]
-          .map(child => sortHierarchyRecursive(child))
-          .filter(child => {
+          .map((child) => sortHierarchyRecursive(child))
+          .filter((child) => {
             // Find member data
-            const memberData = allMembersData.allMembers.find(m => m.userId === child.userId);
+            const memberData = allMembersData.allMembers.find(
+              (m) => m.userId === child.userId,
+            );
             if (!memberData?.periodDiscipline) return false;
-            
+
             // Apply search filter
             const matchesSearch =
-              (child.userName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-              (child.email || "").toLowerCase().includes(searchQuery.toLowerCase());
-            
+              (child.userName || "")
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase()) ||
+              (child.email || "")
+                .toLowerCase()
+                .includes(searchQuery.toLowerCase());
+
             // Apply discipline filter
             const score = memberData.periodDiscipline?.percentage || 0;
             let matchesDiscipline = true;
             if (disciplineFilter === "high") matchesDiscipline = score >= 80;
-            if (disciplineFilter === "medium") matchesDiscipline = score >= 60 && score < 80;
+            if (disciplineFilter === "medium")
+              matchesDiscipline = score >= 60 && score < 80;
             if (disciplineFilter === "low") matchesDiscipline = score < 60;
-            
+
             return matchesSearch && matchesDiscipline;
           })
           .sort((a, b) => {
-            const memberA = allMembersData.allMembers.find(m => m.userId === a.userId);
-            const memberB = allMembersData.allMembers.find(m => m.userId === b.userId);
-            
+            const memberA = allMembersData.allMembers.find(
+              (m) => m.userId === a.userId,
+            );
+            const memberB = allMembersData.allMembers.find(
+              (m) => m.userId === b.userId,
+            );
+
             const scoreA = memberA?.periodDiscipline?.percentage || 0;
             const scoreB = memberB?.periodDiscipline?.percentage || 0;
-            
+
             return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
           });
       }
-      
+
       return newNode;
     };
-    
+
     return sortHierarchyRecursive(hierarchyData.hierarchy);
   }, [hierarchyData, allMembersData, sortOrder, searchQuery, disciplineFilter]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
-    const filtered = allMembers.filter(member => {
+    const filtered = allMembers.filter((member) => {
       // Search filter
-      const matchesSearch = (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        (member.userName || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        (member.email || "").toLowerCase().includes(searchQuery.toLowerCase());
 
       // Discipline score filter
       const discipline = member.periodDiscipline?.percentage || 0;
       let matchesDiscipline = true;
-      if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
-      if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
-      if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
+      if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
+      if (disciplineFilter === "medium")
+        matchesDiscipline = discipline >= 60 && discipline < 80;
+      if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
 
       // Team filter
       let matchesTeam = true;
-      if (teamFilter === 'myTeam') {
+      if (teamFilter === "myTeam") {
         // For "My Team" - show logged-in coach, all co-coaches, and all team members
         matchesTeam = true;
-      } else if (teamFilter !== 'all') {
+      } else if (teamFilter !== "all") {
         // For specific coach filter
         if (member.isLoggedInCoach) {
           matchesTeam = false;
@@ -666,7 +723,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       // 2. Co-coaches come next
       const aIsCoach = a.isCoach && !a.isLoggedInCoach;
       const bIsCoach = b.isCoach && !b.isLoggedInCoach;
-      
+
       if (aIsCoach && !bIsCoach) return -1;
       if (!aIsCoach && bIsCoach) return 1;
 
@@ -674,25 +731,32 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       if (aIsCoach && bIsCoach) {
         const scoreA = a.periodDiscipline?.percentage || 0;
         const scoreB = b.periodDiscipline?.percentage || 0;
-        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+        return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
       }
 
       // 4. For regular members, sort by discipline score (no grouping by upline coach)
       if (!aIsCoach && !bIsCoach) {
         const scoreA = a.periodDiscipline?.percentage || 0;
         const scoreB = b.periodDiscipline?.percentage || 0;
-        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+        return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
       }
 
       // 5. If one is a regular member and other is coach, member comes after
       return 0;
     });
-  }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, user?.id]);
+  }, [
+    allMembers,
+    searchQuery,
+    disciplineFilter,
+    teamFilter,
+    sortOrder,
+    user?.id,
+  ]);
 
   // Filtered and sorted members for My Direct Team tab
   const filteredDirectTeamMembers = React.useMemo(() => {
     if (!teamData) return [];
-    
+
     const directMembers = [];
     if (teamData.coachPerformance) {
       directMembers.push(teamData.coachPerformance);
@@ -700,19 +764,23 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     if (teamData.teamMembers) {
       directMembers.push(...teamData.teamMembers);
     }
-    
+
     // Apply search and discipline filters
-    const filtered = directMembers.filter(member => {
+    const filtered = directMembers.filter((member) => {
       // Search filter
-      const matchesSearch = (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesSearch =
+        (member.userName || "")
+          .toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        (member.email || "").toLowerCase().includes(searchQuery.toLowerCase());
 
       // Discipline score filter
       const discipline = member.periodDiscipline?.percentage || 0;
       let matchesDiscipline = true;
-      if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
-      if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
-      if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
+      if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
+      if (disciplineFilter === "medium")
+        matchesDiscipline = discipline >= 60 && discipline < 80;
+      if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
 
       return matchesSearch && matchesDiscipline;
     });
@@ -726,7 +794,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       // Sort by discipline score
       const scoreA = a.periodDiscipline?.percentage || 0;
       const scoreB = b.periodDiscipline?.percentage || 0;
-      return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+      return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
     });
   }, [teamData, searchQuery, disciplineFilter, sortOrder]);
 
@@ -767,8 +835,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     if (userRole === "admin" || userRole === "developer") return true;
     if (!teamData) return false;
     // If there are team members or they explicitly have role 'coach', they're a coach
-    return (teamData.teamMembers && teamData.teamMembers.length > 0) || 
-           teamData.coachPerformance?.role === 'coach';
+    return (
+      (teamData.teamMembers && teamData.teamMembers.length > 0) ||
+      teamData.coachPerformance?.role === "coach"
+    );
   }, [teamData, userRole]);
 
   if (loading) {
@@ -811,11 +881,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   Discipline Report
                 </h1>
                 <p className="text-xs text-gray-500 font-medium">
-                  {isUserACoach 
-                    ? `${filteredAndSortedMembers.length || allMembers.length} Members • ` 
-                    : '1 Member • '}
+                  {isUserACoach
+                    ? `${
+                        filteredAndSortedMembers.length || allMembers.length
+                      } Members • `
+                    : "1 Member • "}
                   {new Date(
-                    allMembersData?.lastUpdated || teamData?.lastUpdated || new Date(),
+                    allMembersData?.lastUpdated ||
+                      teamData?.lastUpdated ||
+                      new Date(),
                   ).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -928,7 +1002,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     if (adminView === "allMembers" && allMembers.length > 0) {
                       const total = allMembers.reduce(
                         (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
-                        0
+                        0,
                       );
                       return Math.round(total / allMembers.length);
                     }
@@ -944,8 +1018,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <div className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full">
                 {(() => {
                   // Calculate from current view's members
-                  const members = adminView === "allMembers" ? allMembers : [...(teamData?.teamMembers || [])];
-                  if (adminView !== "allMembers" && teamData?.coachPerformance) {
+                  const members =
+                    adminView === "allMembers"
+                      ? allMembers
+                      : [...(teamData?.teamMembers || [])];
+                  if (
+                    adminView !== "allMembers" &&
+                    teamData?.coachPerformance
+                  ) {
                     members.push(teamData.coachPerformance);
                   }
                   const totalOnTime = members.reduce(
@@ -977,7 +1057,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     const topScore = top.periodDiscipline?.percentage || 0;
                     return score > topScore ? member : top;
                   });
-                  
+
                   return (
                     <>
                       <div className="flex items-baseline justify-center gap-0.5 my-1">
@@ -992,7 +1072,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     </>
                   );
                 }
-                
+
                 // Use summary data for My Direct Team
                 if (getSummary()?.topPerformer) {
                   return (
@@ -1009,7 +1089,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     </>
                   );
                 }
-                
+
                 return (
                   <>
                     <div className="flex items-baseline justify-center gap-0.5 my-1">
@@ -1034,7 +1114,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     // Count at-risk members from current view
                     if (adminView === "allMembers" && allMembers.length > 0) {
                       return allMembers.filter(
-                        m => (m.periodDiscipline?.percentage || 0) < 60
+                        (m) => (m.periodDiscipline?.percentage || 0) < 60,
                       ).length;
                     }
                     return getSummary()?.needsAttention?.length || 0;
@@ -1042,7 +1122,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 </span>
               </div>
               <div className="text-[10px] sm:text-xs text-gray-400 font-medium">
-                of {adminView === "allMembers" ? allMembers.length : (getSummary()?.totalMembers || 0)} Members
+                of{" "}
+                {adminView === "allMembers"
+                  ? allMembers.length
+                  : getSummary()?.totalMembers || 0}{" "}
+                Members
               </div>
             </div>
           </div>
@@ -1056,13 +1140,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   if (adminView === "allMembers" && allMembers.length > 0) {
                     const total = allMembers.reduce(
                       (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
-                      0
+                      0,
                     );
                     return Math.round(total / allMembers.length);
                   }
-                  return getSummary()?.averagePeriodDiscipline ||
+                  return (
+                    getSummary()?.averagePeriodDiscipline ||
                     getSummary()?.averageDiscipline ||
-                    0;
+                    0
+                  );
                 })()}%`,
               }}
             />
@@ -1071,125 +1157,131 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
         {/* Search & Filter Bar - Only show for coaches */}
         {isUserACoach && (
-        <div className="flex gap-3 items-center z-30 relative mb-4">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search members..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all"
-            />
-          </div>
-
-          {/* Custom Filter Dropdown */}
-          <div className="relative" ref={filterRef}>
-            <button
-              onClick={() => setIsFilterOpen(!isFilterOpen)}
-              className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
-                disciplineFilter !== "all"
-                  ? "bg-green-100 text-green-800"
-                  : "bg-gray-50 text-gray-700 hover:bg-gray-100"
-              }`}
-            >
-              <Filter className="h-4 w-4" />
-              <span>
-                {disciplineFilter === "all"
-                  ? "Filter"
-                  : filterOptions
-                      .find((o) => o.id === disciplineFilter)
-                      ?.label.split(" ")[0]}
-              </span>
-              <ChevronDown
-                className={`h-3 w-3 transition-transform ${
-                  isFilterOpen ? "rotate-180" : ""
-                }`}
+          <div className="flex gap-3 items-center z-30 relative mb-4">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search members..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all"
               />
-            </button>
+            </div>
 
-            <AnimatePresence>
-              {isFilterOpen && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                  transition={{ duration: 0.1 }}
-                  className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50"
-                >
-                  <div className="py-1">
-                    {filterOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        onClick={() => {
-                          setDisciplineFilter(option.id);
-                          setIsFilterOpen(false);
-                        }}
-                        className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 flex items-center justify-between group"
-                      >
-                        <span className={`${option.color} font-medium`}>
-                          {option.label}
-                        </span>
-                        {disciplineFilter === option.id && (
-                          <Check className="h-4 w-4 text-green-600" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+            {/* Custom Filter Dropdown */}
+            <div className="relative" ref={filterRef}>
+              <button
+                onClick={() => setIsFilterOpen(!isFilterOpen)}
+                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                  disciplineFilter !== "all"
+                    ? "bg-green-100 text-green-800"
+                    : "bg-gray-50 text-gray-700 hover:bg-gray-100"
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                <span>
+                  {disciplineFilter === "all"
+                    ? "Filter"
+                    : filterOptions
+                        .find((o) => o.id === disciplineFilter)
+                        ?.label.split(" ")[0]}
+                </span>
+                <ChevronDown
+                  className={`h-3 w-3 transition-transform ${
+                    isFilterOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              <AnimatePresence>
+                {isFilterOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                    transition={{ duration: 0.1 }}
+                    className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-xl border border-gray-100 overflow-hidden z-50"
+                  >
+                    <div className="py-1">
+                      {filterOptions.map((option) => (
+                        <button
+                          key={option.id}
+                          onClick={() => {
+                            setDisciplineFilter(option.id);
+                            setIsFilterOpen(false);
+                          }}
+                          className="w-full text-left px-4 py-3 text-sm hover:bg-gray-50 flex items-center justify-between group"
+                        >
+                          <span className={`${option.color} font-medium`}>
+                            {option.label}
+                          </span>
+                          {disciplineFilter === option.id && (
+                            <Check className="h-4 w-4 text-green-600" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Sort Button - Only show for coaches */}
+            {isUserACoach && (
+              <TouchFeedbackButton
+                onClick={() =>
+                  setSortOrder(sortOrder === "desc" ? "asc" : "desc")
+                }
+                className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                ariaLabel={
+                  sortOrder === "desc" ? "Highest First" : "Lowest First"
+                }
+              >
+                {sortOrder === "desc" ? (
+                  <ArrowDown className="h-4 w-4" />
+                ) : (
+                  <ArrowUp className="h-4 w-4" />
+                )}
+              </TouchFeedbackButton>
+            )}
           </div>
-
-          {/* Sort Button - Only show for coaches */}
-          {isUserACoach && (
-            <TouchFeedbackButton
-              onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-              className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
-              ariaLabel={sortOrder === "desc" ? "Highest First" : "Lowest First"}
-            >
-              {sortOrder === "desc" ? (
-                <ArrowDown className="h-4 w-4" />
-              ) : (
-                <ArrowUp className="h-4 w-4" />
-              )}
-            </TouchFeedbackButton>
-          )}
-        </div>
         )}
 
         {/* View Tabs - Only show for coaches with teams */}
         {isUserACoach && (
           <div className="mb-4 flex gap-2">
-              <TouchFeedbackButton
-                onClick={() => setAdminView("allMembers")}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  adminView === "allMembers"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                All My Team {adminView === "allMembers" && `(${allMembers.length})`}
-              </TouchFeedbackButton>
-              <TouchFeedbackButton
-                onClick={() => setAdminView("myTeam")}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                  adminView === "myTeam"
-                    ? "bg-blue-600 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
-              >
-                My Direct Team {adminView === "myTeam" && `(${teamData?.teamSummary?.totalMembers || 0})`}
-              </TouchFeedbackButton>
-            </div>
+            <TouchFeedbackButton
+              onClick={() => setAdminView("allMembers")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                adminView === "allMembers"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              All My Team{" "}
+              {adminView === "allMembers" && `(${allMembers.length})`}
+            </TouchFeedbackButton>
+            <TouchFeedbackButton
+              onClick={() => setAdminView("myTeam")}
+              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                adminView === "myTeam"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              My Direct Team{" "}
+              {adminView === "myTeam" &&
+                `(${teamData?.teamSummary?.totalMembers || 0})`}
+            </TouchFeedbackButton>
+          </div>
         )}
 
         {/* Conditional Rendering */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            <span className="ml-3 text-gray-600">
-              Loading...</span>
+            <span className="ml-3 text-gray-600">Loading...</span>
           </div>
         ) : !isUserACoach ? (
           /* Regular member view - only show their own performance */
@@ -1214,10 +1306,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
-                        teamData.coachPerformance.periodDiscipline?.percentage || 0,
+                        teamData.coachPerformance.periodDiscipline
+                          ?.percentage || 0,
                       ).replace("bg-", "bg-opacity-10 bg-")}`}
                     >
-                      {(teamData.coachPerformance.userName || '').charAt(0).toUpperCase()}
+                      {(teamData.coachPerformance.userName || "")
+                        .charAt(0)
+                        .toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -1241,10 +1336,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     <div className="text-right">
                       <span
                         className={`text-lg font-bold ${getScoreColorText(
-                          teamData.coachPerformance.periodDiscipline?.percentage || 0,
+                          teamData.coachPerformance.periodDiscipline
+                            ?.percentage || 0,
                         )}`}
                       >
-                        {teamData.coachPerformance.periodDiscipline?.percentage || 0}%
+                        {teamData.coachPerformance.periodDiscipline
+                          ?.percentage || 0}
+                        %
                       </span>
                       <p className="text-[10px] text-gray-400 uppercase tracking-wide">
                         Score
@@ -1257,7 +1355,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     )}
                   </div>
                 </div>
-                
+
                 {/* Expanded details */}
                 <AnimatePresence>
                   {expandedMemberId === teamData.coachPerformance.userId && (
@@ -1272,33 +1370,38 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                           Activity Breakdown
                         </h4>
                         <div className="grid grid-cols-5 gap-2">
-                          {Object.entries(teamData.coachPerformance.activities || {}).map(
-                            ([key, activity]) => (
-                              <div
-                                key={key}
-                                className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100"
-                              >
-                                <div className="text-gray-500 mb-1">
-                                  {activityIcons[key]}
-                                </div>
-                                <span
-                                  className={`text-sm font-bold ${getScoreColorText(
-                                    activity.percentage || 0,
-                                  )}`}
-                                >
-                                  {activity.percentage || 0}%
-                                </span>
-                                <span className="text-[9px] text-gray-400 capitalize">
-                                  {key}
-                                </span>
+                          {Object.entries(
+                            teamData.coachPerformance.activities || {},
+                          ).map(([key, activity]) => (
+                            <div
+                              key={key}
+                              className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100"
+                            >
+                              <div className="text-gray-500 mb-1">
+                                {activityIcons[key]}
                               </div>
-                            ),
-                          )}
+                              <span
+                                className={`text-sm font-bold ${getScoreColorText(
+                                  activity.percentage || 0,
+                                )}`}
+                              >
+                                {activity.percentage || 0}%
+                              </span>
+                              <span className="text-[9px] text-gray-400 capitalize">
+                                {key}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                       <div className="px-4 pb-4 pt-0 text-center">
                         <p className="text-xs text-gray-400 font-medium">
-                          {teamData.coachPerformance.periodDiscipline?.onTimePosts || 0} on-time posts out of {teamData.coachPerformance.periodDiscipline?.expectedPosts || 0} expected
+                          {teamData.coachPerformance.periodDiscipline
+                            ?.onTimePosts || 0}{" "}
+                          on-time posts out of{" "}
+                          {teamData.coachPerformance.periodDiscipline
+                            ?.expectedPosts || 0}{" "}
+                          expected
                         </p>
                       </div>
                     </motion.div>
@@ -1307,7 +1410,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </motion.div>
             )}
           </div>
-        ) : (adminView === "allMembers") ? (
+        ) : adminView === "allMembers" ? (
           /* Flat sorted list for All My Team */
           <div className="space-y-3">
             <AnimatePresence>
@@ -1349,27 +1452,44 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               YOU
                             </span>
                           )}
-                          {!member.isLoggedInCoach && member.isCoach && (
-                            <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                              {member.role === "coach"
-                                ? "👨‍🏫 CO-COACH"
-                                : "👤 COACH"}
+                          {member.isCoCoachRoot && (
+                            <span className="text-[9px] sm:text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                              🤝 CO-COACH
                             </span>
                           )}
+                          {member.isParentCoach && (
+                            <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                              👨‍🏫 PARENT COACH
+                            </span>
+                          )}
+                          {!member.isLoggedInCoach &&
+                            !member.isCoCoachRoot &&
+                            !member.isParentCoach &&
+                            member.isCoach && (
+                              <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                                {member.role === "coach"
+                                  ? "👨‍🏫 CO-COACH"
+                                  : "👤 COACH"}
+                              </span>
+                            )}
                         </div>
                         <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                           {member.email}
                         </p>
-                        {!member.isLoggedInCoach && member.uplineCoachName && (
-                          <p className="text-[11px] text-gray-400 mt-1">
-                            Coach:{" "}
-                            <span className="text-gray-600 font-medium">
-                              {member.uplineCoachName}
-                              {member.uplineCoachId === user.id ? " (You)" : ""}
-                            </span>
-                          </p>
-                        )}
-                        {member.isLoggedInCoach && (
+                        {!member.isLoggedInCoach &&
+                          !member.isCoCoachRoot &&
+                          member.uplineCoachName && (
+                            <p className="text-[11px] text-gray-400 mt-1">
+                              Coach:{" "}
+                              <span className="text-gray-600 font-medium">
+                                {member.uplineCoachName}
+                                {member.uplineCoachId === user.id
+                                  ? " (You)"
+                                  : ""}
+                              </span>
+                            </p>
+                          )}
+                        {(member.isLoggedInCoach || member.isCoCoachRoot) && (
                           <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
                             My Performance
