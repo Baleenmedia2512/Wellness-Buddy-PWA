@@ -72,20 +72,30 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.3',
+  VERSION: '1.6.4',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 16,
+  VERSION_CODE: 17,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Android In-App Updates',
+  RELEASE_NAME: 'Maintenance & Stability Improvements',
   
   // Build date
-  BUILD_DATE: '2026-02-03',
+  BUILD_DATE: '2026-02-04',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.6.4 (Code 17) - 2026-02-04
+ *   🔧 Maintenance release with stability improvements
+ *   📦 Version synchronization across all build files
+ *   ✅ Updated package.json, package-lock.json, and build.gradle
+ * 
+ * Version 1.6.3 (Code 16) - 2026-02-03
+ *   ✨ Android In-App Updates feature
+ *   🔄 Enhanced update mechanism for seamless app updates
+ *   📱 Improved user experience with automatic update notifications
  * 
  * Version 1.6.2 (Code 15) - 2026-02-03
  *   ✨ New features and improvements
