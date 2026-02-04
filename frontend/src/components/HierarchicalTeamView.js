@@ -120,38 +120,30 @@ const TeamNode = ({
               <h3 className="font-bold text-gray-900 text-[15px]">
                 {node.userName}
               </h3>
-              {node.role === "coach" && (
+              {/* Role Badge - Display hierarchy labels */}
+              {level === 0 && node.role === "coach" && (
                 <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
                   COACH
                 </span>
               )}
+              {level === 1 && node.role === "coach" && (
+                <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                  CO-COACH
+                </span>
+              )}
+              {level >= 2 && (
+                <span className="text-[10px] bg-gray-50 text-gray-700 border border-gray-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                  MEMBER
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-500 mt-0.5">{node.email}</p>
-            {hasChildren && !isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleExpand(node.userId);
-                }}
-                className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
-              >
+            {hasChildren && (
+              <p className="text-[11px] text-gray-400 font-medium mt-1 flex items-center gap-1">
                 <Users className="w-3 h-3" />
-                View {node.teamMembers?.length || 0} team member
+                {node.teamMembers?.length || 0} team member
                 {node.teamMembers?.length !== 1 ? "s" : ""}
-              </button>
-            )}
-            {hasChildren && isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleExpand(node.userId);
-                }}
-                className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
-              >
-                <ChevronUp className="w-3 h-3" />
-                Hide {node.teamMembers?.length || 0} team member
-                {node.teamMembers?.length !== 1 ? "s" : ""}
-              </button>
+              </p>
             )}
           </div>
 
@@ -250,33 +242,28 @@ const TeamNode = ({
         </AnimatePresence>
       </motion.div>
 
-      {/* Children (Recursive) - Team members shown below */}
+      {/* Children (Recursive) - Team members shown below - Always visible */}
       {hasChildren && (
         <div style={{ marginLeft: `${Math.max(0, level * 16)}px` }}>
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                {node.teamMembers.map((child) => (
-                  <TeamNode
-                    key={child.userId}
-                    node={child}
-                    level={level + 1}
-                    onNodeClick={onNodeClick}
-                    expandedNodes={expandedNodes}
-                    onToggleExpand={onToggleExpand}
-                    showDisciplineScores={showDisciplineScores}
-                    disciplineScores={disciplineScores}
-                    memberActivities={memberActivities}
-                  />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <motion.div
+            initial={{ height: "auto", opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="overflow-hidden"
+          >
+            {node.teamMembers.map((child) => (
+              <TeamNode
+                key={child.userId}
+                node={child}
+                level={level + 1}
+                onNodeClick={onNodeClick}
+                expandedNodes={expandedNodes}
+                onToggleExpand={onToggleExpand}
+                showDisciplineScores={showDisciplineScores}
+                disciplineScores={disciplineScores}
+                memberActivities={memberActivities}
+              />
+            ))}
+          </motion.div>
         </div>
       )}
     </div>

@@ -548,13 +548,33 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   // Filter and sort team members (including coach)
   const allMembers = React.useMemo(() => {
-    // For admin/developer viewing All Teams
+    // For admin/developer viewing All My Team - use hierarchical team data only
     if (
       (userRole === "admin" || userRole === "developer") &&
       adminView === "allMembers" &&
-      allMembersData
+      hierarchyData
     ) {
-      return allMembersData.allMembers || [];
+      // Flatten hierarchy to get only YOUR team members (not entire organization)
+      const flattenHierarchy = (node, members = []) => {
+        if (!node) return members;
+        
+        // Add current node's discipline data
+        if (allMembersData?.allMembers) {
+          const memberData = allMembersData.allMembers.find(m => m.userId === node.userId);
+          if (memberData) {
+            members.push(memberData);
+          }
+        }
+        
+        // Recursively add all team members
+        if (node.teamMembers && node.teamMembers.length > 0) {
+          node.teamMembers.forEach(child => flattenHierarchy(child, members));
+        }
+        
+        return members;
+      };
+      
+      return flattenHierarchy(hierarchyData.hierarchy);
     }
 
     // For admin/developer viewing My Team OR regular coach
@@ -568,7 +588,56 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       combined.push(...teamData.teamMembers);
     }
     return combined;
-  }, [teamData, allMembersData, userRole, adminView]);
+  }, [teamData, allMembersData, hierarchyData, userRole, adminView]);
+
+  // Sort hierarchy by discipline scores and apply filters
+  const sortedHierarchy = React.useMemo(() => {
+    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers) return hierarchyData?.hierarchy;
+    
+    const sortHierarchyRecursive = (node) => {
+      if (!node) return node;
+      
+      const newNode = { ...node };
+      
+      // Sort and filter team members if they exist
+      if (newNode.teamMembers && newNode.teamMembers.length > 0) {
+        newNode.teamMembers = [...newNode.teamMembers]
+          .map(child => sortHierarchyRecursive(child))
+          .filter(child => {
+            // Find member data
+            const memberData = allMembersData.allMembers.find(m => m.userId === child.userId);
+            if (!memberData?.periodDiscipline) return false;
+            
+            // Apply search filter
+            const matchesSearch =
+              (child.userName || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+              (child.email || "").toLowerCase().includes(searchQuery.toLowerCase());
+            
+            // Apply discipline filter
+            const score = memberData.periodDiscipline?.percentage || 0;
+            let matchesDiscipline = true;
+            if (disciplineFilter === "high") matchesDiscipline = score >= 80;
+            if (disciplineFilter === "medium") matchesDiscipline = score >= 60 && score < 80;
+            if (disciplineFilter === "low") matchesDiscipline = score < 60;
+            
+            return matchesSearch && matchesDiscipline;
+          })
+          .sort((a, b) => {
+            const memberA = allMembersData.allMembers.find(m => m.userId === a.userId);
+            const memberB = allMembersData.allMembers.find(m => m.userId === b.userId);
+            
+            const scoreA = memberA?.periodDiscipline?.percentage || 0;
+            const scoreB = memberB?.periodDiscipline?.percentage || 0;
+            
+            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+          });
+      }
+      
+      return newNode;
+    };
+    
+    return sortHierarchyRecursive(hierarchyData.hierarchy);
+  }, [hierarchyData, allMembersData, sortOrder, searchQuery, disciplineFilter]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
     if (!user?.id) return [];
@@ -638,15 +707,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           // Show all members - coaches, co-coaches, and members
           matchesTeam = true;
         } else if (teamFilter === "myTeam") {
-          // For "My Direct Team" - show only logged-in coach and their DIRECT reportees (hierarchyLevel === 1)
-          if (member.isLoggedInCoach) {
-            matchesTeam = true; // Always show the logged-in coach (YOU)
-          } else {
-            // Show only direct reportees (not sub-members)
-            matchesTeam =
-              member.uplineCoachId === user.id &&
-              (member.hierarchyLevel === 1 || member.HierarchyLevel === 1);
-          }
+          // For "My Direct Team" - show logged-in coach and ALL members in their hierarchy (including sub-members)
+          matchesTeam = true; // Show all members in the hierarchy
         } else {
           // For specific coach filter
           if (member.isLoggedInCoach) {
@@ -657,12 +719,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         }
 
         return matchesSearch && matchesDiscipline && matchesTeam;
-      })
-      .sort((a, b) => {
-        // Sort by discipline score (highest to lowest by default)
-        const scoreA = a.periodDiscipline.percentage;
-        const scoreB = b.periodDiscipline.percentage;
-        return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
       });
   }, [
     allMembers,
@@ -865,26 +921,37 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
               <div className="flex items-baseline justify-center gap-0.5 my-1">
                 <span className="text-xl sm:text-2xl font-bold text-gray-900">
-                  {(
-                    getSummary()?.averagePeriodDiscipline ||
-                    getSummary()?.averageDiscipline ||
-                    0
-                  ).toFixed(0)}
+                  {(() => {
+                    // Calculate from current view's members
+                    if (adminView === "allMembers" && allMembers.length > 0) {
+                      const total = allMembers.reduce(
+                        (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
+                        0
+                      );
+                      return Math.round(total / allMembers.length);
+                    }
+                    return (
+                      getSummary()?.averagePeriodDiscipline ||
+                      getSummary()?.averageDiscipline ||
+                      0
+                    ).toFixed(0);
+                  })()}
                 </span>
                 <span className="text-xs text-gray-400">%</span>
               </div>
               <div className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full">
                 {(() => {
-                  const allMembers = [...(teamData?.teamMembers || [])];
-                  if (teamData?.coachPerformance) {
-                    allMembers.push(teamData.coachPerformance);
+                  // Calculate from current view's members
+                  const members = adminView === "allMembers" ? allMembers : [...(teamData?.teamMembers || [])];
+                  if (adminView !== "allMembers" && teamData?.coachPerformance) {
+                    members.push(teamData.coachPerformance);
                   }
-                  const totalOnTime = allMembers.reduce(
-                    (acc, m) => acc + m.periodDiscipline.onTimePosts,
+                  const totalOnTime = members.reduce(
+                    (acc, m) => acc + (m.periodDiscipline?.onTimePosts || 0),
                     0,
                   );
-                  const totalExpected = allMembers.reduce(
-                    (acc, m) => acc + m.periodDiscipline.expectedPosts,
+                  const totalExpected = members.reduce(
+                    (acc, m) => acc + (m.periodDiscipline?.expectedPosts || 0),
                     0,
                   );
                   return Math.round(
@@ -900,28 +967,58 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <div className="text-[10px] sm:text-xs font-bold text-green-600 uppercase tracking-wider">
                 Top Star
               </div>
-              {getSummary()?.topPerformer ? (
-                <>
-                  <div className="flex items-baseline justify-center gap-0.5 my-1">
-                    <span className="text-xl sm:text-2xl font-bold text-gray-900">
-                      {getSummary().topPerformer.discipline}
-                    </span>
-                    <span className="text-xs text-gray-400">%</span>
-                  </div>
-                  <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
-                    {getSummary().topPerformer.userName.split(" ")[0]}
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="flex items-baseline justify-center gap-0.5 my-1">
-                    <span className="text-gray-300">-</span>
-                  </div>
-                  <div className="text-[10px] sm:text-xs text-gray-300">
-                    N/A
-                  </div>
-                </>
-              )}
+              {(() => {
+                // Find top performer from current view
+                if (adminView === "allMembers" && allMembers.length > 0) {
+                  const topMember = allMembers.reduce((top, member) => {
+                    const score = member.periodDiscipline?.percentage || 0;
+                    const topScore = top.periodDiscipline?.percentage || 0;
+                    return score > topScore ? member : top;
+                  });
+                  
+                  return (
+                    <>
+                      <div className="flex items-baseline justify-center gap-0.5 my-1">
+                        <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                          {topMember.periodDiscipline?.percentage || 0}
+                        </span>
+                        <span className="text-xs text-gray-400">%</span>
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                        {topMember.userName.split(" ")[0]}
+                      </div>
+                    </>
+                  );
+                }
+                
+                // Use summary data for My Direct Team
+                if (getSummary()?.topPerformer) {
+                  return (
+                    <>
+                      <div className="flex items-baseline justify-center gap-0.5 my-1">
+                        <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                          {getSummary().topPerformer.discipline}
+                        </span>
+                        <span className="text-xs text-gray-400">%</span>
+                      </div>
+                      <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                        {getSummary().topPerformer.userName.split(" ")[0]}
+                      </div>
+                    </>
+                  );
+                }
+                
+                return (
+                  <>
+                    <div className="flex items-baseline justify-center gap-0.5 my-1">
+                      <span className="text-gray-300">-</span>
+                    </div>
+                    <div className="text-[10px] sm:text-xs text-gray-300">
+                      N/A
+                    </div>
+                  </>
+                );
+              })()}
             </div>
 
             {/* At Risk (Right) */}
@@ -931,11 +1028,19 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
               <div className="flex items-baseline justify-center gap-0.5 my-1">
                 <span className="text-xl sm:text-2xl font-bold text-red-600">
-                  {getSummary()?.needsAttention?.length || 0}
+                  {(() => {
+                    // Count at-risk members from current view
+                    if (adminView === "allMembers" && allMembers.length > 0) {
+                      return allMembers.filter(
+                        m => (m.periodDiscipline?.percentage || 0) < 60
+                      ).length;
+                    }
+                    return getSummary()?.needsAttention?.length || 0;
+                  })()}
                 </span>
               </div>
               <div className="text-[10px] sm:text-xs text-gray-400 font-medium">
-                of {getSummary()?.totalMembers || 0} Members
+                of {adminView === "allMembers" ? allMembers.length : (getSummary()?.totalMembers || 0)} Members
               </div>
             </div>
           </div>
@@ -945,11 +1050,18 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             <div
               className="h-full bg-green-500 transition-all duration-500"
               style={{
-                width: `${
-                  getSummary()?.averagePeriodDiscipline ||
-                  getSummary()?.averageDiscipline ||
-                  0
-                }%`,
+                width: `${(() => {
+                  if (adminView === "allMembers" && allMembers.length > 0) {
+                    const total = allMembers.reduce(
+                      (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
+                      0
+                    );
+                    return Math.round(total / allMembers.length);
+                  }
+                  return getSummary()?.averagePeriodDiscipline ||
+                    getSummary()?.averageDiscipline ||
+                    0;
+                })()}%`,
               }}
             />
           </div>
@@ -1051,7 +1163,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              All My Team ({allMembersData?.summary?.totalMembers || 0})
+              All My Team ({allMembers.length})
               {/* All Teams */}
             </TouchFeedbackButton>
             <TouchFeedbackButton
@@ -1068,62 +1180,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
         )}
 
-        {/* Conditional Rendering: Hierarchical View for All My Team, Flat List for My Direct Team */}
-        {(userRole === "admin" || userRole === "developer") &&
-        adminView === "allMembers" ? (
-          /* Hierarchical Team View for All My Team */
-          hierarchyLoading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-              <span className="ml-3 text-gray-600">
-                Loading team hierarchy...
-              </span>
-            </div>
-          ) : hierarchyData ? (
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
-              <HierarchicalTeamView
-                hierarchy={hierarchyData.hierarchy}
-                onNodeClick={(node) => {
-                  console.log("Node clicked:", node);
-                }}
-                showDisciplineScores={true}
-                disciplineScores={(() => {
-                  const scores =
-                    allMembersData?.allMembers?.reduce((acc, member) => {
-                      acc[member.userId] =
-                        member.periodDiscipline?.percentage || 0;
-                      return acc;
-                    }, {}) || {};
-                  console.log("Discipline Scores:", scores);
-                  return scores;
-                })()}
-                memberActivities={(() => {
-                  const activities =
-                    allMembersData?.allMembers?.reduce((acc, member) => {
-                      acc[member.userId] = member.activities || {};
-                      return acc;
-                    }, {}) || {};
-                  console.log("Member Activities:", activities);
-                  return activities;
-                })()}
-                emptyMessage="No team structure found"
-              />
-            </div>
-          ) : (
-            <div className="text-center py-12 bg-white rounded-2xl shadow-sm border border-gray-100">
-              <p className="text-gray-500 mb-4">
-                Failed to load team hierarchy
-              </p>
-              <TouchFeedbackButton
-                onClick={loadHierarchyData}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                Retry
-              </TouchFeedbackButton>
-            </div>
-          )
-        ) : (
-          /* Flat Member List for My Direct Team or Regular Coach */
+        {/* Conditional Rendering: Hierarchical for My Direct Team, Flat for All My Team */}
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <span className="ml-3 text-gray-600">
+              Loading team members...
+            </span>
+          </div>
+        ) : ((userRole === "admin" || userRole === "developer") && adminView === "allMembers") ? (
+          /* Flat sorted list for All My Team */
           <div className="space-y-3">
             <AnimatePresence>
               {filteredAndSortedMembers.map((member) => (
@@ -1135,7 +1201,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   layout
                   className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
                 >
-                  {/* Card Header / Main Info */}
+                  {/* Member Card Content */}
                   <div
                     onClick={() =>
                       setExpandedMemberId(
@@ -1147,7 +1213,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
                   >
                     <div className="flex items-center gap-3">
-                      {/* Avatar / Initials */}
                       <div
                         className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
                           member.periodDiscipline?.percentage || 0,
@@ -1165,7 +1230,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                               YOU
                             </span>
                           )}
-                          {/* Role Badge - Show if member is a Coach/Co-Coach */}
                           {!member.isLoggedInCoach && member.isCoach && (
                             <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
                               {member.role === "coach"
@@ -1177,8 +1241,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                         <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                           {member.email}
                         </p>
-
-                        {/* Coach Badge - Don't show for logged-in coach */}
                         {!member.isLoggedInCoach && member.uplineCoachName && (
                           <p className="text-[11px] text-gray-400 mt-1">
                             Coach:{" "}
@@ -1188,7 +1250,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                             </span>
                           </p>
                         )}
-
                         {member.isLoggedInCoach && (
                           <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
                             <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
@@ -1197,7 +1258,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                         )}
                       </div>
                     </div>
-
                     <div className="flex items-center gap-2 sm:gap-4">
                       <div className="text-right">
                         <div
@@ -1218,8 +1278,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       )}
                     </div>
                   </div>
-
-                  {/* Expanded Details */}
+                  {/* Expanded Activities */}
                   <AnimatePresence>
                     {expandedMemberId === member.userId && (
                       <motion.div
@@ -1236,35 +1295,35 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                             "lunch",
                             "dinner",
                           ].map((activityKey) => {
-                            const activity = member.activities?.[
-                              activityKey
-                            ] || { percentage: 0 };
-                            const percentage = activity.percentage ?? 0;
+                            const activity =
+                              member.activities?.[activityKey] ||
+                              member.periodActivities?.[activityKey];
+                            if (!activity) return null;
                             return (
                               <div
                                 key={activityKey}
                                 className="flex flex-col items-center gap-2"
                               >
                                 <div
-                                  className={`w-10 h-10 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center shadow-sm border ${
-                                    percentage >= 80
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
+                                    activity.percentage >= 80
                                       ? "bg-green-50 border-green-200 text-green-700"
-                                      : percentage >= 60
+                                      : activity.percentage >= 60
                                       ? "bg-yellow-50 border-yellow-200 text-yellow-700"
                                       : "bg-red-50 border-red-200 text-red-700"
                                   }`}
                                 >
                                   {activityIcons[activityKey]}
                                 </div>
-                                <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
                                   {activityKey.slice(0, 3)}
                                 </span>
                                 <span
-                                  className={`text-xs sm:text-xs font-bold ${getScoreColorText(
-                                    percentage,
+                                  className={`text-xs font-bold ${getScoreColorText(
+                                    activity.percentage,
                                   )}`}
                                 >
-                                  {percentage}%
+                                  {activity.percentage}%
                                 </span>
                               </div>
                             );
@@ -1284,8 +1343,161 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 </motion.div>
               ))}
             </AnimatePresence>
-
             {filteredAndSortedMembers.length === 0 && (
+              <div className="text-center py-12">
+                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Search className="h-8 w-8 text-gray-300" />
+                </div>
+                <h3 className="text-gray-900 font-medium">No members found</h3>
+                <p className="text-gray-500 text-sm mt-1">
+                  Try adjusting your search or filters
+                </p>
+              </div>
+            )}
+          </div>
+        ) : (
+          /* Flat Member List for My Direct Team */
+          <div className="space-y-3">
+            <AnimatePresence>
+              {allMembers.map((member) => (
+                <motion.div
+                  key={member.userId}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  layout
+                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
+                >
+                  {/* Member Card Content */}
+                  <div
+                    onClick={() =>
+                      setExpandedMemberId(
+                        expandedMemberId === member.userId
+                          ? null
+                          : member.userId,
+                      )
+                    }
+                    className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
+                          member.periodDiscipline?.percentage || 0,
+                        ).replace("bg-", "bg-opacity-10 bg-")}`}
+                      >
+                        {member.userName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-gray-900 text-sm sm:text-[15px]">
+                            {member.userName}
+                          </h3>
+                          {member.isLoggedInCoach && (
+                            <span className="text-[9px] sm:text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                              YOU
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
+                          {member.email}
+                        </p>
+                        {!member.isLoggedInCoach && member.uplineCoachName && (
+                          <p className="text-[11px] text-gray-400 mt-1">
+                            Coach:{" "}
+                            <span className="text-gray-600 font-medium">
+                              {member.uplineCoachName}
+                              {member.uplineCoachId === user.id ? " (You)" : ""}
+                            </span>
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 sm:gap-4">
+                      <div className="text-right">
+                        <div
+                          className={`text-lg sm:text-xl font-bold ${getScoreColorText(
+                            member.periodDiscipline?.percentage || 0,
+                          )}`}
+                        >
+                          {member.periodDiscipline?.percentage ?? 0}%
+                        </div>
+                        <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                          Score
+                        </div>
+                      </div>
+                      {expandedMemberId === member.userId ? (
+                        <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
+                      ) : (
+                        <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
+                      )}
+                    </div>
+                  </div>
+                  {/* Expanded Activities */}
+                  <AnimatePresence>
+                    {expandedMemberId === member.userId && (
+                      <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: "auto", opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="border-t border-gray-50 bg-gray-50/30"
+                      >
+                        <div className="p-4 grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-2">
+                          {[
+                            "weight",
+                            "education",
+                            "breakfast",
+                            "lunch",
+                            "dinner",
+                          ].map((activityKey) => {
+                            const activity =
+                              member.activities?.[activityKey] ||
+                              member.periodActivities?.[activityKey];
+                            if (!activity) return null;
+                            return (
+                              <div
+                                key={activityKey}
+                                className="flex flex-col items-center gap-2"
+                              >
+                                <div
+                                  className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
+                                    activity.percentage >= 80
+                                      ? "bg-green-50 border-green-200 text-green-700"
+                                      : activity.percentage >= 60
+                                      ? "bg-yellow-50 border-yellow-200 text-yellow-700"
+                                      : "bg-red-50 border-red-200 text-red-700"
+                                  }`}
+                                >
+                                  {activityIcons[activityKey]}
+                                </div>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                                  {activityKey.slice(0, 3)}
+                                </span>
+                                <span
+                                  className={`text-xs font-bold ${getScoreColorText(
+                                    activity.percentage,
+                                  )}`}
+                                >
+                                  {activity.percentage}%
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="px-4 pb-4 pt-0 text-center">
+                          <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
+                            {member.periodDiscipline?.onTimePosts ?? 0} on-time
+                            posts out of{" "}
+                            {member.periodDiscipline?.expectedPosts ?? 0}{" "}
+                            expected
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </motion.div>
+              ))}
+            </AnimatePresence>
+            {allMembers.length === 0 && (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Search className="h-8 w-8 text-gray-300" />
