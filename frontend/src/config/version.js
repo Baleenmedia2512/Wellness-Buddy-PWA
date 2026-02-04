@@ -72,13 +72,13 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.4',
+  VERSION: '1.6.5',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 17,
+  VERSION_CODE: 18,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Maintenance & Stability Improvements',
+  RELEASE_NAME: 'Discipline Report UI Improvements',
   
   // Build date
   BUILD_DATE: '2026-02-04',
@@ -86,6 +86,16 @@ export const APP_VERSION = {
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.6.5 (Code 18) - 2026-02-04
+ *   ✨ Discipline Report UI/UX Improvements
+ *   🎨 Redesigned both "All My Team" and "My Direct Team" tabs with flat list view
+ *   📊 Fixed member counting to show actual team members (not entire organization)
+ *   🔄 Implemented proper sorting by discipline score (highest first)
+ *   🔍 Enhanced filtering system working correctly on both tabs
+ *   📈 Updated summary statistics (AVG, TOP STAR, AT RISK) to calculate from current view
+ *   ✅ Removed hierarchical tree structure for better user experience
+ *   🎯 Both tabs now display consistent flat member lists with scores
  * 
  * Version 1.6.4 (Code 17) - 2026-02-04
  *   🔧 Maintenance release with stability improvements

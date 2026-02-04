@@ -120,57 +120,55 @@ const TeamNode = ({
               <h3 className="font-bold text-gray-900 text-[15px]">
                 {node.userName}
               </h3>
-              {node.role === "coach" && (
+              {/* Role Badge - Display hierarchy labels */}
+              {level === 0 && node.role === "coach" && (
                 <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
                   COACH
                 </span>
               )}
+              {level === 1 && node.role === "coach" && (
+                <span className="text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                  CO-COACH
+                </span>
+              )}
+              {level >= 2 && (
+                <span className="text-[10px] bg-gray-50 text-gray-700 border border-gray-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                  MEMBER
+                </span>
+              )}
             </div>
             <p className="text-xs text-gray-500 mt-0.5">{node.email}</p>
-            {hasChildren && !isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleExpand(node.userId);
-                }}
-                className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
-              >
+            {hasChildren && (
+              <p className="text-[11px] text-gray-400 font-medium mt-1 flex items-center gap-1">
                 <Users className="w-3 h-3" />
-                View {node.directMemberCount} team members
-              </button>
-            )}
-            {hasChildren && isExpanded && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggleExpand(node.userId);
-                }}
-                className="text-[11px] text-blue-600 font-medium mt-1 flex items-center gap-1 hover:text-blue-700"
-              >
-                <ChevronUp className="w-3 h-3" />
-                Hide {node.directMemberCount} team members
-              </button>
+                {node.teamMembers?.length || 0} team member
+                {node.teamMembers?.length !== 1 ? "s" : ""}
+              </p>
             )}
           </div>
 
           {/* Score and Chevron */}
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <div
-                className={`text-xl font-bold ${
-                  score >= 80
-                    ? "text-green-700"
-                    : score >= 60
-                    ? "text-yellow-700"
-                    : "text-red-700"
-                }`}
-              >
-                {score}%
+            {showDisciplineScores && (
+              <div className="text-right">
+                <div
+                  className={`text-xl font-bold ${
+                    score !== undefined && score >= 80
+                      ? "text-green-700"
+                      : score !== undefined && score >= 60
+                      ? "text-yellow-700"
+                      : score !== undefined
+                      ? "text-red-700"
+                      : "text-gray-400"
+                  }`}
+                >
+                  {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                </div>
+                <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                  Score
+                </div>
               </div>
-              <div className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                Score
-              </div>
-            </div>
+            )}
             {showActivities ? (
               <ChevronUp className="h-5 w-5 text-gray-300" />
             ) : (
@@ -244,33 +242,28 @@ const TeamNode = ({
         </AnimatePresence>
       </motion.div>
 
-      {/* Children (Recursive) - Team members shown below */}
+      {/* Children (Recursive) - Team members shown below - Always visible */}
       {hasChildren && (
         <div style={{ marginLeft: `${Math.max(0, level * 16)}px` }}>
-          <AnimatePresence>
-            {isExpanded && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: "auto", opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className="overflow-hidden"
-              >
-                {node.teamMembers.map((child) => (
-                  <TeamNode
-                    key={child.userId}
-                    node={child}
-                    level={level + 1}
-                    onNodeClick={onNodeClick}
-                    expandedNodes={expandedNodes}
-                    onToggleExpand={onToggleExpand}
-                    showDisciplineScores={showDisciplineScores}
-                    disciplineScores={disciplineScores}
-                    memberActivities={memberActivities}
-                  />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
+          <motion.div
+            initial={{ height: "auto", opacity: 1 }}
+            animate={{ height: "auto", opacity: 1 }}
+            className="overflow-hidden"
+          >
+            {node.teamMembers.map((child) => (
+              <TeamNode
+                key={child.userId}
+                node={child}
+                level={level + 1}
+                onNodeClick={onNodeClick}
+                expandedNodes={expandedNodes}
+                onToggleExpand={onToggleExpand}
+                showDisciplineScores={showDisciplineScores}
+                disciplineScores={disciplineScores}
+                memberActivities={memberActivities}
+              />
+            ))}
+          </motion.div>
         </div>
       )}
     </div>
@@ -290,18 +283,6 @@ const HierarchicalTeamView = ({
   emptyMessage = "No team members found",
 }) => {
   const [expandedNodes, setExpandedNodes] = useState(new Set());
-
-  const handleToggleExpand = (nodeId) => {
-    setExpandedNodes((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(nodeId)) {
-        newSet.delete(nodeId);
-      } else {
-        newSet.add(nodeId);
-      }
-      return newSet;
-    });
-  };
 
   const expandAll = () => {
     const allNodeIds = new Set();
@@ -324,6 +305,44 @@ const HierarchicalTeamView = ({
     setExpandedNodes(new Set());
   };
 
+  // Auto-expand all nodes on initial load
+  React.useEffect(() => {
+    if (hierarchy) {
+      console.log("Auto-expanding hierarchy:", hierarchy);
+      const allNodeIds = new Set();
+
+      const collectIds = (node) => {
+        console.log(
+          "Collecting node:",
+          node.userId,
+          node.userName,
+          "has children:",
+          node.teamMembers?.length,
+        );
+        if (node.teamMembers && node.teamMembers.length > 0) {
+          allNodeIds.add(node.userId);
+          node.teamMembers.forEach((child) => collectIds(child));
+        }
+      };
+
+      collectIds(hierarchy);
+      console.log("All expanded node IDs:", Array.from(allNodeIds));
+      setExpandedNodes(allNodeIds);
+    }
+  }, [hierarchy]);
+
+  const handleToggleExpand = (nodeId) => {
+    setExpandedNodes((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(nodeId)) {
+        newSet.delete(nodeId);
+      } else {
+        newSet.add(nodeId);
+      }
+      return newSet;
+    });
+  };
+
   if (!hierarchy) {
     return (
       <div className="text-center py-12">
@@ -335,22 +354,6 @@ const HierarchicalTeamView = ({
 
   return (
     <div className="space-y-4">
-      {/* Controls */}
-      <div className="flex justify-end gap-2 px-4">
-        <button
-          onClick={expandAll}
-          className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-1.5 hover:bg-blue-50 rounded-lg transition-colors"
-        >
-          Expand All
-        </button>
-        <button
-          onClick={collapseAll}
-          className="text-xs text-gray-600 hover:text-gray-700 font-medium px-3 py-1.5 hover:bg-gray-50 rounded-lg transition-colors"
-        >
-          Collapse All
-        </button>
-      </div>
-
       {/* Hierarchy Tree */}
       <div className="px-4">
         <TeamNode
