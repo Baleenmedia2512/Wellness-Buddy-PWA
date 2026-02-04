@@ -406,35 +406,25 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           };
         }
 
-        // For admin/developer, fetch both team and all members data
-        if (userRole === "admin" || userRole === "developer") {
-          // Fetch coach team data (My Team)
-          const teamDataResponse =
-            await disciplineReportService.getDisciplineReport(
-              user.id,
-              dateRange,
-              customRange,
-            );
-
-          // Fetch all members data (All Teams)
-          const allMembersResponse =
-            await disciplineReportService.getAllMembersDisciplineReport(
-              user.id,
-              dateRange,
-              customRange,
-            );
-
-          setTeamData(teamDataResponse);
-          setAllMembersData(allMembersResponse);
-        } else {
-          // Regular coach - only fetch their team
-          const data = await disciplineReportService.getDisciplineReport(
+        // Fetch both team and all members data for all coaches
+        // Fetch coach team data (My Team)
+        const teamDataResponse =
+          await disciplineReportService.getDisciplineReport(
             user.id,
             dateRange,
             customRange,
           );
-          setTeamData(data);
-        }
+
+        // Fetch all members data (All Teams)
+        const allMembersResponse =
+          await disciplineReportService.getAllMembersDisciplineReport(
+            user.id,
+            dateRange,
+            customRange,
+          );
+
+        setTeamData(teamDataResponse);
+        setAllMembersData(allMembersResponse);
       } catch (err) {
         console.error("Failed to load discipline report:", err);
         setError(
@@ -548,9 +538,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   // Filter and sort team members (including coach)
   const allMembers = React.useMemo(() => {
-    // For admin/developer viewing All My Team - use hierarchical team data only
+    // For viewing All My Team - use hierarchical team data only
     if (
-      (userRole === "admin" || userRole === "developer") &&
       adminView === "allMembers" &&
       hierarchyData
     ) {
@@ -588,8 +577,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       combined.push(...teamData.teamMembers);
     }
     return combined;
-  }, [teamData, allMembersData, hierarchyData, userRole, adminView]);
-
+    }, [teamData, allMembersData, hierarchyData, adminView]);
   // Sort hierarchy by discipline scores and apply filters
   const sortedHierarchy = React.useMemo(() => {
     if (!hierarchyData?.hierarchy || !allMembersData?.allMembers) return hierarchyData?.hierarchy;
@@ -640,96 +628,69 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }, [hierarchyData, allMembersData, sortOrder, searchQuery, disciplineFilter]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
-    if (!user?.id) return [];
+    const filtered = allMembers.filter(member => {
+      // Search filter
+      const matchesSearch = (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
 
-    // For admin/developer viewing All Teams, use simpler filtering (no team filters)
-    if (
-      (userRole === "admin" || userRole === "developer") &&
-      adminView === "allMembers"
-    ) {
-      return allMembers
-        .filter((member) => {
-          // Skip members without discipline data
-          if (!member.periodDiscipline) return false;
+      // Discipline score filter
+      const discipline = member.periodDiscipline?.percentage || 0;
+      let matchesDiscipline = true;
+      if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
+      if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
+      if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
 
-          // Search filter
-          const matchesSearch =
-            (member.userName || "")
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase()) ||
-            (member.email || "")
-              .toLowerCase()
-              .includes(searchQuery.toLowerCase());
-
-          // Discipline score filter
-          const discipline = member.periodDiscipline.percentage || 0;
-          let matchesDiscipline = true;
-          if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
-          if (disciplineFilter === "medium")
-            matchesDiscipline = discipline >= 60 && discipline < 80;
-          if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
-
-          return matchesSearch && matchesDiscipline;
-        })
-        .sort((a, b) => {
-          const scoreA = a.periodDiscipline.percentage;
-          const scoreB = b.periodDiscipline.percentage;
-          return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
-        });
-    }
-
-    // For admin viewing My Team OR regular coach, use existing team filtering logic
-    return allMembers
-      .filter((member) => {
-        // Skip members without discipline data
-        if (!member.periodDiscipline) return false;
-
-        // Search filter
-        const matchesSearch =
-          (member.userName || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          (member.email || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase());
-
-        // Discipline score filter
-        const discipline = member.periodDiscipline.percentage || 0;
-        let matchesDiscipline = true;
-        if (disciplineFilter === "high") matchesDiscipline = discipline >= 80;
-        if (disciplineFilter === "medium")
-          matchesDiscipline = discipline >= 60 && discipline < 80;
-        if (disciplineFilter === "low") matchesDiscipline = discipline < 60;
-
-        // Team filter - simple logic
-        let matchesTeam = true;
-        if (teamFilter === "all") {
-          // Show all members - coaches, co-coaches, and members
-          matchesTeam = true;
-        } else if (teamFilter === "myTeam") {
-          // For "My Direct Team" - show logged-in coach and ALL members in their hierarchy (including sub-members)
-          matchesTeam = true; // Show all members in the hierarchy
+      // Team filter
+      let matchesTeam = true;
+      if (teamFilter === 'myTeam') {
+        // For "My Team" - show logged-in coach, all co-coaches, and all team members
+        matchesTeam = true;
+      } else if (teamFilter !== 'all') {
+        // For specific coach filter
+        if (member.isLoggedInCoach) {
+          matchesTeam = false;
         } else {
-          // For specific coach filter
-          if (member.isLoggedInCoach) {
-            matchesTeam = false; // Don't show logged-in coach in other coach filters
-          } else {
-            matchesTeam = member.uplineCoachId === parseInt(teamFilter);
-          }
+          matchesTeam = member.uplineCoachId === parseInt(teamFilter);
         }
+      }
 
-        return matchesSearch && matchesDiscipline && matchesTeam;
-      });
-  }, [
-    allMembers,
-    searchQuery,
-    disciplineFilter,
-    teamFilter,
-    sortOrder,
-    user?.id,
-    userRole,
-    adminView,
-  ]);
+      return matchesSearch && matchesDiscipline && matchesTeam;
+    });
+
+    // Sort to create hierarchy: You → Co-Coaches → Members under each coach
+    return filtered.sort((a, b) => {
+      // 1. Logged-in coach always at top
+      if (a.isLoggedInCoach) return -1;
+      if (b.isLoggedInCoach) return 1;
+
+      // 2. Co-coaches come next
+      const aIsCoach = a.isCoach && !a.isLoggedInCoach;
+      const bIsCoach = b.isCoach && !b.isLoggedInCoach;
+      
+      if (aIsCoach && !bIsCoach) return -1;
+      if (!aIsCoach && bIsCoach) return 1;
+
+      // 3. If both are coaches, sort by name
+      if (aIsCoach && bIsCoach) {
+        return (a.userName || '').localeCompare(b.userName || '');
+      }
+
+      // 4. For regular members, group by their upline coach
+      if (!aIsCoach && !bIsCoach) {
+        // First sort by upline coach ID to group members together
+        if (a.uplineCoachId !== b.uplineCoachId) {
+          return (a.uplineCoachId || 0) - (b.uplineCoachId || 0);
+        }
+        // Within same coach's team, sort by discipline score
+        const scoreA = a.periodDiscipline?.percentage || 0;
+        const scoreB = b.periodDiscipline?.percentage || 0;
+        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+      }
+
+      // 5. If one is a regular member and other is coach, member comes after
+      return 0;
+    });
+  }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, user?.id]);
 
   // Activity Icons Map
   const activityIcons = {
@@ -837,15 +798,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               >
                 <Download className="h-5 w-5" />
               </TouchFeedbackButton>
-              {(userRole === "admin" || userRole === "developer") && (
-                <TouchFeedbackButton
-                  onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
-                  className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
-                  ariaLabel="Configure Time Windows"
-                >
-                  <Settings className="h-5 w-5" />
-                </TouchFeedbackButton>
-              )}
+              <TouchFeedbackButton
+                onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
+                className="p-2 hover:bg-gray-50 rounded-full transition-colors text-gray-600"
+                ariaLabel="Configure Time Windows"
+              >
+                <Settings className="h-5 w-5" />
+              </TouchFeedbackButton>
             </div>
           </div>
 
@@ -1152,9 +1111,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </TouchFeedbackButton>
         </div>
 
-        {/* Admin View Tabs - My Team vs All Teams */}
-        {(userRole === "admin" || userRole === "developer") && (
-          <div className="mb-4 flex gap-2">
+        {/* View Tabs - My Team vs All Teams */}
+        <div className="mb-4 flex gap-2">
             <TouchFeedbackButton
               onClick={() => setAdminView("allMembers")}
               className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
@@ -1178,7 +1136,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               {/* My Team ({teamData?.teamSummary?.totalMembers || 0}) */}
             </TouchFeedbackButton>
           </div>
-        )}
 
         {/* Conditional Rendering: Hierarchical for My Direct Team, Flat for All My Team */}
         {loading ? (

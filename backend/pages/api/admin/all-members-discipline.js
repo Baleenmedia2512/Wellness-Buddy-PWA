@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const userIdInt = parseInt(userId);
     
-    // Step 1: Verify user is admin or developer
+    // Step 1: Verify user exists (removed role restriction - all coaches can access)
     const { data: currentUser, error: userError } = await supabase
       .from('team_table')
       .select('Role')
@@ -63,10 +63,7 @@ export default async function handler(req, res) {
       return;
     }
     
-    if (currentUser.Role !== 'admin' && currentUser.Role !== 'developer') {
-      res.status(403).json({ success: false, message: 'Admin or Developer access required' });
-      return;
-    }
+    // All coaches can access - no role restriction
     
     // Parse date range
     const dates = parseDateRange(
