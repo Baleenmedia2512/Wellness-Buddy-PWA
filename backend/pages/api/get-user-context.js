@@ -1,4 +1,4 @@
-﻿import { getSupabaseClient } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient } from "../../utils/supabaseClient.js";
 
 /**
  * Get User Context API
@@ -7,25 +7,31 @@
  */
 export default async function handler(req, res) {
   // Prevent browser/service worker caching of dynamic data
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.setHeader('Surrogate-Control', 'no-store');
-  
+  res.setHeader(
+    "Cache-Control",
+    "no-store, no-cache, must-revalidate, proxy-revalidate",
+  );
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
+  res.setHeader("Surrogate-Control", "no-store");
+
   // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, cache-control, pragma');
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, cache-control, pragma",
+  );
 
   // Handle preflight request
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
   }
 
   // Only allow GET requests
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
+  if (req.method !== "GET") {
+    res.status(405).json({ error: "Method not allowed" });
     return;
   }
 
@@ -34,8 +40,8 @@ export default async function handler(req, res) {
 
     // Validate input
     if (!userId) {
-      res.status(400).json({ 
-        error: 'Missing required parameter: userId'
+      res.status(400).json({
+        error: "Missing required parameter: userId",
       });
       return;
     }
@@ -50,11 +56,11 @@ export default async function handler(req, res) {
       userCorrectionsResult,
       globalPatternsResult,
       userProfileResult,
-      recentMealsResult
+      recentMealsResult,
     ] = await Promise.all([
       // 1. User's personal corrections (TOP 10 by frequency)
       supabase
-        .from('food_corrections_table')
+        .from("food_corrections_table")
         .select('"AiDetected", "UserCorrected", "TimesCorrected"')
         .eq('"UserId"', userId)
         .order('"TimesCorrected"', { ascending: false })
@@ -64,37 +70,37 @@ export default async function handler(req, res) {
       // 2. Global correction patterns (TOP 5 by total users)
       // Note: Supabase doesn't support complex aggregations easily, so we'll fetch and process
       supabase
-        .from('food_corrections_table')
+        .from("food_corrections_table")
         .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected"'),
 
       // 3. User profile (diet preference)
       supabase
-        .from('team_table')
+        .from("team_table")
         .select('"DietType"')
         .eq('"UserId"', userId)
         .maybeSingle(),
 
       // 4. Recent meals (last 3 meals for context)
       supabase
-        .from('food_nutrition_data_table')
+        .from("food_nutrition_data_table")
         .select('"AnalysisData", "CreatedAt"')
         .eq('"UserId"', userId)
         .or('"IsDeleted".is.null,"IsDeleted".eq.0')
         .order('"CreatedAt"', { ascending: false })
-        .limit(3)
+        .limit(3),
     ]);
 
     // Process global patterns (aggregate in JavaScript)
     const globalPatternsMap = new Map();
     if (globalPatternsResult.data) {
-      globalPatternsResult.data.forEach(row => {
+      globalPatternsResult.data.forEach((row) => {
         const key = `${row.AiDetected}|${row.UserCorrected}`;
         if (!globalPatternsMap.has(key)) {
           globalPatternsMap.set(key, {
             ai_detected: row.AiDetected,
             user_corrected: row.UserCorrected,
             users: new Set(),
-            total_corrections: 0
+            total_corrections: 0,
           });
         }
         const pattern = globalPatternsMap.get(key);
@@ -103,43 +109,104 @@ export default async function handler(req, res) {
       });
     }
 
+    // Build correction chain map for following corrections
+    // Example: Juice → Milk, Milk → Tea = Juice should show Tea
+    const correctionChainMap = new Map();
+    globalPatternsMap.forEach((pattern) => {
+      if (!correctionChainMap.has(pattern.ai_detected)) {
+        correctionChainMap.set(pattern.ai_detected, []);
+      }
+      correctionChainMap.get(pattern.ai_detected).push({
+        target: pattern.user_corrected,
+        total_corrections: pattern.total_corrections,
+        user_count: pattern.users.size,
+      });
+    });
+
+    // Sort each correction group by priority (most corrections first)
+    correctionChainMap.forEach((corrections, key) => {
+      corrections.sort((a, b) => {
+        if (b.total_corrections !== a.total_corrections)
+          return b.total_corrections - a.total_corrections;
+        return b.user_count - a.user_count;
+      });
+    });
+
+    // Function to follow correction chain
+    const followCorrectionChain = (foodName, visited = new Set()) => {
+      // Prevent infinite loops
+      if (visited.has(foodName)) return foodName;
+      visited.add(foodName);
+
+      const corrections = correctionChainMap.get(foodName);
+      if (!corrections || corrections.length === 0) return foodName;
+
+      // Get the most popular correction
+      const bestCorrection = corrections[0].target;
+
+      // Recursively follow the chain
+      return followCorrectionChain(bestCorrection, visited);
+    };
+
+    // Build final global patterns with chaining applied
+    const finalGlobalPatterns = new Map();
+    globalPatternsMap.forEach((pattern) => {
+      const originalAiDetected = pattern.ai_detected;
+      const finalCorrection = followCorrectionChain(originalAiDetected);
+
+      // Only add if the chain actually leads to a different result
+      if (finalCorrection !== originalAiDetected) {
+        const key = `${originalAiDetected}|${finalCorrection}`;
+        if (!finalGlobalPatterns.has(key)) {
+          finalGlobalPatterns.set(key, {
+            ai_detected: originalAiDetected,
+            user_corrected: finalCorrection,
+            user_count: pattern.users.size,
+            total_corrections: pattern.total_corrections,
+          });
+        } else {
+          // Merge counts if duplicate (shouldn't happen, but safety check)
+          const existing = finalGlobalPatterns.get(key);
+          existing.total_corrections += pattern.total_corrections;
+        }
+      }
+    });
+
     // Convert to array and filter by user count >= 1 (ANY correction becomes global)
-    // This allows correction chaining: juice → water → sprite
-    const globalPatterns = Array.from(globalPatternsMap.values())
-      .filter(p => p.users.size >= 1)  // Changed from 3 to 1: single user corrections affect all users
-      .map(p => ({
-        ai_detected: p.ai_detected,
-        user_corrected: p.user_corrected,
-        user_count: p.users.size,
-        total_corrections: p.total_corrections
-      }))
+    // This allows correction chaining: juice → milk → tea = juice shows tea
+    const globalPatterns = Array.from(finalGlobalPatterns.values())
+      .filter((p) => p.user_count >= 1) // Single user corrections affect all users
       .sort((a, b) => {
         // Sort by total corrections first (most frequent), then by user count
-        if (b.total_corrections !== a.total_corrections) return b.total_corrections - a.total_corrections;
+        if (b.total_corrections !== a.total_corrections)
+          return b.total_corrections - a.total_corrections;
         return b.user_count - a.user_count;
       })
-      .slice(0, 20);  // Increased from 5 to 20 to show more patterns
+      .slice(0, 20); // Top 20 patterns
 
     // Parse recent meals to extract food names
-    const recentMeals = (recentMealsResult.data || []).map(meal => {
-      try {
-        const analysisData = typeof meal.AnalysisData === 'string' 
-          ? JSON.parse(meal.AnalysisData) 
-          : meal.AnalysisData;
-        
-        // Extract food names from detailedItems
-        const foodNames = (analysisData.detailedItems || [])
-          .map(item => item.name)
-          .filter(name => name);
-        
-        return {
-          foods: foodNames,
-          created_at: meal.CreatedAt
-        };
-      } catch (e) {
-        return { foods: [], created_at: meal.CreatedAt };
-      }
-    }).filter(meal => meal.foods.length > 0);
+    const recentMeals = (recentMealsResult.data || [])
+      .map((meal) => {
+        try {
+          const analysisData =
+            typeof meal.AnalysisData === "string"
+              ? JSON.parse(meal.AnalysisData)
+              : meal.AnalysisData;
+
+          // Extract food names from detailedItems
+          const foodNames = (analysisData.detailedItems || [])
+            .map((item) => item.name)
+            .filter((name) => name);
+
+          return {
+            foods: foodNames,
+            created_at: meal.CreatedAt,
+          };
+        } catch (e) {
+          return { foods: [], created_at: meal.CreatedAt };
+        }
+      })
+      .filter((meal) => meal.foods.length > 0);
 
     // Build response
     const context = {
@@ -152,22 +219,24 @@ export default async function handler(req, res) {
         totalPersonalCorrections: (userCorrectionsResult.data || []).length,
         totalGlobalPatterns: globalPatterns.length,
         totalRecentMeals: recentMeals.length,
-        queryTimeMs: Date.now() - startTime
-      }
+        queryTimeMs: Date.now() - startTime,
+      },
     };
 
-    console.log(`✅ [get-user-context] Context loaded for userId ${userId} in ${context.metadata.queryTimeMs}ms`);
+    console.log(
+      `✅ [get-user-context] Context loaded for userId ${userId} in ${context.metadata.queryTimeMs}ms`,
+    );
 
     res.status(200).json({
       success: true,
-      data: context
+      data: context,
     });
     return;
   } catch (error) {
-    console.error('❌ [get-user-context] Error:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch user context',
-      details: error.message 
+    console.error("❌ [get-user-context] Error:", error);
+    res.status(500).json({
+      error: "Failed to fetch user context",
+      details: error.message,
     });
     return;
   }
