@@ -721,6 +721,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     return teamData.teamSummary || {};
   };
 
+  // Check if user is a coach (has team members) or just a regular member
+  const isUserACoach = React.useMemo(() => {
+    if (userRole === "admin" || userRole === "developer") return true;
+    if (!teamData) return false;
+    // If there are team members or they explicitly have role 'coach', they're a coach
+    return (teamData.teamMembers && teamData.teamMembers.length > 0) || 
+           teamData.coachPerformance?.role === 'coach';
+  }, [teamData, userRole]);
+
   if (loading) {
     return <LoadingSkeleton />;
   }
@@ -758,18 +767,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </TouchFeedbackButton>
               <div>
                 <h1 className="text-lg font-bold text-gray-900 leading-tight">
-                  {userRole === "admin" && adminView === "allMembers"
-                    ? "All Members Report"
-                    : "Discipline Report"}
+                  Discipline Report
                 </h1>
                 <p className="text-xs text-gray-500 font-medium">
-                  {/* {getSummary()?.totalMembers || 0} Members •{" "} */}
+                  {isUserACoach 
+                    ? `${filteredAndSortedMembers.length || allMembers.length} Members • ` 
+                    : '1 Member • '}
                   {new Date(
-                    userRole === "admin" &&
-                    adminView === "allMembers" &&
-                    allMembersData
-                      ? allMembersData?.lastUpdated
-                      : teamData?.lastUpdated,
+                    allMembersData?.lastUpdated || teamData?.lastUpdated || new Date(),
                   ).toLocaleTimeString([], {
                     hour: "2-digit",
                     minute: "2-digit",
@@ -1023,7 +1028,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
         </div>
 
-        {/* Search & Filter Bar */}
+        {/* Search & Filter Bar - Only show for coaches */}
+        {isUserACoach && (
         <div className="flex gap-3 items-center z-30 relative mb-4">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -1094,51 +1100,171 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </AnimatePresence>
           </div>
 
-          {/* Sort Button */}
-          <TouchFeedbackButton
-            onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
-            className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
-            ariaLabel={sortOrder === "desc" ? "Highest First" : "Lowest First"}
-          >
-            {sortOrder === "desc" ? (
-              <ArrowDown className="h-4 w-4" />
-            ) : (
-              <ArrowUp className="h-4 w-4" />
-            )}
-          </TouchFeedbackButton>
+          {/* Sort Button - Only show for coaches */}
+          {isUserACoach && (
+            <TouchFeedbackButton
+              onClick={() => setSortOrder(sortOrder === "desc" ? "asc" : "desc")}
+              className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+              ariaLabel={sortOrder === "desc" ? "Highest First" : "Lowest First"}
+            >
+              {sortOrder === "desc" ? (
+                <ArrowDown className="h-4 w-4" />
+              ) : (
+                <ArrowUp className="h-4 w-4" />
+              )}
+            </TouchFeedbackButton>
+          )}
         </div>
+        )}
 
-        {/* View Tabs - My Team vs All Teams */}
-        <div className="mb-4 flex gap-2">
-            <TouchFeedbackButton
-              onClick={() => setAdminView("allMembers")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                adminView === "allMembers"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              All My Team {adminView === "allMembers" && `(${allMembers.length})`}
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              onClick={() => setAdminView("myTeam")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                adminView === "myTeam"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              My Direct Team {adminView === "myTeam" && `(${teamData?.teamSummary?.totalMembers || 0})`}
-            </TouchFeedbackButton>
-          </div>
+        {/* View Tabs - Only show for coaches with teams */}
+        {isUserACoach && (
+          <div className="mb-4 flex gap-2">
+              <TouchFeedbackButton
+                onClick={() => setAdminView("allMembers")}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  adminView === "allMembers"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                All My Team {adminView === "allMembers" && `(${allMembers.length})`}
+              </TouchFeedbackButton>
+              <TouchFeedbackButton
+                onClick={() => setAdminView("myTeam")}
+                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                  adminView === "myTeam"
+                    ? "bg-blue-600 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                }`}
+              >
+                My Direct Team {adminView === "myTeam" && `(${teamData?.teamSummary?.totalMembers || 0})`}
+              </TouchFeedbackButton>
+            </div>
+        )}
 
-        {/* Conditional Rendering: Hierarchical for My Direct Team, Flat for All My Team */}
+        {/* Conditional Rendering */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
             <span className="ml-3 text-gray-600">
-              Loading team members...
-            </span>
+              Loading...</span>
+          </div>
+        ) : !isUserACoach ? (
+          /* Regular member view - only show their own performance */
+          <div className="space-y-3">
+            {teamData?.coachPerformance && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
+              >
+                {/* Member's own performance card */}
+                <div
+                  onClick={() =>
+                    setExpandedMemberId(
+                      expandedMemberId === teamData.coachPerformance.userId
+                        ? null
+                        : teamData.coachPerformance.userId,
+                    )
+                  }
+                  className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
+                        teamData.coachPerformance.periodDiscipline?.percentage || 0,
+                      ).replace("bg-", "bg-opacity-10 bg-")}`}
+                    >
+                      {(teamData.coachPerformance.userName || '').charAt(0).toUpperCase()}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="font-bold text-gray-900 text-sm sm:text-[15px]">
+                          {teamData.coachPerformance.userName}
+                        </h3>
+                        <span className="text-[9px] sm:text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
+                          YOU
+                        </span>
+                      </div>
+                      <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
+                        {teamData.coachPerformance.email}
+                      </p>
+                      <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
+                        <span className="w-2 h-2 rounded-full bg-green-500"></span>
+                        My Performance
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-right">
+                      <span
+                        className={`text-lg font-bold ${getScoreColorText(
+                          teamData.coachPerformance.periodDiscipline?.percentage || 0,
+                        )}`}
+                      >
+                        {teamData.coachPerformance.periodDiscipline?.percentage || 0}%
+                      </span>
+                      <p className="text-[10px] text-gray-400 uppercase tracking-wide">
+                        Score
+                      </p>
+                    </div>
+                    {expandedMemberId === teamData.coachPerformance.userId ? (
+                      <ChevronUp className="h-5 w-5 text-gray-400" />
+                    ) : (
+                      <ChevronDown className="h-5 w-5 text-gray-400" />
+                    )}
+                  </div>
+                </div>
+                
+                {/* Expanded details */}
+                <AnimatePresence>
+                  {expandedMemberId === teamData.coachPerformance.userId && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="border-t border-gray-100 bg-gray-50/50"
+                    >
+                      <div className="p-4">
+                        <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                          Activity Breakdown
+                        </h4>
+                        <div className="grid grid-cols-5 gap-2">
+                          {Object.entries(teamData.coachPerformance.activities || {}).map(
+                            ([key, activity]) => (
+                              <div
+                                key={key}
+                                className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100"
+                              >
+                                <div className="text-gray-500 mb-1">
+                                  {activityIcons[key]}
+                                </div>
+                                <span
+                                  className={`text-sm font-bold ${getScoreColorText(
+                                    activity.percentage || 0,
+                                  )}`}
+                                >
+                                  {activity.percentage || 0}%
+                                </span>
+                                <span className="text-[9px] text-gray-400 capitalize">
+                                  {key}
+                                </span>
+                              </div>
+                            ),
+                          )}
+                        </div>
+                      </div>
+                      <div className="px-4 pb-4 pt-0 text-center">
+                        <p className="text-xs text-gray-400 font-medium">
+                          {teamData.coachPerformance.periodDiscipline?.onTimePosts || 0} on-time posts out of {teamData.coachPerformance.periodDiscipline?.expectedPosts || 0} expected
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.div>
+            )}
           </div>
         ) : (adminView === "allMembers") ? (
           /* Flat sorted list for All My Team */
