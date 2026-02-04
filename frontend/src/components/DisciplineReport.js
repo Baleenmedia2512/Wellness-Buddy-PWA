@@ -689,6 +689,47 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     });
   }, [allMembers, searchQuery, disciplineFilter, teamFilter, sortOrder, user?.id]);
 
+  // Filtered and sorted members for My Direct Team tab
+  const filteredDirectTeamMembers = React.useMemo(() => {
+    if (!teamData) return [];
+    
+    const directMembers = [];
+    if (teamData.coachPerformance) {
+      directMembers.push(teamData.coachPerformance);
+    }
+    if (teamData.teamMembers) {
+      directMembers.push(...teamData.teamMembers);
+    }
+    
+    // Apply search and discipline filters
+    const filtered = directMembers.filter(member => {
+      // Search filter
+      const matchesSearch = (member.userName || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (member.email || '').toLowerCase().includes(searchQuery.toLowerCase());
+
+      // Discipline score filter
+      const discipline = member.periodDiscipline?.percentage || 0;
+      let matchesDiscipline = true;
+      if (disciplineFilter === 'high') matchesDiscipline = discipline >= 80;
+      if (disciplineFilter === 'medium') matchesDiscipline = discipline >= 60 && discipline < 80;
+      if (disciplineFilter === 'low') matchesDiscipline = discipline < 60;
+
+      return matchesSearch && matchesDiscipline;
+    });
+
+    // Sort: You first, then by score
+    return filtered.sort((a, b) => {
+      // Logged-in coach always at top
+      if (a.isLoggedInCoach) return -1;
+      if (b.isLoggedInCoach) return 1;
+
+      // Sort by discipline score
+      const scoreA = a.periodDiscipline?.percentage || 0;
+      const scoreB = b.periodDiscipline?.percentage || 0;
+      return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
+    });
+  }, [teamData, searchQuery, disciplineFilter, sortOrder]);
+
   // Activity Icons Map
   const activityIcons = {
     weight: <Scale className="w-4 h-4" />,
@@ -1437,7 +1478,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           /* Flat Member List for My Direct Team */
           <div className="space-y-3">
             <AnimatePresence>
-              {allMembers.map((member) => (
+              {filteredDirectTeamMembers.map((member) => (
                 <motion.div
                   key={member.userId}
                   initial={{ opacity: 0, y: 10 }}
@@ -1575,7 +1616,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 </motion.div>
               ))}
             </AnimatePresence>
-            {allMembers.length === 0 && (
+            {filteredDirectTeamMembers.length === 0 && (
               <div className="text-center py-12">
                 <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                   <Search className="h-8 w-8 text-gray-300" />
