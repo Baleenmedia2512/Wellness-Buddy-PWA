@@ -657,7 +657,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       return matchesSearch && matchesDiscipline && matchesTeam;
     });
 
-    // Sort to create hierarchy: You → Co-Coaches → Members under each coach
+    // Sort to create hierarchy: You → Co-Coaches → Members (all sorted by score)
     return filtered.sort((a, b) => {
       // 1. Logged-in coach always at top
       if (a.isLoggedInCoach) return -1;
@@ -670,18 +670,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       if (aIsCoach && !bIsCoach) return -1;
       if (!aIsCoach && bIsCoach) return 1;
 
-      // 3. If both are coaches, sort by name
+      // 3. If both are coaches, sort by discipline score
       if (aIsCoach && bIsCoach) {
-        return (a.userName || '').localeCompare(b.userName || '');
+        const scoreA = a.periodDiscipline?.percentage || 0;
+        const scoreB = b.periodDiscipline?.percentage || 0;
+        return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
       }
 
-      // 4. For regular members, group by their upline coach
+      // 4. For regular members, sort by discipline score (no grouping by upline coach)
       if (!aIsCoach && !bIsCoach) {
-        // First sort by upline coach ID to group members together
-        if (a.uplineCoachId !== b.uplineCoachId) {
-          return (a.uplineCoachId || 0) - (b.uplineCoachId || 0);
-        }
-        // Within same coach's team, sort by discipline score
         const scoreA = a.periodDiscipline?.percentage || 0;
         const scoreB = b.periodDiscipline?.percentage || 0;
         return sortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
@@ -1121,8 +1118,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              All My Team ({allMembers.length})
-              {/* All Teams */}
+              All My Team {adminView === "allMembers" && `(${allMembers.length})`}
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={() => setAdminView("myTeam")}
@@ -1132,8 +1128,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              My Direct Team ({teamData?.teamSummary?.totalMembers || 0})
-              {/* My Team ({teamData?.teamSummary?.totalMembers || 0}) */}
+              My Direct Team {adminView === "myTeam" && `(${teamData?.teamSummary?.totalMembers || 0})`}
             </TouchFeedbackButton>
           </div>
 
@@ -1145,7 +1140,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               Loading team members...
             </span>
           </div>
-        ) : ((userRole === "admin" || userRole === "developer") && adminView === "allMembers") ? (
+        ) : (adminView === "allMembers") ? (
           /* Flat sorted list for All My Team */
           <div className="space-y-3">
             <AnimatePresence>
