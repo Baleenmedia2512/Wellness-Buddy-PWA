@@ -8,15 +8,17 @@
  */
 function normalizeFoodName(name) {
   if (!name) return "";
-  
-  return name
-    .toLowerCase()
-    .trim()
-    // Remove special characters but keep spaces
-    .replace(/[-–—_()[\]{}]/g, " ")
-    // Remove extra spaces
-    .replace(/\s+/g, " ")
-    .trim();
+
+  return (
+    name
+      .toLowerCase()
+      .trim()
+      // Remove special characters but keep spaces
+      .replace(/[-–—_()[\]{}]/g, " ")
+      // Remove extra spaces
+      .replace(/\s+/g, " ")
+      .trim()
+  );
 }
 
 /**
@@ -89,7 +91,9 @@ export default async function handler(req, res) {
       // 2. Global correction patterns (fetch all with timestamps for most recent)
       supabase
         .from("food_corrections_table")
-        .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"')
+        .select(
+          '"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"',
+        )
         .order('"LastCorrected"', { ascending: false }), // Most recent first
 
       // 3. User profile (diet preference)
@@ -112,15 +116,15 @@ export default async function handler(req, res) {
     // Process global patterns with MOST RECENT correction priority
     // Build map for each normalized AI detection -> list of all corrections
     const aiDetectionMap = new Map();
-    
+
     if (globalPatternsResult.data) {
       globalPatternsResult.data.forEach((row) => {
         const normalizedAi = normalizeFoodName(row.AiDetected);
-        
+
         if (!aiDetectionMap.has(normalizedAi)) {
           aiDetectionMap.set(normalizedAi, []);
         }
-        
+
         aiDetectionMap.get(normalizedAi).push({
           aiDetected: row.AiDetected,
           userCorrected: row.UserCorrected,
@@ -133,14 +137,14 @@ export default async function handler(req, res) {
 
     // For each AI detection, find the MOST RECENT correction
     const globalPatternsMap = new Map();
-    
+
     aiDetectionMap.forEach((corrections, normalizedAi) => {
       // Group by normalized corrected name to count users
       const correctionGroups = new Map();
-      
+
       corrections.forEach((corr) => {
         const normalizedCorrected = normalizeFoodName(corr.userCorrected);
-        
+
         if (!correctionGroups.has(normalizedCorrected)) {
           correctionGroups.set(normalizedCorrected, {
             ai_detected: corr.aiDetected,
@@ -151,22 +155,23 @@ export default async function handler(req, res) {
             lastCorrected: corr.lastCorrected,
           });
         }
-        
+
         const group = correctionGroups.get(normalizedCorrected);
         group.users.add(corr.userId);
         group.total_corrections += corr.timesCorrected;
-        
+
         // Keep most recent timestamp
         if (new Date(corr.lastCorrected) > new Date(group.lastCorrected)) {
           group.lastCorrected = corr.lastCorrected;
           group.user_corrected = corr.userCorrected; // Use most recent version
         }
       });
-      
+
       // Get the most recent correction (priority: most recent timestamp)
-      const mostRecentCorrection = Array.from(correctionGroups.values())
-        .sort((a, b) => new Date(b.lastCorrected) - new Date(a.lastCorrected))[0];
-      
+      const mostRecentCorrection = Array.from(correctionGroups.values()).sort(
+        (a, b) => new Date(b.lastCorrected) - new Date(a.lastCorrected),
+      )[0];
+
       if (mostRecentCorrection) {
         const key = `${normalizedAi}|${normalizeFoodName(mostRecentCorrection.user_corrected)}`;
         globalPatternsMap.set(key, mostRecentCorrection);
@@ -202,25 +207,20 @@ export default async function handler(req, res) {
     // Function to follow correction chain using normalized names
     const followCorrectionChain = (foodName, visited = new Set()) => {
       const normalizedName = normalizeFoodName(foodName);
-      
-      console.log(`🔗 [CHAIN] Following: "${foodName}" (normalized: "${normalizedName}")`);
-      
+
       // Prevent infinite loops
       if (visited.has(normalizedName)) {
-        console.log(`⚠️ [CHAIN] Loop detected, stopping at: "${foodName}"`);
         return foodName;
       }
       visited.add(normalizedName);
 
       const corrections = correctionChainMap.get(normalizedName);
       if (!corrections || corrections.length === 0) {
-        console.log(`✅ [CHAIN] End of chain: "${foodName}"`);
         return foodName;
       }
 
       // Get the most recent correction (first in sorted array)
       const mostRecentCorrection = corrections[0].target;
-      console.log(`➡️ [CHAIN] Next link: "${foodName}" → "${mostRecentCorrection}"`);
 
       // Recursively follow the chain
       return followCorrectionChain(mostRecentCorrection, visited);
