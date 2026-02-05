@@ -4,6 +4,25 @@ const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
 /**
+ * Normalize food name for comparison
+ * Handles variations like "Formula 1 - Chocolate" vs "Formula 1 Chocolate"
+ * @param {string} name - Food name to normalize
+ * @returns {string} Normalized food name
+ */
+const normalizeFoodName = (name) => {
+  if (!name) return "";
+  
+  return name
+    .toLowerCase()
+    .trim()
+    // Remove special characters but keep spaces
+    .replace(/[-–—_()[\]{}]/g, " ")
+    // Remove extra spaces
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+/**
  * Save a food correction to the database
  * @param {number} userId - User ID
  * @param {string} aiDetected - Food name detected by AI
@@ -102,26 +121,26 @@ export const applyUserCorrections = async (foods, userId) => {
     }
 
     console.log(
-      "🔄 [HYBRID] Starting hybrid correction process for userId:",
+      "🔄 [GLOBAL] Starting global correction process for userId:",
       userId,
     );
 
-    // Fetch user context (includes both personal + global corrections)
+    // Fetch user context (includes global corrections only)
     const context = await getUserContext(userId);
 
     if (!context) {
       console.log(
-        "⚠️ [HYBRID] No context available, using original AI detection",
+        "⚠️ [GLOBAL] No context available, using original AI detection",
       );
       return foods;
     }
 
-    // STEP 1: Build GLOBAL correction map (from community patterns)
+    // Build GLOBAL correction map (from community patterns)
     const globalCorrectionMap = new Map();
 
     if (context.globalPatterns && context.globalPatterns.length > 0) {
       context.globalPatterns.forEach((pattern) => {
-        const aiDetected = pattern.ai_detected.toLowerCase().trim();
+        const aiDetected = normalizeFoodName(pattern.ai_detected);
         globalCorrectionMap.set(aiDetected, {
           correctedName: pattern.user_corrected,
           userCount: pattern.user_count,
@@ -130,66 +149,23 @@ export const applyUserCorrections = async (foods, userId) => {
         });
       });
       console.log(
-        `🌍 [HYBRID] Loaded ${globalCorrectionMap.size} global patterns (3+ users)`,
+        `🌍 [GLOBAL] Loaded ${globalCorrectionMap.size} global patterns`,
       );
     } else {
-      console.log("🌍 [HYBRID] No global patterns available yet");
+      console.log("🌍 [GLOBAL] No global patterns available yet");
     }
 
-    // STEP 2: Build USER correction map (personal preferences - overrides global)
-    const userCorrectionMap = new Map();
-
-    if (context.personalCorrections && context.personalCorrections.length > 0) {
-      context.personalCorrections.forEach((correction) => {
-        const aiDetected = correction.ai_detected
-          ? correction.ai_detected.toLowerCase().trim()
-          : correction.AiDetected.toLowerCase().trim();
-        const userCorrected =
-          correction.user_corrected || correction.UserCorrected;
-        const timesCorrected =
-          correction.times_corrected || correction.TimesCorrected;
-
-        userCorrectionMap.set(aiDetected, {
-          correctedName: userCorrected,
-          timesCorrected: timesCorrected,
-          type: "user",
-        });
-      });
-      console.log(
-        `👤 [HYBRID] Loaded ${userCorrectionMap.size} personal corrections`,
-      );
-    } else {
-      console.log("👤 [HYBRID] No personal corrections found");
-    }
-
-    // STEP 3: Apply corrections with priority: User > Global > Original
-    // Global corrections now include single-user corrections (threshold = 1)
+    // Apply GLOBAL corrections only (no personal preferences)
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
-      const normalizedName = originalName.toLowerCase().trim();
+      const normalizedName = normalizeFoodName(originalName);
 
-      // Priority 1: User-specific correction (highest priority)
-      if (userCorrectionMap.has(normalizedName)) {
-        const correction = userCorrectionMap.get(normalizedName);
-        console.log(
-          `✅ [USER] "${originalName}" → "${correction.correctedName}" (your preference, used ${correction.timesCorrected}x)`,
-        );
-        return {
-          ...food,
-          name: correction.correctedName,
-          originalAiName: originalName,
-          wasAutoCorrected: true,
-          correctionType: "user",
-          correctionSource: `Your preference (used ${correction.timesCorrected}x)`,
-        };
-      }
-
-      // Priority 2: Global community correction (includes single-user corrections)
+      // Check global community correction
       if (globalCorrectionMap.has(normalizedName)) {
         const correction = globalCorrectionMap.get(normalizedName);
         const userLabel = correction.userCount === 1 ? '1 user' : `${correction.userCount} users`;
         console.log(
-          `✅ [GLOBAL] "${originalName}" → "${correction.correctedName}" (${userLabel}, ${correction.totalCorrections} correction${correction.totalCorrections > 1 ? 's' : ''})`,
+          `✅ [GLOBAL] "${originalName}" → "${correction.correctedName}" (${userLabel}, MOST RECENT override)`,
         );
         return {
           ...food,
@@ -197,34 +173,29 @@ export const applyUserCorrections = async (foods, userId) => {
           originalAiName: originalName,
           wasAutoCorrected: true,
           correctionType: "global",
-          correctionSource: `Community (${userLabel})`,
+          correctionSource: `Community (${userLabel}, latest)`,
         };
       }
 
-      // Priority 3: No correction, use original AI detection
+      // No correction, use original AI detection
       console.log(`⚪ [NO MATCH] "${originalName}" (keeping AI detection)`);
       return food;
     });
 
     // Summary statistics
-    const userCorrectedCount = correctedFoods.filter(
-      (f) => f.correctionType === "user",
-    ).length;
     const globalCorrectedCount = correctedFoods.filter(
       (f) => f.correctionType === "global",
     ).length;
-    const totalCorrectedCount = userCorrectedCount + globalCorrectedCount;
 
-    if (totalCorrectedCount > 0) {
+    if (globalCorrectedCount > 0) {
       console.log(
-        `🎯 [HYBRID] Applied ${totalCorrectedCount} corrections (${userCorrectedCount} personal, ${globalCorrectedCount} community)`,
+        `🎯 [GLOBAL] Applied ${globalCorrectedCount} community corrections`,
       );
-      console.log("\n📋 ========== HYBRID CORRECTION SUMMARY ==========");
+      console.log("\n📋 ========== GLOBAL CORRECTION SUMMARY ==========");
       correctedFoods.forEach((food, index) => {
         if (food.wasAutoCorrected) {
-          const icon = food.correctionType === "user" ? "👤" : "🌍";
           console.log(
-            `${index + 1}. ${icon} "${food.originalAiName}" → "${food.name}" [${
+            `${index + 1}. 🌍 "${food.originalAiName}" → "${food.name}" [${
               food.correctionSource
             }]`,
           );
@@ -235,13 +206,13 @@ export const applyUserCorrections = async (foods, userId) => {
       console.log("=================================================\n");
     } else {
       console.log(
-        "📝 [HYBRID] No corrections applied, using all AI detections",
+        "📝 [GLOBAL] No corrections applied, using all AI detections",
       );
     }
 
     return correctedFoods;
   } catch (error) {
-    console.error("❌ [HYBRID] Error applying corrections:", error);
+    console.error("❌ [GLOBAL] Error applying corrections:", error);
     // Fallback: Return original foods if correction fails
     return foods;
   }
@@ -324,7 +295,7 @@ export const applyGlobalAutoCorrections = async (foods) => {
 
     // Helper function to follow correction chains
     const followCorrectionChain = (foodName, visited = new Set()) => {
-      const normalizedName = foodName.toLowerCase().trim();
+      const normalizedName = normalizeFoodName(foodName);
 
       // Prevent infinite loops
       if (visited.has(normalizedName)) {

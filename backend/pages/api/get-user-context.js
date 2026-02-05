@@ -1,6 +1,25 @@
 ﻿import { getSupabaseClient } from "../../utils/supabaseClient.js";
 
 /**
+ * Normalize food name for comparison
+ * Handles variations like "Formula 1 - Chocolate" vs "Formula 1 Chocolate"
+ * @param {string} name - Food name to normalize
+ * @returns {string} Normalized food name
+ */
+function normalizeFoodName(name) {
+  if (!name) return "";
+  
+  return name
+    .toLowerCase()
+    .trim()
+    // Remove special characters but keep spaces
+    .replace(/[-–—_()[\]{}]/g, " ")
+    // Remove extra spaces
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Get User Context API
  * Fetches personalized context for AI: user corrections, global patterns, diet preference, recent meals
  * Optimized single-call API for app startup
@@ -67,11 +86,11 @@ export default async function handler(req, res) {
         .order('"LastCorrected"', { ascending: false })
         .limit(10),
 
-      // 2. Global correction patterns (TOP 5 by total users)
-      // Note: Supabase doesn't support complex aggregations easily, so we'll fetch and process
+      // 2. Global correction patterns (fetch all with timestamps for most recent)
       supabase
         .from("food_corrections_table")
-        .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected"'),
+        .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"')
+        .order('"LastCorrected"', { ascending: false }), // Most recent first
 
       // 3. User profile (diet preference)
       supabase
@@ -90,73 +109,133 @@ export default async function handler(req, res) {
         .limit(3),
     ]);
 
-    // Process global patterns (aggregate in JavaScript)
-    const globalPatternsMap = new Map();
+    // Process global patterns with MOST RECENT correction priority
+    // Build map for each normalized AI detection -> list of all corrections
+    const aiDetectionMap = new Map();
+    
     if (globalPatternsResult.data) {
       globalPatternsResult.data.forEach((row) => {
-        const key = `${row.AiDetected}|${row.UserCorrected}`;
-        if (!globalPatternsMap.has(key)) {
-          globalPatternsMap.set(key, {
-            ai_detected: row.AiDetected,
-            user_corrected: row.UserCorrected,
-            users: new Set(),
-            total_corrections: 0,
-          });
+        const normalizedAi = normalizeFoodName(row.AiDetected);
+        
+        if (!aiDetectionMap.has(normalizedAi)) {
+          aiDetectionMap.set(normalizedAi, []);
         }
-        const pattern = globalPatternsMap.get(key);
-        pattern.users.add(row.UserId);
-        pattern.total_corrections += row.TimesCorrected || 1;
+        
+        aiDetectionMap.get(normalizedAi).push({
+          aiDetected: row.AiDetected,
+          userCorrected: row.UserCorrected,
+          userId: row.UserId,
+          timesCorrected: row.TimesCorrected || 1,
+          lastCorrected: row.LastCorrected,
+        });
       });
     }
 
+    // For each AI detection, find the MOST RECENT correction
+    const globalPatternsMap = new Map();
+    
+    aiDetectionMap.forEach((corrections, normalizedAi) => {
+      // Group by normalized corrected name to count users
+      const correctionGroups = new Map();
+      
+      corrections.forEach((corr) => {
+        const normalizedCorrected = normalizeFoodName(corr.userCorrected);
+        
+        if (!correctionGroups.has(normalizedCorrected)) {
+          correctionGroups.set(normalizedCorrected, {
+            ai_detected: corr.aiDetected,
+            user_corrected: corr.userCorrected,
+            normalized_ai: normalizedAi,
+            users: new Set(),
+            total_corrections: 0,
+            lastCorrected: corr.lastCorrected,
+          });
+        }
+        
+        const group = correctionGroups.get(normalizedCorrected);
+        group.users.add(corr.userId);
+        group.total_corrections += corr.timesCorrected;
+        
+        // Keep most recent timestamp
+        if (new Date(corr.lastCorrected) > new Date(group.lastCorrected)) {
+          group.lastCorrected = corr.lastCorrected;
+          group.user_corrected = corr.userCorrected; // Use most recent version
+        }
+      });
+      
+      // Get the most recent correction (priority: most recent timestamp)
+      const mostRecentCorrection = Array.from(correctionGroups.values())
+        .sort((a, b) => new Date(b.lastCorrected) - new Date(a.lastCorrected))[0];
+      
+      if (mostRecentCorrection) {
+        const key = `${normalizedAi}|${normalizeFoodName(mostRecentCorrection.user_corrected)}`;
+        globalPatternsMap.set(key, mostRecentCorrection);
+      }
+    });
+
     // Build correction chain map for following corrections
-    // Example: Juice → Milk, Milk → Tea = Juice should show Tea
+    // Example: "Formula 1 Chocolate" → "Boost" → "Horlicks"
+    // When AI detects "Formula 1 Chocolate", it follows chain to show "Horlicks"
     const correctionChainMap = new Map();
     globalPatternsMap.forEach((pattern) => {
-      if (!correctionChainMap.has(pattern.ai_detected)) {
-        correctionChainMap.set(pattern.ai_detected, []);
+      const normalizedAi = pattern.normalized_ai;
+      if (!correctionChainMap.has(normalizedAi)) {
+        correctionChainMap.set(normalizedAi, []);
       }
-      correctionChainMap.get(pattern.ai_detected).push({
+      correctionChainMap.get(normalizedAi).push({
         target: pattern.user_corrected,
+        normalized_target: normalizeFoodName(pattern.user_corrected),
         total_corrections: pattern.total_corrections,
         user_count: pattern.users.size,
+        lastCorrected: pattern.lastCorrected,
       });
     });
 
-    // Sort each correction group by priority (most corrections first)
+    // Sort each correction group by most recent first
     correctionChainMap.forEach((corrections, key) => {
       corrections.sort((a, b) => {
-        if (b.total_corrections !== a.total_corrections)
-          return b.total_corrections - a.total_corrections;
-        return b.user_count - a.user_count;
+        // Sort by most recent timestamp
+        return new Date(b.lastCorrected) - new Date(a.lastCorrected);
       });
     });
 
-    // Function to follow correction chain
+    // Function to follow correction chain using normalized names
     const followCorrectionChain = (foodName, visited = new Set()) => {
+      const normalizedName = normalizeFoodName(foodName);
+      
+      console.log(`🔗 [CHAIN] Following: "${foodName}" (normalized: "${normalizedName}")`);
+      
       // Prevent infinite loops
-      if (visited.has(foodName)) return foodName;
-      visited.add(foodName);
+      if (visited.has(normalizedName)) {
+        console.log(`⚠️ [CHAIN] Loop detected, stopping at: "${foodName}"`);
+        return foodName;
+      }
+      visited.add(normalizedName);
 
-      const corrections = correctionChainMap.get(foodName);
-      if (!corrections || corrections.length === 0) return foodName;
+      const corrections = correctionChainMap.get(normalizedName);
+      if (!corrections || corrections.length === 0) {
+        console.log(`✅ [CHAIN] End of chain: "${foodName}"`);
+        return foodName;
+      }
 
-      // Get the most popular correction
-      const bestCorrection = corrections[0].target;
+      // Get the most recent correction (first in sorted array)
+      const mostRecentCorrection = corrections[0].target;
+      console.log(`➡️ [CHAIN] Next link: "${foodName}" → "${mostRecentCorrection}"`);
 
       // Recursively follow the chain
-      return followCorrectionChain(bestCorrection, visited);
+      return followCorrectionChain(mostRecentCorrection, visited);
     };
 
     // Build final global patterns with chaining applied
     const finalGlobalPatterns = new Map();
     globalPatternsMap.forEach((pattern) => {
       const originalAiDetected = pattern.ai_detected;
+      const normalizedAiDetected = pattern.normalized_ai;
       const finalCorrection = followCorrectionChain(originalAiDetected);
 
       // Only add if the chain actually leads to a different result
-      if (finalCorrection !== originalAiDetected) {
-        const key = `${originalAiDetected}|${finalCorrection}`;
+      if (normalizeFoodName(finalCorrection) !== normalizedAiDetected) {
+        const key = `${normalizedAiDetected}|${normalizeFoodName(finalCorrection)}`;
         if (!finalGlobalPatterns.has(key)) {
           finalGlobalPatterns.set(key, {
             ai_detected: originalAiDetected,
@@ -172,8 +251,7 @@ export default async function handler(req, res) {
       }
     });
 
-    // Convert to array and filter by user count >= 1 (ANY correction becomes global)
-    // This allows correction chaining: juice → milk → tea = juice shows tea
+    // Convert to array with full chain following enabled
     const globalPatterns = Array.from(finalGlobalPatterns.values())
       .filter((p) => p.user_count >= 1) // Single user corrections affect all users
       .sort((a, b) => {
@@ -182,7 +260,7 @@ export default async function handler(req, res) {
           return b.total_corrections - a.total_corrections;
         return b.user_count - a.user_count;
       })
-      .slice(0, 20); // Top 20 patterns
+      .slice(0, 100); // Top 100 patterns for full chain coverage
 
     // Parse recent meals to extract food names
     const recentMeals = (recentMealsResult.data || [])
