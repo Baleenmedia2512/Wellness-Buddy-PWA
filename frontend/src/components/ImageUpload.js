@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import TouchFeedbackButton from './TouchFeedbackButton';
 
-const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null }, ref) => {
+const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null, detectedFoodNames = [] }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const fallbackInputRef = useRef(null);
@@ -263,6 +263,31 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
                           </motion.p>
                         </AnimatePresence>
                       </div>
+
+                      {/* AI Detected Food Names - Show during analyzing phase for food images */}
+                      {loadingState === 'analyzing' && imageType === 'food' && detectedFoodNames.length > 0 && (
+                        <motion.div 
+                          initial={{ opacity: 0, scale: 0.9 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          transition={{ duration: 0.3 }}
+                          className="mt-4 bg-white/20 backdrop-blur-md rounded-lg p-3 border border-white/30"
+                        >
+                          <p className="text-xs text-white/70 mb-2 font-semibold">🤖 AI Detected:</p>
+                          <div className="flex flex-wrap gap-2 justify-center">
+                            {detectedFoodNames.map((name, index) => (
+                              <motion.span
+                                key={index}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ delay: index * 0.1 }}
+                                className="bg-green-500/80 text-white text-xs px-3 py-1 rounded-full font-medium shadow-lg"
+                              >
+                                {name}
+                              </motion.span>
+                            ))}
+                          </div>
+                        </motion.div>
+                      )}
 
                       <div className="flex justify-center space-x-2 mt-6">
                         <div className="w-2 h-2 bg-white/60 backdrop-blur-sm rounded-full animate-bounce shadow-lg"></div>

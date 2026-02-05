@@ -31,14 +31,32 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64 } = req.body;
+  const { userId, imagePath, analysisResult, timestamp, deviceInfo, ImageBase64, userEmail } = req.body;
+  
+  // Extract food names from analysis for logging
+  let detectedFoodNames = [];
+  try {
+    const analysis = typeof analysisResult === 'string' ? JSON.parse(analysisResult) : analysisResult;
+    if (analysis.foods && Array.isArray(analysis.foods)) {
+      detectedFoodNames = analysis.foods.map(f => f.name || 'Unknown');
+    }
+  } catch (e) {
+    // Ignore parsing errors for now
+  }
+  
   console.log('📝 [save-background-analysis] Request data:', { 
     userId, 
+    userEmail: userEmail || 'N/A',
     imagePath, 
     hasAnalysisResult: !!analysisResult,
     deviceInfo,
     hasImageBase64: !!ImageBase64
   });
+  
+  // 🍽️ LOG USER + DETECTED FOODS
+  if (detectedFoodNames.length > 0) {
+    console.log(`🍽️ [USER-UPLOAD] ${userEmail || userId} uploaded image with AI-detected foods: ${detectedFoodNames.join(', ')}`);
+  }
 
   if (!userId || !imagePath || !analysisResult) {
     console.log('❌ [save-background-analysis] Missing required fields:', { userId: !!userId, imagePath: !!imagePath, analysisResult: !!analysisResult });
@@ -72,6 +90,10 @@ export default async function handler(req, res) {
     
     try {
       const analysis = typeof analysisResult === 'string' ? JSON.parse(analysisResult) : analysisResult;
+      
+      // Extract food names for detailed logging
+      const foodNames = analysis.foods?.map(f => f.name) || [];
+      
       console.log('📊 [save-background-analysis] Parsed analysis:', { 
         hasFoods: !!analysis.foods, 
         foodsLength: analysis.foods?.length,
@@ -79,6 +101,16 @@ export default async function handler(req, res) {
         hasNutrition: !!analysis.nutrition,
         confidence: analysis.confidence
       });
+      
+      // 🍽️ DETAILED FOOD DETECTION LOG
+      if (foodNames.length > 0) {
+        console.log(`🍽️ [AI-DETECTION-CONFIRMED] User: ${userEmail || userId}`);
+        console.log(`🍽️ [AI-DETECTION-CONFIRMED] Detected ${foodNames.length} food item(s): ${foodNames.join(', ')}`);
+        foodNames.forEach((name, index) => {
+          const food = analysis.foods[index];
+          console.log(`   ${index + 1}. ${name} - ${food.portion || 'portion unknown'} (${food.nutrition?.calories || 0} cal)`);
+        });
+      }
       
       // Check if this is from background service (has foods array with total)
       if (analysis.foods && analysis.foods.length > 0 && analysis.total) {
@@ -178,6 +210,11 @@ export default async function handler(req, res) {
     }
 
     console.log('✅ [save-background-analysis] Successfully saved to database, ID:', data?.ID);
+    
+    // 🎉 SUCCESS LOG WITH USER + FOODS
+    if (detectedFoodNames.length > 0) {
+      console.log(`🎉 [SAVE-SUCCESS] User: ${userEmail || userId} | Foods: ${detectedFoodNames.join(', ')} | Calories: ${totalCalories || 0}`);
+    }
 
     res.status(200).json({
       success: true,

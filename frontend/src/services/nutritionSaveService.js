@@ -97,12 +97,13 @@ export async function lookupUserId(email) {
  * Accepts imageBase64 (data URL or raw base64) and sends it to the backend as ImageBase64
  * Returns: { success, id, ... }
  */
-export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo }) {
+export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   
   try {
     // Always lookup the real UserID from team_table
     let actualUserId = userId;
+    let actualUserEmail = userEmail; // Store email for logging
     
     // If userId looks like an email, lookup the team_table UserID
     if (userId && userId.includes('@')) {
@@ -133,7 +134,14 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
     const res = await fetch(`${apiBaseUrl}/api/save-background-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId: actualUserId, imagePath, ImageBase64: imageBase64, analysisResult: transformedAnalysisResult, deviceInfo })
+      body: JSON.stringify({ 
+        userId: actualUserId, 
+        imagePath, 
+        ImageBase64: imageBase64, 
+        analysisResult: transformedAnalysisResult, 
+        deviceInfo,
+        userEmail: actualUserEmail // Include email for backend logging
+      })
     });
     
     // Check if response is JSON before parsing

@@ -73,6 +73,7 @@ function WellnessValleyApp() {
   const [savedNutritionMealId, setSavedNutritionMealId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingState, setLoadingState] = useState("analyzing"); // 'analyzing' | 'saving'
+  const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
@@ -1272,6 +1273,7 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setImageType(null);
     setSaveError(null);
+    setDetectedFoodNames([]); // Clear previous detection
     setLoadingState("analyzing"); // Reset to analyzing state
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
@@ -1333,6 +1335,13 @@ function WellnessValleyApp() {
         hasFoods: detectedType.details?.foods?.length || 0,
         fullResponse: detectedType
       });
+
+      // 🍽️ Early detection: If food items detected, show them immediately
+      if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
+        const foodNames = detectedType.details.foods.map(f => f.name);
+        console.log('🍽️ [AI-DETECTED] Food items identified:', foodNames.join(', '));
+        setDetectedFoodNames(foodNames);
+      }
 
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
       if (detectedType.type === "education" && detectedType.confidence > 0.7) {
@@ -1466,6 +1475,11 @@ function WellnessValleyApp() {
           console.log("✅ Using nutrition data from unified detection");
 
           let foods = detectedType.details.foods;
+          
+          // 🎯 Update detected food names for display
+          const foodNames = foods.map(f => f.name);
+          setDetectedFoodNames(foodNames);
+          console.log('🍽️ [AI-DETECTED] Food names:', foodNames.join(', '));
 
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
           console.log("📋 [CORRECTION] Starting auto-correction process...");
@@ -1608,6 +1622,7 @@ function WellnessValleyApp() {
                 imageBase64: processedImage,
                 analysisResult: result,
                 deviceInfo: window.navigator.userAgent,
+                userEmail: user?.email || user?.Email || 'unknown'
               });
               return;
             }
@@ -1624,6 +1639,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1648,6 +1664,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1663,6 +1680,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1677,6 +1695,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             setShowDuplicateModal(true);
             setSaveLoading(false);
@@ -1688,6 +1707,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
           }
         } catch (err) {
@@ -2311,6 +2331,7 @@ function WellnessValleyApp() {
           loading={loading}
           loadingState={loadingState}
           imageType={imageType}
+          detectedFoodNames={detectedFoodNames}
           ref={fileInputRef}
         />
 
