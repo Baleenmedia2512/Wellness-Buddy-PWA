@@ -118,57 +118,27 @@ export default async function handler(req, res) {
         .sort((a, b) => new Date(b.lastCorrected) - new Date(a.lastCorrected))[0];
       
       if (mostRecentCorrection) {
-        const key = `${normalizedAi}|${normalizeFoodName(mostRecentCorrection.userCorrected)}`;
-        correctionMap.set(key, mostRecentCorrection);
+        // Store with normalizedAi as key (DIRECT correction only)
+        correctionMap.set(normalizedAi, mostRecentCorrection);
       }
     });
 
-    // Build correction chain map for following corrections
-    // Example: "Formula 1 Chocolate" → "Boost" → "Horlicks"
-    const correctionChainMap = new Map();
-    correctionMap.forEach((pattern, key) => {
-      const normalizedAi = normalizeFoodName(pattern.aiDetected);
-      if (!correctionChainMap.has(normalizedAi)) {
-        correctionChainMap.set(normalizedAi, []);
-      }
-      correctionChainMap.get(normalizedAi).push({
-        target: pattern.userCorrected,
-        normalized_target: normalizeFoodName(pattern.userCorrected),
-        lastCorrected: pattern.lastCorrected,
-      });
+    console.log("\n📋 [CORRECTIONS] Direct corrections from database:");
+    correctionMap.forEach((correction, aiName) => {
+      console.log(`   "${aiName}" → "${correction.userCorrected}" (${correction.users.size} user(s))`);
     });
 
-    // Sort each correction group by most recent
-    correctionChainMap.forEach((corrections) => {
-      corrections.sort((a, b) => new Date(b.lastCorrected) - new Date(a.lastCorrected));
-    });
-
-    // Function to follow correction chain
-    const followCorrectionChain = (foodName, visited = new Set()) => {
-      const normalizedName = normalizeFoodName(foodName);
-      
-      if (visited.has(normalizedName)) return foodName;
-      visited.add(normalizedName);
-
-      const corrections = correctionChainMap.get(normalizedName);
-      if (!corrections || corrections.length === 0) return foodName;
-
-      const mostRecentCorrection = corrections[0].target;
-      return followCorrectionChain(mostRecentCorrection, visited);
-    };
-
-    // Apply chain following to all patterns
+    // Use direct corrections only (NO chain following)
+    console.log("\n🎯 [DIRECT-CORRECTIONS] Using DIRECT corrections only (NO chain following):");
     const finalCorrectionMap = new Map();
-    correctionMap.forEach((pattern) => {
-      const normalizedAi = normalizeFoodName(pattern.aiDetected);
-      const finalCorrection = followCorrectionChain(pattern.aiDetected);
+    correctionMap.forEach((pattern, normalizedAi) => {
+      console.log(`\n📍 Direct correction: "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
       
-      // Only add if chain leads to different result
-      if (normalizeFoodName(finalCorrection) !== normalizedAi) {
-        finalCorrectionMap.set(normalizedAi, {
-          ...pattern,
-          userCorrected: finalCorrection, // Use final chain result
-        });
+      // Add direct correction (no chain following)
+      if (normalizeFoodName(pattern.userCorrected) !== normalizedAi) {
+        finalCorrectionMap.set(normalizedAi, pattern);
+      } else {
+        console.log(`   ⊘ Skipped (AI name matches correction)`);
       }
     });
 
@@ -210,6 +180,18 @@ export default async function handler(req, res) {
         };
       }
     });
+
+    // Debug: Log the final lookup map
+    console.log("\n📋 [FINAL-LOOKUP] Correction lookup map being sent to frontend:");
+    console.table(
+      Object.entries(correctionLookup).map(([ai, correction]) => ({
+        'AI Detected': ai,
+        'Will Show': correction.correctedName,
+        'Users': correction.userCount,
+        'Corrections': correction.totalCorrections
+      }))
+    );
+    console.log(`\n✅ Returning ${Object.keys(correctionLookup).length} corrections to frontend\n`);
 
     res.status(200).json({
       success: true,

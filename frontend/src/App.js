@@ -131,6 +131,10 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
+  // 🐛 Food Correction Debug Logs State
+  const [correctionLogs, setCorrectionLogs] = useState([]);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
   // // Make a compact, user-friendly title from foods[]
@@ -204,6 +208,26 @@ function WellnessValleyApp() {
     setToast({ message, visible: true });
     setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
+
+  // 🐛 Keyboard shortcut for closing correction modal (ESC key on web)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showCorrectionModal) {
+        setShowCorrectionModal(false);
+      }
+    };
+
+    if (showCorrectionModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      // Prevent body scroll when modal is open (web only)
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [showCorrectionModal]);
 
   // ✅ CRITICAL FIX: Force splash screen dismissal on app load
 
@@ -1497,6 +1521,24 @@ function WellnessValleyApp() {
               //   correctedFoods.map((f) => f.name),
               // );
               foods = correctedFoods;
+              
+              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
+              const newLogs = correctedFoods.map(food => ({
+                timestamp: new Date().toISOString(),
+                aiDetected: food.originalAiName || food.name,
+                userCorrected: food.name,
+                finalDisplay: food.name,
+                wasAutoCorrected: food.wasAutoCorrected || false,
+                correctionSource: food.correctionSource || null,
+                userCount: food.correctionMetadata?.userCount || 0,
+                portion: food.portion || 'N/A',
+                calories: food.nutrition?.calories || 0,
+              }));
+              
+              if (newLogs.length > 0) {
+                setCorrectionLogs(prev => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
+                console.log('🐛 [DEBUG-LOGS] Captured', newLogs.length, 'food detection(s)');
+              }
             } else {
               console.warn(
                 "⚠️ [CORRECTION] No userId available, skipping corrections",
@@ -2607,6 +2649,207 @@ function WellnessValleyApp() {
             onLogout={handleSignOut}
           />
         </Suspense>
+      )}
+
+      {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
+      {user && (
+        <button
+          onClick={() => setShowCorrectionModal(true)}
+          disabled={correctionLogs.length === 0}
+          className={`fixed bottom-24 right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
+            correctionLogs.length > 0 
+              ? 'bg-orange-500 hover:bg-orange-600 hover:shadow-xl active:scale-95 hover:scale-110 cursor-pointer' 
+              : 'bg-gray-400 cursor-not-allowed opacity-50'
+          }`}
+          title={correctionLogs.length > 0 ? "View food correction logs" : "No correction logs yet"}
+          aria-label="View food correction logs"
+        >
+          <Bug className="w-6 h-6" />
+          {correctionLogs.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+              {correctionLogs.length}
+            </span>
+          )}
+        </button>
+      )}
+
+      {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
+      {showCorrectionModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCorrectionModal(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 md:p-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Bug className="w-6 h-6 md:w-8 md:h-8" />
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold">Food Correction Logs</h2>
+                  <p className="text-orange-100 text-xs md:text-sm">
+                    AI Detection vs User Corrections ({correctionLogs.length} entries)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCorrectionModal(false)}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
+                aria-label="Close modal"
+              >
+                <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-900">
+              {correctionLogs.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Bug className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                  <p className="text-lg font-semibold">No correction logs yet</p>
+                  <p className="text-sm">Upload food images to see correction logs</p>
+                </div>
+              ) : (
+                correctionLogs.map((log, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-950 rounded-lg p-4 md:p-5 border border-gray-700 font-mono text-xs md:text-sm"
+                  >
+                    {/* Timestamp Header */}
+                    <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
+                      <span className="text-blue-400">📅 {new Date(log.timestamp).toLocaleString()}</span>
+                      {log.wasAutoCorrected && (
+                        <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
+                          ✅ AUTO-CORRECTED
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Main Correction Flow Box */}
+                    <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
+                      <div className="text-blue-400 font-bold mb-2">
+                        ╔════════════════════════════════════════════════════════════════
+                      </div>
+                      <div className="text-blue-400 font-bold mb-1">
+                        ║ 🔄 FOOD CORRECTION FLOW
+                      </div>
+                      <div className="text-blue-400 font-bold mb-2">
+                        ╠════════════════════════════════════════════════════════════════
+                      </div>
+                      
+                      <div className="text-white mb-1">
+                        <span className="text-gray-400">║</span> 🤖 <span className="text-cyan-400">AI Detected Name:</span>
+                        <span className="ml-4 text-yellow-300">"{log.aiDetected}"</span>
+                      </div>
+                      
+                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+                        <div className="text-white mb-2">
+                          <span className="text-gray-400">║</span> ✓ <span className="text-cyan-400">Status:</span>
+                          <span className="ml-2 text-green-300">No Correction - User accepted AI suggestion</span>
+                        </div>
+                      ) : (
+                        <div className="text-white mb-2">
+                          <span className="text-gray-400">║</span> 👤 <span className="text-cyan-400">User Corrected To:</span>
+                          <span className="ml-2 text-green-300">"{log.userCorrected}"</span>
+                        </div>
+                      )}
+                      
+                      <div className="text-white mb-2">
+                        <span className="text-gray-400">║</span> 📊 <span className="text-cyan-400">Final Display Name:</span>
+                        <span className="ml-2 text-green-300">"{log.finalDisplay}"</span>
+                      </div>
+                      
+                      <div className="text-blue-400 font-bold">
+                        ╚════════════════════════════════════════════════════════════════
+                      </div>
+                    </div>
+
+                    {/* Individual Console Logs */}
+                    <div className="space-y-1 text-gray-300">
+                      <div>
+                        <span className="text-blue-400">🤖 [AI-DETECTED]</span> 
+                        <span className="ml-2">Original: <span className="text-yellow-300">{log.aiDetected}</span></span>
+                      </div>
+                      
+                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+                        <div>
+                          <span className="text-green-400">✓ [NO-CORRECTION]</span> 
+                          <span className="ml-2">User accepted AI suggestion</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-green-400">👤 [USER-CORRECTED]</span> 
+                          <span className="ml-2">Mapped to: <span className="text-green-300">{log.userCorrected}</span></span>
+                        </div>
+                      )}
+                      
+                      <div>
+                        <span className="text-purple-400">📊 [FINAL-DISPLAY]</span> 
+                        <span className="ml-2">Will show: <span className="text-green-300">{log.finalDisplay}</span></span>
+                      </div>
+                    </div>
+
+                    {/* Structured Data Object */}
+                    <div className="mt-3 pt-3 border-t border-gray-700">
+                      <div className="text-gray-400">[CORRECTION-DATA]</div>
+                      <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
+{JSON.stringify({
+  aiDetected: log.aiDetected,
+  userCorrected: log.userCorrected,
+  finalDisplay: log.finalDisplay,
+  userCount: log.userCount,
+  portion: log.portion,
+  calories: log.calories,
+  timestamp: log.timestamp
+}, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 border-t">
+              <button
+                onClick={() => {
+                  setCorrectionLogs([]);
+                  setShowCorrectionModal(false);
+                }}
+                className="text-sm text-red-600 hover:text-red-700 font-semibold hover:underline transition-colors order-2 sm:order-1"
+              >
+                Clear All Logs
+              </button>
+              <div className="flex gap-2 order-1 sm:order-2">
+                <button
+                  onClick={() => {
+                    // Copy logs to clipboard for web users
+                    const logText = correctionLogs.map(log => 
+                      `${new Date(log.timestamp).toLocaleString()}\n` +
+                      `AI: ${log.aiDetected} → Corrected: ${log.userCorrected} → Final: ${log.finalDisplay}\n` +
+                      `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`
+                    ).join('\n');
+                    navigator.clipboard?.writeText(logText)
+                      .then(() => alert('Logs copied to clipboard!'))
+                      .catch(() => console.log('Copy not supported'));
+                  }}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
+                >
+                  📋 Copy Logs
+                </button>
+                <button
+                  onClick={() => setShowCorrectionModal(false)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

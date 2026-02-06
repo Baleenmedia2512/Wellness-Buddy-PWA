@@ -175,11 +175,80 @@ export default async function handler(req, res) {
               if (correctionSource) {
                 console.log(`      ℹ️ ${correctionSource}`);
               }
+              
+              // ============================================
+              // 📋 DETAILED CORRECTION LOG (FULL CHAIN)
+              // ============================================
+              console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🔄 FOOD CORRECTION FLOW (FULL CHAIN)
+╠════════════════════════════════════════════════════════════════
+║ 🤖 AI Detected Name:      "${originalAiDetected}"
+║ 🔄 Auto-Corrected To:     "${currentName}"
+║ 👤 User Corrected To:     "${userCorrected}"
+║ 📊 Final Display Name:    "${userCorrected}"
+╠════════════════════════════════════════════════════════════════
+║ 📈 Stats:
+║    - Auto-Correction: ${correctionSource || 'Applied'}
+║    - User Override: Yes (manual correction)
+║    - Portion: ${portion}
+║    - Calories: ${calories} cal
+╚════════════════════════════════════════════════════════════════
+              `);
+              
+              console.log(`🤖 [AI-DETECTED] Original: ${originalAiDetected}`);
+              console.log(`🔄 [AUTO-CORRECTED] First mapped to: ${currentName}`);
+              console.log(`👤 [USER-CORRECTED] Then user changed to: ${userCorrected}`);
+              console.log(`📊 [FINAL-DISPLAY] Will show: ${userCorrected}`);
+              console.log(`📦 [PORTION] ${portion}`);
+              console.log(`🔥 [CALORIES] ${calories} cal`);
+              
+              console.log('[CORRECTION-DATA]', {
+                aiDetected: originalAiDetected,
+                autoCorrected: currentName,
+                userCorrected: userCorrected,
+                finalDisplay: userCorrected,
+                source: correctionSource,
+                portion: portion,
+                calories: calories,
+                timestamp: new Date().toISOString()
+              });
             } else {
               // Only user correction (no auto-correction)
               console.log(
                 `   ${index + 1}. 🔄 AI: "${originalAiDetected}" → User: "${userCorrected}"`,
               );
+              
+              console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🔄 FOOD CORRECTION FLOW
+╠════════════════════════════════════════════════════════════════
+║ 🤖 AI Detected Name:     "${originalAiDetected}"
+║ 👤 User Corrected To:    "${userCorrected}"
+║ 📊 Final Display Name:   "${userCorrected}"
+╠════════════════════════════════════════════════════════════════
+║ 📈 Stats:
+║    - Auto-Correction: No
+║    - User Override: Yes (manual correction)
+║    - Portion: ${portion}
+║    - Calories: ${calories} cal
+╚════════════════════════════════════════════════════════════════
+              `);
+              
+              console.log(`🤖 [AI-DETECTED] Original: ${originalAiDetected}`);
+              console.log(`👤 [USER-CORRECTED] User changed to: ${userCorrected}`);
+              console.log(`📊 [FINAL-DISPLAY] Will show: ${userCorrected}`);
+              console.log(`📦 [PORTION] ${portion}`);
+              console.log(`🔥 [CALORIES] ${calories} cal`);
+              
+              console.log('[CORRECTION-DATA]', {
+                aiDetected: originalAiDetected,
+                userCorrected: userCorrected,
+                finalDisplay: userCorrected,
+                portion: portion,
+                calories: calories,
+                timestamp: new Date().toISOString()
+              });
             }
           } else if (wasAutoCorrected && originalAiDetected !== currentName) {
             // Only auto-corrected (no user correction)
@@ -189,13 +258,77 @@ export default async function handler(req, res) {
             if (correctionSource) {
               console.log(`      ℹ️ ${correctionSource}`);
             }
+            
+            // ============================================
+            // 📋 DETAILED BACKEND CORRECTION LOG
+            // ============================================
+            console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🔄 FOOD CORRECTION FLOW
+╠════════════════════════════════════════════════════════════════
+║ 🤖 AI Detected Name:    "${originalAiDetected}"
+║ 👤 User Corrected To:   "${currentName}"
+║ 📊 Final Display Name:  "${currentName}"
+╠════════════════════════════════════════════════════════════════
+║ 📈 Stats:
+║    - Correction Source: ${correctionSource || 'Auto-correction applied'}
+║    - Portion: ${portion}
+║    - Calories: ${calories} cal
+╚════════════════════════════════════════════════════════════════
+            `);
+            
+            console.log(`🤖 [AI-DETECTED] Original: ${originalAiDetected}`);
+            console.log(`👤 [USER-CORRECTED] Mapped to: ${currentName}`);
+            console.log(`📊 [FINAL-DISPLAY] Will show: ${currentName}`);
+            console.log(`📦 [PORTION] ${portion}`);
+            console.log(`🔥 [CALORIES] ${calories} cal`);
+            
+            // Additional metadata if available
+            if (food.correctionMetadata) {
+              console.log(`🔗 [CHAIN-INFO] Length: ${food.correctionMetadata.chainLength || 1} step(s)`);
+              console.log(`👥 [USER-COUNT] Corrected by: ${food.correctionMetadata.userCount || 1} user(s)`);
+            }
+            
+            console.log('[CORRECTION-DATA]', {
+              aiDetected: originalAiDetected,
+              userCorrected: currentName,
+              finalDisplay: currentName,
+              source: correctionSource,
+              portion: portion,
+              calories: calories,
+              timestamp: new Date().toISOString()
+            });
           } else {
             // No corrections at all
             console.log(`   ${index + 1}. ✅ ${currentName} (No auto-correction)`);
+            console.log(`      🤖 [AI-DETECTED] Name: ${currentName} (no corrections found in database)`);
           }
           console.log(`      📊 ${portion} | ${calories} cal`);
         });
         console.log("━".repeat(80));
+        
+        // 📊 AUTO-CORRECTION SUMMARY TABLE (matching frontend format)
+        const correctedItems = analysis.foods.filter(food => {
+          const originalAiDetected = food.originalAiName || food.name;
+          const currentName = food.name;
+          return food.wasAutoCorrected || originalAiDetected !== currentName;
+        });
+        
+        if (correctedItems.length > 0) {
+          console.log(`🎯 [GLOBAL-AUTO] ✓ ${correctedItems.length}/${foodNames.length} items auto-corrected`);
+          console.log('\n📊 [CORRECTION-SUMMARY] Auto-correction results:');
+          console.table(
+            correctedItems.map((food) => ({
+              'AI Detected': food.originalAiName || food.name,
+              'User Corrected': food.name,
+              'Final Display': food.name,
+              'User Count': food.correctionMetadata?.userCount || 'N/A',
+              'Chain Length': food.correctionMetadata?.chainLength || 'N/A'
+            }))
+          );
+        } else {
+          console.log(`⚪ [GLOBAL-AUTO] ℹ No auto-corrections applied (0/${foodNames.length} items)`);
+        }
       }
 
       // Check if this is from background service (has foods array with total)
@@ -344,7 +477,38 @@ export default async function handler(req, res) {
     console.log("      🍚 Carbs:", totalCarbs || 0, "g");
     console.log("      🧈 Fat:", totalFat || 0, "g");
     console.log("   📱 Source:", processedBy);
-    console.log("━".repeat(80) + "\n");
+    console.log("━".repeat(80));
+    
+    // 📊 FINAL CORRECTION SUMMARY TABLE (for Vercel logs)
+    try {
+      const parsedAnalysis = typeof analysisResult === "string" 
+        ? JSON.parse(analysisResult) 
+        : analysisResult;
+      
+      if (parsedAnalysis.foods) {
+        const correctedFoods = parsedAnalysis.foods.filter(food => {
+          const originalAiDetected = food.originalAiName || food.name;
+          const currentName = food.name;
+          return food.wasAutoCorrected || originalAiDetected !== currentName;
+        });
+        
+        if (correctedFoods.length > 0) {
+          console.log('\n📊 [FINAL-CORRECTION-TABLE] Runtime Log Summary:');
+          console.table(
+            correctedFoods.map((food) => ({
+              'AI Detected': food.originalAiName || food.name,
+              'User Corrected': food.name,
+              'Final Display': food.name,
+              'User Count': food.correctionMetadata?.userCount || 1,
+              'Chain Length': food.correctionMetadata?.chainLength || 1
+            }))
+          );
+          console.log(`\n✅ [CORRECTION-COMPLETE] ${correctedFoods.length} item(s) auto-corrected and saved\n`);
+        }
+      }
+    } catch (e) {
+      // Skip if parsing fails
+    }
 
     res.status(200).json({
       success: true,

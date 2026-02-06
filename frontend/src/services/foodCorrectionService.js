@@ -209,6 +209,17 @@ export const applyGlobalAutoCorrections = async (foods) => {
       foods.length,
       "items...",
     );
+    
+    // Log initial food names being processed
+    console.log('📝 [FOODS-INPUT] Processing these AI-detected items:');
+    console.table(
+      foods.map((food, idx) => ({
+        '#': idx + 1,
+        'AI Detected Name': food.name,
+        'Quantity': food.quantity || 'N/A',
+        'Calories': food.calories || 'N/A'
+      }))
+    );
 
     // Fetch global corrections map
     const correctionMap = await getGlobalCorrectionsMap();
@@ -224,66 +235,81 @@ export const applyGlobalAutoCorrections = async (foods) => {
       }));
     }
 
-    // Helper function to follow correction chains
-    const followCorrectionChain = (foodName, visited = new Set()) => {
-      const normalizedName = normalizeFoodName(foodName);
+    // Debug: Show what's in the correction map
+    console.log("\n🗺️ [CORRECTION-MAP] Available corrections:");
+    console.table(
+      Array.from(correctionMap.entries()).map(([aiName, correction]) => ({
+        'AI Detected': aiName,
+        'Will Show': correction.correctedName,
+        'Users': correction.userCount
+      }))
+    );
 
-      // Prevent infinite loops
-      if (visited.has(normalizedName)) {
-        return { finalName: foodName, chainLength: 0 };
-      }
-      visited.add(normalizedName);
-
-      // Check if this name has a correction
-      if (correctionMap.has(normalizedName)) {
-        const correction = correctionMap.get(normalizedName);
-        // Recursively follow the chain
-        const nextStep = followCorrectionChain(
-          correction.correctedName,
-          visited,
-        );
-        return {
-          finalName: nextStep.finalName,
-          chainLength: 1 + nextStep.chainLength,
-          correction: correction,
-        };
-      }
-
-      // End of chain
-      return { finalName: foodName, chainLength: 0 };
-    };
-
-    // Apply corrections with chain following
+    // Apply corrections with DIRECT LOOKUP ONLY
+    // Backend already handles chain following, frontend just does exact match
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
-      const chainResult = followCorrectionChain(originalName);
-
-      // If chain was followed (chainLength > 0)
-      if (chainResult.chainLength > 0) {
+      const normalizedOriginal = normalizeFoodName(originalName);
+      
+      console.log(`\n🔍 [LOOKUP] Checking: "${originalName}" (normalized: "${normalizedOriginal}")`);
+      
+      // Direct lookup - backend already followed chains
+      if (correctionMap.has(normalizedOriginal)) {
+        const correction = correctionMap.get(normalizedOriginal);
+        console.log(`   ✅ Found correction: "${correction.correctedName}"`);
         console.log(
-          `✅ [AUTO-CORRECT] "${originalName}" → "${chainResult.finalName}" ` +
-            `(chain: ${chainResult.chainLength} step${
-              chainResult.chainLength > 1 ? "s" : ""
-            }, ` +
-            `${chainResult.correction.userCount} user${
-              chainResult.correction.userCount > 1 ? "s" : ""
-            })`,
+          `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
         );
-        console.log(`🤖 AI detected: ${originalName}`);
-        console.log(`🔄 Auto corrected: ${chainResult.finalName}`);
+        
+        // ============================================
+        // 📋 DETAILED CORRECTION LOG (Vercel-ready)
+        // ============================================
+        console.log(`
+╔════════════════════════════════════════════════════════════════
+║ 🔄 FOOD CORRECTION FLOW
+╠════════════════════════════════════════════════════════════════
+║ 🤖 AI Detected Name:    "${originalName}"
+║ 👤 User Corrected To:   "${correction.correctedName}"
+║ 📊 Final Display Name:  "${correction.correctedName}"
+╚════════════════════════════════════════════════════════════════
+        `);
+        
+        // Individual runtime logs for Vercel
+        console.log(`🤖 [AI-DETECTED] Original: ${originalName}`);
+        console.log(`👤 [USER-CORRECTED] Mapped to: ${correction.correctedName}`);
+        console.log(`📊 [FINAL-DISPLAY] Will show: ${correction.correctedName}`);
+        console.log(`👥 [USER-COUNT] Corrected by: ${correction.userCount} user(s)`);
+        
+        // Structured data for debugging
+        console.log('[CORRECTION-DATA]', {
+          aiDetected: originalName,
+          userCorrected: correction.correctedName,
+          finalDisplay: correction.correctedName,
+          userCount: correction.userCount,
+          timestamp: new Date().toISOString()
+        });
 
         return {
           ...food,
-          name: chainResult.finalName,
+          name: correction.correctedName,
           originalAiName: originalName,
           wasAutoCorrected: true,
-          correctionSource: `Auto-corrected (${
-            chainResult.correction.userCount
-          } user${chainResult.correction.userCount > 1 ? "s" : ""})`,
+          correctionSource: `Auto-corrected (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
+          // Additional metadata for runtime inspection
+          correctionMetadata: {
+            aiDetected: originalName,
+            userCorrected: correction.correctedName,
+            finalDisplay: correction.correctedName,
+            userCount: correction.userCount
+          }
         };
       }
 
       // No correction found - return with explicit flags
+      console.log(`   ⚪ No correction found - using AI detected name`);
+      console.log(`⚪ [NO-CORRECTION] "${originalName}" - Using AI detected name (no user corrections found)`);
+      
       return {
         ...food,
         originalAiName: originalName,
@@ -296,10 +322,26 @@ export const applyGlobalAutoCorrections = async (foods) => {
     const correctedCount = correctedFoods.filter(
       (f) => f.wasAutoCorrected,
     ).length;
+    
     if (correctedCount > 0) {
       console.log(
         `🎯 [GLOBAL-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected`,
       );
+      
+      // Detailed summary table
+      console.log('\n📊 [CORRECTION-SUMMARY] Auto-correction results:');
+      console.table(
+        correctedFoods
+          .filter((f) => f.wasAutoCorrected)
+          .map((f) => ({
+            'AI Detected': f.originalAiName,
+            'User Corrected': f.correctionMetadata?.userCorrected || 'N/A',
+            'Final Display': f.name,
+            'User Count': f.correctionMetadata?.userCount || 0
+          }))
+      );
+    } else {
+      console.log(`⚪ [GLOBAL-AUTO] ℹ No auto-corrections applied (0/${foods.length} items)`);
     }
 
     return correctedFoods;
