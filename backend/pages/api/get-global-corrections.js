@@ -30,10 +30,13 @@ function normalizeFoodName(name) {
  * - Result: All users now see "sprite" when AI detects "juice"
  */
 export default async function handler(req, res) {
-  // Set CORS headers
+  // Set CORS headers and disable caching
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
+  res.setHeader("Pragma", "no-cache");
+  res.setHeader("Expires", "0");
 
   if (req.method === "OPTIONS") {
     res.status(200).end();

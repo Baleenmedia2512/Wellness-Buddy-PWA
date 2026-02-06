@@ -1482,20 +1482,20 @@ function WellnessValleyApp() {
           console.log('🍽️ [AI-DETECTED] Food names:', foodNames.join(', '));
 
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
-          console.log("📋 [CORRECTION] Starting auto-correction process...");
-          console.log(
-            "📋 [CORRECTION] Foods before correction:",
-            foods.map((f) => f.name),
-          );
+          // console.log("📋 [CORRECTION] Starting auto-correction process...");
+          // console.log(
+          //   "📋 [CORRECTION] Foods before correction:",
+          //   foods.map((f) => f.name),
+          // );
           try {
             const userId = user?.id || (await getUserId(user));
-            console.log("📋 [CORRECTION] User ID for corrections:", userId);
+            // console.log("📋 [CORRECTION] User ID for corrections:", userId);
             if (userId) {
               const correctedFoods = await applyUserCorrections(foods, userId);
-              console.log(
-                "📋 [CORRECTION] Foods after correction:",
-                correctedFoods.map((f) => f.name),
-              );
+              // console.log(
+              //   "📋 [CORRECTION] Foods after correction:",
+              //   correctedFoods.map((f) => f.name),
+              // );
               foods = correctedFoods;
             } else {
               console.warn(
@@ -1512,10 +1512,10 @@ function WellnessValleyApp() {
               error,
             );
           }
-          console.log(
-            "📋 [CORRECTION] Final foods to be used:",
-            foods.map((f) => f.name),
-          );
+          // console.log(
+          //   "📋 [CORRECTION] Final foods to be used:",
+          //   foods.map((f) => f.name),
+          // );
 
           const total =
             detectedType.details.total ||

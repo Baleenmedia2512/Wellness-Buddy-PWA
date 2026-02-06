@@ -96,16 +96,20 @@ Return ONLY this JSON:
 
       console.log('🔵 [API CALL 1/2] DETECTION API');
       console.log('🔵 Model: gemini-2.5-flash-lite');
-      console.log('🔵 Prompt:', detectionPrompt);
-      console.log('🔵 Image size:', imageBase64.length, 'bytes');
-      console.log('🔵 Calling Gemini API for detection...');
+      // console.log('🔵 Prompt:', detectionPrompt);
+      // console.log('🔵 Image size:', imageBase64.length, 'bytes');
+      // console.log('🔵 Calling Gemini API for detection...');
       
       const detectionResult = await this.model.generateContent([detectionPrompt, imagePart]);
       const detectionResponse = await detectionResult.response;
       const detectionText = detectionResponse.text();
-      console.log('🤖 [DEBUG] Detection API Raw Response:', detectionText);
+      // console.log('🤖 [DEBUG] Detection API Raw Response:', detectionText);
       const detectionData = this.parseJsonResponse(detectionText);
       console.log('🤖 [DEBUG] Parsed Detection Data:', detectionData);
+      
+      // Log detected image type
+      console.log(`🔍 Image type detected - ${detectionData.type}`);
+      
       const detectionTime = Date.now() - startTime;
 
       
@@ -198,18 +202,25 @@ RULES:
         console.log('🟢 [API CALL 2/2] FOOD ANALYSIS API');
         console.log('🟢 Model: gemini-2.5-flash-lite');
         console.log('🟢 Operation: image_analysis (FOOD)');
-        console.log('🟢 Prompt:', analysisPrompt);
-        console.log('🟢 Calling Gemini API for food analysis...');
+        // console.log('🟢 Prompt:', analysisPrompt);
+        // console.log('🟢 Calling Gemini API for food analysis...');
       }
 
       
       const analysisResult = await this.model.generateContent([analysisPrompt, imagePart]);
       const analysisResponse = await analysisResult.response;
       const analysisText = analysisResponse.text();
-      console.log('🤖 [DEBUG] Analysis API Raw Response:', analysisText);
+      // console.log('🤖 [DEBUG] Analysis API Raw Response:', analysisText);
       const analysisData = this.parseJsonResponse(analysisText);
       console.log('🤖 [DEBUG] Parsed Analysis Data:', analysisData);
       console.log('🤖 [DEBUG] Foods array:', analysisData.foods);
+      
+      // Log detected food items
+      if (analysisData.foods && analysisData.foods.length > 0) {
+        const foodNames = analysisData.foods.map(food => food.name).join(', ');
+        console.log(`🍽️ AI detected - ${foodNames}`);
+      }
+      
       const analysisTime = Date.now() - analysisStartTime;
       const totalTime = Date.now() - startTime;
 

@@ -159,31 +159,39 @@ export default async function handler(req, res) {
           const originalAiDetected = food.originalAiName || name; // The very first AI detection
           const currentName = name; // Current food name (could be auto-corrected)
           const userCorrected = food.userCorrectedName; // If user manually corrected it
+          const wasAutoCorrected = food.wasAutoCorrected || false; // Auto-correction flag
+          const correctionSource = food.correctionSource; // Correction source details
           const calories = food.nutrition?.calories || 0;
           const portion = food.portion || "portion unknown";
 
           // Show the full chain: Original AI → Auto-corrected → User correction
           if (userCorrected) {
             // User manually corrected it
-            if (originalAiDetected !== currentName) {
+            if (wasAutoCorrected || originalAiDetected !== currentName) {
               // Has both auto-correction and user correction
               console.log(
                 `   ${index + 1}. 🔄 AI: "${originalAiDetected}" → Auto: "${currentName}" → User: "${userCorrected}"`,
               );
+              if (correctionSource) {
+                console.log(`      ℹ️ ${correctionSource}`);
+              }
             } else {
               // Only user correction (no auto-correction)
               console.log(
                 `   ${index + 1}. 🔄 AI: "${originalAiDetected}" → User: "${userCorrected}"`,
               );
             }
-          } else if (originalAiDetected !== currentName) {
+          } else if (wasAutoCorrected && originalAiDetected !== currentName) {
             // Only auto-corrected (no user correction)
             console.log(
-              `   ${index + 1}. 🔄 AI: "${originalAiDetected}" → Auto: "${currentName}"`,
+              `   ${index + 1}. 🔄 AI: "${originalAiDetected}" → ✅ Auto-Corrected: "${currentName}"`,
             );
+            if (correctionSource) {
+              console.log(`      ℹ️ ${correctionSource}`);
+            }
           } else {
             // No corrections at all
-            console.log(`   ${index + 1}. ✅ ${currentName}`);
+            console.log(`   ${index + 1}. ✅ ${currentName} (No auto-correction)`);
           }
           console.log(`      📊 ${portion} | ${calories} cal`);
         });
