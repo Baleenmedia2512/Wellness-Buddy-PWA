@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   // Set CORS headers and disable caching
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
   res.setHeader("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0");
   res.setHeader("Pragma", "no-cache");
   res.setHeader("Expires", "0");
