@@ -1302,8 +1302,6 @@ function WellnessValleyApp() {
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
-      setLoading(true); // Show loading immediately
-
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
@@ -1342,8 +1340,9 @@ function WellnessValleyApp() {
         // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
       }
 
-      // Set preview immediately for better UX
+      // Set preview and loading together to ensure overlay shows
       setImagePreview(processedImage);
+      setLoading(true); // Ensure loading is true when preview shows
 
       // Set current user for token tracking on imageTypeDetector (unified detection)
       if (user?.id && user?.email) {
@@ -1364,7 +1363,7 @@ function WellnessValleyApp() {
       if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
         const foodNames = detectedType.details.foods.map(f => f.name);
         console.log('🍽️ [AI-DETECTED] Food items identified:', foodNames.join(', '));
-        setDetectedFoodNames(foodNames);
+        setDetectedFoodNames(foodNames); // Show detected names in UI immediately
       }
 
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
