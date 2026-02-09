@@ -125,8 +125,8 @@ export const applyUserCorrections = async (foods, userId) => {
       "- Global auto-corrections ENABLED",
     );
 
-    // Apply global auto-corrections
-    return await applyGlobalAutoCorrections(foods);
+    // Apply global auto-corrections with current userId for comparison
+    return await applyGlobalAutoCorrections(foods, userId);
   } catch (error) {
     console.error("❌ [CORRECTION] Error processing foods:", error);
     // Fallback: Return original foods if processing fails
@@ -196,9 +196,10 @@ export const getGlobalCorrectionsMap = async () => {
  *    "Golden Milk" → "Formula 1" → "Juice"
  *    Both "Golden Milk" AND "Formula 1" will show "Juice"
  * @param {Array} foods - Array of food items detected by AI
+ * @param {number} currentUserId - Current logged in user ID (optional)
  * @returns {Promise<Array>} Foods with auto-corrected names
  */
-export const applyGlobalAutoCorrections = async (foods) => {
+export const applyGlobalAutoCorrections = async (foods, currentUserId = null) => {
   try {
     if (!foods || foods.length === 0) {
       return foods;
@@ -256,15 +257,25 @@ export const applyGlobalAutoCorrections = async (foods) => {
       // Direct lookup - backend already followed chains
       if (correctionMap.has(normalizedOriginal)) {
         const correction = correctionMap.get(normalizedOriginal);
-        console.log(`   ✅ Found correction: "${correction.correctedName}" (Last corrected by User ${correction.lastCorrectedByUserId})`);
+        const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
+        const correctorInfo = isCorrectedByCurrentUser 
+          ? '✅ YOU corrected this' 
+          : `User ${correction.lastCorrectedByUserId} corrected this`;
+        
+        console.log(`   ✅ Found correction: "${correction.correctedName}" (${correctorInfo})`);
         console.log(
           `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
-            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, Last by User ${correction.lastCorrectedByUserId})`,
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, ${correctorInfo})`,
         );
         
         // ============================================
         // 📋 DETAILED CORRECTION LOG (Vercel-ready)
         // ============================================
+        const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
+        const correctorDisplay = isCorrectedByCurrentUser 
+          ? `✅ YOU (User ${correction.lastCorrectedByUserId})` 
+          : `User ${correction.lastCorrectedByUserId}`;
+        
         console.log(`
 ╔════════════════════════════════════════════════════════════════
 ║ 🔄 FOOD CORRECTION FLOW
@@ -272,19 +283,21 @@ export const applyGlobalAutoCorrections = async (foods) => {
 ║ 🤖 AI Detected Name:    "${originalName}" (normalized: "${normalizedOriginal}")
 ║ 👤 User Corrected To:   "${correction.correctedName}"
 ║ 📊 Final Display Name:  "${correction.correctedName}"
-║ 👥 Last Corrected By:   User ${correction.lastCorrectedByUserId}
+║ 👥 Last Corrected By:   ${correctorDisplay}
 ║ 📈 Total Users:         ${correction.userCount} user(s)
 ╚════════════════════════════════════════════════════════════════
         `);
         
         // Individual runtime logs for Vercel
+        const isByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
         console.log(`🤖 [AI-DETECTED] Original: ${originalName} (normalized: ${normalizedOriginal})`);
         console.log(`👤 [USER-CORRECTED] Mapped to: ${correction.correctedName}`);
         console.log(`📊 [FINAL-DISPLAY] Will show: ${correction.correctedName}`);
         console.log(`👥 [USER-COUNT] Corrected by: ${correction.userCount} user(s)`);
-        console.log(`🆔 [LAST-USER-ID] Last corrected by: User ${correction.lastCorrectedByUserId}`);
+        console.log(`🆔 [LAST-USER-ID] Last corrected by: ${isByCurrentUser ? '✅ YOU' : 'User ' + correction.lastCorrectedByUserId}`);
         
         // Structured data for debugging
+        const isByUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
         console.log('[CORRECTION-DATA]', {
           aiDetected: originalName,
           aiDetectedNormalized: normalizedOriginal,
@@ -292,6 +305,8 @@ export const applyGlobalAutoCorrections = async (foods) => {
           finalDisplay: correction.correctedName,
           userCount: correction.userCount,
           lastCorrectedByUserId: correction.lastCorrectedByUserId,
+          isCorrectedByCurrentUser: isByUser,
+          currentUserId: currentUserId,
           timestamp: new Date().toISOString()
         });
 
