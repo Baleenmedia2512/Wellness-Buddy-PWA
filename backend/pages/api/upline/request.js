@@ -118,15 +118,8 @@ export default async function handler(req, res) {
 
     const requester = requesterRows[0];
 
-    // Check if user has Team ID
-    if (!requester.TeamId) {
-      res.status(400).json({
-        success: false,
-        error: 'You must claim a Team ID first',
-        redirectTo: '/setup/team'
-      });
-      return;
-    }
+    // Team ID is now optional - user can proceed without claiming it first
+    // This allows flexible onboarding flow
 
     // Check if user already has an upline coach
     if (requester.UplineCoachId) {
@@ -249,7 +242,7 @@ export default async function handler(req, res) {
                 <div class="info-label">Requester Details</div>
                 <div class="info-value">👤 ${requester.UserName}</div>
                 <div class="info-value">📧 ${requester.Email}</div>
-                <div class="info-value">🔖 Team ID: ${requester.TeamId}</div>
+                ${requester.TeamId ? `<div class="info-value">🔖 Team ID: ${requester.TeamId}</div>` : ''}
               </div>
               
               <div class="otp-container">

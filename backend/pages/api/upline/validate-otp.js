@@ -164,7 +164,7 @@ export default async function handler(req, res) {
 
     // OTP is valid! Complete setup
 
-    // Get requester's TeamId first
+    // Get requester's TeamId (now optional)
     const { data: requesterData, error: requesterDataError } = await supabase
       .from('team_table')
       .select('TeamId')
@@ -174,49 +174,44 @@ export default async function handler(req, res) {
 
     const requesterTeamId = requesterData[0]?.TeamId;
 
-    if (!requesterTeamId) {
-      res.status(400).json({
-        success: false,
-        error: 'Requester does not have a TeamId assigned'
-      });
-      return;
-    }
+    // STEP 1: Update coach_teams_table ONLY if user has a TeamId
+    // This is now optional - users can complete account activation without Team ID
+    if (requesterTeamId) {
+      // Check if TeamId exists in coach_teams_table (including inactive)
+      const { data: existingTeam, error: existingTeamError } = await supabase
+        .from('coach_teams_table')
+        .select('TeamId, CoachId, CoCoachId, Status')
+        .eq('TeamId', requesterTeamId);
 
-    // STEP 1: Update coach_teams_table FIRST (before team_table)
-    // Check if TeamId exists in coach_teams_table (including inactive)
-    const { data: existingTeam, error: existingTeamError } = await supabase
-      .from('coach_teams_table')
-      .select('TeamId, CoachId, CoCoachId, Status')
-      .eq('TeamId', requesterTeamId);
+      if (existingTeamError) throw existingTeamError;
 
-    if (existingTeamError) throw existingTeamError;
-
-    if (existingTeam && existingTeam.length > 0) {
-      const team = existingTeam[0];
-      
-      if (team.Status === 'active') {
-        // Team is active, add requester as CoCoachId if slot available
-        if (!team.CoCoachId) {
+      if (existingTeam && existingTeam.length > 0) {
+        const team = existingTeam[0];
+        
+        if (team.Status === 'active') {
+          // Team is active, add requester as CoCoachId if slot available
+          if (!team.CoCoachId) {
+            const updateTime = getISTTimestamp();
+            await supabase
+              .from('coach_teams_table')
+              .update({ CoCoachId: requesterId, UpdatedAt: updateTime })
+              .eq('TeamId', requesterTeamId)
+              .eq('Status', 'active');
+          }
+        } else {
+          // Team is inactive, reactivate with requester as primary coach
           const updateTime = getISTTimestamp();
           await supabase
             .from('coach_teams_table')
-            .update({ CoCoachId: requesterId, UpdatedAt: updateTime })
-            .eq('TeamId', requesterTeamId)
-            .eq('Status', 'active');
+            .update({ CoachId: requesterId, CoCoachId: null, Status: 'active', UpdatedAt: updateTime })
+            .eq('TeamId', requesterTeamId);
         }
       } else {
-        // Team is inactive, reactivate with requester as primary coach
-        const updateTime = getISTTimestamp();
+        // Create new entry with requester as primary coach
         await supabase
           .from('coach_teams_table')
-          .update({ CoachId: requesterId, CoCoachId: null, Status: 'active', UpdatedAt: updateTime })
-          .eq('TeamId', requesterTeamId);
+          .insert([{ TeamId: requesterTeamId, CoachId: requesterId, Status: 'active' }]);
       }
-    } else {
-      // Create new entry with requester as primary coach
-      await supabase
-        .from('coach_teams_table')
-        .insert([{ TeamId: requesterTeamId, CoachId: requesterId, Status: 'active' }]);
     }
 
     // STEP 2: Get coach details for CoachName and CoCoachName
@@ -259,7 +254,8 @@ export default async function handler(req, res) {
       }
     }
 
-    // STEP 3: NOW update team_table (after coach_teams_table succeeds)
+    // STEP 3: NOW update team_table (after coach_teams_table succeeds if applicable)
+    // Update UplineCoachId, CoachName, and CoCoachName regardless of TeamId status
     await supabase
       .from('team_table')
       .update({ 

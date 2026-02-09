@@ -115,19 +115,20 @@ res.status(200).json({
       return;
     }
 
-    // STATE 1: No Team ID
+    // STATE 1: No Team ID - Now optional, allow proceeding to upline selection
     if (!hasTeamId) {
-res.status(200).json({
+      res.status(200).json({
         success: true,
         setupComplete: false,
-          hasTeamId: false,
-          hasUpline: false,
-          pendingRequest: null,
-          redirectTo: '/setup/team',
-          message: 'Please claim a Team ID'
-        });
-        return;
-      }
+        hasTeamId: false,
+        hasUpline: false,
+        pendingRequest: null,
+        redirectTo: '/setup/upline',
+        message: 'Team ID is optional - You can select your coach directly',
+        allowSkipTeamId: true
+      });
+      return;
+    }
 
       // Check for pending approval request using Supabase
       const { data: requestRows, error: requestError } = await supabase

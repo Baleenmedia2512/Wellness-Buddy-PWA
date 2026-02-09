@@ -123,6 +123,56 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     }
   };
 
+  // Skip Team ID and send request directly
+  const skipTeamIdAndSendRequest = async () => {
+    if (!selectedCoach) {
+      setError('Please select a coach first');
+      return;
+    }
+
+    setClaimingTeamId(true);
+    setSendingRequest(true);
+    setError('');
+
+    try {
+      const userEmail = localStorage.getItem('userEmail');
+      if (!userEmail) {
+        setError('Session expired. Please login again.');
+        setClaimingTeamId(false);
+        setSendingRequest(false);
+        return;
+      }
+
+      console.log('Skipping Team ID - Sending approval request:', { coachId: selectedCoach.userId, email: userEmail });
+
+      // Send approval request to coach WITHOUT claiming Team ID
+      const requestResponse = await axios.post(
+        `${API_BASE}/api/upline/request`,
+        { coachId: selectedCoach.userId, email: userEmail }
+      );
+
+      console.log('Approval request sent (no Team ID):', requestResponse.data);
+
+      setSuccess(`Request sent!`);
+      
+      // Navigate to OTP validation after delay
+      setTimeout(() => {
+        if (onNavigateToOTP) {
+          onNavigateToOTP();
+        } else if (onClose) {
+          onClose();
+        }
+      }, 1500);
+    } catch (err) {
+      console.error('Skip setup error:', err);
+      console.error('Error response:', err.response?.data);
+      const errorMessage = err.response?.data?.error || err.message || 'Failed to send request';
+      setError(errorMessage);
+      setClaimingTeamId(false);
+      setSendingRequest(false);
+    }
+  };
+
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
     if (!selectedCoach) {
@@ -367,8 +417,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                 </div>
 
                 <div className="mb-6">
-                    <h3 className="text-lg font-bold text-gray-900 mb-1">Create your Team ID</h3>
-                    <p className="text-gray-500 text-sm mb-4">This unique ID will identify your personal team structure.</p>
+                    <h3 className="text-lg font-bold text-gray-900 mb-1">Create your Team ID <span className="text-xs text-gray-400 font-normal">(Optional)</span></h3>
+                    <p className="text-gray-500 text-sm mb-4">This unique ID will identify your personal team structure. You can skip this step.</p>
                     
                     <div className="relative">
                         <input
@@ -484,34 +534,47 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </div>
                 </div>
 
-                <div className="flex gap-3">
+                <div className="space-y-3">
+                    <div className="flex gap-3">
+                        <button
+                            className="w-14 py-3.5 rounded-xl font-bold text-base bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center"
+                            onClick={() => setStep(1)}
+                            aria-label="Back"
+                            disabled={claimingTeamId}
+                        >
+                            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                        </button>
+                        <button
+                            className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
+                                (teamIdStatus === 'new' || teamIdStatus === 'available') && !claimingTeamId
+                                ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            }`}
+                            onClick={claimTeamIdAndSendRequest}
+                            disabled={(teamIdStatus !== 'new' && teamIdStatus !== 'available') || claimingTeamId}
+                        >
+                            {claimingTeamId ? (
+                                <>
+                                <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
+                                <span>Processing...</span>
+                                </>
+                            ) : (
+                                <>
+                                <span>Complete Setup</span>
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                </>
+                            )}
+                        </button>
+                    </div>
+                    
+                    {/* Skip Team ID Button */}
                     <button
-                        className="w-14 py-3.5 rounded-xl font-bold text-base bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center"
-                        onClick={() => setStep(1)}
-                        aria-label="Back"
+                        className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
+                        onClick={skipTeamIdAndSendRequest}
+                        disabled={claimingTeamId}
                     >
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                    </button>
-                    <button
-                        className={`flex-1 py-3.5 rounded-xl font-bold text-base transition-all flex items-center justify-center gap-2 ${
-                            (teamIdStatus === 'new' || teamIdStatus === 'available') && !claimingTeamId
-                            ? 'bg-green-600 text-white hover:bg-green-700 shadow-lg shadow-green-200'
-                            : 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                        }`}
-                        onClick={claimTeamIdAndSendRequest}
-                        disabled={(teamIdStatus !== 'new' && teamIdStatus !== 'available') || claimingTeamId}
-                    >
-                        {claimingTeamId ? (
-                            <>
-                            <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></div>
-                            <span>Processing...</span>
-                            </>
-                        ) : (
-                            <>
-                            <span>Complete Setup</span>
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-                            </>
-                        )}
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span>Skip Team ID & Continue</span>
                     </button>
                 </div>
               </motion.div>
