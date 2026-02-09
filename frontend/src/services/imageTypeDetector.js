@@ -282,13 +282,23 @@ RULES:
         foods: analysisData.foods,
         total: analysisData.total
       });
+      
+      // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
+      // This ensures debug logging shows the correct AI detected name
+      const foodsWithOriginalName = (analysisData.foods || []).map(food => ({
+        ...food,
+        originalAiName: food.name,  // Preserve the AI detected name
+        wasAutoCorrected: false,    // Not corrected yet
+        correctionSource: null
+      }));
+      
       return {
         type: 'food',
         confidence: detectionData.confidence || 0.5,
         details: {
           reason: detectionData.reason || 'Default classification',
           aiAnalysis: true,
-          foods: analysisData.foods || [],
+          foods: foodsWithOriginalName,
           total: analysisData.total || null
         }
       };

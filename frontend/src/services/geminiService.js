@@ -425,20 +425,6 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🔍 LOG AI DETECTION RESULTS
-      console.log("🤖 ========== AI DETECTION RESULTS ==========");
-      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
-        nutritionData.foods.forEach((food, index) => {
-          console.log(`🔍 AI Detected Food ${index + 1}:`, {
-            name: food.name,
-            portion: food.portion,
-            weight: food.weight_g || food.volume_ml,
-            unit: food.unit,
-          });
-        });
-      }
-      console.log("============================================");
-
       // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
       // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
@@ -446,6 +432,23 @@ class GeminiService {
           nutritionData.foods,
         );
       }
+
+      // 🔍 LOG AI DETECTION RESULTS (AFTER AUTO-CORRECTIONS FOR ACCURACY)
+      console.log("🤖 ========== AI DETECTION RESULTS ==========");
+      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
+        nutritionData.foods.forEach((food, index) => {
+          console.log(`🔍 AI Detected Food ${index + 1}:`, {
+            originalAiDetected: food.originalAiName || food.name,
+            currentDisplayName: food.name,
+            wasAutoCorrected: food.wasAutoCorrected || false,
+            correctionSource: food.correctionSource || 'None',
+            portion: food.portion,
+            weight: food.weight_g || food.volume_ml,
+            unit: food.unit,
+          });
+        });
+      }
+      console.log("============================================");
 
       return this.transformOptimizedResponse(nutritionData, "image");
     } catch (error) {
@@ -887,6 +890,11 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(food.nutrition.carbs || 0),
           fat: Math.round(food.nutrition.fat || 0),
           fiber: Math.round(food.nutrition.fiber || 0),
+          // 🔴 CRITICAL: Preserve correction metadata for UI display
+          originalAiName: food.originalAiName || food.name,
+          wasAutoCorrected: food.wasAutoCorrected || false,
+          correctionSource: food.correctionSource || null,
+          correctionMetadata: food.correctionMetadata || null,
         })),
       };
     } else {

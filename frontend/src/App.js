@@ -1504,6 +1504,14 @@ function WellnessValleyApp() {
           setDetectedFoodNames(foodNames);
           console.log('🍽️ [AI-DETECTED] Food names:', foodNames.join(', '));
 
+          // 🔴 CRITICAL: Preserve original AI-detected names BEFORE any corrections
+          // This ensures we always know what the AI originally detected, even after auto-corrections
+          foods = foods.map(food => ({
+            ...food,
+            originalAiName: food.name // Store the fresh AI detection
+          }));
+          console.log('✅ [PRESERVE] Original AI names saved:', foods.map(f => `${f.name}`).join(', '));
+
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
           // console.log("📋 [CORRECTION] Starting auto-correction process...");
           // console.log(
@@ -1611,6 +1619,10 @@ function WellnessValleyApp() {
                 : "low",
             detailedItems: foods.map((food) => ({
               name: food.name,
+              originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
+              wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
+              correctionSource: food.correctionSource,  // 🔴 Track correction source
+              correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
               portionDescription: food.portion || "Unknown portion",
               estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
               unit: food.unit || (food.volume_ml ? "ml" : "g"),

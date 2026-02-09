@@ -301,7 +301,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       console.log("⚠️ [GLOBAL-AUTO] No corrections available");
       return foods.map((food) => ({
         ...food,
-        originalAiName: food.name,
+        originalAiName: food.originalAiName || food.name,  // Preserve existing originalAiName
         wasAutoCorrected: false,
         correctionSource: null,
       }));
@@ -311,6 +311,10 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
+      
+      // 🔴 CRITICAL: Preserve the very first AI detected name
+      // If food already has originalAiName, keep it; otherwise use current name
+      const trueOriginalAiName = food.originalAiName || originalName;
       
       // Direct lookup - backend already followed chains
       if (correctionMap.has(normalizedOriginal)) {
@@ -325,11 +329,11 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         return {
           ...food,
           name: correction.correctedName,
-          originalAiName: originalName,
+          originalAiName: trueOriginalAiName,  // Use preserved original AI name
           wasAutoCorrected: true,
           correctionSource: `Auto-corrected (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
           correctionMetadata: {
-            aiDetected: originalName,
+            aiDetected: trueOriginalAiName,  // Use preserved original AI name
             userCorrected: correction.correctedName,
             finalDisplay: correction.correctedName,
             userCount: correction.userCount
@@ -340,7 +344,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       // No correction found - return with explicit flags
       return {
         ...food,
-        originalAiName: originalName,
+        originalAiName: trueOriginalAiName,  // Use preserved original AI name
         wasAutoCorrected: false,
         correctionSource: null,
       };

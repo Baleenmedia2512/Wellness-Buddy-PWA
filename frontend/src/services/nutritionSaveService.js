@@ -21,14 +21,22 @@ function transformToBackgroundServiceFormat(analysisResult) {
       const foods = detailedItems.length > 0 
         ? detailedItems.map(item => ({
             name: item.name || 'Unknown Food',
-            portion: item.portionDescription || '1 serving',
-            weight_g: typeof item.estimatedWeight === 'number' ? item.estimatedWeight : 100,
+            // 🔴 CRITICAL: Preserve correction metadata for database persistence
+            originalAiName: item.originalAiName || item.name,
+            wasAutoCorrected: item.wasAutoCorrected || false,
+            correctionSource: item.correctionSource || null,
+            correctionMetadata: item.correctionMetadata || null,
+            portion: item.portionDescription || item.portion || '1 serving',
+            weight_g: typeof item.estimatedWeight === 'number' ? item.estimatedWeight : (item.weight_g || 100),
+            volume_ml: item.volume_ml || null,
+            unit: item.unit || 'g',
+            isLiquid: item.isLiquid || false,
             nutrition: {
-              calories: item.calories || 0,
-              protein: item.protein || 0,
-              carbs: item.carbs || 0,
-              fat: item.fat || 0,
-              fiber: item.fiber || 0
+              calories: item.calories || item.nutrition?.calories || 0,
+              protein: item.protein || item.nutrition?.protein || 0,
+              carbs: item.carbs || item.nutrition?.carbs || 0,
+              fat: item.fat || item.nutrition?.fat || 0,
+              fiber: item.fiber || item.nutrition?.fiber || 0
             }
           }))
         : [{
