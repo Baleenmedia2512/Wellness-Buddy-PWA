@@ -1,6 +1,7 @@
 # Account Activation User Flow - Team ID Optional
 
 ## Overview
+
 This document describes the complete user flow for account activation in Wellness Valley, where Team ID claiming is now **optional**.
 
 ---
@@ -8,6 +9,7 @@ This document describes the complete user flow for account activation in Wellnes
 ## 📱 Complete User Journey
 
 ### 1️⃣ **LOGIN / SIGNUP**
+
 **Entry Point**: User opens the app
 
 ```
@@ -28,16 +30,17 @@ This document describes the complete user flow for account activation in Wellnes
 
 **API Response Scenarios:**
 
-| Scenario | HasTeamId | HasUpline | Redirect To |
-|----------|-----------|-----------|-------------|
-| New User | ❌ | ❌ | `/setup/upline` (Coach Selection) |
-| Has Team, No Coach | ✅ | ❌ | `/setup/upline` (Coach Selection) |
-| Setup Complete | ✅/❌ | ✅ | `/dashboard` |
-| Admin/Developer | Any | Any | `/dashboard` |
+| Scenario           | HasTeamId | HasUpline | Redirect To                       |
+| ------------------ | --------- | --------- | --------------------------------- |
+| New User           | ❌        | ❌        | `/setup/upline` (Coach Selection) |
+| Has Team, No Coach | ✅        | ❌        | `/setup/upline` (Coach Selection) |
+| Setup Complete     | ✅/❌     | ✅        | `/dashboard`                      |
+| Admin/Developer    | Any       | Any       | `/dashboard`                      |
 
 ---
 
 ### 2️⃣ **STEP 1: SELECT COACH**
+
 **Screen**: `/setup/upline` or Setup Wizard Step 1
 
 ```
@@ -64,18 +67,21 @@ This document describes the complete user flow for account activation in Wellnes
 ```
 
 **Actions:**
+
 1. User types in search box (minimum 2 characters)
 2. System searches via `GET /api/users/search?q=...`
 3. User selects their coach
 4. Clicks "Continue to Next Step"
 
 **Validation:**
+
 - ✅ Must select a coach before proceeding
 - ✅ Cannot select self as coach
 
 ---
 
 ### 3️⃣ **STEP 2: TEAM ID (OPTIONAL)** ⭐ NEW
+
 **Screen**: Setup Wizard Step 2
 
 ```
@@ -113,6 +119,7 @@ This document describes the complete user flow for account activation in Wellnes
 **User Has 2 Options:**
 
 #### **Option A: Create Team ID**
+
 1. User enters 10-character Team ID (auto-uppercase)
 2. System checks availability in real-time
    - API: `GET /api/team/check-availability/:teamId`
@@ -138,11 +145,13 @@ This document describes the complete user flow for account activation in Wellnes
    ```
 
 #### **Option B: Skip Team ID** ⭐ NEW
+
 1. User clicks **"Skip Team ID & Continue"**
 2. System skips Team ID claiming:
+
    ```javascript
    // No call to /api/team/claim-id
-   
+
    POST /api/upline/request
    {
      coachId: 456,
@@ -151,6 +160,7 @@ This document describes the complete user flow for account activation in Wellnes
    ```
 
 **Backend Logic:**
+
 - ✅ Team ID check **removed** from `/api/upline/request`
 - ✅ Request created without Team ID requirement
 - ✅ OTP email sent to coach
@@ -158,6 +168,7 @@ This document describes the complete user flow for account activation in Wellnes
 ---
 
 ### 4️⃣ **STEP 3: VALIDATE OTP**
+
 **Screen**: `/setup/validate-otp`
 
 ```
@@ -181,6 +192,7 @@ This document describes the complete user flow for account activation in Wellnes
 ```
 
 **Process:**
+
 1. Coach receives email with 6-digit OTP
 2. User enters OTP from coach
 3. System validates:
@@ -220,6 +232,7 @@ This document describes the complete user flow for account activation in Wellnes
 ---
 
 ### 5️⃣ **ACCOUNT ACTIVATED** ✅
+
 **Screen**: Redirect to `/dashboard`
 
 ```
@@ -243,6 +256,7 @@ This document describes the complete user flow for account activation in Wellnes
 ### **Scenario 1: User Created Team ID**
 
 **team_table:**
+
 ```sql
 UserId: 123
 Email: user@example.com
@@ -253,6 +267,7 @@ CoCoachName: 'Jane Doe' ✅
 ```
 
 **coach_teams_table:**
+
 ```sql
 TeamId: 'MYTEAM2025'
 CoachId: 123 ✅
@@ -261,6 +276,7 @@ Status: 'active' ✅
 ```
 
 **approval_requests_table:**
+
 ```sql
 RequesterId: 123
 UplineCoachId: 456
@@ -272,6 +288,7 @@ Status: 'approved' ✅
 ### **Scenario 2: User Skipped Team ID** ⭐
 
 **team_table:**
+
 ```sql
 UserId: 123
 Email: user@example.com
@@ -282,11 +299,13 @@ CoCoachName: 'Jane Doe' ✅
 ```
 
 **coach_teams_table:**
+
 ```sql
 (No entry created) ⭐
 ```
 
 **approval_requests_table:**
+
 ```sql
 RequesterId: 123
 UplineCoachId: 456
@@ -366,21 +385,25 @@ Status: 'approved' ✅
 ## 🎯 Key Features
 
 ### ✅ **Account Activation is Guaranteed**
+
 - User can activate account **with or without** Team ID
 - No blockers in the flow
 - Coach relationship established regardless
 
 ### ⭐ **Team ID is Truly Optional**
+
 - User can skip during setup
 - Can claim Team ID later if needed
 - No impact on core functionality
 
 ### 🔒 **Security Maintained**
+
 - OTP validation still required
 - 24-hour expiry window
 - Maximum 5 attempts per request
 
 ### 🔄 **Flexible Flow**
+
 - User controls their journey
 - Can go back and change coach
 - Can resend requests if OTP expires
@@ -389,18 +412,19 @@ Status: 'approved' ✅
 
 ## 📝 User States Summary
 
-| State | TeamId | UplineCoachId | coach_teams_table | Can Use App |
-|-------|--------|---------------|-------------------|-------------|
-| **New User** | ❌ | ❌ | ❌ | ❌ Setup Required |
-| **Coach Selected** | ❌ | ❌ | ❌ | ❌ Pending OTP |
-| **Skipped Team ID** | ❌ | ✅ | ❌ | ✅ **Full Access** |
-| **With Team ID** | ✅ | ✅ | ✅ | ✅ **Full Access + Team Features** |
+| State               | TeamId | UplineCoachId | coach_teams_table | Can Use App                        |
+| ------------------- | ------ | ------------- | ----------------- | ---------------------------------- |
+| **New User**        | ❌     | ❌            | ❌                | ❌ Setup Required                  |
+| **Coach Selected**  | ❌     | ❌            | ❌                | ❌ Pending OTP                     |
+| **Skipped Team ID** | ❌     | ✅            | ❌                | ✅ **Full Access**                 |
+| **With Team ID**    | ✅     | ✅            | ✅                | ✅ **Full Access + Team Features** |
 
 ---
 
 ## 🚀 Next Steps After Activation
 
 Users who skipped Team ID can:
+
 1. Use all core app features
 2. View their coach relationship
 3. Claim a Team ID later via `/setup/team`
@@ -411,6 +435,7 @@ Users who skipped Team ID can:
 ## 📧 Email Notifications
 
 ### Coach Receives:
+
 ```
 Subject: 🤝 Team Approval Request - Wellness Valley
 
@@ -445,14 +470,14 @@ Code expires in 24 hours.
 
 ## 🔧 API Endpoints Used
 
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/api/user/status` | GET | Check user setup state |
-| `/api/users/search` | GET | Find coaches |
-| `/api/team/check-availability/:teamId` | GET | Check Team ID status |
-| `/api/team/claim-id` | POST | Claim Team ID (optional) |
-| `/api/upline/request` | POST | Send approval request |
-| `/api/upline/validate-otp` | POST | Validate OTP & activate |
+| Endpoint                               | Method | Purpose                  |
+| -------------------------------------- | ------ | ------------------------ |
+| `/api/user/status`                     | GET    | Check user setup state   |
+| `/api/users/search`                    | GET    | Find coaches             |
+| `/api/team/check-availability/:teamId` | GET    | Check Team ID status     |
+| `/api/team/claim-id`                   | POST   | Claim Team ID (optional) |
+| `/api/upline/request`                  | POST   | Send approval request    |
+| `/api/upline/validate-otp`             | POST   | Validate OTP & activate  |
 
 ---
 
