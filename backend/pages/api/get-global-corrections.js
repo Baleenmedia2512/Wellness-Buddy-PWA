@@ -99,6 +99,7 @@ export default async function handler(req, res) {
             users: new Set(),
             totalCorrections: 0,
             lastCorrected: corr.lastCorrected,
+            lastCorrectedByUserId: corr.userId,
           });
         }
         
@@ -106,10 +107,11 @@ export default async function handler(req, res) {
         group.users.add(corr.userId);
         group.totalCorrections += corr.timesCorrected;
         
-        // Keep most recent timestamp
+        // Keep most recent timestamp and user ID
         if (new Date(corr.lastCorrected) > new Date(group.lastCorrected)) {
           group.lastCorrected = corr.lastCorrected;
           group.userCorrected = corr.userCorrected; // Use most recent version of name
+          group.lastCorrectedByUserId = corr.userId; // Track who made the last correction
         }
       });
       
@@ -125,7 +127,7 @@ export default async function handler(req, res) {
 
     console.log("\n📋 [CORRECTIONS] Direct corrections from database:");
     correctionMap.forEach((correction, aiName) => {
-      console.log(`   "${aiName}" → "${correction.userCorrected}" (${correction.users.size} user(s))`);
+      console.log(`   "${aiName}" → "${correction.userCorrected}" (${correction.users.size} user(s), last by User ${correction.lastCorrectedByUserId})`);
     });
 
     // Use direct corrections only (NO chain following)
@@ -147,6 +149,7 @@ export default async function handler(req, res) {
         user_corrected: p.userCorrected,
         user_count: p.users.size,
         total_corrections: p.totalCorrections,
+        last_corrected_by_user_id: p.lastCorrectedByUserId,
         confidence: Math.min(p.users.size / 5, 1.0), // 0.2 to 1.0 confidence
       }))
       .sort((a, b) => {
@@ -174,6 +177,7 @@ export default async function handler(req, res) {
           correctedName: pattern.user_corrected,
           userCount: pattern.user_count,
           totalCorrections: pattern.total_corrections,
+          lastCorrectedByUserId: pattern.last_corrected_by_user_id,
           confidence: pattern.confidence,
         };
       }

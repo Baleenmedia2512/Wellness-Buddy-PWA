@@ -256,10 +256,10 @@ export const applyGlobalAutoCorrections = async (foods) => {
       // Direct lookup - backend already followed chains
       if (correctionMap.has(normalizedOriginal)) {
         const correction = correctionMap.get(normalizedOriginal);
-        console.log(`   ✅ Found correction: "${correction.correctedName}"`);
+        console.log(`   ✅ Found correction: "${correction.correctedName}" (Last corrected by User ${correction.lastCorrectedByUserId})`);
         console.log(
           `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
-            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, Last by User ${correction.lastCorrectedByUserId})`,
         );
         
         // ============================================
@@ -269,24 +269,29 @@ export const applyGlobalAutoCorrections = async (foods) => {
 ╔════════════════════════════════════════════════════════════════
 ║ 🔄 FOOD CORRECTION FLOW
 ╠════════════════════════════════════════════════════════════════
-║ 🤖 AI Detected Name:    "${originalName}"
+║ 🤖 AI Detected Name:    "${originalName}" (normalized: "${normalizedOriginal}")
 ║ 👤 User Corrected To:   "${correction.correctedName}"
 ║ 📊 Final Display Name:  "${correction.correctedName}"
+║ 👥 Last Corrected By:   User ${correction.lastCorrectedByUserId}
+║ 📈 Total Users:         ${correction.userCount} user(s)
 ╚════════════════════════════════════════════════════════════════
         `);
         
         // Individual runtime logs for Vercel
-        console.log(`🤖 [AI-DETECTED] Original: ${originalName}`);
+        console.log(`🤖 [AI-DETECTED] Original: ${originalName} (normalized: ${normalizedOriginal})`);
         console.log(`👤 [USER-CORRECTED] Mapped to: ${correction.correctedName}`);
         console.log(`📊 [FINAL-DISPLAY] Will show: ${correction.correctedName}`);
         console.log(`👥 [USER-COUNT] Corrected by: ${correction.userCount} user(s)`);
+        console.log(`🆔 [LAST-USER-ID] Last corrected by: User ${correction.lastCorrectedByUserId}`);
         
         // Structured data for debugging
         console.log('[CORRECTION-DATA]', {
           aiDetected: originalName,
+          aiDetectedNormalized: normalizedOriginal,
           userCorrected: correction.correctedName,
           finalDisplay: correction.correctedName,
           userCount: correction.userCount,
+          lastCorrectedByUserId: correction.lastCorrectedByUserId,
           timestamp: new Date().toISOString()
         });
 
