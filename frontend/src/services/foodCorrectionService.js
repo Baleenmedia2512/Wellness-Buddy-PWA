@@ -1,3 +1,5 @@
+import { cacheManager } from './cacheManager';
+
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -82,6 +84,12 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
 
     const data = await response.json();
     console.log("[CORRECTION SERVICE] ✅ Success:", data);
+    
+    // Clear cache so new correction applies immediately
+    cacheManager.clearPattern('foodCorrection');
+    cacheManager.clearPattern('globalCorrections');
+    cacheManager.clearPattern('reverseLookup');
+    
     return data;
   } catch (error) {
     console.error("[CORRECTION SERVICE] ❌ Error:", error);
@@ -125,36 +133,41 @@ export const getUserCorrections = async (userId) => {
  * @returns {Promise<string|null>} Original AI-detected name, or null if not found
  */
 export const reverseLookupOriginalAiName = async (correctedName) => {
-  try {
-    console.log("🔍 [REVERSE-LOOKUP] Querying for:", correctedName);
-    
-    const response = await fetch(
-      `${API_BASE_URL}/api/reverse-lookup-correction?correctedName=${encodeURIComponent(correctedName)}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
+  const cacheKey = cacheManager.generateKey('reverseLookup', correctedName);
+  
+  return cacheManager.execute(
+    cacheKey,
+    async () => {
+      console.log("🔍 [REVERSE-LOOKUP] Querying server for:", correctedName);
+      
+      const response = await fetch(
+        `${API_BASE_URL}/api/reverse-lookup-correction?correctedName=${encodeURIComponent(correctedName)}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
         },
-      },
-    );
+      );
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
-    const data = await response.json();
-    
-    if (data.success && data.found) {
-      console.log("✅ [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
-      return data.originalAiName;
-    }
-    
-    console.log("❌ [REVERSE-LOOKUP] No correction mapping found for:", correctedName);
-    return null;
-  } catch (error) {
-    console.error("❌ [REVERSE-LOOKUP] Error:", error);
-    return null;
-  }
+      const data = await response.json();
+      
+      let result = null;
+      if (data.success && data.found) {
+        console.log("✅ [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
+        result = data.originalAiName;
+      } else {
+        console.log("ℹ️ [REVERSE-LOOKUP] No correction mapping found");
+      }
+      
+      return result;
+    },
+    cacheManager.ttls.reverseLookup
+  );
 };
 
 /**
@@ -186,58 +199,76 @@ export const applyUserCorrections = async (foods, userId) => {
   }
 };
 
+// Cache for global corrections map (deprecated - now using cacheManager)
+// Kept for backward compatibility with clearGlobalCorrectionsCache export
+let globalCorrectionsCache = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+/**
+ * Clear the global corrections cache (uses global cache manager)
+ */
+export const clearGlobalCorrectionsCache = () => {
+  globalCorrectionsCache = null;
+  cacheTimestamp = 0;
+  cacheManager.clearPattern('globalCorrections');
+  console.log("🗑️ [CACHE] Cleared global corrections cache");
+};
+
 /**
  * 🌍 GLOBAL AUTO-CORRECTION FEATURE
- * Get global auto-corrections lookup map (fresh data every time)
+ * Get global auto-corrections lookup map (cached with request deduplication)
  * When ANY user corrects once, it applies to ALL users globally
  * @returns {Promise<Map>} Map of ai_detected -> corrected_name
  */
 export const getGlobalCorrectionsMap = async () => {
-  try {
-    console.log("🌍 [GLOBAL-AUTO] Fetching corrections...");
+  const cacheKey = cacheManager.generateKey('globalCorrections', 'map');
+  
+  return cacheManager.execute(
+    cacheKey,
+    async () => {
+      console.log("🌍 [GLOBAL-AUTO] Fetching corrections from server...");
 
-    // Add cache-busting timestamp to prevent caching issues on Vercel
-    const cacheBuster = Date.now();
-    const response = await fetch(
-      `${API_BASE_URL}/api/get-global-corrections?t=${cacheBuster}`,
-      {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          "Cache-Control": "no-cache, no-store, must-revalidate",
-          Pragma: "no-cache",
+      const response = await fetch(
+        `${API_BASE_URL}/api/get-global-corrections?t=${Date.now()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
         },
-      },
-    );
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // Build Map for O(1) lookup
-    const correctionMap = new Map();
-    if (data.success && data.lookup) {
-      Object.keys(data.lookup).forEach((aiDetected) => {
-        correctionMap.set(
-          aiDetected.toLowerCase().trim(),
-          data.lookup[aiDetected],
-        );
-      });
-
-      console.log(
-        `✅ [GLOBAL-AUTO] Loaded ${
-          correctionMap.size
-        } corrections (threshold: ${data.threshold || 1} user)`,
       );
-    }
 
-    return correctionMap;
-  } catch (error) {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Build Map for O(1) lookup
+      const correctionMap = new Map();
+      if (data.success && data.lookup) {
+        Object.keys(data.lookup).forEach((aiDetected) => {
+          correctionMap.set(
+            aiDetected.toLowerCase().trim(),
+            data.lookup[aiDetected],
+          );
+        });
+
+        console.log(
+          `✅ [GLOBAL-AUTO] Loaded ${correctionMap.size} corrections (cached)`,
+        );
+      }
+
+      return correctionMap;
+    },
+    cacheManager.ttls.foodCorrections
+  ).catch(error => {
     console.error("❌ [GLOBAL-AUTO] Error:", error);
     return new Map(); // Return empty map on error
-  }
+  });
 };
 
 /**
@@ -258,28 +289,16 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     }
 
     console.log(
-      "🔄 [GLOBAL-AUTO] Checking auto-corrections for",
+      "🔄 [GLOBAL-AUTO] Processing",
       foods.length,
       "items...",
     );
-    
-    // Log initial food names being processed
-    console.log('📝 [FOODS-INPUT] Processing these AI-detected items:');
-    console.table(
-      foods.map((food, idx) => ({
-        '#': idx + 1,
-        'AI Detected Name': food.name,
-        'Quantity': food.quantity || 'N/A',
-        'Calories': food.calories || 'N/A'
-      }))
-    );
 
-    // Fetch global corrections map
+    // Fetch global corrections map (cached)
     const correctionMap = await getGlobalCorrectionsMap();
 
     if (correctionMap.size === 0) {
-      console.log("⚠️ [GLOBAL-AUTO] No corrections available yet");
-      // Return foods with explicit flags showing no auto-correction
+      console.log("⚠️ [GLOBAL-AUTO] No corrections available");
       return foods.map((food) => ({
         ...food,
         originalAiName: food.name,
@@ -288,76 +307,20 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       }));
     }
 
-    // Debug: Show what's in the correction map
-    console.log("\n🗺️ [CORRECTION-MAP] Available corrections:");
-    console.table(
-      Array.from(correctionMap.entries()).map(([aiName, correction]) => ({
-        'AI Detected': aiName,
-        'Will Show': correction.correctedName,
-        'Users': correction.userCount
-      }))
-    );
-
     // Apply corrections with DIRECT LOOKUP ONLY
-    // Backend already handles chain following, frontend just does exact match
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
-      
-      console.log(`\n🔍 [LOOKUP] Checking: "${originalName}" (normalized: "${normalizedOriginal}")`);
       
       // Direct lookup - backend already followed chains
       if (correctionMap.has(normalizedOriginal)) {
         const correction = correctionMap.get(normalizedOriginal);
         const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
-        const correctorInfo = isCorrectedByCurrentUser 
-          ? '✅ YOU corrected this' 
-          : `User ${correction.lastCorrectedByUserId} corrected this`;
         
-        console.log(`   ✅ Found correction: "${correction.correctedName}" (${correctorInfo})`);
         console.log(
           `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
-            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, ${correctorInfo})`,
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`
         );
-        
-        // ============================================
-        // 📋 DETAILED CORRECTION LOG (Vercel-ready)
-        // ============================================
-        const correctorDisplay = isCorrectedByCurrentUser 
-          ? `✅ YOU (User ${correction.lastCorrectedByUserId})` 
-          : `User ${correction.lastCorrectedByUserId}`;
-        
-        console.log(`
-╔════════════════════════════════════════════════════════════════
-║ 🔄 FOOD CORRECTION FLOW
-╠════════════════════════════════════════════════════════════════
-║ 🤖 AI Detected Name:    "${originalName}" (normalized: "${normalizedOriginal}")
-║ 👤 User Corrected To:   "${correction.correctedName}"
-║ 📊 Final Display Name:  "${correction.correctedName}"
-║ 👥 Last Corrected By:   ${correctorDisplay}
-║ 📈 Total Users:         ${correction.userCount} user(s)
-╚════════════════════════════════════════════════════════════════
-        `);
-        
-        // Individual runtime logs for Vercel
-        console.log(`🤖 [AI-DETECTED] Original: ${originalName} (normalized: ${normalizedOriginal})`);
-        console.log(`👤 [USER-CORRECTED] Mapped to: ${correction.correctedName}`);
-        console.log(`📊 [FINAL-DISPLAY] Will show: ${correction.correctedName}`);
-        console.log(`👥 [USER-COUNT] Corrected by: ${correction.userCount} user(s)`);
-        console.log(`🆔 [LAST-USER-ID] Last corrected by: ${isCorrectedByCurrentUser ? '✅ YOU' : 'User ' + correction.lastCorrectedByUserId}`);
-        
-        // Structured data for debugging
-        console.log('[CORRECTION-DATA]', {
-          aiDetected: originalName,
-          aiDetectedNormalized: normalizedOriginal,
-          userCorrected: correction.correctedName,
-          finalDisplay: correction.correctedName,
-          userCount: correction.userCount,
-          lastCorrectedByUserId: correction.lastCorrectedByUserId,
-          isCorrectedByCurrentUser: isCorrectedByCurrentUser,
-          currentUserId: currentUserId,
-          timestamp: new Date().toISOString()
-        });
 
         return {
           ...food,
@@ -365,7 +328,6 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           originalAiName: originalName,
           wasAutoCorrected: true,
           correctionSource: `Auto-corrected (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
-          // Additional metadata for runtime inspection
           correctionMetadata: {
             aiDetected: originalName,
             userCorrected: correction.correctedName,
@@ -376,9 +338,6 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       }
 
       // No correction found - return with explicit flags
-      console.log(`   ⚪ No correction found - using AI detected name`);
-      console.log(`⚪ [NO-CORRECTION] "${originalName}" - Using AI detected name (no user corrections found)`);
-      
       return {
         ...food,
         originalAiName: originalName,
@@ -396,21 +355,6 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       console.log(
         `🎯 [GLOBAL-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected`,
       );
-      
-      // Detailed summary table
-      console.log('\n📊 [CORRECTION-SUMMARY] Auto-correction results:');
-      console.table(
-        correctedFoods
-          .filter((f) => f.wasAutoCorrected)
-          .map((f) => ({
-            'AI Detected': f.originalAiName,
-            'User Corrected': f.correctionMetadata?.userCorrected || 'N/A',
-            'Final Display': f.name,
-            'User Count': f.correctionMetadata?.userCount || 0
-          }))
-      );
-    } else {
-      console.log(`⚪ [GLOBAL-AUTO] ℹ No auto-corrections applied (0/${foods.length} items)`);
     }
 
     return correctedFoods;

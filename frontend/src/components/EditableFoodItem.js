@@ -1283,54 +1283,57 @@ const EditableFoodItem = forwardRef(
       // ✅ CRITICAL FIX: Preserve originalAiName for correction chain support
       // This ensures we always save corrections against the TRUE AI-detected name
       
-      // 🔍 DEBUG: Log what we receive from parent
+      // 🔍 DEBUG: Log what we receive from parent (with defaults)
+      const hasMetadata = foodItem.originalAiName !== undefined;
       console.log("🔍 [INIT] EditableFoodItem initialization:");
       console.log("   foodItem.name:", foodItem.name);
-      console.log("   foodItem.originalAiName:", foodItem.originalAiName);
-      console.log("   foodItem.wasAutoCorrected:", foodItem.wasAutoCorrected);
-      console.log("   foodItem.correctionMetadata:", foodItem.correctionMetadata);
+      console.log("   foodItem.originalAiName:", foodItem.originalAiName || "(not set - will reverse-lookup)");
+      console.log("   foodItem.wasAutoCorrected:", foodItem.wasAutoCorrected ?? "(not set)");
+      console.log("   foodItem.correctionMetadata:", foodItem.correctionMetadata || "(not set)");
+      console.log("   hasMetadata:", hasMetadata ? "✅ Yes" : "⚠️ No (likely loaded from old database record)");
       
       // CRITICAL: Try to get originalAiName from multiple sources
       let originalAiName = 
         foodItem.originalAiName || 
         foodItem.correctionMetadata?.aiDetected;
       
-      // 🚨 ASYNC REVERSE-LOOKUP: ALWAYS attempt reverse-lookup for ALL items
-      // This ensures we recover originalAiName even if it was lost or incorrectly set
-      // The API will return null if no correction exists (meaning it's original AI detection)
-      console.warn("⚠️ [INIT] Attempting reverse-lookup for:", foodItem.name);
-      console.warn("   Current originalAiName:", originalAiName);
-      console.warn("   Will verify if this is correct...");
-      
-      // ALWAYS run reverse-lookup - it's fast and ensures data integrity
-      reverseLookupOriginalAiName(foodItem.name).then((foundOriginalName) => {
-        if (foundOriginalName && foundOriginalName !== foodItem.name) {
-          console.log("✅ [REVERSE-LOOKUP] Successfully recovered originalAiName:", foundOriginalName);
-          console.log("   Current food name:", foodItem.name);
-          console.log("   Original AI detected:", foundOriginalName);
-          console.log("   🔄 This means '" + foundOriginalName + "' was auto-corrected to '" + foodItem.name + "'");
-          
-          // Update the ref with the recovered original name
-          if (originalFoodRef.current) {
-            originalFoodRef.current.originalAiName = foundOriginalName;
-            originalFoodRef.current.wasAutoCorrected = true;
-            console.log("✅ [REVERSE-LOOKUP] Updated originalFoodRef.current:");
-            console.log("   → originalAiName:", foundOriginalName);
-            console.log("   → wasAutoCorrected: true");
-            console.log("   ℹ️  Now when you edit '" + foodItem.name + "', it will save as: '" + foundOriginalName + "' → 'YourNewName'");
+      // 🚨 ASYNC REVERSE-LOOKUP: Only run if metadata is missing
+      if (!hasMetadata) {
+        console.warn("⚠️ [INIT] No metadata found - attempting reverse-lookup for:", foodItem.name);
+        console.warn("   This happens when loading old saved data from database");
+        
+        // Run reverse-lookup to recover missing originalAiName
+        reverseLookupOriginalAiName(foodItem.name).then((foundOriginalName) => {
+          if (foundOriginalName && foundOriginalName !== foodItem.name) {
+            console.log("✅ [REVERSE-LOOKUP] Successfully recovered originalAiName:", foundOriginalName);
+            console.log("   Current food name:", foodItem.name);
+            console.log("   Original AI detected:", foundOriginalName);
+            console.log("   🔄 This means '" + foundOriginalName + "' was auto-corrected to '" + foodItem.name + "'");
+            
+            // Update the ref with the recovered original name
+            if (originalFoodRef.current) {
+              originalFoodRef.current.originalAiName = foundOriginalName;
+              originalFoodRef.current.wasAutoCorrected = true;
+              console.log("✅ [REVERSE-LOOKUP] Updated originalFoodRef.current:");
+              console.log("   → originalAiName:", foundOriginalName);
+              console.log("   → wasAutoCorrected: true");
+              console.log("   ℹ️  Now when you edit '" + foodItem.name + "', it will save as: '" + foundOriginalName + "' → 'YourNewName'");
+            }
+          } else {
+            console.log("ℹ️ [REVERSE-LOOKUP] No correction mapping found - treating current name as original");
+            // Keep originalAiName as current name since it wasn't corrected
+            if (originalFoodRef.current && !originalFoodRef.current.originalAiName) {
+              originalFoodRef.current.originalAiName = foodItem.name;
+              originalFoodRef.current.wasAutoCorrected = false;
+            }
           }
-        } else {
-          console.log("ℹ️ [REVERSE-LOOKUP] No correction mapping found for:", foodItem.name);
-          console.log("   This item was NOT auto-corrected (original AI detection)");
-          // Keep originalAiName as current name since it wasn't corrected
-          if (originalFoodRef.current && !originalFoodRef.current.originalAiName) {
-            originalFoodRef.current.originalAiName = foodItem.name;
-            originalFoodRef.current.wasAutoCorrected = false;
-          }
-        }
-      }).catch((error) => {
-        console.error("❌ [REVERSE-LOOKUP] Error during reverse lookup:", error);
-      });
+        }).catch((error) => {
+          console.error("❌ [REVERSE-LOOKUP] Error:", error);
+        });
+      } else {
+        console.log("✅ [INIT] Metadata present - skipping reverse-lookup");
+        console.log("   originalAiName:", originalAiName || foodItem.name);
+      }
       
       // Final fallback: use current name (will be updated by reverse-lookup if found)
       originalAiName = originalAiName || foodItem.name;
