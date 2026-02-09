@@ -123,15 +123,20 @@ const NutritionDashboard = ({
           unit: unit,
           isLiquid: isLiquid,
           // 🔴 CRITICAL: Preserve correction metadata if it exists
-          originalAiName: item.originalAiName || item.name,
-          wasAutoCorrected: item.wasAutoCorrected || false,
+          // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
+          originalAiName: item.originalAiName || null, // Use null instead of fallback
+          wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
           correctionSource: item.correctionSource || null,
           correctionMetadata: item.correctionMetadata || null,
+          // Flag to indicate this item needs reverse-lookup
+          needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
         };
         console.log("🔍 [NutritionDashboard] Transformed item:", {
           name: item.name,
           originalAiName: transformed.originalAiName,
           wasAutoCorrected: transformed.wasAutoCorrected,
+          needsReverseLookup: transformed.needsReverseLookup,
+          correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
           isLiquidByName,
           original: item,
           transformed: transformed,
@@ -230,10 +235,12 @@ const NutritionDashboard = ({
         unit: unit,
         isLiquid: isLiquid,
         // 🔴 CRITICAL: Preserve correction metadata if it exists
-        originalAiName: item.originalAiName || item.name,
-        wasAutoCorrected: item.wasAutoCorrected || false,
+        originalAiName: item.originalAiName || null, // Use null instead of fallback
+        wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
         correctionSource: item.correctionSource || null,
         correctionMetadata: item.correctionMetadata || null,
+        // Flag to indicate this item needs reverse-lookup
+        needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
       };
     });
     setLocalDetailedItems(transformedItems);

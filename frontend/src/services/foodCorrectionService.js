@@ -119,6 +119,45 @@ export const getUserCorrections = async (userId) => {
 };
 
 /**
+ * Reverse-lookup: Find original AI-detected name from a corrected name
+ * Use case: When loading old meal data that's missing originalAiName metadata
+ * @param {string} correctedName - The current corrected food name
+ * @returns {Promise<string|null>} Original AI-detected name, or null if not found
+ */
+export const reverseLookupOriginalAiName = async (correctedName) => {
+  try {
+    console.log("🔍 [REVERSE-LOOKUP] Querying for:", correctedName);
+    
+    const response = await fetch(
+      `${API_BASE_URL}/api/reverse-lookup-correction?correctedName=${encodeURIComponent(correctedName)}`,
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (data.success && data.found) {
+      console.log("✅ [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
+      return data.originalAiName;
+    }
+    
+    console.log("❌ [REVERSE-LOOKUP] No correction mapping found for:", correctedName);
+    return null;
+  } catch (error) {
+    console.error("❌ [REVERSE-LOOKUP] Error:", error);
+    return null;
+  }
+};
+
+/**
  * Apply hybrid corrections (global + user) to AI-detected food names
  * Priority: User's personal corrections > Global community patterns > Original AI
  * ✅ GLOBAL AUTO-CORRECTIONS ENABLED
