@@ -631,8 +631,19 @@ const EditableFoodItem = forwardRef(
             // This prevents correction chains from breaking
             // Example: AI detects "tea" → auto-corrects to "milk" → user changes to "boost"
             // We must save: "tea" → "boost" (NOT "milk" → "boost")
+            
+            // 🔍 DEBUG: Log all available data sources
+            console.log("🔍 [DEBUG] Available name sources:", {
+              "originalFoodRef.current?.originalAiName": originalFoodRef.current?.originalAiName,
+              "originalFoodRef.current?.name": originalFoodRef.current?.name,
+              "originalName": originalName,
+              "foodItem.originalAiName": foodItem.originalAiName,
+              "foodItem.name": foodItem.name,
+            });
+            
             const aiDetectedName =
               originalFoodRef.current?.originalAiName || 
+              foodItem.originalAiName || // Additional fallback
               originalFoodRef.current?.name ||
               originalName;
 
@@ -663,13 +674,23 @@ const EditableFoodItem = forwardRef(
             
             // Validation: Ensure we're using the true original AI name
             if (aiDetectedName === originalName && originalFoodRef.current?.wasAutoCorrected) {
-              console.warn("⚠️ WARNING: Using auto-corrected name instead of original AI name!");
-              console.warn("   This will create incorrect correction chains!");
+              console.error("🚨 CRITICAL ERROR: Using auto-corrected name instead of original AI name!");
+              console.error("   This will create incorrect correction chains!");
+              console.error("   aiDetectedName:", aiDetectedName);
+              console.error("   originalName:", originalName);
+              console.error("   originalAiName should be:", originalFoodRef.current?.originalAiName);
+            }
+            
+            // Double validation: Ensure aiDetectedName is NOT the same as originalName when corrected
+            if (aiDetectedName === originalName && foodItem.wasAutoCorrected) {
+              console.error("🚨 CRITICAL ERROR: foodItem.wasAutoCorrected=true but aiDetectedName equals originalName!");
+              console.error("   Expected originalAiName to be different from current name");
+              console.error("   This means originalAiName was not preserved!");
             }
             
             console.log(
               "💾 Saving: '" + aiDetectedName + "' → '" + newName + "'" + 
-              (aiDetectedName !== originalName ? " (preserving original AI detection)" : ""),
+              (aiDetectedName !== originalName ? " ✅ (preserving original AI detection)" : " ⚠️ (no correction chain)"),
             );
             console.log("=======================================");
 
@@ -678,6 +699,13 @@ const EditableFoodItem = forwardRef(
             saveFoodCorrection(userId, aiDetectedName, newName)
               .then((response) => {
                 console.log("[CORRECTION DEBUG] ✅ API Response:", response);
+                console.log("✅ ========== CORRECTION SAVED ==========");
+                console.log("   📝 Value sent to DB:");
+                console.log("      - AiDetected:", aiDetectedName);
+                console.log("      - UserCorrected:", newName);
+                console.log("      - UserId:", userId);
+                console.log("==========================================");
+                
                 if (response.success) {
                   console.log("✅ Food correction saved:", response.message);
 
@@ -951,6 +979,11 @@ const EditableFoodItem = forwardRef(
         isLiquid: foodToSave.isLiquid || false,
         nutrition: nutrition,
         per100g: foodToSave.per100g,
+        // 🔴 CRITICAL: Preserve originalAiName and correction metadata
+        originalAiName: foodItem.originalAiName || foodItem.name,
+        wasAutoCorrected: foodItem.wasAutoCorrected || false,
+        correctionSource: foodItem.correctionSource || null,
+        correctionMetadata: foodItem.correctionMetadata || null,
       };
 
       try {
@@ -1191,10 +1224,26 @@ const EditableFoodItem = forwardRef(
 
       // ✅ CRITICAL FIX: Preserve originalAiName for correction chain support
       // This ensures we always save corrections against the TRUE AI-detected name
+      
+      // 🔍 DEBUG: Log what we receive from parent
+      console.log("🔍 [INIT] EditableFoodItem initialization:");
+      console.log("   foodItem.name:", foodItem.name);
+      console.log("   foodItem.originalAiName:", foodItem.originalAiName);
+      console.log("   foodItem.wasAutoCorrected:", foodItem.wasAutoCorrected);
+      console.log("   foodItem.correctionMetadata:", foodItem.correctionMetadata);
+      
+      // CRITICAL: Try to get originalAiName from multiple sources
+      const originalAiName = 
+        foodItem.originalAiName || 
+        foodItem.correctionMetadata?.aiDetected ||
+        foodItem.name;
+      
+      console.log("   ✅ USING originalAiName:", originalAiName);
+      
       originalFoodRef.current = { 
         ...foodItem,
         // Ensure originalAiName is preserved (set during auto-correction in App.js)
-        originalAiName: foodItem.originalAiName || foodItem.name,
+        originalAiName: originalAiName,
         wasAutoCorrected: foodItem.wasAutoCorrected || false,
         correctionSource: foodItem.correctionSource || null,
       };

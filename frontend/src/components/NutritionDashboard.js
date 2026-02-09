@@ -122,9 +122,16 @@ const NutritionDashboard = ({
           grams: item.weight_g || item.volume_ml || item.grams || 100,
           unit: unit,
           isLiquid: isLiquid,
+          // 🔴 CRITICAL: Preserve correction metadata if it exists
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
         };
         console.log("🔍 [NutritionDashboard] Transformed item:", {
           name: item.name,
+          originalAiName: transformed.originalAiName,
+          wasAutoCorrected: transformed.wasAutoCorrected,
           isLiquidByName,
           original: item,
           transformed: transformed,
@@ -222,6 +229,11 @@ const NutritionDashboard = ({
         grams: item.weight_g || item.volume_ml || item.grams || 100,
         unit: unit,
         isLiquid: isLiquid,
+        // 🔴 CRITICAL: Preserve correction metadata if it exists
+        originalAiName: item.originalAiName || item.name,
+        wasAutoCorrected: item.wasAutoCorrected || false,
+        correctionSource: item.correctionSource || null,
+        correctionMetadata: item.correctionMetadata || null,
       };
     });
     setLocalDetailedItems(transformedItems);
@@ -297,6 +309,11 @@ const NutritionDashboard = ({
             fat: Math.round(item.nutrition?.fat || item.fat || 0),
             fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
           },
+          // 🔴 CRITICAL: Save correction metadata to database
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
         })),
         total: {
           calories: Math.round(newTotals.calories || 0),

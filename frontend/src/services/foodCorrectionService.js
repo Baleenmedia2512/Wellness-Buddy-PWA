@@ -29,17 +29,24 @@ const normalizeFoodName = (name) => {
  */
 export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
   try {
+    console.log("\n💾 ========== SAVE CORRECTION API ==========");
     console.log("[CORRECTION SERVICE] saveFoodCorrection called:", {
       userId,
       aiDetected,
       userCorrected,
     });
+    
+    // 🚨 CRITICAL VALIDATION: Ensure aiDetected is the ORIGINAL AI name
+    console.log("🔍 [VALIDATION] Checking if aiDetected is original AI name...");
+    console.log("   - aiDetected:", aiDetected);
+    console.log("   - Will save to DB:", { UserId: userId, AiDetected: aiDetected, UserCorrected: userCorrected });
 
     // Don't save if both names are the same
     if (
       aiDetected.trim().toLowerCase() === userCorrected.trim().toLowerCase()
     ) {
       console.log("[CORRECTION SERVICE] ❌ Names are identical, skipping save");
+      console.log("==========================================\n");
       return { success: false, message: "No correction needed" };
     }
 
@@ -52,6 +59,12 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
       userCorrected: userCorrected.trim(),
     };
     console.log("[CORRECTION SERVICE] Payload:", payload);
+    console.log("🚀 [SENDING TO BACKEND] Will create/update DB record:");
+    console.log("   📊 food_corrections_table:");
+    console.log("      - UserId:", userId);
+    console.log("      - AiDetected:", aiDetected.trim());
+    console.log("      - UserCorrected:", userCorrected.trim());
+    console.log("==========================================\n");
 
     const response = await fetch(url, {
       method: "POST",
