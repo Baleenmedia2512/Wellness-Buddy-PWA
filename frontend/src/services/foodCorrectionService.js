@@ -271,7 +271,6 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         // ============================================
         // 📋 DETAILED CORRECTION LOG (Vercel-ready)
         // ============================================
-        const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
         const correctorDisplay = isCorrectedByCurrentUser 
           ? `✅ YOU (User ${correction.lastCorrectedByUserId})` 
           : `User ${correction.lastCorrectedByUserId}`;
@@ -289,15 +288,13 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         `);
         
         // Individual runtime logs for Vercel
-        const isByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
         console.log(`🤖 [AI-DETECTED] Original: ${originalName} (normalized: ${normalizedOriginal})`);
         console.log(`👤 [USER-CORRECTED] Mapped to: ${correction.correctedName}`);
         console.log(`📊 [FINAL-DISPLAY] Will show: ${correction.correctedName}`);
         console.log(`👥 [USER-COUNT] Corrected by: ${correction.userCount} user(s)`);
-        console.log(`🆔 [LAST-USER-ID] Last corrected by: ${isByCurrentUser ? '✅ YOU' : 'User ' + correction.lastCorrectedByUserId}`);
+        console.log(`🆔 [LAST-USER-ID] Last corrected by: ${isCorrectedByCurrentUser ? '✅ YOU' : 'User ' + correction.lastCorrectedByUserId}`);
         
         // Structured data for debugging
-        const isByUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
         console.log('[CORRECTION-DATA]', {
           aiDetected: originalName,
           aiDetectedNormalized: normalizedOriginal,
@@ -305,7 +302,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           finalDisplay: correction.correctedName,
           userCount: correction.userCount,
           lastCorrectedByUserId: correction.lastCorrectedByUserId,
-          isCorrectedByCurrentUser: isByUser,
+          isCorrectedByCurrentUser: isCorrectedByCurrentUser,
           currentUserId: currentUserId,
           timestamp: new Date().toISOString()
         });
