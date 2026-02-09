@@ -134,12 +134,10 @@ export default async function handler(req, res) {
     correctionMap.forEach((pattern, normalizedAi) => {
       console.log(`\n📍 Direct correction: "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
       
-      // Add direct correction (no chain following)
-      if (normalizeFoodName(pattern.userCorrected) !== normalizedAi) {
-        finalCorrectionMap.set(normalizedAi, pattern);
-      } else {
-        console.log(`   ⊘ Skipped (AI name matches correction)`);
-      }
+      // Add direct correction - now includes same-name corrections
+      // This allows database entries like "black tea" → "Herbal Tea" to work
+      finalCorrectionMap.set(normalizedAi, pattern);
+      console.log(`   ✅ Added to correction map`);
     });
 
     // Convert to global patterns with chain following applied
