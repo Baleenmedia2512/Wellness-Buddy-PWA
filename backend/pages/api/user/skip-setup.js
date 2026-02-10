@@ -35,7 +35,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { email, coachId } = req.body;
+    const { email, coachId, coachName } = req.body;
 
     if (!email) {
       res.status(400).json({
@@ -45,7 +45,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    console.log(`📝 Skip setup request for ${email}, coachId: ${coachId || 'none'}`);
+    console.log(`📝 Skip setup request for ${email}, coachId: ${coachId || 'none'}, coachName: ${coachName || 'none'}`);
 
     const supabase = getSupabaseClient();
 
@@ -75,7 +75,10 @@ export default async function handler(req, res) {
     // If coach was selected (coachId provided), save the coach relationship
     if (coachId) {
       updateData.UplineCoachId = coachId;
-      console.log(`👥 Saving coach relationship: User → Coach (${coachId})`);
+      if (coachName) {
+        updateData.CoachName = coachName;
+      }
+      console.log(`👥 Saving coach relationship: User → Coach (${coachName || coachId})`);
     }
 
     // Update SetupSkipped flag (and optionally UplineCoachId)

@@ -727,6 +727,16 @@ function WellnessValleyApp() {
               }
             }
 
+            // Store user email in localStorage for API calls
+            const userEmail = parsedUser.email || parsedUser.Email;
+            if (userEmail) {
+              localStorage.setItem("userEmail", userEmail);
+              console.log(
+                "✅ [OTP Restore] Stored user email in localStorage:",
+                userEmail,
+              );
+            }
+
             // Load user context for AI personalization
             if (parsedUser.id) {
               console.log("🔄 [OTP Restore] Loading user context...");
@@ -1907,6 +1917,16 @@ function WellnessValleyApp() {
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
         try {
+          // Store user email in localStorage for API calls
+          const userEmail = user.email || user.Email;
+          if (userEmail) {
+            localStorage.setItem("userEmail", userEmail);
+            console.log(
+              "✅ [handleSignIn] Stored user email in localStorage:",
+              userEmail,
+            );
+          }
+          
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handleSignIn] saveResult:", saveResult);
@@ -2024,6 +2044,16 @@ function WellnessValleyApp() {
 
       if (user) {
         try {
+          // Store user email in localStorage for API calls
+          const userEmail = user.email || user.Email;
+          if (userEmail) {
+            localStorage.setItem("userEmail", userEmail);
+            console.log(
+              "✅ [handlePopupSignIn] Stored user email in localStorage:",
+              userEmail,
+            );
+          }
+          
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handlePopupSignIn] saveResult:", saveResult);
@@ -2241,6 +2271,17 @@ function WellnessValleyApp() {
 
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
+        
+        // Store user email in localStorage for API calls
+        const userEmail = parsedUser.email || parsedUser.Email;
+        if (userEmail) {
+          localStorage.setItem("userEmail", userEmail);
+          console.log(
+            "✅ [handleOtpVerified] Stored user email in localStorage:",
+            userEmail,
+          );
+        }
+        
         setUser(parsedUser);
 
         // Show profile modal for new users

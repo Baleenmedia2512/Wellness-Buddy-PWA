@@ -154,6 +154,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         "⏭️ Skipping Team ID - Saving coach relationship WITHOUT OTP:",
         {
           coachId: selectedCoach.userId,
+          coachName: selectedCoach.userName,
           email: userEmail,
         },
       );
@@ -161,7 +162,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       // Call skip-setup API to save coach relationship WITHOUT sending OTP
       const skipResponse = await axios.post(`${API_BASE}/api/user/skip-setup`, {
         email: userEmail,
-        coachId: selectedCoach.userId, // Save coach relationship
+        coachId: selectedCoach.userId,
+        coachName: selectedCoach.userName, // Save coach name
       });
 
       console.log(
@@ -172,13 +174,15 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       // Save skip status to localStorage
       localStorage.setItem("setupSkipped", "true");
 
-      setSuccess("Setup skipped! You can continue using the app.");
+      setSuccess(
+        skipResponse.data.coachSaved
+          ? "Coach saved! Reloading..."
+          : "Setup skipped! Reloading...",
+      );
 
-      // Close wizard after delay
+      // Reload page to refresh user data from backend
       setTimeout(() => {
-        if (onClose) {
-          onClose();
-        }
+        window.location.reload();
       }, 1500);
     } catch (err) {
       console.error("Skip setup error:", err);
