@@ -68,23 +68,9 @@ export function calculateTokenCosts({ inputTokens, outputTokens, modelName, exch
 export function extractTokenMetadata(response) {
   const usageMetadata = response?.usageMetadata || {};
   
-  // Thinking tokens are charged as output but reported separately
-  // Google charges: Output price = candidatesTokenCount + thoughtsTokenCount
-  const thinkingTokens = usageMetadata.thoughtsTokenCount || 0;
-  const candidateTokens = usageMetadata.candidatesTokenCount || 0;
-  
-  // Output tokens for billing = visible output + thinking tokens
-  const totalOutputTokens = candidateTokens + thinkingTokens;
-  
-  if (thinkingTokens > 0) {
-    console.log(`🧠 Thinking tokens detected: ${thinkingTokens} (charged as output)`);
-  }
-  
   return {
     inputTokens: usageMetadata.promptTokenCount || 0,
-    outputTokens: totalOutputTokens,
-    thinkingTokens: thinkingTokens,
-    candidateTokens: candidateTokens,
-    totalTokens: (usageMetadata.promptTokenCount || 0) + totalOutputTokens
+    outputTokens: usageMetadata.candidatesTokenCount || 0,
+    totalTokens: usageMetadata.totalTokenCount || 0
   };
 }

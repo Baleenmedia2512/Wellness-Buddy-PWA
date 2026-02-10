@@ -560,11 +560,6 @@ function WellnessValleyApp() {
           );
         }
 
-        // Set current user for token tracking on geminiService
-        if (user.id && userEmail) {
-          geminiService.setCurrentUser(user.id, userEmail);
-        }
-
         // Load user context for AI personalization
         if (user.id) {
           console.log("🔄 [Auth State] Loading user context...");
@@ -1367,7 +1362,6 @@ function WellnessValleyApp() {
       // Set current user for token tracking on imageTypeDetector (unified detection)
       if (user?.id && user?.email) {
         imageTypeDetector.setCurrentUser(user.id, user.email);
-        geminiService.setCurrentUser(user.id, user.email);
       }
 
       // ✅ Detect image type using Gemini AI (single unified call)
