@@ -295,6 +295,18 @@ async function saveTokenUsageToDatabase(tokenData) {
   
   if (result.success) {
     console.log('✅ Token usage saved, ID:', result.id);
+    if (result.tokenData) {
+      console.log('📊 Token Response:', {
+        '📥 Input Tokens': result.tokenData.inputTokens,
+        '💬 Output Tokens': result.tokenData.outputTokens,
+        '📈 Total Tokens': result.tokenData.totalTokens,
+        '💰 Input Cost (INR)': `₹${Number(result.tokenData.inputTokenCost).toFixed(4)}`,
+        '💰 Output Cost (INR)': `₹${Number(result.tokenData.outputTokenCost).toFixed(4)}`,
+        '💰 Total Cost (INR)': `₹${Number(result.tokenData.totalTokenCost).toFixed(4)}`,
+        '🔧 Operation': result.tokenData.operationType,
+        '🤖 Model': result.tokenData.modelName
+      });
+    }
   } else {
     throw new Error(result.message || 'Failed to save');
   }
