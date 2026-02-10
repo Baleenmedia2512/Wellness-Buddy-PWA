@@ -57,6 +57,7 @@ import {
   isMobileDevice,
   cleanup,
 } from "./services/firebase";
+import TouchFeedbackButton from "./components/TouchFeedbackButton";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -134,6 +135,9 @@ function WellnessValleyApp() {
   // 🐛 Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
   const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+
+  // 🔄 Retry state - store last image file for retry capability
+  const lastImageFileRef = useRef(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1309,6 +1313,7 @@ function WellnessValleyApp() {
     setSaveError(null);
     setDetectedFoodNames([]); // Clear previous detection
     setLoadingState("analyzing"); // Reset to analyzing state
+    lastImageFileRef.current = file; // Store for retry
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -1645,13 +1650,29 @@ function WellnessValleyApp() {
             })),
           };
         } else {
-          // Fallback: No food data extracted, show error
+          // Fallback: No food data extracted, show actionable error with tips
           console.error("❌ [DEBUG] No food data extracted from image");
           console.error("❌ [DEBUG] Detection details:", detectedType.details);
           console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
-          setError(
-            "Could not detect any food items in the image. Please try again with a clearer photo.",
+          
+          // Check if it was an API/quota issue vs image quality issue
+          const isApiError = detectedType.details?.error && (
+            detectedType.details.error.includes('quota') || 
+            detectedType.details.error.includes('API') || 
+            detectedType.details.error.includes('timeout') ||
+            detectedType.details.error.includes('429') ||
+            detectedType.details.error.includes('503')
           );
+          
+          if (isApiError) {
+            setError(
+              "🤖 AI service is temporarily unavailable. Please wait a minute and try again."
+            );
+          } else {
+            setError(
+              "Could not detect any food items in the image. Please try again with a clearer photo."
+            );
+          }
           setLoading(false);
           return;
         }
@@ -1813,6 +1834,14 @@ function WellnessValleyApp() {
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
+    }
+  };
+
+  // 🔄 Retry food analysis with the last image
+  const handleRetryAnalysis = () => {
+    if (lastImageFileRef.current) {
+      setError(null);
+      handleImageSelect(lastImageFileRef.current);
     }
   };
 
@@ -2430,12 +2459,30 @@ function WellnessValleyApp() {
         />
 
         {error && (
-          <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm flex items-start space-x-3">
-            <div className="text-xl">⚠️</div>
-            <div className="flex-1">
-              <p className="font-semibold">Error</p>
-              <p className="text-sm leading-relaxed">{error}</p>
+          <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
+            <div className="flex items-start space-x-3">
+              <div className="text-xl">⚠️</div>
+              <div className="flex-1">
+                <p className="font-semibold">Error</p>
+                <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
+              </div>
             </div>
+            {lastImageFileRef.current && (
+              <div className="mt-2 flex gap-2 justify-end">
+                <TouchFeedbackButton
+                  onClick={handleRetryAnalysis}
+                  className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
+                >
+                  Retry
+                </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  Dismiss
+                </TouchFeedbackButton>
+              </div>
+            )}
           </div>
         )}
 

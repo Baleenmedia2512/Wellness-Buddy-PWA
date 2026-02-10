@@ -828,7 +828,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
   transformOptimizedResponse(data, type) {
     if (type === "image") {
       if (!data || !data.foods || data.foods.length === 0) {
-        throw new Error("No food items detected in the image");
+        throw new Error("No food items detected in the image. Try a clearer, well-lit photo of a single dish.");
       }
 
       const totalNutrition =
