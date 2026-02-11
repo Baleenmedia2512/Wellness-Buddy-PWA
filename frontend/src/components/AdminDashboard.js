@@ -541,18 +541,10 @@ const AdminDashboard = ({ user, onClose }) => {
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [popupJustOpened, setPopupJustOpened] = useState(false);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(null);
-  const [perMillionCosts, setPerMillionCosts] = useState({
-    inputPerMillion: 0.1,
-    outputPerMillion: 0.4,
-  });
-  const [perMillionInputs, setPerMillionInputs] = useState({
-    inputPerMillion: "0.10",
-    outputPerMillion: "0.40",
-  });
-  const [totalTokenCounts, setTotalTokenCounts] = useState({
-    inputTokens: 0,
-    outputTokens: 0,
-  });
+  const [perMillionCosts, setPerMillionCosts] = useState({ inputPerMillion: 0.10, outputPerMillion: 0.40 });
+  const [perMillionInputs, setPerMillionInputs] = useState({ inputPerMillion: '0.10', outputPerMillion: '0.40' });
+  const [totalTokenCounts, setTotalTokenCounts] = useState({ inputTokens: 0, outputTokens: 0 });
+  const [savedCorrection, setSavedCorrection] = useState(null); // Store saved correction with time range info
 
   const fetchTokenData = async () => {
     // DEMO DATA DISABLED
@@ -648,14 +640,15 @@ const AdminDashboard = ({ user, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
 
-  // Fetch token costs when edit popup opens
+  // Fetch token costs when edit popup opens or filter changes
   // Logic: Show edited values UNLESS new usage was added after the last edit
   useEffect(() => {
     const fetchTokenCosts = async () => {
-      if (showEditPopup && !popupJustOpened) {
-        setPopupJustOpened(true);
-
-        // Values are already set by handleOpenEditPopup, just fetch additional data
+      if (showEditPopup) {
+        if (!popupJustOpened) {
+          setPopupJustOpened(true);
+        }
+        
         try {
           // Fetch current exchange rate
           const exchangeRate = await getUsdToInrRate();
@@ -692,82 +685,66 @@ const AdminDashboard = ({ user, onClose }) => {
               console.log("📊 Loaded pricing config:", pricing);
             }
           }
-
-          // Fetch correction data (includes latest usage timestamp for comparison)
-          const correctionResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-correction`,
-            {
-              cache: "no-store",
-              headers: {
-                "Cache-Control": "no-cache",
-                Pragma: "no-cache",
-              },
-            },
-          );
-
-          if (correctionResponse.ok) {
-            const correctionData = await correctionResponse.json();
-
-            // Check if we have a saved correction AND it's more recent than latest usage
-            if (correctionData.success && correctionData.data) {
-              const correctionTimestamp = new Date(
-                correctionData.data.correctionTimestamp,
-              );
-              const latestUsageTimestamp = correctionData.latestUsageTimestamp
-                ? new Date(correctionData.latestUsageTimestamp)
-                : null;
-
-              // If correction is MORE RECENT than latest usage, show edited values
-              // If new usage was added after correction, show calculated totals instead
-              // BUT ONLY if the correction has non-zero values
-              if (
-                !latestUsageTimestamp ||
-                correctionTimestamp >= latestUsageTimestamp
-              ) {
-                const costs = {
-                  inputCost: parseFloat(correctionData.data.inputCost || 0),
-                  outputCost: parseFloat(correctionData.data.outputCost || 0),
-                };
-
-                // Only use saved correction if it has actual values (not zeros)
-                if (costs.inputCost > 0 || costs.outputCost > 0) {
-                  setTokenCosts(costs);
-                  setTokenCostInputs({
-                    inputCost: costs.inputCost.toFixed(4),
-                    outputCost: costs.outputCost.toFixed(4),
-                  });
-                  setOriginalTokenCosts(costs);
-                  console.log(
-                    "📖 Using saved correction (no new usage since last edit)",
-                  );
-                  return; // Exit early, we have saved values that are still current
-                } else {
-                  console.log(
-                    "📖 Saved correction has zero values, fetching actual totals instead",
-                  );
-                }
-              } else {
-                console.log(
-                  "📖 New usage detected after last correction, fetching fresh totals",
-                );
-              }
+          
+          // Always fetch calculated totals based on current filter
+          // But first check if we have a saved correction for this exact time range
+          const formatLocalDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          
+          // Check if we have a saved correction for this time range
+          if (savedCorrection) {
+            const isSameTimeRange = savedCorrection.timeRange === timeRange;
+            const isSameCustomDates = timeRange === 'custom' 
+              ? (savedCorrection.startDate === formatLocalDate(customStartDate) && 
+                 savedCorrection.endDate === formatLocalDate(customEndDate))
+              : true;
+            
+            if (isSameTimeRange && isSameCustomDates) {
+              // Use saved correction
+              const costs = {
+                inputCost: savedCorrection.inputCost,
+                outputCost: savedCorrection.outputCost
+              };
+              setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+              });
+              setOriginalTokenCosts(costs);
+              setTotalTokenCounts(savedCorrection.tokenCounts);
+              console.log('📖 Using saved correction for current time range');
+              return; // Exit early
             }
           }
-
-          // No valid saved correction OR new usage was added - fetch calculated totals
-          const response = await fetch(
-            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(
-              user?.email,
-            )}&timeRange=all`,
-            {
-              cache: "no-store",
-              headers: {
-                "Cache-Control": "no-cache",
-                Pragma: "no-cache",
-              },
-            },
-          );
-
+          
+          // No saved correction for this time range - fetch calculated totals
+          
+          // Build URL with current filter settings
+          let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}`;
+          
+          // Always send user's local today date
+          const userToday = formatLocalDate(new Date());
+          url += `&userToday=${userToday}`;
+          
+          // Use the currently selected time range or custom dates
+          if (timeRange === 'custom' && customStartDate && customEndDate) {
+            url += `&startDate=${formatLocalDate(customStartDate)}&endDate=${formatLocalDate(customEndDate)}`;
+          } else {
+            url += `&timeRange=${timeRange}`;
+          }
+          
+          const response = await fetch(url, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          });
+          
           if (response.ok) {
             const data = await response.json();
             if (data.success && data.data?.summary) {
@@ -805,7 +782,7 @@ const AdminDashboard = ({ user, onClose }) => {
     };
 
     fetchTokenCosts();
-  }, [showEditPopup, popupJustOpened, user?.email]);
+  }, [showEditPopup, user?.email, timeRange, customStartDate, customEndDate]);
 
   // Recalculate INR costs when per million costs change
   const recalculateINRCosts = (
@@ -875,12 +852,48 @@ const AdminDashboard = ({ user, onClose }) => {
 
           // Clear pricing cache so new pricing is fetched on next use
           clearUserPricingCache(user?.email);
-
+          
+          // Update the original costs to the newly saved values
+          setOriginalTokenCosts({
+            inputCost: tokenCosts.inputCost,
+            outputCost: tokenCosts.outputCost
+          });
+          
+          // Store the saved correction with current time range info
+          const formatLocalDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          
+          setSavedCorrection({
+            inputCost: tokenCosts.inputCost,
+            outputCost: tokenCosts.outputCost,
+            timeRange: timeRange,
+            startDate: customStartDate ? formatLocalDate(customStartDate) : null,
+            endDate: customEndDate ? formatLocalDate(customEndDate) : null,
+            tokenCounts: totalTokenCounts
+          });
+          
+          // Update the main view with the saved costs
+          if (tokenData?.summary) {
+            setTokenData({
+              ...tokenData,
+              summary: {
+                ...tokenData.summary,
+                totalInputCost: tokenCosts.inputCost,
+                totalOutputCost: tokenCosts.outputCost,
+                totalCost: tokenCosts.inputCost + tokenCosts.outputCost
+              }
+            });
+          }
+          
           setShowSuccessMessage(true);
           setTimeout(() => {
             setShowSuccessMessage(false);
             setShowEditPopup(false);
-          }, 200);
+          }, 1500);
         }
       } else {
         console.error("Failed to save token correction");
