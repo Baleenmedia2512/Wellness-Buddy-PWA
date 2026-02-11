@@ -1656,29 +1656,67 @@ function WellnessValleyApp() {
             })),
           };
         } else {
-          // Fallback: No food data extracted, show actionable error with tips
+          // Fallback: No food data extracted, show specific actionable error
           console.error("❌ [DEBUG] No food data extracted from image");
           console.error("❌ [DEBUG] Detection details:", detectedType.details);
           console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
           
-          // Check if it was an API/quota issue vs image quality issue
-          const isApiError = detectedType.details?.error && (
-            detectedType.details.error.includes('quota') || 
-            detectedType.details.error.includes('API') || 
-            detectedType.details.error.includes('timeout') ||
-            detectedType.details.error.includes('429') ||
-            detectedType.details.error.includes('503')
+          const errorDetails = detectedType.details?.error || '';
+          const detectionReason = detectedType.details?.reason || '';
+          let errorMessage = '';
+          
+          // 1. Check for API/Service errors (quota, timeout, rate limits)
+          const isApiError = errorDetails && (
+            errorDetails.includes('quota') || 
+            errorDetails.includes('API') || 
+            errorDetails.includes('timeout') ||
+            errorDetails.includes('429') ||
+            errorDetails.includes('503') ||
+            errorDetails.includes('overloaded') ||
+            errorDetails.includes('rate limit')
           );
           
+          // 2. Check for network errors
+          const isNetworkError = errorDetails && (
+            errorDetails.includes('network') ||
+            errorDetails.includes('Failed to fetch') ||
+            errorDetails.includes('connection') ||
+            errorDetails.toLowerCase().includes('internet')
+          );
+          
+          // 3. Check if image is not food (weight scale, body, etc.)
+          const isNonFoodImage = detectedType.type && (
+            detectedType.type === 'weight_scale' ||
+            detectedType.type === 'body' ||
+            detectedType.type === 'not_food' ||
+            detectionReason.toLowerCase().includes('scale') ||
+            detectionReason.toLowerCase().includes('body') ||
+            detectionReason.toLowerCase().includes('not food')
+          );
+          
+          // 4. Image quality issues
+          const isQualityIssue = detectionReason && (
+            detectionReason.toLowerCase().includes('blurry') ||
+            detectionReason.toLowerCase().includes('unclear') ||
+            detectionReason.toLowerCase().includes('dark') ||
+            detectionReason.toLowerCase().includes('low quality') ||
+            detectionReason.toLowerCase().includes('poor lighting')
+          );
+          
+          // Set appropriate error message
           if (isApiError) {
-            setError(
-              "🤖 AI service is temporarily unavailable. Please wait a minute and try again."
-            );
+            errorMessage = "🤖 The AI model is temporarily unavailable. Please try again later.";
+          } else if (isNetworkError) {
+            errorMessage = "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+          } else if (isNonFoodImage) {
+            errorMessage = "⚠️ Please take a photo of food, weight scale, or educational content.";
+          } else if (isQualityIssue) {
+            errorMessage = "📸 Please take a clear photo with good lighting.";
           } else {
-            setError(
-              "Could not detect any food items in the image. Please try again with a clearer photo."
-            );
+            errorMessage = "🍽️ Could not detect food items. Please take a clear photo of your meal.";
           }
+          
+          setError(errorMessage);
           setLoading(false);
           return;
         }
@@ -1854,49 +1892,50 @@ function WellnessValleyApp() {
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";
 
-    // Server and network errors
-    if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
-      return "⚡ Server is currently busy. Please try again in a few minutes.";
-    } else if (
-      rawMessage.includes("Server returned an unexpected response format")
-    ) {
-      return "💾 Unable to save your analysis right now. Your food data is still displayed above!";
-    } else if (rawMessage.includes("Image file is too large")) {
-      return "📸 Image file is too large. Please try with a smaller photo (max 10MB).";
-    } else if (
-      rawMessage.includes("network") ||
-      rawMessage.includes("Failed to fetch")
-    ) {
-      return "🌐 Network issue. Please check your internet connection and try again.";
-    } else if (
-      rawMessage.includes("500") ||
-      rawMessage.includes("Internal Server Error")
-    ) {
-      return "⚙️ Server error occurred. Please try again in a few moments.";
-    } else if (rawMessage.includes("timeout")) {
-      return "⏱️ Request timed out. Please try again with better internet connection.";
+    // API/Service availability errors
+    if (rawMessage.includes("429") || rawMessage.includes("rate limit")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("quota") || rawMessage.includes("exceeded")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("API key is not configured")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("models/") && rawMessage.includes("not found")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
     }
 
-    // AI analysis errors
-    else if (rawMessage.includes("No food items detected")) {
-      return "⚠️ No food items were detected in the image. Try with a clearer photo.";
+    // Network and connectivity errors  
+    else if (rawMessage.includes("network") || rawMessage.includes("Failed to fetch")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    } else if (rawMessage.includes("timeout")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    } else if (rawMessage.includes("connection")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    }
+
+    // Server errors
+    else if (rawMessage.includes("500") || rawMessage.includes("Internal Server Error")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("Server returned an unexpected response format")) {
+      return "💾 Unable to save your analysis right now. Your food data is still displayed above.";
+    }
+
+    // Image and analysis errors
+    else if (rawMessage.includes("Image file is too large")) {
+      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
+    } else if (rawMessage.includes("No food items detected")) {
+      return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "🤖 AI returned unexpected data. Please try analyzing the image again.";
-    } else if (rawMessage.includes("API key is not configured")) {
-      return "⚙️ AI service is not available right now. Please try again later.";
-    } else if (
-      rawMessage.includes("models/") &&
-      rawMessage.includes("not found")
-    ) {
-      return "🤖 AI model is not available. Please try again later.";
+      return "🤖 The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "🍽️ Unable to save your food analysis. The nutrition data is still shown above!";
+      return "💾 Unable to save your analysis. The nutrition data is still shown above.";
     }
 
-    return "❌ Something went wrong. Please try again later.";
+    return "❌ Something went wrong. Please try again.";
   };
 
   const resetApp = () => {
