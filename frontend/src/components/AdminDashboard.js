@@ -587,12 +587,14 @@ const AdminDashboard = ({ user, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
 
-  // Fetch token costs when edit popup opens
+  // Fetch token costs when edit popup opens or filter changes
   // Logic: Show edited values UNLESS new usage was added after the last edit
   useEffect(() => {
     const fetchTokenCosts = async () => {
-      if (showEditPopup && !popupJustOpened) {
-        setPopupJustOpened(true);
+      if (showEditPopup) {
+        if (!popupJustOpened) {
+          setPopupJustOpened(true);
+        }
         
         try {
           // Fetch current exchange rate
@@ -629,60 +631,37 @@ const AdminDashboard = ({ user, onClose }) => {
             }
           }
           
-          // Fetch correction data (includes latest usage timestamp for comparison)
-          const correctionResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-correction`,
-            {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-              }
-            }
-          );
+          // Always fetch calculated totals based on current filter
+          // (Saved corrections are not used as they don't account for time range filters)
+          // Format dates in local timezone (YYYY-MM-DD)
+          const formatLocalDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
           
-          if (correctionResponse.ok) {
-            const correctionData = await correctionResponse.json();
-            
-            // Check if we have a saved correction AND it's more recent than latest usage
-            if (correctionData.success && correctionData.data) {
-              const correctionTimestamp = new Date(correctionData.data.correctionTimestamp);
-              const latestUsageTimestamp = correctionData.latestUsageTimestamp 
-                ? new Date(correctionData.latestUsageTimestamp) 
-                : null;
-              
-              // If correction is MORE RECENT than latest usage, show edited values
-              // If new usage was added after correction, show calculated totals instead
-              if (!latestUsageTimestamp || correctionTimestamp >= latestUsageTimestamp) {
-                const costs = {
-                  inputCost: parseFloat(correctionData.data.inputCost || 0),
-                  outputCost: parseFloat(correctionData.data.outputCost || 0)
-                };
-                setTokenCosts(costs);
-                setTokenCostInputs({
-                  inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
-                  outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
-                });
-                setOriginalTokenCosts(costs);
-                console.log('📖 Using saved correction (no new usage since last edit)');
-                return; // Exit early, we have saved values that are still current
-              } else {
-                console.log('📖 New usage detected after last correction, fetching fresh totals');
-              }
-            }
+          // Build URL with current filter settings
+          let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}`;
+          
+          // Always send user's local today date
+          const userToday = formatLocalDate(new Date());
+          url += `&userToday=${userToday}`;
+          
+          // Use the currently selected time range or custom dates
+          if (timeRange === 'custom' && customStartDate && customEndDate) {
+            url += `&startDate=${formatLocalDate(customStartDate)}&endDate=${formatLocalDate(customEndDate)}`;
+          } else {
+            url += `&timeRange=${timeRange}`;
           }
           
-          // No valid saved correction OR new usage was added - fetch calculated totals
-          const response = await fetch(
-            `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}&timeRange=all`,
-            {
-              cache: 'no-store',
-              headers: {
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache'
-              }
+          const response = await fetch(url, {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
             }
-          );
+          });
           
           if (response.ok) {
             const data = await response.json();
@@ -721,7 +700,7 @@ const AdminDashboard = ({ user, onClose }) => {
     };
 
     fetchTokenCosts();
-  }, [showEditPopup, popupJustOpened, user?.email]);
+  }, [showEditPopup, user?.email, timeRange, customStartDate, customEndDate]);
 
   // Recalculate INR costs when per million costs change
   const recalculateINRCosts = (inputPerMillion, outputPerMillion, exchangeRate) => {
@@ -1385,8 +1364,13 @@ const AdminDashboard = ({ user, onClose }) => {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Filter: {timeRange === 'custom' 
+                      ? `Custom (${customStartDate?.toLocaleDateString()} - ${customEndDate?.toLocaleDateString()})` 
+                      : timeRange.charAt(0).toUpperCase() + timeRange.slice(1)}
+                  </p>
                   {currentExchangeRate && (
-                    <p className="text-xs text-gray-500 mt-1">
+                    <p className="text-xs text-gray-400 mt-1">
                       Current Rate: $1 USD = ₹{currentExchangeRate.toFixed(2)} INR
                     </p>
                   )}
