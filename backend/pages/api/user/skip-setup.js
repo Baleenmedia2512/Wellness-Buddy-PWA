@@ -1,9 +1,8 @@
 /**
- * Skip Setup Wizard
+ * Skip Setup Wizard - DISABLED
  * POST /api/user/skip-setup
  *
- * Marks user as having skipped the setup wizard
- * This persists the skip status in the database so it works across sessions/devices
+ * This functionality has been commented out and disabled
  */
 
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
@@ -25,6 +24,14 @@ export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, authorization");
 
+  // Skip functionality is disabled
+  res.status(403).json({
+    success: false,
+    error: "Skip setup functionality is currently disabled",
+  });
+  return;
+
+  /* COMMENTED OUT - Skip setup functionality disabled
   // Only allow POST requests
   if (req.method !== "POST") {
     res.status(405).json({
@@ -107,4 +114,5 @@ export default async function handler(req, res) {
       details: error.message,
     });
   }
+  */
 }

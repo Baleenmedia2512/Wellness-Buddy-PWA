@@ -131,6 +131,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
   };
 
   // Skip Team ID - Save coach relationship without OTP
+  // COMMENTED OUT - Skip functionality disabled
+  /*
   const skipTeamIdAndSendRequest = async () => {
     if (!selectedCoach) {
       setError("Please select a coach first");
@@ -194,6 +196,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       setSendingRequest(false);
     }
   };
+  */
 
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
@@ -844,7 +847,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </button>
                   </div>
 
-                  {/* Skip Team ID Button */}
+                  {/* Skip Team ID Button - COMMENTED OUT */}
+                  {/*
                   <button
                     className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
                     onClick={skipTeamIdAndSendRequest}
@@ -865,6 +869,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </svg>
                     <span>Skip Team ID & Continue</span>
                   </button>
+                  */}
                 </div>
               </motion.div>
             )}
