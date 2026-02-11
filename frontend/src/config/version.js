@@ -72,20 +72,26 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.6.5',
+  VERSION: '1.7',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 18,
+  VERSION_CODE: 19,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Discipline Report UI Improvements',
+  RELEASE_NAME: 'Food Correction & Error Handling Enhancements',
   
   // Build date
-  BUILD_DATE: '2026-02-04',
+  BUILD_DATE: '2026-02-11',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.7 (Code 19) - 2026-02-11
+ *   �️ Enhanced food correction system with improved accuracy
+ *   🔧 Improved error handling and user feedback mechanisms
+ *   🎨 UI/UX refinements for better user experience
+ *   ✨ General stability improvements and bug fixes
  * 
  * Version 1.6.5 (Code 18) - 2026-02-04
  *   ✨ Discipline Report UI/UX Improvements
@@ -231,7 +237,7 @@ export const APP_VERSION = {
 
 // Helper function to get formatted version string
 export const getVersionString = () => {
-  return `Version ${APP_VERSION.VERSION}`;
+  return `v ${APP_VERSION.VERSION}`;
 };
 
 // Helper function to get full version info
