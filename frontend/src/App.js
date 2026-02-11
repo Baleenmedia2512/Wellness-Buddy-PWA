@@ -2796,7 +2796,7 @@ function WellnessValleyApp() {
       )}
 
       {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
-      {user && (
+      {/* {user && (
         <button
           onClick={() => setShowCorrectionModal(true)}
           disabled={correctionLogs.length === 0}
@@ -2815,7 +2815,7 @@ function WellnessValleyApp() {
             </span>
           )}
         </button>
-      )}
+      )} */}
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (
