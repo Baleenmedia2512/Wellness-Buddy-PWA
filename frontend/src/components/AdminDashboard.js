@@ -1428,13 +1428,8 @@ const AdminDashboard = ({ user, onClose }) => {
               <div className="flex items-center justify-between mb-6">
                 <div>
                   <h2 className="text-xl font-bold text-gray-800">Token Cost Summary</h2>
-                  <p className="text-xs text-gray-500 mt-1">
-                    Filter: {timeRange === 'custom' 
-                      ? `Custom (${customStartDate?.toLocaleDateString()} - ${customEndDate?.toLocaleDateString()})` 
-                      : timeRange.charAt(0).toUpperCase() + timeRange.slice(1)}
-                  </p>
                   {currentExchangeRate && (
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="text-xs text-gray-500 mt-1">
                       Current Rate: $1 USD = ₹{currentExchangeRate.toFixed(2)} INR
                     </p>
                   )}
