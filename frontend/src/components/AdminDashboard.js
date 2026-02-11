@@ -502,6 +502,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [perMillionCosts, setPerMillionCosts] = useState({ inputPerMillion: 0.10, outputPerMillion: 0.40 });
   const [perMillionInputs, setPerMillionInputs] = useState({ inputPerMillion: '0.10', outputPerMillion: '0.40' });
   const [totalTokenCounts, setTotalTokenCounts] = useState({ inputTokens: 0, outputTokens: 0 });
+  const [savedCorrection, setSavedCorrection] = useState(null); // Store saved correction with time range info
 
   const fetchTokenData = async () => {
     // DEMO DATA DISABLED
@@ -632,14 +633,41 @@ const AdminDashboard = ({ user, onClose }) => {
           }
           
           // Always fetch calculated totals based on current filter
-          // (Saved corrections are not used as they don't account for time range filters)
-          // Format dates in local timezone (YYYY-MM-DD)
+          // But first check if we have a saved correction for this exact time range
           const formatLocalDate = (date) => {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
           };
+          
+          // Check if we have a saved correction for this time range
+          if (savedCorrection) {
+            const isSameTimeRange = savedCorrection.timeRange === timeRange;
+            const isSameCustomDates = timeRange === 'custom' 
+              ? (savedCorrection.startDate === formatLocalDate(customStartDate) && 
+                 savedCorrection.endDate === formatLocalDate(customEndDate))
+              : true;
+            
+            if (isSameTimeRange && isSameCustomDates) {
+              // Use saved correction
+              const costs = {
+                inputCost: savedCorrection.inputCost,
+                outputCost: savedCorrection.outputCost
+              };
+              setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? '0' : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? '0' : costs.outputCost.toFixed(4)
+              });
+              setOriginalTokenCosts(costs);
+              setTotalTokenCounts(savedCorrection.tokenCounts);
+              console.log('📖 Using saved correction for current time range');
+              return; // Exit early
+            }
+          }
+          
+          // No saved correction for this time range - fetch calculated totals
           
           // Build URL with current filter settings
           let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(user?.email)}`;
@@ -763,11 +791,47 @@ const AdminDashboard = ({ user, onClose }) => {
           // Clear pricing cache so new pricing is fetched on next use
           clearUserPricingCache(user?.email);
           
+          // Update the original costs to the newly saved values
+          setOriginalTokenCosts({
+            inputCost: tokenCosts.inputCost,
+            outputCost: tokenCosts.outputCost
+          });
+          
+          // Store the saved correction with current time range info
+          const formatLocalDate = (date) => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+          };
+          
+          setSavedCorrection({
+            inputCost: tokenCosts.inputCost,
+            outputCost: tokenCosts.outputCost,
+            timeRange: timeRange,
+            startDate: customStartDate ? formatLocalDate(customStartDate) : null,
+            endDate: customEndDate ? formatLocalDate(customEndDate) : null,
+            tokenCounts: totalTokenCounts
+          });
+          
+          // Update the main view with the saved costs
+          if (tokenData?.summary) {
+            setTokenData({
+              ...tokenData,
+              summary: {
+                ...tokenData.summary,
+                totalInputCost: tokenCosts.inputCost,
+                totalOutputCost: tokenCosts.outputCost,
+                totalCost: tokenCosts.inputCost + tokenCosts.outputCost
+              }
+            });
+          }
+          
           setShowSuccessMessage(true);
           setTimeout(() => {
             setShowSuccessMessage(false);
             setShowEditPopup(false);
-          }, 200);
+          }, 1500);
         }
       } else {
         console.error('Failed to save token correction');
