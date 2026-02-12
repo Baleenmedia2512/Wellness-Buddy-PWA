@@ -185,7 +185,6 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       setSendingRequest(false);
     }
   };
-  */
 
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
