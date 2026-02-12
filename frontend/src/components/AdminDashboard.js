@@ -803,39 +803,54 @@ const AdminDashboard = ({ user, onClose }) => {
     fetchTokenCosts();
   }, [showEditPopup, user?.email, timeRange, customStartDate, customEndDate]);
 
-  // Recalculate INR costs when per million costs change
-  const recalculateINRCosts = (
-    inputPerMillion,
-    outputPerMillion,
-    exchangeRate,
-  ) => {
+  // Recalculate Input INR cost only
+  const recalculateInputINRCost = (inputPerMillion, exchangeRate) => {
     if (!exchangeRate || exchangeRate <= 0) return;
 
-    // Calculate INR costs: (tokens / 1,000,000) × USD_per_million × exchange_rate
+    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newInputCost =
       (totalTokenCounts.inputTokens / 1000000) * inputPerMillion * exchangeRate;
-    const newOutputCost =
-      (totalTokenCounts.outputTokens / 1000000) *
-      outputPerMillion *
-      exchangeRate;
 
-    setTokenCosts({
+    setTokenCosts((prev) => ({
+      ...prev,
       inputCost: newInputCost,
-      outputCost: newOutputCost,
-    });
+    }));
 
-    setTokenCostInputs({
+    setTokenCostInputs((prev) => ({
+      ...prev,
       inputCost: newInputCost === 0 ? "0" : newInputCost.toFixed(4),
-      outputCost: newOutputCost === 0 ? "0" : newOutputCost.toFixed(4),
-    });
+    }));
 
-    console.log("🔄 Recalculated INR costs:", {
+    console.log("🔄 Recalculated Input INR cost:", {
       inputTokens: totalTokenCounts.inputTokens,
-      outputTokens: totalTokenCounts.outputTokens,
       inputPerMillion,
-      outputPerMillion,
       exchangeRate,
       newInputCost: newInputCost.toFixed(4),
+    });
+  };
+
+  // Recalculate Output INR cost only
+  const recalculateOutputINRCost = (outputPerMillion, exchangeRate) => {
+    if (!exchangeRate || exchangeRate <= 0) return;
+
+    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
+    const newOutputCost =
+      (totalTokenCounts.outputTokens / 1000000) * outputPerMillion * exchangeRate;
+
+    setTokenCosts((prev) => ({
+      ...prev,
+      outputCost: newOutputCost,
+    }));
+
+    setTokenCostInputs((prev) => ({
+      ...prev,
+      outputCost: newOutputCost === 0 ? "0" : newOutputCost.toFixed(4),
+    }));
+
+    console.log("🔄 Recalculated Output INR cost:", {
+      outputTokens: totalTokenCounts.outputTokens,
+      outputPerMillion,
+      exchangeRate,
       newOutputCost: newOutputCost.toFixed(4),
     });
   };
@@ -864,65 +879,69 @@ const AdminDashboard = ({ user, onClose }) => {
         }),
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          console.log("✅ Token correction saved successfully:", data.data);
+      const data = await response.json();
 
-          // Clear pricing cache so new pricing is fetched on next use
-          clearUserPricingCache(user?.email);
+      if (response.ok && data.success) {
+        console.log("✅ Token correction saved successfully:", data.data);
 
-          // Update the original costs to the newly saved values
-          setOriginalTokenCosts({
-            inputCost: tokenCosts.inputCost,
-            outputCost: tokenCosts.outputCost,
+        // Clear pricing cache so new pricing is fetched on next use
+        clearUserPricingCache(user?.email);
+
+        // Update the original costs to the newly saved values
+        setOriginalTokenCosts({
+          inputCost: tokenCosts.inputCost,
+          outputCost: tokenCosts.outputCost,
+        });
+
+        // Store the saved correction with current time range info
+        const formatLocalDate = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, "0");
+          const day = String(date.getDate()).padStart(2, "0");
+          return `${year}-${month}-${day}`;
+        };
+
+        setSavedCorrection({
+          inputCost: tokenCosts.inputCost,
+          outputCost: tokenCosts.outputCost,
+          timeRange: timeRange,
+          startDate: customStartDate
+            ? formatLocalDate(customStartDate)
+            : null,
+          endDate: customEndDate ? formatLocalDate(customEndDate) : null,
+          tokenCounts: totalTokenCounts,
+        });
+
+        // Update the main view with the saved costs
+        if (tokenData?.summary) {
+          setTokenData({
+            ...tokenData,
+            summary: {
+              ...tokenData.summary,
+              totalInputCost: tokenCosts.inputCost,
+              totalOutputCost: tokenCosts.outputCost,
+              totalCost: tokenCosts.inputCost + tokenCosts.outputCost,
+            },
           });
-
-          // Store the saved correction with current time range info
-          const formatLocalDate = (date) => {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, "0");
-            const day = String(date.getDate()).padStart(2, "0");
-            return `${year}-${month}-${day}`;
-          };
-
-          setSavedCorrection({
-            inputCost: tokenCosts.inputCost,
-            outputCost: tokenCosts.outputCost,
-            timeRange: timeRange,
-            startDate: customStartDate
-              ? formatLocalDate(customStartDate)
-              : null,
-            endDate: customEndDate ? formatLocalDate(customEndDate) : null,
-            tokenCounts: totalTokenCounts,
-          });
-
-          // Update the main view with the saved costs
-          if (tokenData?.summary) {
-            setTokenData({
-              ...tokenData,
-              summary: {
-                ...tokenData.summary,
-                totalInputCost: tokenCosts.inputCost,
-                totalOutputCost: tokenCosts.outputCost,
-                totalCost: tokenCosts.inputCost + tokenCosts.outputCost,
-              },
-            });
-          }
-
-          setShowSuccessMessage(true);
-          setTimeout(() => {
-            setShowSuccessMessage(false);
-            setShowEditPopup(false);
-          }, 1500);
         }
+
+        setShowSuccessMessage(true);
+        setTimeout(() => {
+          setShowSuccessMessage(false);
+          setShowEditPopup(false);
+        }, 1500);
       } else {
-        console.error("Failed to save token correction");
-        // Silently fail - no alert
+        // Handle error response
+        console.error("Failed to save token correction:", data);
+        alert(
+          `Failed to save token costs: ${data.message || "Unknown error"}. Please try again.`,
+        );
       }
     } catch (error) {
       console.error("Error saving token correction:", error);
-      // Silently fail - no alert
+      alert(
+        "Network error while saving token costs. Please check your connection and try again.",
+      );
     } finally {
       setSavingCorrection(false);
     }
@@ -1648,12 +1667,8 @@ const AdminDashboard = ({ user, onClose }) => {
                             ...prev,
                             inputPerMillion: numVal,
                           }));
-                          // Recalculate INR costs automatically
-                          recalculateINRCosts(
-                            numVal,
-                            perMillionCosts.outputPerMillion,
-                            currentExchangeRate,
-                          );
+                          // Recalculate only Input INR cost
+                          recalculateInputINRCost(numVal, currentExchangeRate);
                         }}
                         className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                         placeholder="0.10"
@@ -1683,12 +1698,8 @@ const AdminDashboard = ({ user, onClose }) => {
                             ...prev,
                             outputPerMillion: numVal,
                           }));
-                          // Recalculate INR costs automatically
-                          recalculateINRCosts(
-                            perMillionCosts.inputPerMillion,
-                            numVal,
-                            currentExchangeRate,
-                          );
+                          // Recalculate only Output INR cost
+                          recalculateOutputINRCost(numVal, currentExchangeRate);
                         }}
                         className="w-full pl-6 pr-2 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
                         placeholder="0.40"

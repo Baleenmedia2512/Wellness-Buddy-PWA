@@ -128,29 +128,69 @@ export default async function handler(req, res) {
         outputPerMillion,
       });
 
-      const { error: pricingError } = await supabase
+      // First, check if the record exists
+      const { data: existingPricing, error: checkError } = await supabase
         .from("token_pricing_table")
-        .upsert(
-          {
+        .select("*")
+        .eq('"ModelName"', "gemini-2.5-flash-lite")
+        .single();
+
+      if (checkError && checkError.code !== "PGRST116") {
+        // PGRST116 = not found, which is okay
+        console.error(
+          "⚠️ [save-token-correction] Error checking existing pricing:",
+          checkError,
+        );
+      }
+
+      let pricingResult;
+      if (existingPricing) {
+        // Update existing record
+        console.log(
+          "💾 [save-token-correction] Updating existing pricing record",
+        );
+        pricingResult = await supabase
+          .from("token_pricing_table")
+          .update({
+            InputCostPer1M: parseFloat(inputPerMillion),
+            OutputCostPer1M: parseFloat(outputPerMillion),
+          })
+          .eq('"ModelName"', "gemini-2.5-flash-lite")
+          .select();
+      } else {
+        // Insert new record
+        console.log("💾 [save-token-correction] Inserting new pricing record");
+        pricingResult = await supabase
+          .from("token_pricing_table")
+          .insert({
             ModelName: "gemini-2.5-flash-lite",
             InputCostPer1M: parseFloat(inputPerMillion),
             OutputCostPer1M: parseFloat(outputPerMillion),
-            UpdatedAt: currentTime,
-          },
-          {
-            onConflict: "ModelName",
-          },
-        );
+            Currency: "USD",
+            IsActive: true,
+          })
+          .select();
+      }
+
+      const { data: savedPricing, error: pricingError } = pricingResult;
 
       if (pricingError) {
         console.error(
           "⚠️ [save-token-correction] Pricing config save failed:",
           pricingError,
         );
-        // Don't fail the entire request - pricing config is optional
+        // Return error response for pricing save failure
+        res.status(500).json({
+          success: false,
+          message: "Token correction saved but pricing failed to save",
+          error: pricingError.message,
+          tokenCorrectionSaved: true,
+        });
+        return;
       } else {
         console.log(
-          "✅ [save-token-correction] Pricing config saved successfully",
+          "✅ [save-token-correction] Pricing config saved successfully:",
+          savedPricing,
         );
       }
     }
