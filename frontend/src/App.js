@@ -139,6 +139,9 @@ function WellnessValleyApp() {
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
+  // Help instructions visibility state
+  const [showHowToUse, setShowHowToUse] = useState(false);
+
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
   // // Make a compact, user-friendly title from foods[]
@@ -2456,6 +2459,7 @@ function WellnessValleyApp() {
           imageType={imageType}
           detectedFoodNames={detectedFoodNames}
           ref={fileInputRef}
+          onHelpClick={() => setShowHowToUse(!showHowToUse)}
         />
 
         {error && (
@@ -2593,13 +2597,7 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
-          <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3>
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium text-green-600 mb-1">
-                📸 Image Analysis:
-              </h4>
+{showHowToUse && ( <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative"> <button onClick={() => setShowHowToUse(false)} className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none" aria-label="Close" > × </button> <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3> <div className="space-y-3"> <div> <h4 className="font-medium text-green-600 mb-1"> 📸 Image Analysis: </h4>
               <ol className="text-sm text-gray-600 space-y-1 ml-4">
                 <li>1. Take a clear photo of your food or weight</li>
                 <li>
@@ -2627,6 +2625,7 @@ function WellnessValleyApp() {
             </ul>
           </div>
         </div>
+        )}
 
         <TestImageGuide
           isVisible={showTestGuide}
