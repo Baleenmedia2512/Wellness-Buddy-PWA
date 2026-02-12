@@ -14,6 +14,7 @@ import { getModelPricing } from "./tokenCostConfig";
  * @param {number} params.inputTokens - Number of input/prompt tokens
  * @param {number} params.outputTokens - Number of output/completion tokens
  * @param {string} params.modelName - Name of the AI model
+ * @param {string} [params.userEmail] - User email for user-specific pricing
  * @param {number|null} params.exchangeRate - USD to INR exchange rate (null if unavailable)
  * @returns {Promise<object>} Calculated costs
  */
@@ -21,10 +22,11 @@ export async function calculateTokenCosts({
   inputTokens,
   outputTokens,
   modelName,
+  userEmail,
   exchangeRate,
 }) {
-  // Get pricing for the model
-  const pricing = await getModelPricing(modelName);
+  // Get pricing for the model (user-specific if email provided)
+  const pricing = await getModelPricing(modelName, userEmail);
 
   console.log("🔢 [CALC] Pricing:", pricing);
 

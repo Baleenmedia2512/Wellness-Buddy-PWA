@@ -22,6 +22,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { getUsdToInrRate } from "../services/tokenCost/tokenCostConfig";
 import { clearUserPricingCache } from "../services/tokenCost/userPricingManager";
+import { clearPricingCache } from "../services/tokenCost/tokenCostConfig";
 import { App as CapacitorApp } from "@capacitor/app";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 
@@ -181,10 +182,10 @@ const generateDemoData = () => {
       totalTokens,
       totalInputTokens: Math.floor(totalTokens * 0.62),
       totalOutputTokens: Math.floor(totalTokens * 0.38),
-      totalCost: Number(totalCost.toFixed(2)),
-      totalInputCost: Number((totalCost * 0.42).toFixed(2)),
-      totalOutputCost: Number((totalCost * 0.58).toFixed(2)),
-      averageCostPerRequest: Number((totalCost / totalRequests).toFixed(3)),
+      totalCost: Number(totalCost.toFixed(4)),
+      totalInputCost: Number((totalCost * 0.42).toFixed(4)),
+      totalOutputCost: Number((totalCost * 0.58).toFixed(4)),
+      averageCostPerRequest: Number((totalCost / totalRequests).toFixed(4)),
       requestCount: totalRequests,
       mostUsedOperation: operations[0].type,
       mostUsedModel: models[0].name
@@ -286,10 +287,10 @@ const filterDemoDataByTimeRange = (timeRange, customStartDate = null, customEndD
       totalTokens: filteredTotalTokens,
       totalInputTokens: Math.floor(filteredTotalTokens * 0.62),
       totalOutputTokens: Math.floor(filteredTotalTokens * 0.38),
-      totalCost: Number(filteredTotalCost.toFixed(2)),
-      totalInputCost: Number((filteredTotalCost * 0.42).toFixed(2)),
-      totalOutputCost: Number((filteredTotalCost * 0.58).toFixed(2)),
-      averageCostPerRequest: filteredRequestCount > 0 ? Number((filteredTotalCost / filteredRequestCount).toFixed(3)) : 0,
+      totalCost: Number(filteredTotalCost.toFixed(4)),
+      totalInputCost: Number((filteredTotalCost * 0.42).toFixed(4)),
+      totalOutputCost: Number((filteredTotalCost * 0.58).toFixed(4)),
+      averageCostPerRequest: filteredRequestCount > 0 ? Number((filteredTotalCost / filteredRequestCount).toFixed(4)) : 0,
       requestCount: filteredRequestCount
     },
     byOperation: filteredByOperation,
@@ -553,6 +554,18 @@ const AdminDashboard = ({ user, onClose }) => {
     inputTokens: 0,
     outputTokens: 0,
   });
+  const [manuallyEditedINR, setManuallyEditedINR] = useState({
+    input: false,
+    output: false,
+  }); // Track if user manually edited INR fields
+  const [originalPerMillionCosts, setOriginalPerMillionCosts] = useState({
+    inputPerMillion: 0.1,
+    outputPerMillion: 0.4,
+  }); // Store original USD per million costs
+  const [originalINRCosts, setOriginalINRCosts] = useState({
+    inputCost: 0,
+    outputCost: 0,
+  }); // Store original INR costs for comparison
   const [savedCorrection, setSavedCorrection] = useState(null); // Store saved correction with time range info
 
   const fetchTokenData = async () => {
@@ -656,6 +669,8 @@ const AdminDashboard = ({ user, onClose }) => {
       if (showEditPopup) {
         if (!popupJustOpened) {
           setPopupJustOpened(true);
+          // Reset manual edit flags when popup opens
+          setManuallyEditedINR({ input: false, output: false });
         }
 
         try {
@@ -687,6 +702,11 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputPerMillion: pricing.inputPerMillion,
                 outputPerMillion: pricing.outputPerMillion,
               });
+              // Store original USD per million costs
+              setOriginalPerMillionCosts({
+                inputPerMillion: pricing.inputPerMillion,
+                outputPerMillion: pricing.outputPerMillion,
+              });
               setPerMillionInputs({
                 inputPerMillion: pricing.inputPerMillion.toFixed(2),
                 outputPerMillion: pricing.outputPerMillion.toFixed(2),
@@ -695,46 +715,111 @@ const AdminDashboard = ({ user, onClose }) => {
             }
           }
 
-          // Always fetch calculated totals based on current filter
-          // But first check if we have a saved correction for this exact time range
+          // ALWAYS check for saved correction FIRST for this specific timeRange
+          // Build params for get-token-correction with time range
+          const correctionParams = new URLSearchParams({
+            email: user?.email,
+            timeRange: timeRange,
+          });
+          
+          if (timeRange === "custom" && customStartDate && customEndDate) {
+            correctionParams.append("startDate", formatLocalDate(customStartDate));
+            correctionParams.append("endDate", formatLocalDate(customEndDate));
+          }
+          
+          console.log(`🔍 Checking for saved correction (timeRange: ${timeRange})`);
+          
+          // Check if there's a saved correction in the database for this time range
+          const correctionResponse = await fetch(
+            `${apiBaseUrl}/api/get-token-correction?${correctionParams.toString()}`,
+            {
+              cache: "no-store",
+              headers: {
+                "Cache-Control": "no-cache",
+                Pragma: "no-cache",
+              },
+            },
+          );
+
+          let useSavedCorrection = false;
+          if (correctionResponse.ok) {
+            const correctionData = await correctionResponse.json();
+            if (correctionData.success && correctionData.data) {
+              const { inputCost, outputCost, correctionTimestamp } = correctionData.data;
+              const { latestUsageTimestamp } = correctionData;
+
+              // Use saved correction (always use it for this timeRange if it exists)
+              console.log("✅ Found saved correction for timeRange:", timeRange);
+              const costs = {
+                inputCost: parseFloat(inputCost || 0),
+                outputCost: parseFloat(outputCost || 0),
+              };
+              
+              // Store total token counts for recalculation (from current dashboard if available)
+              if (tokenData && tokenData.summary) {
+                setTotalTokenCounts({
+                  inputTokens: tokenData.summary.totalInputTokens || 0,
+                  outputTokens: tokenData.summary.totalOutputTokens || 0,
+                });
+              }
+              
+              setTokenCosts(costs);
+              setTokenCostInputs({
+                inputCost: costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
+                outputCost: costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
+              });
+              setOriginalTokenCosts(costs);
+              setOriginalINRCosts({
+                inputCost: costs.inputCost,
+                outputCost: costs.outputCost,
+              });
+              useSavedCorrection = true;
+              return; // Exit early - we found saved correction
+            } else {
+              console.log("⚠️ No saved correction found for timeRange:", timeRange);
+            }
+          } else {
+            console.log("⚠️ Failed to fetch correction:", correctionResponse.status);
+          }
+          
+          // No saved correction found - use dashboard summary data if available
+          if (tokenData && tokenData.summary) {
+            console.log("📊 Using current dashboard summary data (no saved correction)");
+            const summaryData = tokenData.summary;
+            const costs = {
+              inputCost: parseFloat(summaryData.totalInputCost || 0),
+              outputCost: parseFloat(summaryData.totalOutputCost || 0),
+            };
+
+            // Store total token counts for recalculation
+            setTotalTokenCounts({
+              inputTokens: summaryData.totalInputTokens || 0,
+              outputTokens: summaryData.totalOutputTokens || 0,
+            });
+
+            setTokenCosts(costs);
+            setTokenCostInputs({
+              inputCost: costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
+              outputCost: costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
+            });
+            setOriginalTokenCosts(costs);
+            setOriginalINRCosts({
+              inputCost: costs.inputCost,
+              outputCost: costs.outputCost,
+            });
+            return; // Exit early - we have all we need
+          }
+
+          // No saved correction and no dashboard summary - fetch calculated totals
+          console.log("📊 Fetching calculated totals from API");
+          
+          // Helper function for formatting dates
           const formatLocalDate = (date) => {
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, "0");
             const day = String(date.getDate()).padStart(2, "0");
             return `${year}-${month}-${day}`;
           };
-
-          // Check if we have a saved correction for this time range
-          if (savedCorrection) {
-            const isSameTimeRange = savedCorrection.timeRange === timeRange;
-            const isSameCustomDates =
-              timeRange === "custom"
-                ? savedCorrection.startDate ===
-                    formatLocalDate(customStartDate) &&
-                  savedCorrection.endDate === formatLocalDate(customEndDate)
-                : true;
-
-            if (isSameTimeRange && isSameCustomDates) {
-              // Use saved correction
-              const costs = {
-                inputCost: savedCorrection.inputCost,
-                outputCost: savedCorrection.outputCost,
-              };
-              setTokenCosts(costs);
-              setTokenCostInputs({
-                inputCost:
-                  costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
-                outputCost:
-                  costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
-              });
-              setOriginalTokenCosts(costs);
-              setTotalTokenCounts(savedCorrection.tokenCounts);
-              console.log("📖 Using saved correction for current time range");
-              return; // Exit early
-            }
-          }
-
-          // No saved correction for this time range - fetch calculated totals
 
           // Build URL with current filter settings
           let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(
@@ -785,6 +870,11 @@ const AdminDashboard = ({ user, onClose }) => {
                   costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
               });
               setOriginalTokenCosts(costs);
+              // Store original INR costs for comparison
+              setOriginalINRCosts({
+                inputCost: costs.inputCost,
+                outputCost: costs.outputCost,
+              });
             }
           }
         } catch (error) {
@@ -793,6 +883,7 @@ const AdminDashboard = ({ user, onClose }) => {
       } else if (!showEditPopup && popupJustOpened) {
         // Reset when popup closes
         setPopupJustOpened(false);
+        setManuallyEditedINR({ input: false, output: false });
         const defaultCosts = { inputCost: 0, outputCost: 0 };
         setTokenCosts(defaultCosts);
         setTokenCostInputs({ inputCost: "0", outputCost: "0" });
@@ -804,8 +895,24 @@ const AdminDashboard = ({ user, onClose }) => {
   }, [showEditPopup, user?.email, timeRange, customStartDate, customEndDate]);
 
   // Recalculate Input INR cost only
-  const recalculateInputINRCost = (inputPerMillion, exchangeRate) => {
+  const recalculateInputINRCost = (inputPerMillion, exchangeRate, force = false) => {
     if (!exchangeRate || exchangeRate <= 0) return;
+    // Skip auto-recalculation if user manually edited INR (unless forced)
+    if (manuallyEditedINR.input && !force) return;
+
+    // Check if USD cost matches original - if so, restore original INR to avoid drift
+    if (Math.abs(inputPerMillion - originalPerMillionCosts.inputPerMillion) < 0.00001) {
+      setTokenCosts((prev) => ({
+        ...prev,
+        inputCost: originalINRCosts.inputCost,
+      }));
+      setTokenCostInputs((prev) => ({
+        ...prev,
+        inputCost: originalINRCosts.inputCost === 0 ? "0" : originalINRCosts.inputCost.toFixed(4),
+      }));
+      console.log("🔄 Restored original Input INR cost:", originalINRCosts.inputCost.toFixed(4));
+      return;
+    }
 
     // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newInputCost =
@@ -830,8 +937,24 @@ const AdminDashboard = ({ user, onClose }) => {
   };
 
   // Recalculate Output INR cost only
-  const recalculateOutputINRCost = (outputPerMillion, exchangeRate) => {
+  const recalculateOutputINRCost = (outputPerMillion, exchangeRate, force = false) => {
     if (!exchangeRate || exchangeRate <= 0) return;
+    // Skip auto-recalculation if user manually edited INR (unless forced)
+    if (manuallyEditedINR.output && !force) return;
+
+    // Check if USD cost matches original - if so, restore original INR to avoid drift
+    if (Math.abs(outputPerMillion - originalPerMillionCosts.outputPerMillion) < 0.00001) {
+      setTokenCosts((prev) => ({
+        ...prev,
+        outputCost: originalINRCosts.outputCost,
+      }));
+      setTokenCostInputs((prev) => ({
+        ...prev,
+        outputCost: originalINRCosts.outputCost === 0 ? "0" : originalINRCosts.outputCost.toFixed(4),
+      }));
+      console.log("🔄 Restored original Output INR cost:", originalINRCosts.outputCost.toFixed(4));
+      return;
+    }
 
     // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newOutputCost =
@@ -860,6 +983,31 @@ const AdminDashboard = ({ user, onClose }) => {
     setSavingCorrection(true);
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      
+      // Format dates for API
+      const formatLocalDate = (date) => {
+        if (!date) return null;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      };
+
+      const requestBody = {
+        email: user?.email,
+        originalInputCost: originalTokenCosts.inputCost,
+        originalOutputCost: originalTokenCosts.outputCost,
+        correctedInputCost: tokenCosts.inputCost,
+        correctedOutputCost: tokenCosts.outputCost,
+        inputPerMillion: perMillionCosts.inputPerMillion,
+        outputPerMillion: perMillionCosts.outputPerMillion,
+        timeRange: timeRange,
+        startDate: timeRange === "custom" ? formatLocalDate(customStartDate) : null,
+        endDate: timeRange === "custom" ? formatLocalDate(customEndDate) : null,
+      };
+
+      console.log("💾 Saving correction for time range:", timeRange);
+      
       const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
         method: "POST",
         cache: "no-store",
@@ -868,15 +1016,7 @@ const AdminDashboard = ({ user, onClose }) => {
           "Cache-Control": "no-cache",
           Pragma: "no-cache",
         },
-        body: JSON.stringify({
-          email: user?.email,
-          originalInputCost: originalTokenCosts.inputCost,
-          originalOutputCost: originalTokenCosts.outputCost,
-          correctedInputCost: tokenCosts.inputCost,
-          correctedOutputCost: tokenCosts.outputCost,
-          inputPerMillion: perMillionCosts.inputPerMillion,
-          outputPerMillion: perMillionCosts.outputPerMillion,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const data = await response.json();
@@ -884,8 +1024,10 @@ const AdminDashboard = ({ user, onClose }) => {
       if (response.ok && data.success) {
         console.log("✅ Token correction saved successfully:", data.data);
 
-        // Clear pricing cache so new pricing is fetched on next use
+        // Clear ALL pricing caches so new pricing is fetched on next use
         clearUserPricingCache(user?.email);
+        clearPricingCache(user?.email);
+        console.log("🗑️ All pricing caches cleared");
 
         // Update the original costs to the newly saved values
         setOriginalTokenCosts({
@@ -893,26 +1035,8 @@ const AdminDashboard = ({ user, onClose }) => {
           outputCost: tokenCosts.outputCost,
         });
 
-        // Store the saved correction with current time range info
-        const formatLocalDate = (date) => {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, "0");
-          const day = String(date.getDate()).padStart(2, "0");
-          return `${year}-${month}-${day}`;
-        };
-
-        setSavedCorrection({
-          inputCost: tokenCosts.inputCost,
-          outputCost: tokenCosts.outputCost,
-          timeRange: timeRange,
-          startDate: customStartDate
-            ? formatLocalDate(customStartDate)
-            : null,
-          endDate: customEndDate ? formatLocalDate(customEndDate) : null,
-          tokenCounts: totalTokenCounts,
-        });
-
-        // Update the main view with the saved costs
+        // No longer need in-memory savedCorrection - data is in database per time range
+        // Update the main view with the saved costs for current time range only
         if (tokenData?.summary) {
           setTokenData({
             ...tokenData,
@@ -994,7 +1118,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return "Custom Range";
   };
 
-  const formatCurrency = (val) => `₹${parseFloat(Number(val).toFixed(4))}`;
+  const formatCurrency = (val) => `₹${Number(val).toFixed(4)}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     const date = new Date(dateString);
@@ -1710,9 +1834,28 @@ const AdminDashboard = ({ user, onClose }) => {
 
                 {/* Total Costs in INR */}
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Total Input Cost (INR)
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Total Input Cost (INR)
+                    </label>
+                    {manuallyEditedINR.input && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManuallyEditedINR((prev) => ({ ...prev, input: false }));
+                          recalculateInputINRCost(
+                            perMillionCosts.inputPerMillion,
+                            currentExchangeRate,
+                            true // force recalculation
+                          );
+                        }}
+                        className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 font-medium"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Reset to calculated
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
@@ -1728,17 +1871,50 @@ const AdminDashboard = ({ user, onClose }) => {
                           ...prev,
                           inputCost: parseFloat(val) || 0,
                         }));
+                        // Mark as manually edited
+                        setManuallyEditedINR((prev) => ({
+                          ...prev,
+                          input: true,
+                        }));
                       }}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium ${
+                        manuallyEditedINR.input
+                          ? "border-orange-300 bg-orange-50"
+                          : "border-gray-200"
+                      }`}
                       placeholder="0.001"
                     />
                   </div>
+                  {manuallyEditedINR.input && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      ⚠️ Manual value - won't auto-update from USD changes
+                    </p>
+                  )}
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Total Output Cost (INR)
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-gray-700">
+                      Total Output Cost (INR)
+                    </label>
+                    {manuallyEditedINR.output && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setManuallyEditedINR((prev) => ({ ...prev, output: false }));
+                          recalculateOutputINRCost(
+                            perMillionCosts.outputPerMillion,
+                            currentExchangeRate,
+                            true // force recalculation
+                          );
+                        }}
+                        className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 font-medium"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                        Reset to calculated
+                      </button>
+                    )}
+                  </div>
                   <div className="relative">
                     <IndianRupee className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
                     <input
@@ -1754,11 +1930,25 @@ const AdminDashboard = ({ user, onClose }) => {
                           ...prev,
                           outputCost: parseFloat(val) || 0,
                         }));
+                        // Mark as manually edited
+                        setManuallyEditedINR((prev) => ({
+                          ...prev,
+                          output: true,
+                        }));
                       }}
-                      className="w-full pl-10 pr-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium"
+                      className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium ${
+                        manuallyEditedINR.output
+                          ? "border-orange-300 bg-orange-50"
+                          : "border-gray-200"
+                      }`}
                       placeholder="0.004"
                     />
                   </div>
+                  {manuallyEditedINR.output && (
+                    <p className="text-xs text-orange-600 mt-1">
+                      ⚠️ Manual value - won't auto-update from USD changes
+                    </p>
+                  )}
                 </div>
               </div>
 

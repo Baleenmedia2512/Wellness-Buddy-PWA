@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     // Verify user has admin or developer role
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('Role')
+      .select('Role, UserId')
       .eq('Email', email)
       .maybeSingle();
 
@@ -200,7 +200,33 @@ export default async function handler(req, res) {
       summary.averageCostPerRequest = summary.totalCost / summary.requestCount;
     }
 
-    console.log('[get-token-usage] Summary:', summary);
+    console.log('[get-token-usage] Summary (calculated):', summary);
+
+    // Check for saved correction for this time range
+    if (user.UserId) {
+      console.log('[get-token-usage] Checking for saved correction...');
+      const { data: correction, error: correctionError } = await supabase
+        .from('token_correction_table')
+        .select('InputTokenCost, OutputTokenCost, TotalTokenCost, TimeRange')
+        .eq('UserId', user.UserId)
+        .eq('TimeRange', timeRange)
+        .maybeSingle();
+
+      if (!correctionError && correction) {
+        console.log('[get-token-usage] ✅ Found correction for timeRange:', timeRange, correction);
+        // Override the calculated costs with corrected costs
+        summary.totalInputCost = Number(correction.InputTokenCost) || 0;
+        summary.totalOutputCost = Number(correction.OutputTokenCost) || 0;
+        summary.totalCost = Number(correction.TotalTokenCost) || 0;
+        // Recalculate average with corrected total cost
+        if (summary.requestCount > 0) {
+          summary.averageCostPerRequest = summary.totalCost / summary.requestCount;
+        }
+        console.log('[get-token-usage] Summary (corrected):', summary);
+      } else {
+        console.log('[get-token-usage] No correction found for timeRange:', timeRange);
+      }
+    }
 
     // Group by operation type
     const byOperationMap = {};

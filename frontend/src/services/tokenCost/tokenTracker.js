@@ -70,11 +70,12 @@ export async function trackTokenUsage({
     // Get current exchange rate (may be null if API fails)
     const exchangeRate = await getUsdToInrRate();
 
-    // Calculate costs
+    // Calculate costs (with user-specific pricing)
     const costs = await calculateTokenCosts({
       inputTokens: tokenMetadata.inputTokens,
       outputTokens: tokenMetadata.outputTokens,
       modelName,
+      userEmail,
       exchangeRate,
     });
 
@@ -174,11 +175,12 @@ export async function trackCombinedTokenUsage({
       });
     }
 
-    // Calculate combined costs
+    // Calculate combined costs (with user-specific pricing)
     const costs = await calculateTokenCosts({
       inputTokens: totalInputTokens,
       outputTokens: totalOutputTokens,
       modelName,
+      userEmail,
       exchangeRate,
     });
 

@@ -37,6 +37,10 @@ export default async function handler(req, res) {
     correctedOutputCost,
     inputPerMillion,
     outputPerMillion,
+    timeRange,
+    startDate,
+    endDate,
+    model,
   } = req.body;
 
   if (
@@ -102,75 +106,96 @@ export default async function handler(req, res) {
       totalTokenCost: totalCost,
     });
 
-    // Always insert a new record (no update - track all changes)
-    const currentTime = getISTTimestamp();
-    const { error: insertError } = await supabase
+    // Check if a correction already exists for this user and time range
+    const { data: existingCorrection, error: checkError } = await supabase
       .from("token_correction_table")
-      .insert({
-        UserId: userId,
-        InputTokenCost: correctedInputCost,
-        OutputTokenCost: correctedOutputCost,
-        TotalTokenCost: totalCost,
-        CreatedAt: currentTime,
-      });
+      .select("*")
+      .eq('"UserId"', userId)
+      .eq('"TimeRange"', timeRange || 'all')
+      .limit(1);
 
-    if (insertError) throw insertError;
+    if (checkError && checkError.code !== 'PGRST116') {
+      console.error('⚠️ [save-token-correction] Error checking existing:', checkError);
+    }
 
-    console.log("✅ [save-token-correction] Inserted new record:", {
+    const currentTime = getISTTimestamp();
+    const correctionData = {
+      UserId: userId,
+      InputTokenCost: correctedInputCost,
+      OutputTokenCost: correctedOutputCost,
+      TotalTokenCost: totalCost,
+      TimeRange: timeRange || 'all',
+      StartDate: startDate || null,
+      EndDate: endDate || null,
+      CreatedAt: currentTime,
+    };
+
+    if (existingCorrection && existingCorrection.length > 0) {
+      // Update existing record for this time range
+      console.log('💾 [save-token-correction] Updating existing correction for time range:', timeRange);
+      const { error: updateError } = await supabase
+        .from("token_correction_table")
+        .update(correctionData)
+        .eq('"UserId"', userId)
+        .eq('"TimeRange"', timeRange || 'all');
+
+      if (updateError) throw updateError;
+    } else {
+      // Insert a new record for this time range
+      console.log('💾 [save-token-correction] Inserting new correction for time range:', timeRange);
+      const { error: insertError } = await supabase
+        .from("token_correction_table")
+        .insert(correctionData);
+
+      if (insertError) throw insertError;
+    }
+
+    console.log("✅ [save-token-correction] Saved record for time range:", {
       userId,
+      timeRange: timeRange || 'all',
       totalCost,
     });
 
     // Save or update pricing configuration if provided
     if (inputPerMillion !== undefined && outputPerMillion !== undefined) {
-      console.log("💾 [save-token-correction] Saving pricing config:", {
+      const modelName = model || "gemini-2.5-flash-lite"; // Use provided model or default
+      console.log("💾 [save-token-correction] Creating NEW pricing record:", {
+        modelName,
         inputPerMillion,
         outputPerMillion,
       });
 
-      // First, check if the record exists
-      const { data: existingPricing, error: checkError } = await supabase
+      // Step 1: Deactivate ALL old pricing records for this model
+      console.log("💾 [save-token-correction] Deactivating old pricing records for model:", modelName);
+      const { error: deactivateError } = await supabase
         .from("token_pricing_table")
-        .select("*")
-        .eq('"ModelName"', "gemini-2.5-flash-lite")
-        .single();
+        .update({ IsActive: false })
+        .eq('"ModelName"', modelName)
+        .eq('"IsActive"', true);
 
-      if (checkError && checkError.code !== "PGRST116") {
-        // PGRST116 = not found, which is okay
+      if (deactivateError) {
         console.error(
-          "⚠️ [save-token-correction] Error checking existing pricing:",
-          checkError,
+          "⚠️ [save-token-correction] Error deactivating old pricing:",
+          deactivateError,
         );
+        // Don't fail - continue to insert new record
+      } else {
+        console.log("✅ [save-token-correction] Old pricing records deactivated");
       }
 
-      let pricingResult;
-      if (existingPricing) {
-        // Update existing record
-        console.log(
-          "💾 [save-token-correction] Updating existing pricing record",
-        );
-        pricingResult = await supabase
-          .from("token_pricing_table")
-          .update({
-            InputCostPer1M: parseFloat(inputPerMillion),
-            OutputCostPer1M: parseFloat(outputPerMillion),
-          })
-          .eq('"ModelName"', "gemini-2.5-flash-lite")
-          .select();
-      } else {
-        // Insert new record
-        console.log("💾 [save-token-correction] Inserting new pricing record");
-        pricingResult = await supabase
-          .from("token_pricing_table")
-          .insert({
-            ModelName: "gemini-2.5-flash-lite",
-            InputCostPer1M: parseFloat(inputPerMillion),
-            OutputCostPer1M: parseFloat(outputPerMillion),
-            Currency: "USD",
-            IsActive: true,
-          })
-          .select();
-      }
+      // Step 2: Insert NEW pricing record
+      console.log("💾 [save-token-correction] Inserting NEW pricing record (history preserved)");
+      const pricingResult = await supabase
+        .from("token_pricing_table")
+        .insert({
+          ModelName: modelName,
+          InputCostPer1M: parseFloat(inputPerMillion),
+          OutputCostPer1M: parseFloat(outputPerMillion),
+          Currency: "USD",
+          IsActive: true,
+          CreatedAt: getISTTimestamp(),
+        })
+        .select();
 
       const { data: savedPricing, error: pricingError } = pricingResult;
 
