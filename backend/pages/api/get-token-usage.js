@@ -203,7 +203,9 @@ export default async function handler(req, res) {
     console.log('[get-token-usage] Summary (calculated):', summary);
 
     // Check for saved correction for this time range
-    if (user.UserId) {
+    // Only apply corrections for predefined time ranges, NOT for custom date ranges
+    const isCustomDateRange = startDate && endDate;
+    if (user.UserId && !isCustomDateRange) {
       console.log('[get-token-usage] Checking for saved correction...');
       const { data: correction, error: correctionError } = await supabase
         .from('token_correction_table')
@@ -226,6 +228,8 @@ export default async function handler(req, res) {
       } else {
         console.log('[get-token-usage] No correction found for timeRange:', timeRange);
       }
+    } else if (isCustomDateRange) {
+      console.log('[get-token-usage] Custom date range detected - skipping correction lookup, using real calculated costs');
     }
 
     // Group by operation type
