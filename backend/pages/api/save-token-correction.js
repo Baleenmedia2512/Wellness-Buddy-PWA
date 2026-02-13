@@ -118,7 +118,8 @@ export default async function handler(req, res) {
       console.error('⚠️ [save-token-correction] Error checking existing:', checkError);
     }
 
-    const currentTime = getISTTimestamp();
+    // Use UTC timestamp for consistency with token usage records
+    const currentTime = new Date().toISOString();
     const correctionData = {
       UserId: userId,
       InputTokenCost: correctedInputCost,
