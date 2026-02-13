@@ -1234,7 +1234,14 @@ const AdminDashboard = ({ user, onClose }) => {
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
         {/* Date Range Filter */}
-        <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+        <div 
+          className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide" 
+          style={{ 
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none'
+          }}
+        >
           {["today", "yesterday", "week", "month", "all"].map((range) => (
             <TouchFeedbackButton
               key={range}
@@ -1244,7 +1251,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 setCustomEndDate(null);
                 setShowDatePicker(false);
               }}
-              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
+              className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 min-w-fit ${
                 timeRange === range
                   ? "bg-green-600 text-white shadow-md shadow-green-200"
                   : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
@@ -1256,14 +1263,14 @@ const AdminDashboard = ({ user, onClose }) => {
           ))}
           <TouchFeedbackButton
             onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center space-x-1 ${
+            className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 min-w-fit ${
               timeRange === "custom"
                 ? "bg-green-600 text-white shadow-md shadow-green-200"
                 : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
             }`}
             ariaLabel="Custom date range"
           >
-            <CalendarIcon className="w-4 h-4" />
+            <CalendarIcon className="w-4 h-4 flex-shrink-0" />
             <span>
               {timeRange === "custom" ? getDateRangeLabel() : "Custom"}
             </span>
@@ -1475,7 +1482,7 @@ const AdminDashboard = ({ user, onClose }) => {
                           className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                         >
                           <div className="flex items-center justify-end space-x-1">
-                            <span>Total Token</span>
+                            <span>Total Tokens</span>
                             <SortIcon field="totalTokens" />
                           </div>
                         </th>
@@ -1484,7 +1491,7 @@ const AdminDashboard = ({ user, onClose }) => {
                           className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                         >
                           <div className="flex items-center justify-end space-x-1">
-                            <span>Input Token</span>
+                            <span>Input Tokens</span>
                             <SortIcon field="inputTokens" />
                           </div>
                         </th>
@@ -1493,7 +1500,7 @@ const AdminDashboard = ({ user, onClose }) => {
                           className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
                         >
                           <div className="flex items-center justify-end space-x-1">
-                            <span>Output Token</span>
+                            <span>Output Tokens</span>
                             <SortIcon field="outputTokens" />
                           </div>
                         </th>
