@@ -194,7 +194,6 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     }
 
     setClaimingTeamId(true);
-    setSendingRequest(true);
     setError("");
 
     try {
@@ -202,7 +201,6 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       if (!userEmail) {
         setError("Session expired. Please login again.");
         setClaimingTeamId(false);
-        setSendingRequest(false);
         return;
       }
 
@@ -246,7 +244,6 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         err.response?.data?.error || err.message || "Failed to complete setup";
       setError(errorMessage);
       setClaimingTeamId(false);
-      setSendingRequest(false);
     }
   };
 
