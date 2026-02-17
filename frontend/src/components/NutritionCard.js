@@ -23,6 +23,7 @@ const NutritionCard = ({
   const [editingStates, setEditingStates] = useState({});
   const [isSharing, setIsSharing] = useState(false);
   const cardRef = useRef(null);
+  const shareRef = useRef(null);
 
   // Handle editing state change from EditableFoodItem - wrapped in useCallback to prevent re-creation
   const handleEditingChange = useCallback(
@@ -201,8 +202,8 @@ const NutritionCard = ({
 
   // Handle share button click
   const handleShare = async () => {
-    if (!cardRef.current) {
-      console.error("Card content not found");
+    if (!shareRef.current) {
+      console.error("Share content not found");
       return;
     }
 
@@ -211,14 +212,63 @@ const NutritionCard = ({
       const mealName = generateMealName();
       const calories = localNutrition?.calories || 0;
 
-      await captureAndShare(cardRef.current, {
+      // Build detailed breakdown text
+      let breakdownText = `My ${mealName}\n`;
+      breakdownText += `${Math.round(calories)} kcal 🍎\n\n`;
+
+      // Add nutrition summary
+      breakdownText += `📊 Nutrition Summary:\n`;
+      breakdownText += `• Calories: ${Math.round(
+        localNutrition.calories,
+      )} kcal\n`;
+      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
+      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
+      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
+      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
+
+      // Add food breakdown if multiple items
+      if (localDetailedItems.length > 0) {
+        breakdownText += `🍽️ Food Breakdown:\n`;
+        localDetailedItems.forEach((item, index) => {
+          const itemCals = item.nutrition?.calories || item.calories || 0;
+          const portion =
+            item.serving?.description ||
+            item.portionDescription ||
+            item.portion ||
+            "";
+          breakdownText += `${index + 1}. ${item.name}`;
+          if (portion) {
+            breakdownText += ` (${portion})`;
+          }
+          breakdownText += `\n   ${Math.round(itemCals)} kcal`;
+          breakdownText += ` • Protein: ${Math.round(
+            item.nutrition?.protein || item.protein || 0,
+          )}g`;
+          breakdownText += ` • Carbs: ${Math.round(
+            item.nutrition?.carbs || item.carbs || 0,
+          )}g`;
+          breakdownText += ` • Fat: ${Math.round(
+            item.nutrition?.fat || item.fat || 0,
+          )}g`;
+          if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
+            breakdownText += ` • Fiber: ${Math.round(
+              item.nutrition?.fiber || item.fiber || 0,
+            )}g`;
+          }
+          breakdownText += `\n`;
+        });
+        breakdownText += `\n`;
+      }
+
+      breakdownText += `Tracked with Wellness Valley 💚`;
+
+      await captureAndShare(shareRef.current, {
         title: `${mealName} - Wellness Valley`,
-        text: `My ${mealName} - ${Math.round(
-          calories,
-        )} kcal 🍎\n\nTracked with Wellness Valley`,
+        text: breakdownText,
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,
+        whatsappOnly: true, // Explicitly enable WhatsApp sharing
       });
     } catch (error) {
       console.error("Failed to share:", error);
@@ -241,237 +291,437 @@ const NutritionCard = ({
   } = data;
 
   return (
-    <div
-      ref={cardRef}
-      className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden"
-    >
-      {/* Header */}
-      <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
-        {/* Share Button */}
-        <button
-          onClick={handleShare}
-          disabled={isSharing || isSaving}
-          className={`absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/30 ${
-            isSharing || isSaving
-              ? "opacity-50 cursor-not-allowed"
-              : "hover:bg-white/30 active:scale-95"
-          }`}
-          title="Share to WhatsApp"
-        >
-          {isSharing ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <Share2 className="w-5 h-5" />
+    <>
+      {/* Hidden container for sharing - includes image + card */}
+      <div
+        ref={shareRef}
+        className="fixed -left-[9999px] top-0 w-[400px]"
+        style={{ position: "fixed", left: "-9999px" }}
+      >
+        <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden">
+          {/* Food Image for sharing */}
+          {imagePreview && (
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Food"
+                className="w-full h-64 object-cover"
+              />
+              <div className="absolute top-3 right-3 bg-green-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                <span className="w-2 h-2 bg-white rounded-full"></span>
+                Ready
+              </div>
+            </div>
           )}
-        </button>
 
-        <div className="flex items-center justify-center gap-3">
-          <div className="flex-1 text-center">
-            <h2 className="text-xl font-bold">{generateMealName()}</h2>
-            {localDetailedItems.length > 1 && (
-              <p className="text-green-100 text-sm mt-1">
-                {localDetailedItems.length} food items analyzed
-              </p>
-            )}
-            {servingInfo && (
-              <p className="text-green-100 text-sm">
-                Per {servingInfo.description || "100g"}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* Nutrition Grid */}
-      <div className="p-6">
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          {/* Calories */}
-          <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-red-600">
-              {localNutrition.calories}
-            </div>
-            <div className="text-sm font-medium text-red-700 mt-1">
-              Calories
+          {/* Duplicate card content for sharing */}
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
+            <div className="text-center">
+              <h2 className="text-xl font-bold">{generateMealName()}</h2>
+              {localDetailedItems.length > 1 && (
+                <p className="text-green-100 text-sm mt-1">
+                  {localDetailedItems.length} food items analyzed
+                </p>
+              )}
             </div>
           </div>
 
-          {/* Carbs */}
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-yellow-600">
-              {localNutrition.carbs}g
-            </div>
-            <div className="text-sm font-medium text-yellow-700 mt-1">
-              Carbs
-            </div>
-          </div>
-
-          {/* Protein */}
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-blue-600">
-              {localNutrition.protein}g
-            </div>
-            <div className="text-sm font-medium text-blue-700 mt-1">
-              Protein
-            </div>
-          </div>
-
-          {/* Fat */}
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
-            <div className="text-3xl font-bold text-purple-600">
-              {localNutrition.fat}g
-            </div>
-            <div className="text-sm font-medium text-purple-700 mt-1">Fat</div>
-          </div>
-        </div>
-
-        {/* Fiber - Full Width */}
-        <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
-          <div className="text-3xl font-bold text-green-600">
-            {localNutrition.fiber}g
-          </div>
-          <div className="text-sm font-medium text-green-700 mt-1">Fiber</div>
-        </div>
-
-        {/* Macronutrient Bar */}
-        <div className="mt-6">
-          <h3 className="text-sm font-semibold text-gray-700 mb-2">
-            Macronutrient Distribution
-          </h3>
-          <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
-            {(() => {
-              const totalCals =
-                nutrition.carbs * 4 + nutrition.protein * 4 + nutrition.fat * 9;
-              const carbsPct =
-                totalCals > 0 ? ((nutrition.carbs * 4) / totalCals) * 100 : 0;
-              const proteinPct =
-                totalCals > 0 ? ((nutrition.protein * 4) / totalCals) * 100 : 0;
-              const fatPct =
-                totalCals > 0 ? ((nutrition.fat * 9) / totalCals) * 100 : 0;
-
-              return (
-                <>
-                  <div
-                    className="bg-yellow-400"
-                    style={{ width: `${carbsPct}%` }}
-                    title={`Carbs: ${carbsPct.toFixed(1)}%`}
-                  />
-                  <div
-                    className="bg-blue-400"
-                    style={{ width: `${proteinPct}%` }}
-                    title={`Protein: ${proteinPct.toFixed(1)}%`}
-                  />
-                  <div
-                    className="bg-purple-400"
-                    style={{ width: `${fatPct}%` }}
-                    title={`Fat: ${fatPct.toFixed(1)}%`}
-                  />
-                </>
-              );
-            })()}
-          </div>
-
-          {/* Aligned Labels */}
-          <div className="relative mt-1">
-            {(() => {
-              const totalCals =
-                nutrition.carbs * 4 + nutrition.protein * 4 + nutrition.fat * 9;
-              const carbsPct =
-                totalCals > 0 ? ((nutrition.carbs * 4) / totalCals) * 100 : 0;
-              const proteinPct =
-                totalCals > 0 ? ((nutrition.protein * 4) / totalCals) * 100 : 0;
-              const fatPct =
-                totalCals > 0 ? ((nutrition.fat * 9) / totalCals) * 100 : 0;
-
-              // Calculate center positions of each segment
-              const carbsCenter = carbsPct / 2;
-              const proteinCenter = carbsPct + proteinPct / 2;
-              const fatCenter = carbsPct + proteinPct + fatPct / 2;
-
-              return (
-                <div className="flex relative h-6 text-xs text-gray-600">
-                  {/* Carbs Label */}
-                  {carbsPct > 0 && (
-                    <div
-                      className="absolute flex items-center justify-center transform -translate-x-1/2"
-                      style={{ left: `${carbsCenter}%` }}
-                    >
-                      <span className="w-2 h-2 bg-yellow-400 rounded-full mr-1"></span>
-                      <span className="whitespace-nowrap">Carbs</span>
-                    </div>
-                  )}
-
-                  {/* Protein Label */}
-                  {proteinPct > 0 && (
-                    <div
-                      className="absolute flex items-center justify-center transform -translate-x-1/2"
-                      style={{ left: `${proteinCenter}%` }}
-                    >
-                      <span className="w-2 h-2 bg-blue-400 rounded-full mr-1"></span>
-                      <span className="whitespace-nowrap">Protein</span>
-                    </div>
-                  )}
-
-                  {/* Fat Label */}
-                  {fatPct > 0 && (
-                    <div
-                      className="absolute flex items-center justify-center transform -translate-x-1/2"
-                      style={{ left: `${fatCenter}%` }}
-                    >
-                      <span className="w-2 h-2 bg-purple-400 rounded-full mr-1"></span>
-                      <span className="whitespace-nowrap">Fat</span>
-                    </div>
-                  )}
+          <div className="p-6">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-red-600">
+                  {localNutrition.calories}
                 </div>
-              );
-            })()}
-          </div>
-        </div>
+                <div className="text-sm font-medium text-red-700 mt-1">
+                  Calories
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-yellow-600">
+                  {localNutrition.carbs}g
+                </div>
+                <div className="text-sm font-medium text-yellow-700 mt-1">
+                  Carbs
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-blue-600">
+                  {localNutrition.protein}g
+                </div>
+                <div className="text-sm font-medium text-blue-700 mt-1">
+                  Protein
+                </div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
+                <div className="text-3xl font-bold text-purple-600">
+                  {localNutrition.fat}g
+                </div>
+                <div className="text-sm font-medium text-purple-700 mt-1">
+                  Fat
+                </div>
+              </div>
+            </div>
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
+              <div className="text-3xl font-bold text-green-600">
+                {localNutrition.fiber}g
+              </div>
+              <div className="text-sm font-medium text-green-700 mt-1">
+                Fiber
+              </div>
+            </div>
 
-        {/* Food Breakdown */}
-        {localDetailedItems && localDetailedItems.length > 0 && (
-          <div className="mt-8 pt-6 border-t border-gray-200">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-800">
-                Food Breakdown
+            {/* Macronutrient Bar */}
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                Macronutrient Distribution
               </h3>
-              {portionAnalysis && portionAnalysis.totalEstimatedWeight > 0 && (
-                <div className="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">
-                  Total: ~{Math.round(portionAnalysis.totalEstimatedWeight)}g
+              <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
+                {(() => {
+                  const totalCals =
+                    nutrition.carbs * 4 +
+                    nutrition.protein * 4 +
+                    nutrition.fat * 9;
+                  const carbsPct =
+                    totalCals > 0
+                      ? ((nutrition.carbs * 4) / totalCals) * 100
+                      : 0;
+                  const proteinPct =
+                    totalCals > 0
+                      ? ((nutrition.protein * 4) / totalCals) * 100
+                      : 0;
+                  const fatPct =
+                    totalCals > 0 ? ((nutrition.fat * 9) / totalCals) * 100 : 0;
+                  return (
+                    <>
+                      <div
+                        className="bg-yellow-400"
+                        style={{ width: `${carbsPct}%` }}
+                      />
+                      <div
+                        className="bg-blue-400"
+                        style={{ width: `${proteinPct}%` }}
+                      />
+                      <div
+                        className="bg-purple-400"
+                        style={{ width: `${fatPct}%` }}
+                      />
+                    </>
+                  );
+                })()}
+              </div>
+            </div>
+
+            {/* Food Breakdown for sharing */}
+            {localDetailedItems && localDetailedItems.length > 0 && (
+              <div className="mt-6 pt-4 border-t border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+                  Food Breakdown
+                </h3>
+                <div className="space-y-3">
+                  {localDetailedItems.map((item, index) => {
+                    const itemCals = Math.round(
+                      item.nutrition?.calories || item.calories || 0,
+                    );
+                    const portion =
+                      item.serving?.description ||
+                      item.portionDescription ||
+                      item.portion ||
+                      "1 serving";
+                    const weight =
+                      item.serving?.grams || item.grams || item.weight_g || "";
+
+                    return (
+                      <div
+                        key={index}
+                        className="pb-3 border-b border-gray-100 last:border-0"
+                      >
+                        <div className="flex justify-between items-start mb-1">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">
+                                {item.name}
+                              </span>
+                              {item.wasAutoCorrected && (
+                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                                  ✓ Auto
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-gray-500 mt-0.5">
+                              {portion} {weight ? `(${weight}g)` : ""}
+                            </div>
+                          </div>
+                          <div className="text-base font-bold text-red-600 ml-2">
+                            {itemCals} kcal
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-red-600 font-medium">
+                          Protein{" "}
+                          {Math.round(
+                            item.nutrition?.protein || item.protein || 0,
+                          )}
+                          g • Carbs{" "}
+                          {Math.round(item.nutrition?.carbs || item.carbs || 0)}
+                          g • Fiber{" "}
+                          {Math.round(item.nutrition?.fiber || item.fiber || 0)}
+                          g • Fat{" "}
+                          {Math.round(item.nutrition?.fat || item.fat || 0)}g
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              )}
-            </div>
-
-            <div className="space-y-3">
-              {localDetailedItems.map((item, index) => (
-                <EditableFoodItem
-                  key={index}
-                  foodItem={item}
-                  index={index}
-                  onUpdate={handleFoodUpdate}
-                  onEditingChange={handleEditingChange}
-                  disabled={editingIndex !== null && editingIndex !== index}
-                  user={user}
-                />
-              ))}
-            </div>
+              </div>
+            )}
           </div>
-        )}
-
-        {/* Portion Analysis Section */}
-
-        {/* Serving Info Details */}
-        {servingInfo && servingInfo.weight && (
-          <div className="text-xs text-gray-500 mt-6 p-3 bg-gray-50 rounded-lg">
-            <strong>Serving Info:</strong> {servingInfo.weight}{" "}
-            {servingInfo.unit}
-            {servingInfo.description &&
-              servingInfo.description !== servingInfo.weight && (
-                <span> ({servingInfo.description})</span>
-              )}
-          </div>
-        )}
+        </div>
       </div>
-    </div>
+
+      {/* Visible card without image */}
+      <div
+        ref={cardRef}
+        className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden"
+      >
+        {/* Header */}
+        <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
+          {/* Share Button */}
+          <button
+            onClick={handleShare}
+            disabled={isSharing || isSaving}
+            className={`absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/30 ${
+              isSharing || isSaving
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-white/30 active:scale-95"
+            }`}
+            title="Share to WhatsApp"
+          >
+            {isSharing ? (
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+            ) : (
+              <Share2 className="w-5 h-5" />
+            )}
+          </button>
+
+          <div className="flex items-center justify-center gap-3">
+            <div className="flex-1 text-center">
+              <h2 className="text-xl font-bold">{generateMealName()}</h2>
+              {localDetailedItems.length > 1 && (
+                <p className="text-green-100 text-sm mt-1">
+                  {localDetailedItems.length} food items analyzed
+                </p>
+              )}
+              {servingInfo && (
+                <p className="text-green-100 text-sm">
+                  Per {servingInfo.description || "100g"}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Nutrition Grid */}
+        <div className="p-6">
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {/* Calories */}
+            <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-red-600">
+                {localNutrition.calories}
+              </div>
+              <div className="text-sm font-medium text-red-700 mt-1">
+                Calories
+              </div>
+            </div>
+
+            {/* Carbs */}
+            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-yellow-600">
+                {localNutrition.carbs}g
+              </div>
+              <div className="text-sm font-medium text-yellow-700 mt-1">
+                Carbs
+              </div>
+            </div>
+
+            {/* Protein */}
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-blue-600">
+                {localNutrition.protein}g
+              </div>
+              <div className="text-sm font-medium text-blue-700 mt-1">
+                Protein
+              </div>
+            </div>
+
+            {/* Fat */}
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
+              <div className="text-3xl font-bold text-purple-600">
+                {localNutrition.fat}g
+              </div>
+              <div className="text-sm font-medium text-purple-700 mt-1">
+                Fat
+              </div>
+            </div>
+          </div>
+
+          {/* Fiber - Full Width */}
+          <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
+            <div className="text-3xl font-bold text-green-600">
+              {localNutrition.fiber}g
+            </div>
+            <div className="text-sm font-medium text-green-700 mt-1">Fiber</div>
+          </div>
+
+          {/* Macronutrient Bar */}
+          <div className="mt-6">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">
+              Macronutrient Distribution
+            </h3>
+            <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
+              {(() => {
+                const totalCals =
+                  nutrition.carbs * 4 +
+                  nutrition.protein * 4 +
+                  nutrition.fat * 9;
+                const carbsPct =
+                  totalCals > 0 ? ((nutrition.carbs * 4) / totalCals) * 100 : 0;
+                const proteinPct =
+                  totalCals > 0
+                    ? ((nutrition.protein * 4) / totalCals) * 100
+                    : 0;
+                const fatPct =
+                  totalCals > 0 ? ((nutrition.fat * 9) / totalCals) * 100 : 0;
+
+                return (
+                  <>
+                    <div
+                      className="bg-yellow-400"
+                      style={{ width: `${carbsPct}%` }}
+                      title={`Carbs: ${carbsPct.toFixed(1)}%`}
+                    />
+                    <div
+                      className="bg-blue-400"
+                      style={{ width: `${proteinPct}%` }}
+                      title={`Protein: ${proteinPct.toFixed(1)}%`}
+                    />
+                    <div
+                      className="bg-purple-400"
+                      style={{ width: `${fatPct}%` }}
+                      title={`Fat: ${fatPct.toFixed(1)}%`}
+                    />
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* Aligned Labels */}
+            <div className="relative mt-1">
+              {(() => {
+                const totalCals =
+                  nutrition.carbs * 4 +
+                  nutrition.protein * 4 +
+                  nutrition.fat * 9;
+                const carbsPct =
+                  totalCals > 0 ? ((nutrition.carbs * 4) / totalCals) * 100 : 0;
+                const proteinPct =
+                  totalCals > 0
+                    ? ((nutrition.protein * 4) / totalCals) * 100
+                    : 0;
+                const fatPct =
+                  totalCals > 0 ? ((nutrition.fat * 9) / totalCals) * 100 : 0;
+
+                // Calculate center positions of each segment
+                const carbsCenter = carbsPct / 2;
+                const proteinCenter = carbsPct + proteinPct / 2;
+                const fatCenter = carbsPct + proteinPct + fatPct / 2;
+
+                return (
+                  <div className="flex relative h-6 text-xs text-gray-600">
+                    {/* Carbs Label */}
+                    {carbsPct > 0 && (
+                      <div
+                        className="absolute flex items-center justify-center transform -translate-x-1/2"
+                        style={{ left: `${carbsCenter}%` }}
+                      >
+                        <span className="w-2 h-2 bg-yellow-400 rounded-full mr-1"></span>
+                        <span className="whitespace-nowrap">Carbs</span>
+                      </div>
+                    )}
+
+                    {/* Protein Label */}
+                    {proteinPct > 0 && (
+                      <div
+                        className="absolute flex items-center justify-center transform -translate-x-1/2"
+                        style={{ left: `${proteinCenter}%` }}
+                      >
+                        <span className="w-2 h-2 bg-blue-400 rounded-full mr-1"></span>
+                        <span className="whitespace-nowrap">Protein</span>
+                      </div>
+                    )}
+
+                    {/* Fat Label */}
+                    {fatPct > 0 && (
+                      <div
+                        className="absolute flex items-center justify-center transform -translate-x-1/2"
+                        style={{ left: `${fatCenter}%` }}
+                      >
+                        <span className="w-2 h-2 bg-purple-400 rounded-full mr-1"></span>
+                        <span className="whitespace-nowrap">Fat</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Food Breakdown */}
+          {localDetailedItems && localDetailedItems.length > 0 && (
+            <div className="mt-8 pt-6 border-t border-gray-200">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-800">
+                  Food Breakdown
+                </h3>
+                {portionAnalysis &&
+                  portionAnalysis.totalEstimatedWeight > 0 && (
+                    <div className="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">
+                      Total: ~{Math.round(portionAnalysis.totalEstimatedWeight)}
+                      g
+                    </div>
+                  )}
+              </div>
+
+              <div className="space-y-3">
+                {localDetailedItems.map((item, index) => (
+                  <EditableFoodItem
+                    key={index}
+                    foodItem={item}
+                    index={index}
+                    onUpdate={handleFoodUpdate}
+                    onEditingChange={handleEditingChange}
+                    disabled={editingIndex !== null && editingIndex !== index}
+                    user={user}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Portion Analysis Section */}
+
+          {/* Serving Info Details */}
+          {servingInfo && servingInfo.weight && (
+            <div className="text-xs text-gray-500 mt-6 p-3 bg-gray-50 rounded-lg">
+              <strong>Serving Info:</strong> {servingInfo.weight}{" "}
+              {servingInfo.unit}
+              {servingInfo.description &&
+                servingInfo.description !== servingInfo.weight && (
+                  <span> ({servingInfo.description})</span>
+                )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
   );
 };
 

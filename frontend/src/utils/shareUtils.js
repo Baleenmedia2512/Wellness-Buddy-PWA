@@ -56,15 +56,24 @@ export const captureAndShare = async (element, options = {}) => {
 
     console.log("✅ Blob created:", blob.size, "bytes");
 
-    // Step 3: Check if we're on a native platform (Android/iOS)
+    // Step 3: Check if we're on a native platform (Android/iOS) or mobile browser
     const isNativePlatform =
       isPlatform("capacitor") || isPlatform("android") || isPlatform("ios");
 
+    const isMobileBrowser =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+      );
+
     if (isNativePlatform) {
-      // Native mobile sharing
+      // Native mobile sharing (Capacitor)
       await shareNative(blob, { title, text, fileName, whatsappOnly });
+    } else if (isMobileBrowser && navigator.share) {
+      // Mobile browser with Web Share API
+      console.log("📱 Mobile browser detected, using Web Share API");
+      await shareWeb(blob, { title, text, fileName });
     } else {
-      // Web fallback
+      // Desktop or browser without share support
       await shareWeb(blob, { title, text, fileName });
     }
 
@@ -158,25 +167,53 @@ const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
  */
 const shareWeb = async (blob, { title, text, fileName }) => {
   try {
-    // Check if Web Share API is available and supports files
-    if (navigator.share && navigator.canShare) {
+    // First try: Web Share API with files (best option)
+    if (navigator.share) {
       const file = new File([blob], fileName, { type: "image/png" });
 
-      const shareData = {
-        title: title,
-        text: text,
-        files: [file],
-      };
+      // Try sharing with file
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({
+            title: title,
+            text: text,
+            files: [file],
+          });
+          console.log("✅ Shared via Web Share API with file");
+          return;
+        } catch (shareError) {
+          if (shareError.name === "AbortError") {
+            console.log("ℹ️ User canceled share");
+            return;
+          }
+          console.log("⚠️ Share with file failed, trying text only...");
+        }
+      }
 
-      if (navigator.canShare(shareData)) {
-        await navigator.share(shareData);
-        console.log("✅ Shared via Web Share API");
+      // Second try: Share text only (will still open share sheet)
+      try {
+        await navigator.share({
+          title: title,
+          text: text,
+        });
+        console.log("✅ Shared via Web Share API (text only)");
+
+        // Show message that image was not included
+        alert(
+          "Share initiated! Note: The image couldn't be automatically attached. You may need to add it manually.",
+        );
         return;
+      } catch (shareError) {
+        if (shareError.name === "AbortError") {
+          console.log("ℹ️ User canceled share");
+          return;
+        }
+        console.log("⚠️ Text share also failed");
       }
     }
 
-    // Fallback: Download the image
-    console.log("ℹ️ Web Share API not available, downloading instead...");
+    // Last resort: Download with instructions
+    console.log("ℹ️ Web Share API not available, downloading image...");
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -188,8 +225,10 @@ const shareWeb = async (blob, { title, text, fileName }) => {
 
     console.log("✅ Image downloaded");
 
-    // Show a helpful message
-    alert("Image downloaded! You can now share it manually.");
+    // Show helpful message
+    alert(
+      "Image downloaded! Please open WhatsApp manually and attach the image from your downloads folder.",
+    );
   } catch (error) {
     console.error("❌ Web share failed:", error);
     throw error;
