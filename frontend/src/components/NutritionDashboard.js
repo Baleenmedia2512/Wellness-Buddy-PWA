@@ -125,7 +125,8 @@ const NutritionDashboard = ({
           // 🔴 CRITICAL: Preserve correction metadata if it exists
           // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
           originalAiName: item.originalAiName || null, // Use null instead of fallback
-          wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
+          wasAutoCorrected:
+            item.wasAutoCorrected || (item.originalAiName ? true : false),
           correctionSource: item.correctionSource || null,
           correctionMetadata: item.correctionMetadata || null,
           // Flag to indicate this item needs reverse-lookup
@@ -236,7 +237,8 @@ const NutritionDashboard = ({
         isLiquid: isLiquid,
         // 🔴 CRITICAL: Preserve correction metadata if it exists
         originalAiName: item.originalAiName || null, // Use null instead of fallback
-        wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
+        wasAutoCorrected:
+          item.wasAutoCorrected || (item.originalAiName ? true : false),
         correctionSource: item.correctionSource || null,
         correctionMetadata: item.correctionMetadata || null,
         // Flag to indicate this item needs reverse-lookup
