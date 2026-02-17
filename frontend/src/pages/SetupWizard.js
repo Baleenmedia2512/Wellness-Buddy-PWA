@@ -836,8 +836,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </button>
                   </div>
 
-                  {/* Skip Team ID Button - COMMENTED OUT */}
-                  {/*
+                  {/* Skip Team ID Button */}
                   <button
                     className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
                     onClick={skipTeamIdAndSendRequest}
@@ -867,7 +866,6 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                       </>
                     )}
                   </button>
-                  */}
                 </div>
               </motion.div>
             )}
