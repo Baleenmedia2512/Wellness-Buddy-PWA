@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     // Verify user has admin or developer role
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('Role')
+      .select('Role, UserId')
       .eq('Email', email)
       .maybeSingle();
 
@@ -200,7 +200,113 @@ export default async function handler(req, res) {
       summary.averageCostPerRequest = summary.totalCost / summary.requestCount;
     }
 
-    console.log('[get-token-usage] Summary:', summary);
+    console.log('[get-token-usage] Summary (calculated):', summary);
+
+    // Check for saved correction for this time range
+    // For custom date ranges, detect if they match a predefined range and apply its correction
+    const isCustomDateRange = startDate && endDate;
+    let effectiveTimeRange = timeRange;
+    
+    if (isCustomDateRange) {
+      // Detect if custom date range matches a predefined range
+      const todayStr = userToday || new Date().toISOString().split('T')[0];
+      const todayDate = parseLocalDate(todayStr);
+      const todayStart = getStartOfDay(todayDate);
+      const todayEnd = getEndOfDay(todayDate);
+      
+      const customStart = startDateObj.getTime();
+      const customEnd = endDateObj.getTime();
+      const todayStartTime = todayStart.getTime();
+      const todayEndTime = todayEnd.getTime();
+      
+      // Check if custom range matches "today"
+      if (customStart === todayStartTime && customEnd === todayEndTime) {
+        effectiveTimeRange = 'today';
+        console.log('[get-token-usage] Custom date range matches TODAY - will apply "today" correction if available');
+      } else {
+        // Check if custom range matches "yesterday"
+        const yesterdayDate = new Date(todayDate);
+        yesterdayDate.setDate(yesterdayDate.getDate() - 1);
+        const yesterdayStart = getStartOfDay(yesterdayDate).getTime();
+        const yesterdayEnd = getEndOfDay(yesterdayDate).getTime();
+        
+        if (customStart === yesterdayStart && customEnd === yesterdayEnd) {
+          effectiveTimeRange = 'yesterday';
+          console.log('[get-token-usage] Custom date range matches YESTERDAY - will apply "yesterday" correction if available');
+        } else {
+          // Check if custom range matches "week" (last 7 days)
+          const weekStartDate = new Date(todayDate);
+          weekStartDate.setDate(weekStartDate.getDate() - 6);
+          const weekStart = getStartOfDay(weekStartDate).getTime();
+          
+          if (customStart === weekStart && customEnd === todayEndTime) {
+            effectiveTimeRange = 'week';
+            console.log('[get-token-usage] Custom date range matches WEEK - will apply "week" correction if available');
+          } else {
+            // Check if custom range matches "month" (last 30 days)
+            const monthStartDate = new Date(todayDate);
+            monthStartDate.setDate(monthStartDate.getDate() - 29);
+            const monthStart = getStartOfDay(monthStartDate).getTime();
+            
+            if (customStart === monthStart && customEnd === todayEndTime) {
+              effectiveTimeRange = 'month';
+              console.log('[get-token-usage] Custom date range matches MONTH - will apply "month" correction if available');
+            } else {
+              console.log('[get-token-usage] Custom date range does not match any predefined range - using real calculated costs');
+              effectiveTimeRange = null; // Don't apply any correction
+            }
+          }
+        }
+      }
+    }
+    
+    if (user.UserId && effectiveTimeRange) {
+      console.log('[get-token-usage] Checking for saved correction for timeRange:', effectiveTimeRange);
+      const { data: correction, error: correctionError } = await supabase
+        .from('token_correction_table')
+        .select('InputTokenCost, OutputTokenCost, TotalTokenCost, TimeRange, CreatedAt')
+        .eq('UserId', user.UserId)
+        .eq('TimeRange', effectiveTimeRange)
+        .maybeSingle();
+
+      if (!correctionError && correction) {
+        console.log('[get-token-usage] ✅ Found correction for timeRange:', effectiveTimeRange, {
+          correctionTimestamp: correction.CreatedAt,
+          inputCost: correction.InputTokenCost,
+          outputCost: correction.OutputTokenCost,
+          totalCost: correction.TotalTokenCost
+        });
+        
+        // Check if any NEW token usage records have been added AFTER the correction
+        const { data: newRecords, error: newRecordsError } = await supabase
+          .from('ai_token_usage_table')
+          .select('ID, CreatedAt')
+          .gte('CreatedAt', startDateObj.toISOString())
+          .lte('CreatedAt', endDateObj.toISOString())
+          .gt('CreatedAt', correction.CreatedAt)
+          .limit(1);
+
+        if (!newRecordsError && newRecords && newRecords.length > 0) {
+          console.log('[get-token-usage] ⚠️ New token usage detected after correction - using REAL calculated costs (dynamic)');
+          console.log('[get-token-usage] Latest record timestamp:', newRecords[0].CreatedAt);
+          console.log('[get-token-usage] Correction timestamp:', correction.CreatedAt);
+          // Don't apply correction - use real calculated costs
+        } else {
+          console.log('[get-token-usage] ✅ No new usage after correction - applying CORRECTED costs');
+          // Override the calculated costs with corrected costs
+          summary.totalInputCost = Number(correction.InputTokenCost) || 0;
+          summary.totalOutputCost = Number(correction.OutputTokenCost) || 0;
+          summary.totalCost = Number(correction.TotalTokenCost) || 0;
+          // Recalculate average with corrected total cost
+          if (summary.requestCount > 0) {
+            summary.averageCostPerRequest = summary.totalCost / summary.requestCount;
+          }
+          console.log('[get-token-usage] Summary (corrected):', summary);
+        }
+      } else {
+        console.log('[get-token-usage] No correction found for timeRange:', effectiveTimeRange);
+      }
+    }
 
     // Group by operation type
     const byOperationMap = {};

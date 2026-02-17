@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import TouchFeedbackButton from './TouchFeedbackButton';
 
-const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null }, ref) => {
+const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null, detectedFoodNames = [] }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const fallbackInputRef = useRef(null);
@@ -214,73 +214,35 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
       {imagePreview ? (
         <div className="space-y-4">
           <div className="relative">
+            {/* Image - Always Visible */}
             <img src={imagePreview} alt="Selected food" className="w-full h-64 object-cover rounded-lg border-2 border-green-300" />
 
-            {/* Loading Overlay */}
+            {/* Non-Blocking Loading Indicator - Top Right Corner */}
             {loading && (
-              <div className="absolute inset-0 rounded-lg overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-br from-black/20 via-black/30 to-black/40 backdrop-blur-md"></div>
-                <div className="absolute inset-0 bg-white/10 backdrop-blur-xl border border-white/20 rounded-lg">
-                  <div className="absolute inset-0 rounded-lg bg-gradient-to-br from-white/20 via-transparent to-transparent opacity-50"></div>
-
-                  <div className="absolute inset-0 flex items-center justify-center p-6">
-                    <div className="text-center">
-                      {/* Icon based on loading state */}
-                      <div className="relative w-14 h-14 mx-auto mb-6">
-                        {loadingState === 'saving' ? (
-                          <>
-                            <div className="absolute inset-0 rounded-full bg-green-500/30 backdrop-blur-sm"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-green-400/50"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-green-400 border-t-transparent animate-spin"></div>
-                          </>
-                        ) : imageType === 'weight' ? (
-                          <>
-                            <div className="absolute inset-0 rounded-full bg-purple-500/30 backdrop-blur-sm"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-purple-400/50"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-purple-400 border-t-transparent animate-spin"></div>
-                          </>
-                        ) : (
-                          <>
-                            <div className="absolute inset-0 rounded-full bg-white/20 backdrop-blur-sm"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-white/30"></div>
-                            <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
-                          </>
-                        )}
-                      </div>
-
-                      {/* Animated Taglines */}
-                      <div className="relative h-16 flex items-center justify-center">
-                        <AnimatePresence mode="wait">
-                          <motion.p
-                            key={currentTaglineIndex}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.5 }}
-                            className="text-sm text-white/80 leading-relaxed drop-shadow-md"
-                          >
-                            {taglines[currentTaglineIndex]}
-                          </motion.p>
-                        </AnimatePresence>
-                      </div>
-
-                      <div className="flex justify-center space-x-2 mt-6">
-                        <div className="w-2 h-2 bg-white/60 backdrop-blur-sm rounded-full animate-bounce shadow-lg"></div>
-                        <div className="w-2 h-2 bg-white/60 backdrop-blur-sm rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.15s' }}></div>
-                        <div className="w-2 h-2 bg-white/60 backdrop-blur-sm rounded-full animate-bounce shadow-lg" style={{ animationDelay: '0.3s' }}></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-white/5 to-transparent rounded-b-lg"></div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute top-3 right-3 bg-gradient-to-br from-green-500 to-green-600 text-white px-3 py-2 rounded-full shadow-lg flex items-center gap-2"
+              >
+                <div className="relative w-4 h-4">
+                  <div className="absolute inset-0 rounded-full border-2 border-white border-t-transparent animate-spin"></div>
                 </div>
-              </div>
+                <span className="text-xs font-semibold">
+                  {loadingState === 'saving' ? 'Saving...' : 'Analyzing...'}
+                </span>
+              </motion.div>
             )}
 
+            {/* Success Badge - When Analysis Complete */}
             {!loading && (
-              <div className="absolute top-2 right-2 bg-green-500 text-white px-2 py-1 rounded-full text-xs font-semibold">
-                ✓ Ready
-              </div>
+              <motion.div
+                initial={{ opacity: 0, scale: 0.8 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute top-3 right-3 bg-green-500 text-white px-3 py-2 rounded-full text-xs font-semibold shadow-lg flex items-center gap-1"
+              >
+                <span>✓</span>
+                <span>Ready</span>
+              </motion.div>
             )}
           </div>
 

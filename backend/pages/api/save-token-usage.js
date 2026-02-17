@@ -61,7 +61,8 @@ export default async function handler(req, res) {
 
     // Insert token usage record using Supabase
     // Use exact PascalCase column names as shown in Supabase UI
-    const currentTime = getISTTimestamp();
+    // CreatedAt must be in UTC ISO format to match query filters in get-token-usage
+    const currentTimeUTC = new Date().toISOString();
     const { data, error } = await supabase
       .from('ai_token_usage_table')
       .insert({
@@ -74,7 +75,8 @@ export default async function handler(req, res) {
         TotalTokens: totalTokens || 0,
         InputTokenCost: inputTokenCost || 0,
         OutputTokenCost: outputTokenCost || 0,
-        TotalTokenCost: totalTokenCost || 0
+        TotalTokenCost: totalTokenCost || 0,
+        CreatedAt: currentTimeUTC
       })
       .select()
       .single();
@@ -87,7 +89,19 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: 'Token usage saved successfully',
-      id: data?.ID || data?.id
+      id: data?.ID || data?.id,
+      tokenData: {
+        inputTokens: data?.InputTokens || inputTokens || 0,
+        outputTokens: data?.OutputTokens || outputTokens || 0,
+        totalTokens: data?.TotalTokens || totalTokens || 0,
+        inputTokenCost: data?.InputTokenCost || inputTokenCost || 0,
+        outputTokenCost: data?.OutputTokenCost || outputTokenCost || 0,
+        totalTokenCost: data?.TotalTokenCost || totalTokenCost || 0,
+        operationType: data?.OperationType || operationType,
+        modelName: data?.ModelName || modelName,
+        userId: data?.UserId || userId,
+        email: data?.Email || email
+      }
     });
     return;
 

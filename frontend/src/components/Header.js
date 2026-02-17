@@ -97,8 +97,8 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                   <span className="text-gray-500">V{APP_VERSION.VERSION.split('.')[0]}</span>
                   <span className="text-gray-400">.</span>
                   <span className="text-green-600">{APP_VERSION.VERSION.split('.')[1]}</span>
-                  <span className="text-gray-400">.</span>
-                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span>
+                  {/* <span className="text-gray-400">.</span>
+                  <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span> */}
                 </span>
               </h1>
               <p className="text-xs sm:text-sm text-green-600 truncate">

@@ -103,8 +103,16 @@ const NutritionCard = ({ data, onDataUpdate, user, imagePreview, selectedImage, 
       const analysisData = {
         foods: newItems.map(item => ({
           name: item.name,
+          // 🔴 CRITICAL: Preserve correction metadata for database persistence
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
           portion: item.serving?.description || item.portionDescription || item.portion || '1 serving',
           weight_g: item.serving?.grams || item.grams || item.weight_g || 100,
+          volume_ml: item.volume_ml || null,
+          unit: item.unit || 'g',
+          isLiquid: item.isLiquid || false,
           nutrition: {
             calories: Math.round(item.nutrition?.calories || item.calories || 0),
             protein: Math.round(item.nutrition?.protein || item.protein || 0),

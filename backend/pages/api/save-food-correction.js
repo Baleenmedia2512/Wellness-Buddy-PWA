@@ -7,7 +7,7 @@ export default async function handler(req, res) {
   // Set CORS headers
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Cache-Control, Pragma");
 
   // Handle preflight request
   if (req.method === "OPTIONS") {
@@ -33,52 +33,65 @@ export default async function handler(req, res) {
       return;
     }
 
+    console.log("💾 [SAVE CORRECTION] Request received:");
+    console.log("   User ID:", userId);
+    console.log("   AI Detected:", aiDetected);
+    console.log("   User Corrected:", userCorrected);
+
     // Database connection
     const supabase = getSupabaseClient();
+    const currentTime = getISTTimestamp();
 
-    // Check if the same correction already exists for this user
-    const { data: existingCorrections, error: selectError } = await supabase
+    // 🔍 Check if this exact correction already exists for this user
+    const { data: existingCorrection, error: selectError } = await supabase
       .from("food_corrections_table")
-      .select('"Id", "TimesCorrected"')
+      .select("*")
       .eq('"UserId"', userId)
       .eq('"AiDetected"', aiDetected)
-      .eq('"UserCorrected"', userCorrected);
+      .eq('"UserCorrected"', userCorrected)
+      .maybeSingle();
 
     if (selectError) throw selectError;
 
-    if (existingCorrections && existingCorrections.length > 0) {
-      // Update existing correction (increment times_corrected)
-      const correctionId = existingCorrections[0].Id;
-      const newCount = existingCorrections[0].TimesCorrected + 1;
-      const currentTime = getISTTimestamp();
+    let result;
+    let action;
 
-      const { error: updateError } = await supabase
+    if (existingCorrection) {
+      // ♻️ UPDATE: Same user making the same correction again
+      const newCount = existingCorrection.TimesCorrected + 1;
+      
+      const { data: updatedData, error: updateError } = await supabase
         .from("food_corrections_table")
         .update({
           TimesCorrected: newCount,
           LastCorrected: currentTime,
         })
-        .eq('"Id"', correctionId);
+        .eq('"Id"', existingCorrection.Id)
+        .select()
+        .single();
 
       if (updateError) throw updateError;
 
-      console.log("✅ BACKEND: Correction UPDATED in database");
-      console.log("   → Correction ID:", correctionId);
+      result = { insertId: updatedData?.Id };
+      action = "updated";
+
+      console.log("♻️ BACKEND: UPDATED Existing Correction");
+      console.log("   → Record ID:", updatedData?.Id);
       console.log("   → Times Corrected:", newCount);
+      console.log("   → AI Detected:", aiDetected);
+      console.log("   → User Corrected:", userCorrected);
 
       res.status(200).json({
         success: true,
-        message: "Correction updated",
+        message: "Correction count updated",
         data: {
-          id: correctionId,
+          id: result.insertId,
           times_corrected: newCount,
-          action: "updated",
+          action: action,
         },
       });
-      return;
     } else {
-      // Insert new correction
-      const currentTime = getISTTimestamp();
+      // ➕ INSERT: New correction (different user or different target)
       const { data: insertedData, error: insertError } = await supabase
         .from("food_corrections_table")
         .insert({
@@ -94,7 +107,8 @@ export default async function handler(req, res) {
 
       if (insertError) throw insertError;
 
-      const result = { insertId: insertedData?.Id };
+      result = { insertId: insertedData?.Id };
+      action = "created";
 
       console.log("✅ BACKEND: NEW Correction SAVED to database");
       console.log("   → New Correction ID:", insertedData?.Id);
@@ -107,11 +121,11 @@ export default async function handler(req, res) {
         data: {
           id: result.insertId,
           times_corrected: 1,
-          action: "created",
+          action: action,
         },
       });
-      return;
     }
+    return;
   } catch (error) {
     console.error("Error saving food correction:", error);
     res.status(500).json({

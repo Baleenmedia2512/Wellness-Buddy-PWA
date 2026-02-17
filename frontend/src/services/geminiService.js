@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "./userContextService";
 import { applyGlobalAutoCorrections } from "./foodCorrectionService";
+import { createTokenTracker } from "./tokenCost";
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -91,6 +92,9 @@ class GeminiService {
     this.lastPrompt = null;
     this.lastPromptTimestamp = null;
 
+    // Token tracker for DB persistence
+    this.tokenTracker = createTokenTracker('gemini-2.5-flash-lite');
+
     if (this.apiKey) {
       this.genAI = new GoogleGenerativeAI(this.apiKey);
       this.model = this.genAI.getGenerativeModel({
@@ -105,6 +109,13 @@ class GeminiService {
         },
       });
     }
+  }
+
+  /**
+   * Set current user for token tracking (call after login)
+   */
+  setCurrentUser(userId, userEmail) {
+    this.tokenTracker.setCurrentUser(userId, userEmail);
   }
 
   getApiInfo() {
@@ -425,20 +436,6 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🔍 LOG AI DETECTION RESULTS
-      console.log("🤖 ========== AI DETECTION RESULTS ==========");
-      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
-        nutritionData.foods.forEach((food, index) => {
-          console.log(`🔍 AI Detected Food ${index + 1}:`, {
-            name: food.name,
-            portion: food.portion,
-            weight: food.weight_g || food.volume_ml,
-            unit: food.unit,
-          });
-        });
-      }
-      console.log("============================================");
-
       // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
       // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
@@ -446,6 +443,23 @@ class GeminiService {
           nutritionData.foods,
         );
       }
+
+      // 🔍 LOG AI DETECTION RESULTS (AFTER AUTO-CORRECTIONS FOR ACCURACY)
+      console.log("🤖 ========== AI DETECTION RESULTS ==========");
+      if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
+        nutritionData.foods.forEach((food, index) => {
+          console.log(`🔍 AI Detected Food ${index + 1}:`, {
+            originalAiDetected: food.originalAiName || food.name,
+            currentDisplayName: food.name,
+            wasAutoCorrected: food.wasAutoCorrected || false,
+            correctionSource: food.correctionSource || 'None',
+            portion: food.portion,
+            weight: food.weight_g || food.volume_ml,
+            unit: food.unit,
+          });
+        });
+      }
+      console.log("============================================");
 
       return this.transformOptimizedResponse(nutritionData, "image");
     } catch (error) {
@@ -734,6 +748,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
         // Token metrics
         promptTokens: usageMetadata.promptTokenCount || 0,
         completionTokens: usageMetadata.candidatesTokenCount || 0,
+        thinkingTokens: usageMetadata.thoughtsTokenCount || 0,
         totalTokens: usageMetadata.totalTokenCount || 0,
 
         // Request metadata
@@ -755,8 +770,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // Calculate cost estimate (for gemini-2.5-flash-lite)
       // Pricing from: https://ai.google.dev/pricing (Jan 2026)
+      // Note: Thinking tokens are charged at OUTPUT rate
       const inputCost = (tokenData.promptTokens / 1000000) * 0.1; // $0.10 per 1M input tokens
-      const outputCost = (tokenData.completionTokens / 1000000) * 0.4; // $0.40 per 1M output tokens
+      const outputCost = ((tokenData.completionTokens + tokenData.thinkingTokens) / 1000000) * 0.4; // $0.40 per 1M output tokens (includes thinking)
       const totalCost = inputCost + outputCost;
 
       // Update session metrics
@@ -776,6 +792,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       console.log(`📊 Token Usage [${requestType}]:`, {
         "🔤 Prompt Tokens": tokenData.promptTokens,
         "💬 Response Tokens (Output)": tokenData.completionTokens,
+        "🧠 Thinking Tokens": tokenData.thinkingTokens,
         "📈 Total Tokens": tokenData.totalTokens,
         "⏱️ Processing Time": `${processingTime}ms`,
         "💰 Cost Estimate": `$${totalCost.toFixed(6)}`,
@@ -817,6 +834,12 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       // };
 
       // console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // PERSIST to database via tokenTracker (fixes missing tracking gap)
+      // ═══════════════════════════════════════════════════════════════════════
+      this.tokenTracker.track(response, requestType, processingTime);
+
     } catch (error) {
       console.warn("⚠️ Could not extract token usage:", error.message);
     }
@@ -825,7 +848,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
   transformOptimizedResponse(data, type) {
     if (type === "image") {
       if (!data || !data.foods || data.foods.length === 0) {
-        throw new Error("No food items detected in the image");
+        throw new Error("No food items detected in the image. Try a clearer, well-lit photo of a single dish.");
       }
 
       const totalNutrition =
@@ -887,6 +910,11 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(food.nutrition.carbs || 0),
           fat: Math.round(food.nutrition.fat || 0),
           fiber: Math.round(food.nutrition.fiber || 0),
+          // 🔴 CRITICAL: Preserve correction metadata for UI display
+          originalAiName: food.originalAiName || food.name,
+          wasAutoCorrected: food.wasAutoCorrected || false,
+          correctionSource: food.correctionSource || null,
+          correctionMetadata: food.correctionMetadata || null,
         })),
       };
     } else {

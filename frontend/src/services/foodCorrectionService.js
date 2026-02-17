@@ -1,7 +1,26 @@
-import { getUserContext } from "./userContextService.js";
+import { cacheManager } from './cacheManager';
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+
+/**
+ * Normalize food name for comparison
+ * Handles variations like "Formula 1 - Chocolate" vs "Formula 1 Chocolate"
+ * @param {string} name - Food name to normalize
+ * @returns {string} Normalized food name
+ */
+const normalizeFoodName = (name) => {
+  if (!name) return "";
+  
+  return name
+    .toLowerCase()
+    .trim()
+    // Remove special characters but keep spaces
+    .replace(/[-–—_()[\]{}]/g, " ")
+    // Remove extra spaces
+    .replace(/\s+/g, " ")
+    .trim();
+};
 
 /**
  * Save a food correction to the database
@@ -12,17 +31,24 @@ const API_BASE_URL =
  */
 export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
   try {
+    console.log("\n💾 ========== SAVE CORRECTION API ==========");
     console.log("[CORRECTION SERVICE] saveFoodCorrection called:", {
       userId,
       aiDetected,
       userCorrected,
     });
+    
+    // 🚨 CRITICAL VALIDATION: Ensure aiDetected is the ORIGINAL AI name
+    console.log("🔍 [VALIDATION] Checking if aiDetected is original AI name...");
+    console.log("   - aiDetected:", aiDetected);
+    console.log("   - Will save to DB:", { UserId: userId, AiDetected: aiDetected, UserCorrected: userCorrected });
 
     // Don't save if both names are the same
     if (
       aiDetected.trim().toLowerCase() === userCorrected.trim().toLowerCase()
     ) {
       console.log("[CORRECTION SERVICE] ❌ Names are identical, skipping save");
+      console.log("==========================================\n");
       return { success: false, message: "No correction needed" };
     }
 
@@ -35,6 +61,12 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
       userCorrected: userCorrected.trim(),
     };
     console.log("[CORRECTION SERVICE] Payload:", payload);
+    console.log("🚀 [SENDING TO BACKEND] Will create/update DB record:");
+    console.log("   📊 food_corrections_table:");
+    console.log("      - UserId:", userId);
+    console.log("      - AiDetected:", aiDetected.trim());
+    console.log("      - UserCorrected:", userCorrected.trim());
+    console.log("==========================================\n");
 
     const response = await fetch(url, {
       method: "POST",
@@ -52,6 +84,12 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected) => {
 
     const data = await response.json();
     console.log("[CORRECTION SERVICE] ✅ Success:", data);
+    
+    // Clear cache so new correction applies immediately
+    cacheManager.clearPattern('foodCorrection');
+    cacheManager.clearPattern('globalCorrections');
+    cacheManager.clearPattern('reverseLookup');
+    
     return data;
   } catch (error) {
     console.error("[CORRECTION SERVICE] ❌ Error:", error);
@@ -89,8 +127,53 @@ export const getUserCorrections = async (userId) => {
 };
 
 /**
+ * Reverse-lookup: Find original AI-detected name from a corrected name
+ * Use case: When loading old meal data that's missing originalAiName metadata
+ * @param {string} correctedName - The current corrected food name
+ * @returns {Promise<string|null>} Original AI-detected name, or null if not found
+ */
+export const reverseLookupOriginalAiName = async (correctedName) => {
+  const cacheKey = cacheManager.generateKey('reverseLookup', correctedName);
+  
+  return cacheManager.execute(
+    cacheKey,
+    async () => {
+      console.log("🔍 [REVERSE-LOOKUP] Querying server for:", correctedName);
+      
+      const response = await fetch(
+        `${API_BASE_URL}/api/reverse-lookup-correction?correctedName=${encodeURIComponent(correctedName)}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      let result = null;
+      if (data.success && data.found) {
+        console.log("✅ [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
+        result = data.originalAiName;
+      } else {
+        console.log("ℹ️ [REVERSE-LOOKUP] No correction mapping found");
+      }
+      
+      return result;
+    },
+    cacheManager.ttls.reverseLookup
+  );
+};
+
+/**
  * Apply hybrid corrections (global + user) to AI-detected food names
  * Priority: User's personal corrections > Global community patterns > Original AI
+ * ✅ GLOBAL AUTO-CORRECTIONS ENABLED
  * @param {Array} foods - Array of food items detected by AI
  * @param {number} userId - User ID
  * @returns {Promise<Array>} Foods with corrected names
@@ -102,192 +185,90 @@ export const applyUserCorrections = async (foods, userId) => {
     }
 
     console.log(
-      "🔄 [HYBRID] Starting hybrid correction process for userId:",
+      "🔄 [CORRECTION] Processing foods for userId:",
       userId,
+      "- Global auto-corrections ENABLED",
     );
 
-    // Fetch user context (includes both personal + global corrections)
-    const context = await getUserContext(userId);
-
-    if (!context) {
-      console.log(
-        "⚠️ [HYBRID] No context available, using original AI detection",
-      );
-      return foods;
-    }
-
-    // STEP 1: Build GLOBAL correction map (from community patterns)
-    const globalCorrectionMap = new Map();
-
-    if (context.globalPatterns && context.globalPatterns.length > 0) {
-      context.globalPatterns.forEach((pattern) => {
-        const aiDetected = pattern.ai_detected.toLowerCase().trim();
-        globalCorrectionMap.set(aiDetected, {
-          correctedName: pattern.user_corrected,
-          userCount: pattern.user_count,
-          totalCorrections: pattern.total_corrections,
-          type: "global",
-        });
-      });
-      console.log(
-        `🌍 [HYBRID] Loaded ${globalCorrectionMap.size} global patterns (3+ users)`,
-      );
-    } else {
-      console.log("🌍 [HYBRID] No global patterns available yet");
-    }
-
-    // STEP 2: Build USER correction map (personal preferences - overrides global)
-    const userCorrectionMap = new Map();
-
-    if (context.personalCorrections && context.personalCorrections.length > 0) {
-      context.personalCorrections.forEach((correction) => {
-        const aiDetected = correction.ai_detected
-          ? correction.ai_detected.toLowerCase().trim()
-          : correction.AiDetected.toLowerCase().trim();
-        const userCorrected =
-          correction.user_corrected || correction.UserCorrected;
-        const timesCorrected =
-          correction.times_corrected || correction.TimesCorrected;
-
-        userCorrectionMap.set(aiDetected, {
-          correctedName: userCorrected,
-          timesCorrected: timesCorrected,
-          type: "user",
-        });
-      });
-      console.log(
-        `👤 [HYBRID] Loaded ${userCorrectionMap.size} personal corrections`,
-      );
-    } else {
-      console.log("👤 [HYBRID] No personal corrections found");
-    }
-
-    // STEP 3: Apply corrections with priority: User > Global > Original
-    const correctedFoods = foods.map((food) => {
-      const originalName = food.name;
-      const normalizedName = originalName.toLowerCase().trim();
-
-      // Priority 1: User-specific correction (highest priority)
-      if (userCorrectionMap.has(normalizedName)) {
-        const correction = userCorrectionMap.get(normalizedName);
-        console.log(
-          `✅ [USER] "${originalName}" → "${correction.correctedName}" (your preference, used ${correction.timesCorrected}x)`,
-        );
-        return {
-          ...food,
-          name: correction.correctedName,
-          originalAiName: originalName,
-          wasAutoCorrected: true,
-          correctionType: "user",
-          correctionSource: `Your preference (used ${correction.timesCorrected}x)`,
-        };
-      }
-
-      // Priority 2: Global community correction
-      if (globalCorrectionMap.has(normalizedName)) {
-        const correction = globalCorrectionMap.get(normalizedName);
-        console.log(
-          `✅ [GLOBAL] "${originalName}" → "${correction.correctedName}" (community: ${correction.userCount} users, ${correction.totalCorrections} corrections)`,
-        );
-        return {
-          ...food,
-          name: correction.correctedName,
-          originalAiName: originalName,
-          wasAutoCorrected: true,
-          correctionType: "global",
-          correctionSource: `Community (${correction.userCount} users)`,
-        };
-      }
-
-      // Priority 3: No correction, use original AI detection
-      console.log(`⚪ [NO MATCH] "${originalName}" (keeping AI detection)`);
-      return food;
-    });
-
-    // Summary statistics
-    const userCorrectedCount = correctedFoods.filter(
-      (f) => f.correctionType === "user",
-    ).length;
-    const globalCorrectedCount = correctedFoods.filter(
-      (f) => f.correctionType === "global",
-    ).length;
-    const totalCorrectedCount = userCorrectedCount + globalCorrectedCount;
-
-    if (totalCorrectedCount > 0) {
-      console.log(
-        `🎯 [HYBRID] Applied ${totalCorrectedCount} corrections (${userCorrectedCount} personal, ${globalCorrectedCount} community)`,
-      );
-      console.log("\n📋 ========== HYBRID CORRECTION SUMMARY ==========");
-      correctedFoods.forEach((food, index) => {
-        if (food.wasAutoCorrected) {
-          const icon = food.correctionType === "user" ? "👤" : "🌍";
-          console.log(
-            `${index + 1}. ${icon} "${food.originalAiName}" → "${food.name}" [${
-              food.correctionSource
-            }]`,
-          );
-        } else {
-          console.log(`${index + 1}. 🤖 "${food.name}" (AI original)`);
-        }
-      });
-      console.log("=================================================\n");
-    } else {
-      console.log(
-        "📝 [HYBRID] No corrections applied, using all AI detections",
-      );
-    }
-
-    return correctedFoods;
+    // Apply global auto-corrections with current userId for comparison
+    return await applyGlobalAutoCorrections(foods, userId);
   } catch (error) {
-    console.error("❌ [HYBRID] Error applying corrections:", error);
-    // Fallback: Return original foods if correction fails
+    console.error("❌ [CORRECTION] Error processing foods:", error);
+    // Fallback: Return original foods if processing fails
     return foods;
   }
 };
 
+// Cache for global corrections map (deprecated - now using cacheManager)
+// Kept for backward compatibility with clearGlobalCorrectionsCache export
+let globalCorrectionsCache = null;
+let cacheTimestamp = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes in milliseconds
+
+/**
+ * Clear the global corrections cache (uses global cache manager)
+ */
+export const clearGlobalCorrectionsCache = () => {
+  globalCorrectionsCache = null;
+  cacheTimestamp = 0;
+  cacheManager.clearPattern('globalCorrections');
+  console.log("🗑️ [CACHE] Cleared global corrections cache");
+};
+
 /**
  * 🌍 GLOBAL AUTO-CORRECTION FEATURE
- * Get global auto-corrections lookup map (fresh data every time)
+ * Get global auto-corrections lookup map (cached with request deduplication)
  * When ANY user corrects once, it applies to ALL users globally
  * @returns {Promise<Map>} Map of ai_detected -> corrected_name
  */
 export const getGlobalCorrectionsMap = async () => {
-  try {
-    console.log("🌍 [GLOBAL-AUTO] Fetching corrections...");
+  const cacheKey = cacheManager.generateKey('globalCorrections', 'map');
+  
+  return cacheManager.execute(
+    cacheKey,
+    async () => {
+      console.log("🌍 [GLOBAL-AUTO] Fetching corrections from server...");
 
-    const response = await fetch(`${API_BASE_URL}/api/get-global-corrections`, {
-      method: "GET",
-      headers: { "Content-Type": "application/json" },
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
-
-    // Build Map for O(1) lookup
-    const correctionMap = new Map();
-    if (data.success && data.lookup) {
-      Object.keys(data.lookup).forEach((aiDetected) => {
-        correctionMap.set(
-          aiDetected.toLowerCase().trim(),
-          data.lookup[aiDetected],
-        );
-      });
-
-      console.log(
-        `✅ [GLOBAL-AUTO] Loaded ${
-          correctionMap.size
-        } corrections (threshold: ${data.threshold || 1} user)`,
+      const response = await fetch(
+        `${API_BASE_URL}/api/get-global-corrections?t=${Date.now()}`,
+        {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            Pragma: "no-cache",
+          },
+        },
       );
-    }
 
-    return correctionMap;
-  } catch (error) {
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Build Map for O(1) lookup
+      const correctionMap = new Map();
+      if (data.success && data.lookup) {
+        Object.keys(data.lookup).forEach((aiDetected) => {
+          correctionMap.set(
+            aiDetected.toLowerCase().trim(),
+            data.lookup[aiDetected],
+          );
+        });
+
+        console.log(
+          `✅ [GLOBAL-AUTO] Loaded ${correctionMap.size} corrections (cached)`,
+        );
+      }
+
+      return correctionMap;
+    },
+    cacheManager.ttls.foodCorrections
+  ).catch(error => {
     console.error("❌ [GLOBAL-AUTO] Error:", error);
     return new Map(); // Return empty map on error
-  }
+  });
 };
 
 /**
@@ -298,93 +279,82 @@ export const getGlobalCorrectionsMap = async () => {
  *    "Golden Milk" → "Formula 1" → "Juice"
  *    Both "Golden Milk" AND "Formula 1" will show "Juice"
  * @param {Array} foods - Array of food items detected by AI
+ * @param {number} currentUserId - Current logged in user ID (optional)
  * @returns {Promise<Array>} Foods with auto-corrected names
  */
-export const applyGlobalAutoCorrections = async (foods) => {
+export const applyGlobalAutoCorrections = async (foods, currentUserId = null) => {
   try {
     if (!foods || foods.length === 0) {
       return foods;
     }
 
     console.log(
-      "🔄 [GLOBAL-AUTO] Checking auto-corrections for",
+      "🔄 [GLOBAL-AUTO] Processing",
       foods.length,
       "items...",
     );
 
-    // Fetch global corrections map
+    // Fetch global corrections map (cached)
     const correctionMap = await getGlobalCorrectionsMap();
 
     if (correctionMap.size === 0) {
-      console.log("⚠️ [GLOBAL-AUTO] No corrections available yet");
-      return foods;
+      console.log("⚠️ [GLOBAL-AUTO] No corrections available");
+      return foods.map((food) => ({
+        ...food,
+        originalAiName: food.originalAiName || food.name,  // Preserve existing originalAiName
+        wasAutoCorrected: false,
+        correctionSource: null,
+      }));
     }
 
-    // Helper function to follow correction chains
-    const followCorrectionChain = (foodName, visited = new Set()) => {
-      const normalizedName = foodName.toLowerCase().trim();
-
-      // Prevent infinite loops
-      if (visited.has(normalizedName)) {
-        return { finalName: foodName, chainLength: 0 };
-      }
-      visited.add(normalizedName);
-
-      // Check if this name has a correction
-      if (correctionMap.has(normalizedName)) {
-        const correction = correctionMap.get(normalizedName);
-        // Recursively follow the chain
-        const nextStep = followCorrectionChain(
-          correction.correctedName,
-          visited,
-        );
-        return {
-          finalName: nextStep.finalName,
-          chainLength: 1 + nextStep.chainLength,
-          correction: correction,
-        };
-      }
-
-      // End of chain
-      return { finalName: foodName, chainLength: 0 };
-    };
-
-    // Apply corrections with chain following
+    // Apply corrections with DIRECT LOOKUP ONLY
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
-      const chainResult = followCorrectionChain(originalName);
-
-      // If chain was followed (chainLength > 0)
-      if (chainResult.chainLength > 0) {
+      const normalizedOriginal = normalizeFoodName(originalName);
+      
+      // 🔴 CRITICAL: Preserve the very first AI detected name
+      // If food already has originalAiName, keep it; otherwise use current name
+      const trueOriginalAiName = food.originalAiName || originalName;
+      
+      // Direct lookup - backend already followed chains
+      if (correctionMap.has(normalizedOriginal)) {
+        const correction = correctionMap.get(normalizedOriginal);
+        const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
+        
         console.log(
-          `✅ [AUTO-CORRECT] "${originalName}" → "${chainResult.finalName}" ` +
-            `(chain: ${chainResult.chainLength} step${
-              chainResult.chainLength > 1 ? "s" : ""
-            }, ` +
-            `${chainResult.correction.userCount} user${
-              chainResult.correction.userCount > 1 ? "s" : ""
-            })`,
+          `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`
         );
 
         return {
           ...food,
-          name: chainResult.finalName,
-          originalAiName: originalName,
+          name: correction.correctedName,
+          originalAiName: trueOriginalAiName,  // Use preserved original AI name
           wasAutoCorrected: true,
-          correctionSource: `Auto-corrected (${
-            chainResult.correction.userCount
-          } user${chainResult.correction.userCount > 1 ? "s" : ""})`,
+          correctionSource: `Auto-corrected (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
+          correctionMetadata: {
+            aiDetected: trueOriginalAiName,  // Use preserved original AI name
+            userCorrected: correction.correctedName,
+            finalDisplay: correction.correctedName,
+            userCount: correction.userCount
+          }
         };
       }
 
-      // No correction found
-      return food;
+      // No correction found - return with explicit flags
+      return {
+        ...food,
+        originalAiName: trueOriginalAiName,  // Use preserved original AI name
+        wasAutoCorrected: false,
+        correctionSource: null,
+      };
     });
 
     // Summary
     const correctedCount = correctedFoods.filter(
       (f) => f.wasAutoCorrected,
     ).length;
+    
     if (correctedCount > 0) {
       console.log(
         `🎯 [GLOBAL-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected`,
@@ -394,6 +364,12 @@ export const applyGlobalAutoCorrections = async (foods) => {
     return correctedFoods;
   } catch (error) {
     console.error("❌ [GLOBAL-AUTO] Error:", error);
-    return foods; // Return original on error
+    // Return foods with explicit flags showing no auto-correction
+    return foods.map((food) => ({
+      ...food,
+      originalAiName: food.name,
+      wasAutoCorrected: false,
+      correctionSource: null,
+    }));
   }
 };

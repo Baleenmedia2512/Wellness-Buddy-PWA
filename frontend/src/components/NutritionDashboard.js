@@ -122,9 +122,21 @@ const NutritionDashboard = ({
           grams: item.weight_g || item.volume_ml || item.grams || 100,
           unit: unit,
           isLiquid: isLiquid,
+          // 🔴 CRITICAL: Preserve correction metadata if it exists
+          // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
+          originalAiName: item.originalAiName || null, // Use null instead of fallback
+          wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
+          // Flag to indicate this item needs reverse-lookup
+          needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
         };
         console.log("🔍 [NutritionDashboard] Transformed item:", {
           name: item.name,
+          originalAiName: transformed.originalAiName,
+          wasAutoCorrected: transformed.wasAutoCorrected,
+          needsReverseLookup: transformed.needsReverseLookup,
+          correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
           isLiquidByName,
           original: item,
           transformed: transformed,
@@ -222,6 +234,13 @@ const NutritionDashboard = ({
         grams: item.weight_g || item.volume_ml || item.grams || 100,
         unit: unit,
         isLiquid: isLiquid,
+        // 🔴 CRITICAL: Preserve correction metadata if it exists
+        originalAiName: item.originalAiName || null, // Use null instead of fallback
+        wasAutoCorrected: item.wasAutoCorrected || (item.originalAiName ? true : false),
+        correctionSource: item.correctionSource || null,
+        correctionMetadata: item.correctionMetadata || null,
+        // Flag to indicate this item needs reverse-lookup
+        needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
       };
     });
     setLocalDetailedItems(transformedItems);
@@ -297,6 +316,11 @@ const NutritionDashboard = ({
             fat: Math.round(item.nutrition?.fat || item.fat || 0),
             fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
           },
+          // 🔴 CRITICAL: Save correction metadata to database
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
         })),
         total: {
           calories: Math.round(newTotals.calories || 0),

@@ -57,6 +57,7 @@ import {
   isMobileDevice,
   cleanup,
 } from "./services/firebase";
+import TouchFeedbackButton from "./components/TouchFeedbackButton";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -73,6 +74,7 @@ function WellnessValleyApp() {
   const [savedNutritionMealId, setSavedNutritionMealId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [loadingState, setLoadingState] = useState("analyzing"); // 'analyzing' | 'saving'
+  const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
@@ -129,6 +131,13 @@ function WellnessValleyApp() {
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
+
+  // 🐛 Food Correction Debug Logs State
+  const [correctionLogs, setCorrectionLogs] = useState([]);
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+
+  // 🔄 Retry state - store last image file for retry capability
+  const lastImageFileRef = useRef(null);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -203,6 +212,26 @@ function WellnessValleyApp() {
     setToast({ message, visible: true });
     setTimeout(() => setToast({ message: "", visible: false }), 2000);
   };
+
+  // 🐛 Keyboard shortcut for closing correction modal (ESC key on web)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && showCorrectionModal) {
+        setShowCorrectionModal(false);
+      }
+    };
+
+    if (showCorrectionModal) {
+      window.addEventListener('keydown', handleKeyDown);
+      // Prevent body scroll when modal is open (web only)
+      document.body.style.overflow = 'hidden';
+    }
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = 'unset';
+    };
+  }, [showCorrectionModal]);
 
   // ✅ CRITICAL FIX: Force splash screen dismissal on app load
 
@@ -531,6 +560,11 @@ function WellnessValleyApp() {
           );
         }
 
+        // Set current user for token tracking on geminiService
+        if (user.id && userEmail) {
+          geminiService.setCurrentUser(user.id, userEmail);
+        }
+
         // Load user context for AI personalization
         if (user.id) {
           console.log("🔄 [Auth State] Loading user context...");
@@ -700,6 +734,16 @@ function WellnessValleyApp() {
                   parsedUser.id,
                 );
               }
+            }
+
+            // Store user email in localStorage for API calls
+            const userEmail = parsedUser.email || parsedUser.Email;
+            if (userEmail) {
+              localStorage.setItem("userEmail", userEmail);
+              console.log(
+                "✅ [OTP Restore] Stored user email in localStorage:",
+                userEmail,
+              );
             }
 
             // Load user context for AI personalization
@@ -1272,12 +1316,12 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setImageType(null);
     setSaveError(null);
+    setDetectedFoodNames([]); // Clear previous detection
     setLoadingState("analyzing"); // Reset to analyzing state
+    lastImageFileRef.current = file; // Store for retry
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
-      setLoading(true); // Show loading immediately
-
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
@@ -1316,12 +1360,14 @@ function WellnessValleyApp() {
         // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
       }
 
-      // Set preview immediately for better UX
+      // Set preview and loading together to ensure overlay shows
       setImagePreview(processedImage);
+      setLoading(true); // Ensure loading is true when preview shows
 
       // Set current user for token tracking on imageTypeDetector (unified detection)
       if (user?.id && user?.email) {
         imageTypeDetector.setCurrentUser(user.id, user.email);
+        geminiService.setCurrentUser(user.id, user.email);
       }
 
       // ✅ Detect image type using Gemini AI (single unified call)
@@ -1333,6 +1379,13 @@ function WellnessValleyApp() {
         hasFoods: detectedType.details?.foods?.length || 0,
         fullResponse: detectedType
       });
+
+      // 🍽️ Early detection: If food items detected, show them immediately
+      if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
+        const foodNames = detectedType.details.foods.map(f => f.name);
+        console.log('🍽️ [AI-DETECTED] Food items identified:', foodNames.join(', '));
+        setDetectedFoodNames(foodNames); // Show detected names in UI immediately
+      }
 
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
       if (detectedType.type === "education" && detectedType.confidence > 0.7) {
@@ -1466,23 +1519,54 @@ function WellnessValleyApp() {
           console.log("✅ Using nutrition data from unified detection");
 
           let foods = detectedType.details.foods;
+          
+          // 🎯 Update detected food names for display
+          const foodNames = foods.map(f => f.name);
+          setDetectedFoodNames(foodNames);
+          console.log('🍽️ [AI-DETECTED] Food names:', foodNames.join(', '));
+
+          // 🔴 CRITICAL: Preserve original AI-detected names BEFORE any corrections
+          // This ensures we always know what the AI originally detected, even after auto-corrections
+          foods = foods.map(food => ({
+            ...food,
+            originalAiName: food.name // Store the fresh AI detection
+          }));
+          console.log('✅ [PRESERVE] Original AI names saved:', foods.map(f => `${f.name}`).join(', '));
 
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
-          console.log("📋 [CORRECTION] Starting auto-correction process...");
-          console.log(
-            "📋 [CORRECTION] Foods before correction:",
-            foods.map((f) => f.name),
-          );
+          // console.log("📋 [CORRECTION] Starting auto-correction process...");
+          // console.log(
+          //   "📋 [CORRECTION] Foods before correction:",
+          //   foods.map((f) => f.name),
+          // );
           try {
             const userId = user?.id || (await getUserId(user));
-            console.log("📋 [CORRECTION] User ID for corrections:", userId);
+            // console.log("📋 [CORRECTION] User ID for corrections:", userId);
             if (userId) {
               const correctedFoods = await applyUserCorrections(foods, userId);
-              console.log(
-                "📋 [CORRECTION] Foods after correction:",
-                correctedFoods.map((f) => f.name),
-              );
+              // console.log(
+              //   "📋 [CORRECTION] Foods after correction:",
+              //   correctedFoods.map((f) => f.name),
+              // );
               foods = correctedFoods;
+              
+              // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
+              const newLogs = correctedFoods.map(food => ({
+                timestamp: new Date().toISOString(),
+                aiDetected: food.originalAiName || food.name,
+                userCorrected: food.name,
+                finalDisplay: food.name,
+                wasAutoCorrected: food.wasAutoCorrected || false,
+                correctionSource: food.correctionSource || null,
+                userCount: food.correctionMetadata?.userCount || 0,
+                portion: food.portion || 'N/A',
+                calories: food.nutrition?.calories || 0,
+              }));
+              
+              if (newLogs.length > 0) {
+                setCorrectionLogs(prev => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
+                console.log('🐛 [DEBUG-LOGS] Captured', newLogs.length, 'food detection(s)');
+              }
             } else {
               console.warn(
                 "⚠️ [CORRECTION] No userId available, skipping corrections",
@@ -1498,10 +1582,10 @@ function WellnessValleyApp() {
               error,
             );
           }
-          console.log(
-            "📋 [CORRECTION] Final foods to be used:",
-            foods.map((f) => f.name),
-          );
+          // console.log(
+          //   "📋 [CORRECTION] Final foods to be used:",
+          //   foods.map((f) => f.name),
+          // );
 
           const total =
             detectedType.details.total ||
@@ -1556,6 +1640,10 @@ function WellnessValleyApp() {
                 : "low",
             detailedItems: foods.map((food) => ({
               name: food.name,
+              originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
+              wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
+              correctionSource: food.correctionSource,  // 🔴 Track correction source
+              correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
               portionDescription: food.portion || "Unknown portion",
               estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
               unit: food.unit || (food.volume_ml ? "ml" : "g"),
@@ -1568,13 +1656,67 @@ function WellnessValleyApp() {
             })),
           };
         } else {
-          // Fallback: No food data extracted, show error
+          // Fallback: No food data extracted, show specific actionable error
           console.error("❌ [DEBUG] No food data extracted from image");
           console.error("❌ [DEBUG] Detection details:", detectedType.details);
           console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
-          setError(
-            "Could not detect any food items in the image. Please try again with a clearer photo.",
+          
+          const errorDetails = detectedType.details?.error || '';
+          const detectionReason = detectedType.details?.reason || '';
+          let errorMessage = '';
+          
+          // 1. Check for API/Service errors (quota, timeout, rate limits)
+          const isApiError = errorDetails && (
+            errorDetails.includes('quota') || 
+            errorDetails.includes('API') || 
+            errorDetails.includes('timeout') ||
+            errorDetails.includes('429') ||
+            errorDetails.includes('503') ||
+            errorDetails.includes('overloaded') ||
+            errorDetails.includes('rate limit')
           );
+          
+          // 2. Check for network errors
+          const isNetworkError = errorDetails && (
+            errorDetails.includes('network') ||
+            errorDetails.includes('Failed to fetch') ||
+            errorDetails.includes('connection') ||
+            errorDetails.toLowerCase().includes('internet')
+          );
+          
+          // 3. Check if image is not food (weight scale, body, etc.)
+          const isNonFoodImage = detectedType.type && (
+            detectedType.type === 'weight_scale' ||
+            detectedType.type === 'body' ||
+            detectedType.type === 'not_food' ||
+            detectionReason.toLowerCase().includes('scale') ||
+            detectionReason.toLowerCase().includes('body') ||
+            detectionReason.toLowerCase().includes('not food')
+          );
+          
+          // 4. Image quality issues
+          const isQualityIssue = detectionReason && (
+            detectionReason.toLowerCase().includes('blurry') ||
+            detectionReason.toLowerCase().includes('unclear') ||
+            detectionReason.toLowerCase().includes('dark') ||
+            detectionReason.toLowerCase().includes('low quality') ||
+            detectionReason.toLowerCase().includes('poor lighting')
+          );
+          
+          // Set appropriate error message
+          if (isApiError) {
+            errorMessage = "🤖 The AI model is temporarily unavailable. Please try again later.";
+          } else if (isNetworkError) {
+            errorMessage = "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+          } else if (isNonFoodImage) {
+            errorMessage = "⚠️ Please take a photo of food, weight scale, or educational content.";
+          } else if (isQualityIssue) {
+            errorMessage = "📸 Please take a clear photo with good lighting.";
+          } else {
+            errorMessage = "🍽️ Could not detect food items. Please take a clear photo of your meal.";
+          }
+          
+          setError(errorMessage);
           setLoading(false);
           return;
         }
@@ -1608,6 +1750,7 @@ function WellnessValleyApp() {
                 imageBase64: processedImage,
                 analysisResult: result,
                 deviceInfo: window.navigator.userAgent,
+                userEmail: user?.email || user?.Email || 'unknown'
               });
               return;
             }
@@ -1624,6 +1767,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1648,6 +1792,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1663,6 +1808,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             return;
           }
@@ -1677,6 +1823,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
             setShowDuplicateModal(true);
             setSaveLoading(false);
@@ -1688,6 +1835,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
+              userEmail: user?.email || user?.Email || 'unknown'
             });
           }
         } catch (err) {
@@ -1733,52 +1881,61 @@ function WellnessValleyApp() {
     }
   };
 
+  // 🔄 Retry food analysis with the last image
+  const handleRetryAnalysis = () => {
+    if (lastImageFileRef.current) {
+      setError(null);
+      handleImageSelect(lastImageFileRef.current);
+    }
+  };
+
   const getFriendlyErrorMessage = (error) => {
     const rawMessage = error.message || "";
 
-    // Server and network errors
-    if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
-      return "⚡ Server is currently busy. Please try again in a few minutes.";
-    } else if (
-      rawMessage.includes("Server returned an unexpected response format")
-    ) {
-      return "💾 Unable to save your analysis right now. Your food data is still displayed above!";
-    } else if (rawMessage.includes("Image file is too large")) {
-      return "📸 Image file is too large. Please try with a smaller photo (max 10MB).";
-    } else if (
-      rawMessage.includes("network") ||
-      rawMessage.includes("Failed to fetch")
-    ) {
-      return "🌐 Network issue. Please check your internet connection and try again.";
-    } else if (
-      rawMessage.includes("500") ||
-      rawMessage.includes("Internal Server Error")
-    ) {
-      return "⚙️ Server error occurred. Please try again in a few moments.";
-    } else if (rawMessage.includes("timeout")) {
-      return "⏱️ Request timed out. Please try again with better internet connection.";
+    // API/Service availability errors
+    if (rawMessage.includes("429") || rawMessage.includes("rate limit")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("quota") || rawMessage.includes("exceeded")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("API key is not configured")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("models/") && rawMessage.includes("not found")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
     }
 
-    // AI analysis errors
-    else if (rawMessage.includes("No food items detected")) {
-      return "⚠️ No food items were detected in the image. Try with a clearer photo.";
+    // Network and connectivity errors  
+    else if (rawMessage.includes("network") || rawMessage.includes("Failed to fetch")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    } else if (rawMessage.includes("timeout")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    } else if (rawMessage.includes("connection")) {
+      return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+    }
+
+    // Server errors
+    else if (rawMessage.includes("500") || rawMessage.includes("Internal Server Error")) {
+      return "The AI model is temporarily unavailable. Please try again later.";
+    } else if (rawMessage.includes("Server returned an unexpected response format")) {
+      return "💾 Unable to save your analysis right now. Your food data is still displayed above.";
+    }
+
+    // Image and analysis errors
+    else if (rawMessage.includes("Image file is too large")) {
+      return "📸 Image file is too large. Please use a smaller photo (max 10MB).";
+    } else if (rawMessage.includes("No food items detected")) {
+      return "🍽️ Could not detect food items. Please take a clear photo of your meal.";
     } else if (rawMessage.includes("Invalid response format")) {
-      return "🤖 AI returned unexpected data. Please try analyzing the image again.";
-    } else if (rawMessage.includes("API key is not configured")) {
-      return "⚙️ AI service is not available right now. Please try again later.";
-    } else if (
-      rawMessage.includes("models/") &&
-      rawMessage.includes("not found")
-    ) {
-      return "🤖 AI model is not available. Please try again later.";
+      return "🤖 The AI model is temporarily unavailable. Please try again later.";
     }
 
     // Generic fallback
     else if (rawMessage.toLowerCase().includes("analysis")) {
-      return "🍽️ Unable to save your food analysis. The nutrition data is still shown above!";
+      return "💾 Unable to save your analysis. The nutrition data is still shown above.";
     }
 
-    return "❌ Something went wrong. Please try again later.";
+    return "❌ Something went wrong. Please try again.";
   };
 
   const resetApp = () => {
@@ -1834,6 +1991,16 @@ function WellnessValleyApp() {
       const user = await signInWithGoogle(forceRedirect);
       if (user) {
         try {
+          // Store user email in localStorage for API calls
+          const userEmail = user.email || user.Email;
+          if (userEmail) {
+            localStorage.setItem("userEmail", userEmail);
+            console.log(
+              "✅ [handleSignIn] Stored user email in localStorage:",
+              userEmail,
+            );
+          }
+          
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handleSignIn] saveResult:", saveResult);
@@ -1951,6 +2118,16 @@ function WellnessValleyApp() {
 
       if (user) {
         try {
+          // Store user email in localStorage for API calls
+          const userEmail = user.email || user.Email;
+          if (userEmail) {
+            localStorage.setItem("userEmail", userEmail);
+            console.log(
+              "✅ [handlePopupSignIn] Stored user email in localStorage:",
+              userEmail,
+            );
+          }
+          
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handlePopupSignIn] saveResult:", saveResult);
@@ -2168,6 +2345,17 @@ function WellnessValleyApp() {
 
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
+        
+        // Store user email in localStorage for API calls
+        const userEmail = parsedUser.email || parsedUser.Email;
+        if (userEmail) {
+          localStorage.setItem("userEmail", userEmail);
+          console.log(
+            "✅ [handleOtpVerified] Stored user email in localStorage:",
+            userEmail,
+          );
+        }
+        
         setUser(parsedUser);
 
         // Show profile modal for new users
@@ -2311,16 +2499,35 @@ function WellnessValleyApp() {
           loading={loading}
           loadingState={loadingState}
           imageType={imageType}
+          detectedFoodNames={detectedFoodNames}
           ref={fileInputRef}
         />
 
         {error && (
-          <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm flex items-start space-x-3">
-            <div className="text-xl">⚠️</div>
-            <div className="flex-1">
-              <p className="font-semibold">Error</p>
-              <p className="text-sm leading-relaxed">{error}</p>
+          <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
+            <div className="flex items-start space-x-3">
+              <div className="text-xl">⚠️</div>
+              <div className="flex-1">
+                <p className="font-semibold">Error</p>
+                <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
+              </div>
             </div>
+            {lastImageFileRef.current && (
+              <div className="mt-2 flex gap-2 justify-end">
+                <TouchFeedbackButton
+                  onClick={handleRetryAnalysis}
+                  className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
+                >
+                  Retry
+                </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                  className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  Dismiss
+                </TouchFeedbackButton>
+              </div>
+            )}
           </div>
         )}
 
@@ -2586,6 +2793,207 @@ function WellnessValleyApp() {
             onLogout={handleSignOut}
           />
         </Suspense>
+      )}
+
+      {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
+      {/* {user && (
+        <button
+          onClick={() => setShowCorrectionModal(true)}
+          disabled={correctionLogs.length === 0}
+          className={`fixed bottom-24 right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
+            correctionLogs.length > 0 
+              ? 'bg-orange-500 hover:bg-orange-600 hover:shadow-xl active:scale-95 hover:scale-110 cursor-pointer' 
+              : 'bg-gray-400 cursor-not-allowed opacity-50'
+          }`}
+          title={correctionLogs.length > 0 ? "View food correction logs" : "No correction logs yet"}
+          aria-label="View food correction logs"
+        >
+          <Bug className="w-6 h-6" />
+          {correctionLogs.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center animate-pulse">
+              {correctionLogs.length}
+            </span>
+          )}
+        </button>
+      )} */}
+
+      {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
+      {showCorrectionModal && (
+        <div 
+          className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowCorrectionModal(false);
+          }}
+        >
+          <div className="bg-white rounded-2xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white p-4 md:p-6 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Bug className="w-6 h-6 md:w-8 md:h-8" />
+                <div>
+                  <h2 className="text-xl md:text-2xl font-bold">Food Correction Logs</h2>
+                  <p className="text-orange-100 text-xs md:text-sm">
+                    AI Detection vs User Corrections ({correctionLogs.length} entries)
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCorrectionModal(false)}
+                className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
+                aria-label="Close modal"
+              >
+                <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 bg-gray-900">
+              {correctionLogs.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <Bug className="w-16 h-16 mx-auto mb-4 opacity-20" />
+                  <p className="text-lg font-semibold">No correction logs yet</p>
+                  <p className="text-sm">Upload food images to see correction logs</p>
+                </div>
+              ) : (
+                correctionLogs.map((log, index) => (
+                  <div
+                    key={index}
+                    className="bg-gray-950 rounded-lg p-4 md:p-5 border border-gray-700 font-mono text-xs md:text-sm"
+                  >
+                    {/* Timestamp Header */}
+                    <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
+                      <span className="text-blue-400">📅 {new Date(log.timestamp).toLocaleString()}</span>
+                      {log.wasAutoCorrected && (
+                        <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
+                          ✅ AUTO-CORRECTED
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Main Correction Flow Box */}
+                    <div className="bg-gray-800 rounded p-4 mb-3 border border-gray-600">
+                      <div className="text-blue-400 font-bold mb-2">
+                        ╔════════════════════════════════════════════════════════════════
+                      </div>
+                      <div className="text-blue-400 font-bold mb-1">
+                        ║ 🔄 FOOD CORRECTION FLOW
+                      </div>
+                      <div className="text-blue-400 font-bold mb-2">
+                        ╠════════════════════════════════════════════════════════════════
+                      </div>
+                      
+                      <div className="text-white mb-1">
+                        <span className="text-gray-400">║</span> 🤖 <span className="text-cyan-400">AI Detected Name:</span>
+                        <span className="ml-4 text-yellow-300">"{log.aiDetected}"</span>
+                      </div>
+                      
+                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+                        <div className="text-white mb-2">
+                          <span className="text-gray-400">║</span> ✓ <span className="text-cyan-400">Status:</span>
+                          <span className="ml-2 text-green-300">No Correction - User accepted AI suggestion</span>
+                        </div>
+                      ) : (
+                        <div className="text-white mb-2">
+                          <span className="text-gray-400">║</span> 👤 <span className="text-cyan-400">User Corrected To:</span>
+                          <span className="ml-2 text-green-300">"{log.userCorrected}"</span>
+                        </div>
+                      )}
+                      
+                      <div className="text-white mb-2">
+                        <span className="text-gray-400">║</span> 📊 <span className="text-cyan-400">Final Display Name:</span>
+                        <span className="ml-2 text-green-300">"{log.finalDisplay}"</span>
+                      </div>
+                      
+                      <div className="text-blue-400 font-bold">
+                        ╚════════════════════════════════════════════════════════════════
+                      </div>
+                    </div>
+
+                    {/* Individual Console Logs */}
+                    <div className="space-y-1 text-gray-300">
+                      <div>
+                        <span className="text-blue-400">🤖 [AI-DETECTED]</span> 
+                        <span className="ml-2">Original: <span className="text-yellow-300">{log.aiDetected}</span></span>
+                      </div>
+                      
+                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+                        <div>
+                          <span className="text-green-400">✓ [NO-CORRECTION]</span> 
+                          <span className="ml-2">User accepted AI suggestion</span>
+                        </div>
+                      ) : (
+                        <div>
+                          <span className="text-green-400">👤 [USER-CORRECTED]</span> 
+                          <span className="ml-2">Mapped to: <span className="text-green-300">{log.userCorrected}</span></span>
+                        </div>
+                      )}
+                      
+                      <div>
+                        <span className="text-purple-400">📊 [FINAL-DISPLAY]</span> 
+                        <span className="ml-2">Will show: <span className="text-green-300">{log.finalDisplay}</span></span>
+                      </div>
+                    </div>
+
+                    {/* Structured Data Object */}
+                    <div className="mt-3 pt-3 border-t border-gray-700">
+                      <div className="text-gray-400">[CORRECTION-DATA]</div>
+                      <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
+{JSON.stringify({
+  aiDetected: log.aiDetected,
+  userCorrected: log.userCorrected,
+  finalDisplay: log.finalDisplay,
+  userCount: log.userCount,
+  portion: log.portion,
+  calories: log.calories,
+  timestamp: log.timestamp
+}, null, 2)}
+                      </pre>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="bg-gray-50 p-4 flex flex-col sm:flex-row justify-between items-center gap-3 border-t">
+              <button
+                onClick={() => {
+                  setCorrectionLogs([]);
+                  setShowCorrectionModal(false);
+                }}
+                className="text-sm text-red-600 hover:text-red-700 font-semibold hover:underline transition-colors order-2 sm:order-1"
+              >
+                Clear All Logs
+              </button>
+              <div className="flex gap-2 order-1 sm:order-2">
+                <button
+                  onClick={() => {
+                    // Copy logs to clipboard for web users
+                    const logText = correctionLogs.map(log => 
+                      `${new Date(log.timestamp).toLocaleString()}\n` +
+                      `AI: ${log.aiDetected} → Corrected: ${log.userCorrected} → Final: ${log.finalDisplay}\n` +
+                      `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`
+                    ).join('\n');
+                    navigator.clipboard?.writeText(logText)
+                      .then(() => alert('Logs copied to clipboard!'))
+                      .catch(() => console.log('Copy not supported'));
+                  }}
+                  className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
+                >
+                  📋 Copy Logs
+                </button>
+                <button
+                  onClick={() => setShowCorrectionModal(false)}
+                  className="bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-lg font-semibold transition-colors"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
