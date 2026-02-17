@@ -2,12 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   X,
   DollarSign,
-import React, { useState, useEffect } from "react";
-import {
-  X,
-  DollarSign,
   IndianRupee,
-  Zap,
   Zap,
   Activity,
   RefreshCw,
