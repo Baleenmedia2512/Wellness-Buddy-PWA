@@ -130,16 +130,13 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     }
   };
 
-  // Skip Team ID - Save coach relationship without OTP
-  // COMMENTED OUT - Skip functionality disabled
-  /*
+  // Skip Team ID - Send approval request WITHOUT claiming Team ID (but still requires OTP)
   const skipTeamIdAndSendRequest = async () => {
     if (!selectedCoach) {
       setError("Please select a coach first");
       return;
     }
 
-    setClaimingTeamId(true);
     setSendingRequest(true);
     setError("");
 
@@ -147,13 +144,12 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
       const userEmail = localStorage.getItem("userEmail");
       if (!userEmail) {
         setError("Session expired. Please login again.");
-        setClaimingTeamId(false);
         setSendingRequest(false);
         return;
       }
 
       console.log(
-        "⏭️ Skipping Team ID - Saving coach relationship WITHOUT OTP:",
+        "⏭️ Skipping Team ID - Sending approval request WITHOUT Team ID:",
         {
           coachId: selectedCoach.userId,
           coachName: selectedCoach.userName,
@@ -161,42 +157,34 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         },
       );
 
-      // Call skip-setup API to save coach relationship WITHOUT sending OTP
-      const skipResponse = await axios.post(`${API_BASE}/api/user/skip-setup`, {
-        email: userEmail,
-        coachId: selectedCoach.userId,
-        coachName: selectedCoach.userName, // Save coach name
-      });
-
-      console.log(
-        "✅ Setup skipped successfully (no OTP sent):",
-        skipResponse.data,
+      // Send approval request directly WITHOUT claiming Team ID
+      // Backend will generate OTP and send to coach
+      const requestResponse = await axios.post(
+        `${API_BASE}/api/upline/request`,
+        { coachId: selectedCoach.userId, email: userEmail },
       );
 
-      // Save skip status to localStorage
-      localStorage.setItem("setupSkipped", "true");
+      console.log("Approval request sent (no Team ID):", requestResponse.data);
 
-      setSuccess(
-        skipResponse.data.coachSaved
-          ? "Coach saved! Reloading..."
-          : "Setup skipped! Reloading...",
-      );
+      setSuccess(`Request sent!`);
 
-      // Reload page to refresh user data from backend
+      // Navigate to OTP validation after delay
       setTimeout(() => {
-        window.location.reload();
+        if (onNavigateToOTP) {
+          onNavigateToOTP();
+        } else if (onClose) {
+          onClose();
+        }
       }, 1500);
     } catch (err) {
       console.error("Skip setup error:", err);
       console.error("Error response:", err.response?.data);
       const errorMessage =
-        err.response?.data?.error || err.message || "Failed to skip setup";
+        err.response?.data?.error || err.message || "Failed to send request";
       setError(errorMessage);
-      setClaimingTeamId(false);
       setSendingRequest(false);
     }
   };
-  */
 
   // Claim Team ID and send approval request
   const claimTeamIdAndSendRequest = async () => {
@@ -556,7 +544,8 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                   </h3>
                   <p className="text-gray-500 text-sm mb-4">
                     This unique ID will identify your personal team structure.
-                    You can skip this step.
+                    You can skip this step and proceed directly to OTP
+                    verification.
                   </p>
 
                   <div className="relative">
@@ -847,29 +836,36 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                     </button>
                   </div>
 
-                  {/* Skip Team ID Button - COMMENTED OUT */}
-                  {/*
+                  {/* Skip Team ID Button */}
                   <button
                     className="w-full py-3 rounded-xl font-semibold text-sm bg-transparent border-2 border-gray-300 text-gray-600 hover:border-green-500 hover:text-green-600 transition-all flex items-center justify-center gap-2"
                     onClick={skipTeamIdAndSendRequest}
-                    disabled={claimingTeamId}
+                    disabled={sendingRequest}
                   >
-                    <svg
-                      className="w-4 h-4"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
-                      />
-                    </svg>
-                    <span>Skip Team ID & Continue</span>
+                    {sendingRequest ? (
+                      <>
+                        <div className="animate-spin h-4 w-4 border-2 border-gray-600 border-t-transparent rounded-full"></div>
+                        <span>Sending...</span>
+                      </>
+                    ) : (
+                      <>
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        <span>Skip Team ID & Continue to OTP</span>
+                      </>
+                    )}
                   </button>
-                  */}
                 </div>
               </motion.div>
             )}

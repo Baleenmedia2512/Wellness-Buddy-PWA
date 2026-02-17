@@ -5,7 +5,7 @@ import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import TouchFeedbackButton from './TouchFeedbackButton';
 
-const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null, detectedFoodNames = [] }, ref) => {
+const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, loadingState = 'analyzing', imageType = null, detectedFoodNames = [], onHelpClick }, ref) => {
   const cameraInputRef = useRef(null);
   const galleryInputRef = useRef(null);
   const fallbackInputRef = useRef(null);
@@ -289,16 +289,4 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
               </TouchFeedbackButton>
             </div>
 
-            <div className="mt-4 text-xs text-gray-500">
-              Camera works best on mobile devices • Max 10MB
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-});
-
-ImageUpload.displayName = 'ImageUpload';
-
-export default ImageUpload;
+<div className="mt-4 text-xs text-gray-500"> Camera works best on mobile devices • Max 10MB •{' '} <button onClick={onHelpClick} className="text-red-500 font-normal hover:text-red-500 focus:outline-none" > Help </button> </div> </div> </div> )} </div> ); }); ImageUpload.displayName = 'ImageUpload'; export default ImageUpload; 

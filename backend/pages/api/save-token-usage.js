@@ -89,19 +89,7 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: 'Token usage saved successfully',
-      id: data?.ID || data?.id,
-      tokenData: {
-        inputTokens: data?.InputTokens || inputTokens || 0,
-        outputTokens: data?.OutputTokens || outputTokens || 0,
-        totalTokens: data?.TotalTokens || totalTokens || 0,
-        inputTokenCost: data?.InputTokenCost || inputTokenCost || 0,
-        outputTokenCost: data?.OutputTokenCost || outputTokenCost || 0,
-        totalTokenCost: data?.TotalTokenCost || totalTokenCost || 0,
-        operationType: data?.OperationType || operationType,
-        modelName: data?.ModelName || modelName,
-        userId: data?.UserId || userId,
-        email: data?.Email || email
-      }
+      id: data?.ID || data?.id
     });
     return;
 
