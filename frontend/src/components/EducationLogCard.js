@@ -1,21 +1,175 @@
-import React from 'react';
-import { GraduationCap, Monitor, FileText, Clock, CheckCircle2 } from 'lucide-react';
+import React, { useState, useRef } from 'react';
+import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
+import { captureAndShare } from '../utils/shareUtils';
 
-const EducationLogCard = ({ educationData }) => {
+const EducationLogCard = ({ educationData, imagePreview }) => {
+  const [isSharing, setIsSharing] = useState(false);
+  const shareRef = useRef(null);
+
+  // Handle share button click
+  const handleShare = async (e) => {
+    // Prevent event propagation and bubbling
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Early return if already sharing
+    if (isSharing) {
+      console.log("⚠️ Share already in progress, ignoring duplicate call");
+      return;
+    }
+
+    if (!shareRef.current) {
+      console.error("Share content not found");
+      return;
+    }
+
+    setIsSharing(true);
+    try {
+      await captureAndShare(shareRef.current, {
+        title: `Education Session - ${educationData.topic}`,
+        text: `${educationData.topic} on ${educationData.platform}`,
+        fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
+        // whatsappOnly: true,
+      });
+    } catch (error) {
+      console.error("Failed to share:", error);
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
   if (!educationData) return null;
 
   return (
-    <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 p-6 mb-6 animate-slideInUp border border-purple-50">
-      {/* Success Header */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center ring-4 ring-purple-50">
-          <GraduationCap className="w-7 h-7 text-purple-600" />
-        </div>
-        <div>
-          <h3 className="text-xl font-bold text-gray-900 tracking-tight">Education Logged</h3>
-          <p className="text-sm text-gray-500 font-medium">You're building a great learning habit!</p>
+    <>
+      {/* Hidden container for sharing - includes image + card */}
+      <div
+        ref={shareRef}
+        className="fixed -left-[9999px] top-0 w-[400px]"
+        style={{ position: "fixed", left: "-9999px" }}
+      >
+        <div className="bg-white rounded-2xl shadow-xl border-2 border-purple-300 overflow-hidden">
+          {/* Education Image for sharing */}
+          {imagePreview && (
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Education Meeting"
+                className="w-full h-64 object-cover"
+              />
+              <div className="absolute top-3 right-3 bg-purple-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                <span className="w-2 h-2 bg-white rounded-full"></span>
+                Verified
+              </div>
+            </div>
+          )}
+
+          {/* Card content for sharing */}
+          <div className="p-6">
+            {/* Header */}
+            <div className="flex items-center gap-4 mb-6">
+              <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center ring-4 ring-purple-50">
+                <GraduationCap className="w-7 h-7 text-purple-600" />
+              </div>
+              <div>
+                <h3 className="text-xl font-bold text-gray-900 tracking-tight">Education Logged</h3>
+                <p className="text-sm text-gray-500 font-medium">Building learning habits!</p>
+              </div>
+            </div>
+
+            {/* Meeting Details */}
+            <div className="space-y-4 bg-gray-50/80 rounded-2xl p-5 border border-gray-100">
+              {/* Topic */}
+              <div className="flex items-start gap-3.5">
+                <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100 mt-0.5">
+                  <FileText className="w-4 h-4 text-indigo-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Topic</p>
+                  <p className="text-sm font-bold text-gray-900">{educationData.topic}</p>
+                </div>
+              </div>
+
+              {/* Platform */}
+              <div className="flex items-start gap-3.5">
+                <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100 mt-0.5">
+                  <Monitor className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Platform</p>
+                  <p className="text-sm font-bold text-gray-900">{educationData.platform}</p>
+                </div>
+              </div>
+
+              {/* Timestamp */}
+              <div className="flex items-start gap-3.5">
+                <div className="p-2 bg-white rounded-lg shadow-sm border border-gray-100 mt-0.5">
+                  <Clock className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="flex-1">
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Logged At</p>
+                  <p className="text-sm font-bold text-gray-900">
+                    {new Date().toLocaleString('en-US', { 
+                      month: 'short', 
+                      day: 'numeric', 
+                      year: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true
+                    })}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Success Message */}
+            <div className="mt-5 flex items-center gap-3 bg-emerald-50/80 border border-emerald-100 rounded-xl p-4">
+              <div className="bg-emerald-100 rounded-full p-1">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+              </div>
+              <p className="text-sm text-emerald-800 font-semibold">
+                Session verified and saved
+              </p>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Visible card */}
+      <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 p-6 mb-6 animate-slideInUp border border-purple-50 relative">
+        {/* Share Button - COMMENTED OUT
+        <button
+          onClick={handleShare}
+          onTouchEnd={(e) => e.preventDefault()}
+          disabled={isSharing}
+          className={`absolute top-4 right-4 w-10 h-10 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center transition-all duration-200 border border-purple-200 ${
+            isSharing
+              ? "opacity-50 cursor-not-allowed"
+              : "hover:bg-purple-200 active:scale-95"
+          }`}
+          title="Share"
+          style={{ touchAction: "manipulation" }}
+        >
+          {isSharing ? (
+            <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            <Share2 className="w-5 h-5" />
+          )}
+        </button>
+        */}
+
+        {/* Success Header */}
+        <div className="flex items-center gap-4 mb-6">
+          <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center ring-4 ring-purple-50">
+            <GraduationCap className="w-7 h-7 text-purple-600" />
+          </div>
+          <div>
+            <h3 className="text-xl font-bold text-gray-900 tracking-tight">Education Logged</h3>
+            <p className="text-sm text-gray-500 font-medium">You're building a great learning habit!</p>
+          </div>
+        </div>
 
       {/* Meeting Details */}
       <div className="space-y-4 bg-gray-50/80 rounded-2xl p-5 border border-gray-100">
@@ -72,6 +226,7 @@ const EducationLogCard = ({ educationData }) => {
         </p>
       </div>
     </div>
+    </>
   );
 };
 

@@ -5,12 +5,12 @@
  * Returns user's setup completion status and appropriate redirect path
  * Used by route guards to determine where user should be
  *
- * 5 Possible States:
- * 1. No TeamId → /setup/team
- * 2. Has TeamId, no request → /setup/upline
- * 3. Has TeamId, pending non-expired request → /setup/validate-otp
- * 4. Has TeamId, expired request → /setup/upline (delete old request)
- * 5. Has TeamId + UplineCoachId → /dashboard (setup complete)
+ * Possible States (checked in order):
+ * 1. Has upline coach → /dashboard (setup complete, Team ID optional)
+ * 2. Has pending OTP request → /setup/validate-otp (works with or without Team ID)
+ * 3. No TeamId, no pending request → /setup/upline (Team ID is optional)
+ * 4. Has TeamId, no request → /setup/upline
+ * 5. Has expired request → /setup/upline (delete old request)
  */
 
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
@@ -131,37 +131,26 @@ export default async function handler(req, res) {
     }
 
     // STATE 5: Setup complete ✅
-    if (hasTeamId && hasUpline) {
+    // User has upline coach = setup is complete (Team ID is optional)
+    if (hasUpline) {
       res.status(200).json({
         success: true,
         setupComplete: true,
-        hasTeamId: true,
+        hasTeamId: hasTeamId,
         hasUpline: true,
-        teamId: user.TeamId,
+        teamId: user.TeamId || null,
         uplineCoachId: user.UplineCoachId,
         pendingRequest: null,
         redirectTo: "/dashboard",
-        message: "Setup complete",
+        message: hasTeamId
+          ? "Setup complete"
+          : "Setup complete (without Team ID)",
       });
       return;
     }
 
-    // STATE 1: No Team ID - Now optional, allow proceeding to upline selection
-    if (!hasTeamId) {
-      res.status(200).json({
-        success: true,
-        setupComplete: false,
-        hasTeamId: false,
-        hasUpline: false,
-        pendingRequest: null,
-        redirectTo: "/setup/upline",
-        message: "Team ID is optional - You can select your coach directly",
-        allowSkipTeamId: true,
-      });
-      return;
-    }
-
-    // Check for pending approval request using Supabase
+    // Check for pending approval request FIRST (regardless of Team ID)
+    // This ensures users who skip Team ID but have pending OTP are redirected correctly
     const { data: requestRows, error: requestError } = await supabase
       .from("approval_requests_table")
       .select('"Id", "UplineCoachId", "Status", "OtpExpiresAt", "RequestedAt"')
@@ -186,33 +175,39 @@ export default async function handler(req, res) {
           .delete()
           .eq('"Id"', request.Id);
 
+        // After deleting expired request, continue to appropriate redirect below
+      } else {
+        // STATE 3: Active pending request (works with or without Team ID)
         res.status(200).json({
           success: true,
           setupComplete: false,
-          hasTeamId: true,
+          hasTeamId: hasTeamId,
           hasUpline: false,
-          pendingRequest: null,
-          redirectTo: "/setup/upline",
-          message: "Previous request expired. Please send a new request.",
+          pendingRequest: {
+            id: request.Id,
+            coachId: request.UplineCoachId,
+            status: request.Status,
+            expiresAt: request.OtpExpiresAt,
+            requestedAt: request.RequestedAt,
+          },
+          redirectTo: "/setup/validate-otp",
+          message: "Waiting for OTP validation",
         });
         return;
       }
+    }
 
-      // STATE 3: Active pending request
+    // STATE 1: No Team ID, no pending request - allow proceeding to upline selection
+    if (!hasTeamId) {
       res.status(200).json({
         success: true,
         setupComplete: false,
-        hasTeamId: true,
+        hasTeamId: false,
         hasUpline: false,
-        pendingRequest: {
-          id: request.Id,
-          coachId: request.UplineCoachId,
-          status: request.Status,
-          expiresAt: request.OtpExpiresAt,
-          requestedAt: request.RequestedAt,
-        },
-        redirectTo: "/setup/validate-otp",
-        message: "Waiting for OTP validation",
+        pendingRequest: null,
+        redirectTo: "/setup/upline",
+        message: "Team ID is optional - You can select your coach directly",
+        allowSkipTeamId: true,
       });
       return;
     }

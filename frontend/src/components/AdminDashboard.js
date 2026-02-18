@@ -543,12 +543,12 @@ const AdminDashboard = ({ user, onClose }) => {
   const [popupJustOpened, setPopupJustOpened] = useState(false);
   const [currentExchangeRate, setCurrentExchangeRate] = useState(null);
   const [perMillionCosts, setPerMillionCosts] = useState({
-    inputPerMillion: 0.1,
-    outputPerMillion: 0.4,
+    inputPerMillion: null,
+    outputPerMillion: null,
   });
   const [perMillionInputs, setPerMillionInputs] = useState({
-    inputPerMillion: "0.10",
-    outputPerMillion: "0.40",
+    inputPerMillion: "",
+    outputPerMillion: "",
   });
   const [totalTokenCounts, setTotalTokenCounts] = useState({
     inputTokens: 0,
@@ -559,8 +559,8 @@ const AdminDashboard = ({ user, onClose }) => {
     output: false,
   }); // Track if user manually edited INR fields
   const [originalPerMillionCosts, setOriginalPerMillionCosts] = useState({
-    inputPerMillion: 0.1,
-    outputPerMillion: 0.4,
+    inputPerMillion: null,
+    outputPerMillion: null,
   }); // Store original USD per million costs
   const [originalINRCosts, setOriginalINRCosts] = useState({
     inputCost: 0,
@@ -661,6 +661,55 @@ const AdminDashboard = ({ user, onClose }) => {
     fetchTokenData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [timeRange, customStartDate, customEndDate]); // showDemoData removed - demo disabled
+
+  // Fetch pricing configuration from database on component mount
+  useEffect(() => {
+    const fetchPricingFromDB = async () => {
+      try {
+        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+        const pricingResponse = await fetch(
+          `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+            user?.email,
+          )}&modelName=gemini-2.5-flash-lite`,
+          {
+            cache: "no-store",
+            headers: {
+              "Cache-Control": "no-cache",
+              Pragma: "no-cache",
+            },
+          },
+        );
+
+        if (pricingResponse.ok) {
+          const pricingData = await pricingResponse.json();
+          if (pricingData.success && pricingData.data) {
+            const pricing = pricingData.data;
+            setPerMillionCosts({
+              inputPerMillion: pricing.inputPerMillion,
+              outputPerMillion: pricing.outputPerMillion,
+            });
+            setOriginalPerMillionCosts({
+              inputPerMillion: pricing.inputPerMillion,
+              outputPerMillion: pricing.outputPerMillion,
+            });
+            setPerMillionInputs({
+              inputPerMillion: pricing.inputPerMillion.toFixed(2),
+              outputPerMillion: pricing.outputPerMillion.toFixed(2),
+            });
+            console.log("📊 Loaded pricing from DB on mount:", pricing);
+          }
+        } else {
+          console.warn("⚠️ Failed to fetch pricing from DB");
+        }
+      } catch (error) {
+        console.error("❌ Error fetching pricing from DB:", error);
+      }
+    };
+
+    if (user?.email) {
+      fetchPricingFromDB();
+    }
+  }, [user?.email]); // Fetch once on mount when user email is available
 
   // Fetch token costs when edit popup opens or filter changes
   // Logic: Show edited values UNLESS new usage was added after the last edit
@@ -1207,6 +1256,7 @@ const AdminDashboard = ({ user, onClose }) => {
               Track token usage and spending
             </p>
           </div>
+
 
           <div className="flex items-center gap-1">
             <TouchFeedbackButton

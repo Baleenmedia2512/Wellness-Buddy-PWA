@@ -139,6 +139,9 @@ function WellnessValleyApp() {
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
+  // Help instructions visibility state
+  const [showHowToUse, setShowHowToUse] = useState(false);
+
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
   // // Make a compact, user-friendly title from foods[]
@@ -560,11 +563,6 @@ function WellnessValleyApp() {
           );
         }
 
-        // Set current user for token tracking on geminiService
-        if (user.id && userEmail) {
-          geminiService.setCurrentUser(user.id, userEmail);
-        }
-
         // Load user context for AI personalization
         if (user.id) {
           console.log("🔄 [Auth State] Loading user context...");
@@ -601,15 +599,15 @@ function WellnessValleyApp() {
           if (isActive && userEmail) {
             console.log("🔄 [Auth State] Checking setup wizard status...");
 
-            // // Check if user manually skipped setup (check localStorage first for quick bypass)
-            // const setupSkipped = localStorage.getItem("setupSkipped");
-            // if (setupSkipped === "true") {
-            //   console.log(
-            //     "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
-            //   );
-            //   // Don't show setup wizard - user chose to skip
-            //   return;
-            // }
+            // Check if user manually skipped setup (check localStorage first for quick bypass)
+            const setupSkipped = localStorage.getItem("setupSkipped");
+            if (setupSkipped === "true") {
+              console.log(
+                "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
+              );
+              // Don't show setup wizard - user chose to skip
+              return;
+            }
 
             try {
               const statusResponse = await fetch(
@@ -622,14 +620,14 @@ function WellnessValleyApp() {
                 const statusData = await statusResponse.json();
                 console.log("📋 [Auth State] Setup status:", statusData);
 
-                // // Check if user skipped setup (from database)
-                // if (statusData.setupSkipped) {
-                //   console.log(
-                //     "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
-                //   );
-                //   localStorage.setItem("setupSkipped", "true");
-                //   return;
-                // }
+                // Check if user skipped setup (from database)
+                if (statusData.setupSkipped) {
+                  console.log(
+                    "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
+                  );
+                  localStorage.setItem("setupSkipped", "true");
+                  return;
+                }
 
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {
@@ -811,6 +809,15 @@ function WellnessValleyApp() {
         "🔄 [Setup Check] Checking setup wizard status for existing user...",
       );
 
+      // Check if user manually skipped setup (check localStorage first for quick bypass)
+      const setupSkipped = localStorage.getItem("setupSkipped");
+      if (setupSkipped === "true") {
+        console.log(
+          "⏭️ [Setup Check] User skipped setup (localStorage), bypassing wizard",
+        );
+        return;
+      }
+
       try {
         const statusResponse = await fetch(
           `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
@@ -821,6 +828,15 @@ function WellnessValleyApp() {
         if (statusResponse.ok) {
           const statusData = await statusResponse.json();
           console.log("📋 [Setup Check] Setup status:", statusData);
+
+          // Check if user skipped setup (from database)
+          if (statusData.setupSkipped) {
+            console.log(
+              "⏭️ [Setup Check] User skipped setup (database), bypassing wizard",
+            );
+            localStorage.setItem("setupSkipped", "true");
+            return;
+          }
 
           // Show setup wizard if not complete
           if (!statusData.setupComplete) {
@@ -1367,7 +1383,6 @@ function WellnessValleyApp() {
       // Set current user for token tracking on imageTypeDetector (unified detection)
       if (user?.id && user?.email) {
         imageTypeDetector.setCurrentUser(user.id, user.email);
-        geminiService.setCurrentUser(user.id, user.email);
       }
 
       // ✅ Detect image type using Gemini AI (single unified call)
@@ -2501,6 +2516,7 @@ function WellnessValleyApp() {
           imageType={imageType}
           detectedFoodNames={detectedFoodNames}
           ref={fileInputRef}
+          onHelpClick={() => setShowHowToUse(!showHowToUse)}
         />
 
         {error && (
@@ -2551,6 +2567,7 @@ function WellnessValleyApp() {
         {imageType === "education" && educationResult && (
           <EducationLogCard
             educationData={educationResult}
+            imagePreview={imagePreview}
             onClose={() => {
               setEducationResult(null);
               setImagePreview(null);
@@ -2638,13 +2655,7 @@ function WellnessValleyApp() {
           </div>
         )}
 
-        <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4">
-          <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3>
-          <div className="space-y-3">
-            <div>
-              <h4 className="font-medium text-green-600 mb-1">
-                📸 Image Analysis:
-              </h4>
+{showHowToUse && ( <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative"> <button onClick={() => setShowHowToUse(false)} className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none" aria-label="Close" > × </button> <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3> <div className="space-y-3"> <div> <h4 className="font-medium text-green-600 mb-1"> 📸 Image Analysis: </h4>
               <ol className="text-sm text-gray-600 space-y-1 ml-4">
                 <li>1. Take a clear photo of your food or weight</li>
                 <li>
@@ -2672,6 +2683,7 @@ function WellnessValleyApp() {
             </ul>
           </div>
         </div>
+        )}
 
         <TestImageGuide
           isVisible={showTestGuide}

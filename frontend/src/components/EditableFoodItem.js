@@ -1315,7 +1315,7 @@ const EditableFoodItem = forwardRef(
                   className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200"
                   title={`Auto-corrected from "${foodItem.originalAiName}" · ${foodItem.correctionSource}`}
                 >
-                  ✓ Auto
+                  ✓ Auto {foodItem.correctionMetadata?.userCount && `(${foodItem.correctionMetadata.userCount})`}
                 </span>
               )}
               {servingDesc && (
