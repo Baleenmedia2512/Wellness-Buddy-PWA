@@ -6,7 +6,7 @@ import { captureAndShare } from '../utils/shareUtils';
 /**
  * WeightCard Component
  * Compact horizontal card similar to MealCard in NutritionDashboard
- * Includes swipe-to-delete functionality and share to WhatsApp
+ * Includes swipe-to-delete functionality and share functionality
  */
 const WeightCard = React.memo(({ 
   data, 
@@ -123,7 +123,7 @@ const WeightCard = React.memo(({
         title: `Weight Record - ${parseFloat(data.Weight).toFixed(2)} kg`,
         text: `My weight: ${parseFloat(data.Weight).toFixed(2)} kg ${weightChange !== null ? `(${parseFloat(weightChange) > 0 ? '+' : ''}${weightChange} kg)` : ''}`,
         fileName: `wellness-valley-weight-${parseFloat(data.Weight).toFixed(2)}kg.png`,
-        whatsappOnly: true,
+        // whatsappOnly: true,
       });
     } catch (error) {
       console.error("Failed to share:", error);
@@ -392,7 +392,7 @@ const WeightCard = React.memo(({
               <p className="text-xs text-gray-400">kg</p>
             </div>
 
-            {/* Share Button */}
+            {/* Share Button - COMMENTED OUT
             <button
               onClick={handleShare}
               onTouchEnd={(e) => e.preventDefault()}
@@ -402,7 +402,7 @@ const WeightCard = React.memo(({
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:bg-emerald-200 active:scale-95"
               }`}
-              title="Share to WhatsApp"
+              title="Share"
               style={{ touchAction: "manipulation" }}
             >
               {isSharing ? (
@@ -411,6 +411,7 @@ const WeightCard = React.memo(({
                 <Share2 className="w-4 h-4" />
               )}
             </button>
+            */}
           </div>
         </div>
       </div>

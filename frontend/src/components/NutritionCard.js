@@ -280,7 +280,7 @@ const NutritionCard = ({
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,
-        whatsappOnly: true, // Explicitly enable WhatsApp sharing
+        // whatsappOnly: true, // Explicitly enable WhatsApp sharing
       });
     } catch (error) {
       console.error("Failed to share:", error);
@@ -496,7 +496,7 @@ const NutritionCard = ({
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
-          {/* Share Button */}
+          {/* Share Button - COMMENTED OUT
           <button
             onClick={handleShare}
             onTouchEnd={(e) => e.preventDefault()}
@@ -506,7 +506,7 @@ const NutritionCard = ({
                 ? "opacity-50 cursor-not-allowed"
                 : "hover:bg-white/30 active:scale-95"
             }`}
-            title="Share to WhatsApp"
+            title="Share"
             style={{ touchAction: "manipulation" }}
           >
             {isSharing ? (
@@ -515,6 +515,7 @@ const NutritionCard = ({
               <Share2 className="w-5 h-5" />
             )}
           </button>
+          */}
 
           <div className="flex items-center justify-center gap-3">
             <div className="flex-1 text-center">

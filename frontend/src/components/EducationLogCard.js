@@ -31,7 +31,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
         title: `Education Session - ${educationData.topic}`,
         text: `${educationData.topic} on ${educationData.platform}`,
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
-        whatsappOnly: true,
+        // whatsappOnly: true,
       });
     } catch (error) {
       console.error("Failed to share:", error);
@@ -139,7 +139,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
 
       {/* Visible card */}
       <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 p-6 mb-6 animate-slideInUp border border-purple-50 relative">
-        {/* Share Button */}
+        {/* Share Button - COMMENTED OUT
         <button
           onClick={handleShare}
           onTouchEnd={(e) => e.preventDefault()}
@@ -149,7 +149,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
               ? "opacity-50 cursor-not-allowed"
               : "hover:bg-purple-200 active:scale-95"
           }`}
-          title="Share to WhatsApp"
+          title="Share"
           style={{ touchAction: "manipulation" }}
         >
           {isSharing ? (
@@ -158,6 +158,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
             <Share2 className="w-5 h-5" />
           )}
         </button>
+        */}
 
         {/* Success Header */}
         <div className="flex items-center gap-4 mb-6">

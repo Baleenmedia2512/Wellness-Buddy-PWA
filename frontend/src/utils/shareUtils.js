@@ -11,14 +11,14 @@ import { isPlatform } from "@ionic/react";
  * @param {string} options.title - Share title
  * @param {string} options.text - Share message text
  * @param {string} options.fileName - Name of the file to save/share
- * @param {boolean} options.whatsappOnly - If true, share directly to WhatsApp
+ * @param {boolean} options.whatsappOnly - If true, share directly to WhatsApp (COMMENTED OUT)
  */
 export const captureAndShare = async (element, options = {}) => {
   const {
     title = "My Meal Analysis",
     text = "Tracked with Wellness Valley",
     fileName = "wellness-valley-meal.png",
-    whatsappOnly = true, // Default to WhatsApp sharing
+    // whatsappOnly = true, // Default to WhatsApp sharing
   } = options;
 
   try {
@@ -67,7 +67,7 @@ export const captureAndShare = async (element, options = {}) => {
 
     if (isNativePlatform) {
       // Native mobile sharing (Capacitor)
-      await shareNative(blob, { title, text, fileName, whatsappOnly });
+      await shareNative(blob, { title, text, fileName /*, whatsappOnly*/ });
     } else if (isMobileBrowser && navigator.share) {
       // Mobile browser with Web Share API
       console.log("📱 Mobile browser detected, using Web Share API");
@@ -93,7 +93,7 @@ export const captureAndShare = async (element, options = {}) => {
 /**
  * Native mobile share using Capacitor Share plugin
  */
-const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
+const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) => {
   try {
     // Convert blob to base64
     const base64Data = await blobToBase64(blob);
@@ -137,7 +137,8 @@ const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
         title: title,
         text: text,
         url: fileUri,
-        dialogTitle: whatsappOnly ? "Share to WhatsApp" : "Share via",
+        // dialogTitle: whatsappOnly ? "Share to WhatsApp" : "Share via",
+        dialogTitle: "Share via",
       };
       
       console.log("📤 Share options:", shareOptions);
@@ -157,7 +158,7 @@ const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
       // If user didn't cancel, show error
       if (shareError && !shareError.message?.includes("cancel") && !shareError.message?.includes("User cancelled")) {
         alert(
-          "Unable to share. Please make sure you have a sharing app (WhatsApp, Messages, etc.) installed.\n\nError: " + (shareError.message || "Unknown error"),
+          "Unable to share. Please make sure you have a sharing app (Messages, etc.) installed.\n\nError: " + (shareError.message || "Unknown error"),
         );
       } else {
         console.log("ℹ️ User cancelled share");
@@ -246,7 +247,7 @@ const shareWeb = async (blob, { title, text, fileName }) => {
 
     // Show helpful message
     alert(
-      "Image downloaded! Please open WhatsApp manually and attach the image from your downloads folder.",
+      "Image downloaded! You can now attach it from your downloads folder.",
     );
   } catch (error) {
     console.error("❌ Web share failed:", error);
@@ -266,64 +267,64 @@ const blobToBase64 = (blob) => {
   });
 };
 
-/**
- * Share directly to WhatsApp (if app is installed)
- * Note: This requires the WhatsApp app to be installed on the device
- */
-export const shareToWhatsApp = async (element, message = "") => {
-  try {
-    // First capture the image
-    const canvas = await html2canvas(element, {
-      backgroundColor: "#ffffff",
-      scale: 2,
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-    });
+// /**
+//  * Share directly to WhatsApp (if app is installed)
+//  * Note: This requires the WhatsApp app to be installed on the device
+//  */
+// export const shareToWhatsApp = async (element, message = "") => {
+//   try {
+//     // First capture the image
+//     const canvas = await html2canvas(element, {
+//       backgroundColor: "#ffffff",
+//       scale: 2,
+//       useCORS: true,
+//       allowTaint: true,
+//       logging: false,
+//     });
 
-    const blob = await new Promise((resolve) => {
-      canvas.toBlob(resolve, "image/png", 1.0);
-    });
+//     const blob = await new Promise((resolve) => {
+//       canvas.toBlob(resolve, "image/png", 1.0);
+//     });
 
-    const base64Data = await blobToBase64(blob);
-    const base64String = base64Data.split(",")[1];
+//     const base64Data = await blobToBase64(blob);
+//     const base64String = base64Data.split(",")[1];
 
-    // Save to filesystem
-    const fileName = `wellness-valley-${Date.now()}.png`;
-    const savedFile = await Filesystem.writeFile({
-      path: fileName,
-      data: base64String,
-      directory: Directory.Cache,
-    });
+//     // Save to filesystem
+//     const fileName = `wellness-valley-${Date.now()}.png`;
+//     const savedFile = await Filesystem.writeFile({
+//       path: fileName,
+//       data: base64String,
+//       directory: Directory.Cache,
+//     });
 
-    // Construct WhatsApp share intent URL
-    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+//     // Construct WhatsApp share intent URL
+//     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
 
-    // On Android, we can use Share with specific app
-    const shareResult = await Share.share({
-      title: "Share to WhatsApp",
-      text: message,
-      url: savedFile.uri,
-      dialogTitle: "Share to WhatsApp",
-    });
+//     // On Android, we can use Share with specific app
+//     const shareResult = await Share.share({
+//       title: "Share to WhatsApp",
+//       text: message,
+//       url: savedFile.uri,
+//       dialogTitle: "Share to WhatsApp",
+//     });
 
-    console.log("✅ Shared to WhatsApp:", shareResult);
+//     console.log("✅ Shared to WhatsApp:", shareResult);
 
-    // Clean up
-    setTimeout(async () => {
-      try {
-        await Filesystem.deleteFile({
-          path: fileName,
-          directory: Directory.Cache,
-        });
-      } catch (error) {
-        console.warn("⚠️ Failed to clean up temporary file:", error);
-      }
-    }, 5000);
-  } catch (error) {
-    console.error("❌ WhatsApp share failed:", error);
-    throw new Error(
-      "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
-    );
-  }
-};
+//     // Clean up
+//     setTimeout(async () => {
+//       try {
+//         await Filesystem.deleteFile({
+//           path: fileName,
+//           directory: Directory.Cache,
+//         });
+//       } catch (error) {
+//         console.warn("⚠️ Failed to clean up temporary file:", error);
+//       }
+//     }, 5000);
+//   } catch (error) {
+//     console.error("❌ WhatsApp share failed:", error);
+//     throw new Error(
+//       "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
+//     );
+//   }
+// };
