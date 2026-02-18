@@ -78,7 +78,7 @@ export const APP_VERSION = {
   VERSION_CODE: 20,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Version Update',
+  RELEASE_NAME: 'Team Selection & Upload Enhancements',
   
   // Build date
   BUILD_DATE: '2026-02-18',
