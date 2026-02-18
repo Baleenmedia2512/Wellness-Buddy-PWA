@@ -105,39 +105,62 @@ const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
     const timestamp = Date.now();
     const uniqueFileName = `${timestamp}-${fileName}`;
 
+    console.log("📝 Attempting to write file:", uniqueFileName);
+
     const savedFile = await Filesystem.writeFile({
       path: uniqueFileName,
       data: base64String,
       directory: Directory.Cache,
+      recursive: true, // Ensure directory exists
     });
 
     console.log("✅ File saved to cache:", savedFile.uri);
 
-    // Get the native file path (convert content:// URI to file:// if needed)
+    // Get the file URI - Capacitor automatically provides correct format
     let fileUri = savedFile.uri;
 
     // For Android, ensure we have the correct URI format
     if (isPlatform("android")) {
-      // The URI should be in the format content:// or file://
       console.log("📱 Android file URI:", fileUri);
+      
+      // Check if URI is valid
+      if (!fileUri || fileUri === "") {
+        throw new Error("Invalid file URI generated");
+      }
     }
 
     try {
-      // Always show native share sheet (includes WhatsApp and other apps)
-      const shareResult = await Share.share({
+      // Use Capacitor Share API with proper options
+      console.log("🔗 Initiating share with URI:", fileUri);
+      
+      const shareOptions = {
+        title: title,
+        text: text,
         url: fileUri,
-        dialogTitle: "Share to WhatsApp",
-      });
+        dialogTitle: whatsappOnly ? "Share to WhatsApp" : "Share via",
+      };
+      
+      console.log("📤 Share options:", shareOptions);
+      
+      const shareResult = await Share.share(shareOptions);
 
       console.log("✅ Share completed:", shareResult);
+      
+      // Check if share was successful
+      if (shareResult && shareResult.activityType) {
+        console.log("📱 Shared via:", shareResult.activityType);
+      }
     } catch (shareError) {
       console.error("❌ Share error:", shareError);
+      console.error("❌ Share error details:", JSON.stringify(shareError));
 
       // If user didn't cancel, show error
-      if (shareError && !shareError.message?.includes("cancel")) {
+      if (shareError && !shareError.message?.includes("cancel") && !shareError.message?.includes("User cancelled")) {
         alert(
-          "Unable to share. Please make sure you have WhatsApp or another sharing app installed.",
+          "Unable to share. Please make sure you have a sharing app (WhatsApp, Messages, etc.) installed.\n\nError: " + (shareError.message || "Unknown error"),
         );
+      } else {
+        console.log("ℹ️ User cancelled share");
       }
     }
 
