@@ -72,20 +72,28 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.7',
+  VERSION: '1.8',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 19,
+  VERSION_CODE: 20,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Food Correction & Error Handling Enhancements',
+  RELEASE_NAME: 'Version Update',
   
   // Build date
-  BUILD_DATE: '2026-02-13',
+  BUILD_DATE: '2026-02-18',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.8 (Code 20) - 2026-02-18
+ *   � Made team selection optional for better user flexibility
+ *   📤 Added uploading page with help and guidance features
+ *   �🔄 Version update and build improvements
+ *   📦 Synchronized versions across all package files
+ *   ✅ Updated build configurations for new release
+ *   🎯 General maintenance and stability improvements
  * 
  * Version 1.7 (Code 19) - 2026-02-13
  *   🍽️ Enhanced food correction system with improved accuracy
