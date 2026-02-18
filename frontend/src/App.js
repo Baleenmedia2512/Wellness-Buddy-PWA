@@ -2567,6 +2567,7 @@ function WellnessValleyApp() {
         {imageType === "education" && educationResult && (
           <EducationLogCard
             educationData={educationResult}
+            imagePreview={imagePreview}
             onClose={() => {
               setEducationResult(null);
               setImagePreview(null);

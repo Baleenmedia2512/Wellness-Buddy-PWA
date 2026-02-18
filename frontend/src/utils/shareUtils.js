@@ -125,8 +125,6 @@ const shareNative = async (blob, { title, text, fileName, whatsappOnly }) => {
     try {
       // Always show native share sheet (includes WhatsApp and other apps)
       const shareResult = await Share.share({
-        title: title,
-        text: text,
         url: fileUri,
         dialogTitle: "Share to WhatsApp",
       });
@@ -175,8 +173,6 @@ const shareWeb = async (blob, { title, text, fileName }) => {
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
           await navigator.share({
-            title: title,
-            text: text,
             files: [file],
           });
           console.log("✅ Shared via Web Share API with file");

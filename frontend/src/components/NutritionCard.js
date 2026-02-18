@@ -201,7 +201,19 @@ const NutritionCard = ({
   };
 
   // Handle share button click
-  const handleShare = async () => {
+  const handleShare = async (e) => {
+    // Prevent event propagation and bubbling
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    // Early return if already sharing
+    if (isSharing) {
+      console.log("⚠️ Share already in progress, ignoring duplicate call");
+      return;
+    }
+
     if (!shareRef.current) {
       console.error("Share content not found");
       return;
@@ -487,6 +499,7 @@ const NutritionCard = ({
           {/* Share Button */}
           <button
             onClick={handleShare}
+            onTouchEnd={(e) => e.preventDefault()}
             disabled={isSharing || isSaving}
             className={`absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/30 ${
               isSharing || isSaving
@@ -494,6 +507,7 @@ const NutritionCard = ({
                 : "hover:bg-white/30 active:scale-95"
             }`}
             title="Share to WhatsApp"
+            style={{ touchAction: "manipulation" }}
           >
             {isSharing ? (
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
