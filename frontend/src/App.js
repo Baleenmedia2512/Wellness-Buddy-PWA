@@ -2505,7 +2505,8 @@ function WellnessValleyApp() {
         onSignOut={handleSignOut}
       />
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+      <div className="min-h-screen flex items-center justify-center px-4 -mt-16">
+        <div className="max-w-md w-full space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
@@ -2737,6 +2738,7 @@ function WellnessValleyApp() {
           isVisible={showTestGuide}
           onClose={() => setShowTestGuide(false)}
         />
+        </div>
       </div>
 
       {/* Version badge - positioned in header area like web view */}
