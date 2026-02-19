@@ -319,10 +319,6 @@ const NutritionCard = ({
                 alt="Food"
                 className="w-full h-64 object-cover"
               />
-              <div className="absolute top-3 right-3 bg-green-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-                <span className="w-2 h-2 bg-white rounded-full"></span>
-                Ready
-              </div>
             </div>
           )}
 
@@ -448,36 +444,44 @@ const NutritionCard = ({
                         className="pb-3 border-b border-gray-100 last:border-0"
                       >
                         <div className="flex justify-between items-start mb-1">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900">
-                                {item.name}
-                              </span>
-                              {item.wasAutoCorrected && (
-                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                                  ✓ Auto
-                                </span>
-                              )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900">
+                              {item.name}
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">
                               {portion} {weight ? `(${weight}g)` : ""}
                             </div>
                           </div>
-                          <div className="text-base font-bold text-red-600 ml-2">
+                          
+                          {/* Calories */}
+                          <div className="text-base font-bold text-red-600 flex-shrink-0 ml-2">
                             {itemCals} kcal
                           </div>
                         </div>
-                        <div className="text-[11px] text-red-600 font-medium">
-                          Protein{" "}
-                          {Math.round(
-                            item.nutrition?.protein || item.protein || 0,
-                          )}
-                          g • Carbs{" "}
-                          {Math.round(item.nutrition?.carbs || item.carbs || 0)}
-                          g • Fiber{" "}
-                          {Math.round(item.nutrition?.fiber || item.fiber || 0)}
-                          g • Fat{" "}
-                          {Math.round(item.nutrition?.fat || item.fat || 0)}g
+                        
+                        {/* Nutrient breakdown */}
+                        <div className="text-[11px] font-medium flex flex-wrap gap-2">
+                          <span className="text-blue-600">
+                            Protein{" "}
+                            {Math.round(
+                              item.nutrition?.protein || item.protein || 0,
+                            )}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-yellow-600">
+                            Carbs{" "}
+                            {Math.round(item.nutrition?.carbs || item.carbs || 0)}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-green-600">
+                            Fiber{" "}
+                            {Math.round(item.nutrition?.fiber || item.fiber || 0)}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-purple-600">
+                            Fat{" "}
+                            {Math.round(item.nutrition?.fat || item.fat || 0)}g
+                          </span>
                         </div>
                       </div>
                     );

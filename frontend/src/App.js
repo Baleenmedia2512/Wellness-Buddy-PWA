@@ -2582,44 +2582,95 @@ function WellnessValleyApp() {
         )}
 
         {imageType === "weight" && weightResult && (
-          <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+          <>
             {/* Hidden container for sharing - includes image + card */}
             <div
               ref={weightAnalysisShareRef}
-              className="space-y-4"
+              className="fixed -left-[9999px] top-0 w-[400px]"
+              style={{ position: "fixed", left: "-9999px" }}
             >
-              {/* Show image if available */}
-              {imagePreview && (
-                <div className="relative rounded-lg overflow-hidden">
-                  <img
-                    src={imagePreview}
-                    alt="Weight Scale"
-                    className="w-full h-48 object-cover"
-                  />
-                  <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-                    <span className="w-2 h-2 bg-white rounded-full"></span>
-                    Ready
+              <div className="bg-white rounded-2xl shadow-xl border-2 border-emerald-300 overflow-hidden">
+                {/* Weight Image for sharing */}
+                {imagePreview && (
+                  <div className="relative">
+                    <img
+                      src={imagePreview}
+                      alt="Weight Scale"
+                      className="w-full h-64 object-cover"
+                    />
+                    <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                      <span className="w-2 h-2 bg-white rounded-full"></span>
+                      Ready
+                    </div>
+                  </div>
+                )}
+
+                {/* Card content for sharing */}
+                <div className="p-6">
+                  {/* Header */}
+                  <div className="flex items-center gap-4 mb-6">
+                    <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center ring-4 ring-emerald-50">
+                      <span className="text-2xl">⚖️</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 tracking-tight">Weight Logged</h3>
+                      <p className="text-sm text-gray-500 font-medium">Tracking your progress!</p>
+                    </div>
+                  </div>
+
+                  {/* Weight Details */}
+                  <div className="bg-purple-50/80 rounded-2xl p-5 border border-purple-100 text-center">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                      Weight
+                    </p>
+                    <p className="text-4xl font-bold text-purple-700">
+                      {weightResult.weightValue}
+                      <span className="text-xl font-normal ml-1">
+                        {weightResult.unit}
+                      </span>
+                    </p>
+                    <p className="text-xs text-gray-500 mt-2">
+                      {new Date().toLocaleString('en-US', { 
+                        month: 'short', 
+                        day: 'numeric', 
+                        year: 'numeric',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      })}
+                    </p>
+                  </div>
+
+                  {/* Success Message */}
+                  <div className="mt-5 flex items-center gap-3 bg-emerald-50/80 border border-emerald-100 rounded-xl p-4">
+                    <div className="bg-emerald-100 rounded-full p-1">
+                      <span className="text-emerald-600">✓</span>
+                    </div>
+                    <p className="text-sm text-emerald-800 font-semibold">
+                      Your weight has been recorded
+                    </p>
                   </div>
                 </div>
-              )}
+              </div>
+            </div>
 
-              <h2 className="text-xl font-bold text-green-700 flex items-center">
+            {/* Visible card */}
+            <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+              <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
                 Weight Analysis
               </h2>
 
-              <div className="">
-                <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-                  <p className="text-sm text-purple-600 font-medium mb-1">
-                    Weight
-                  </p>
+              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
+                <p className="text-sm text-purple-600 font-medium mb-1">
+                  Weight
+                </p>
 
-                  <p className="text-3xl font-bold text-purple-700">
-                    {weightResult.weightValue}
-                    <span className="text-lg font-normal ml-1">
-                      {weightResult.unit}
-                    </span>
-                  </p>
-                </div>
+                <p className="text-3xl font-bold text-purple-700">
+                  {weightResult.weightValue}
+                  <span className="text-lg font-normal ml-1">
+                    {weightResult.unit}
+                  </span>
+                </p>
               </div>
 
               {/* Share Button at Bottom - Only show if there's an image */}
@@ -2629,6 +2680,9 @@ function WellnessValleyApp() {
                     if (isWeightSharing) return;
                     setIsWeightSharing(true);
                     try {
+                      // Small delay to ensure hidden container is fully rendered
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                      
                       await captureAndShare(weightAnalysisShareRef.current, {
                         title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
                         text: `My weight: ${weightResult.weightValue} ${weightResult.unit}\n\nTracked with Wellness Valley \uD83D\uDC9A`,
@@ -2641,7 +2695,7 @@ function WellnessValleyApp() {
                     }
                   }}
                   disabled={isWeightSharing}
-                  className={`w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                  className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
                     isWeightSharing
                       ? "opacity-50 cursor-not-allowed"
                       : "hover:shadow-lg active:scale-[0.98]"
@@ -2662,7 +2716,7 @@ function WellnessValleyApp() {
                 </button>
               )}
             </div>
-          </div>
+          </>
         )}
 
         {/* Saving Toast */}
