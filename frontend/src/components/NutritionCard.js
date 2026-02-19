@@ -496,27 +496,6 @@ const NutritionCard = ({
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
-          {/* Share Button - COMMENTED OUT
-          <button
-            onClick={handleShare}
-            onTouchEnd={(e) => e.preventDefault()}
-            disabled={isSharing || isSaving}
-            className={`absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/30 ${
-              isSharing || isSaving
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-white/30 active:scale-95"
-            }`}
-            title="Share"
-            style={{ touchAction: "manipulation" }}
-          >
-            {isSharing ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <Share2 className="w-5 h-5" />
-            )}
-          </button>
-          */}
-
           <div className="flex items-center justify-center gap-3">
             <div className="flex-1 text-center">
               <h2 className="text-xl font-bold">{generateMealName()}</h2>
@@ -733,6 +712,33 @@ const NutritionCard = ({
                   <span> ({servingInfo.description})</span>
                 )}
             </div>
+          )}
+
+          {/* Share Button at Bottom - Only show if there's an image */}
+          {(imagePreview || selectedImage) && (
+            <button
+              onClick={handleShare}
+              onTouchEnd={(e) => e.preventDefault()}
+              disabled={isSharing || isSaving}
+              className={`w-full mt-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                isSharing || isSaving
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:shadow-lg active:scale-[0.98]"
+              }`}
+              style={{ touchAction: "manipulation" }}
+            >
+              {isSharing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Sharing...</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-5 h-5" />
+                  <span>Share Meal</span>
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>

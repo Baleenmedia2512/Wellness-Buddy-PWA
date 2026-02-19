@@ -392,26 +392,27 @@ const WeightCard = React.memo(({
               <p className="text-xs text-gray-400">kg</p>
             </div>
 
-            {/* Share Button - COMMENTED OUT
-            <button
-              onClick={handleShare}
-              onTouchEnd={(e) => e.preventDefault()}
-              disabled={isSharing}
-              className={`w-9 h-9 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center transition-all duration-200 border border-emerald-200 ${
-                isSharing
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:bg-emerald-200 active:scale-95"
-              }`}
-              title="Share"
-              style={{ touchAction: "manipulation" }}
-            >
-              {isSharing ? (
-                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Share2 className="w-4 h-4" />
-              )}
-            </button>
-            */}
+            {/* Only show share button if there's a weight image */}
+            {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' && (
+              <button
+                onClick={handleShare}
+                onTouchEnd={(e) => e.preventDefault()}
+                disabled={isSharing}
+                className={`w-9 h-9 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center transition-all duration-200 border border-emerald-200 ${
+                  isSharing
+                    ? "opacity-50 cursor-not-allowed"
+                    : "hover:bg-emerald-200 active:scale-95"
+                }`}
+                title="Share"
+                style={{ touchAction: "manipulation" }}
+              >
+                {isSharing ? (
+                  <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <Share2 className="w-4 h-4" />
+                )}
+              </button>
+            )}
           </div>
         </div>
       </div>

@@ -12,7 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { SplashScreen } from "@capacitor/splash-screen";
-import { Bug } from "lucide-react";
+import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
 import EducationLogCard from "./components/EducationLogCard";
@@ -42,6 +42,7 @@ import { weightDetectionService } from "./services/weightDetectionService";
 import { educationDetectionService } from "./services/educationDetectionService";
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
+import { captureAndShare } from "./utils/shareUtils";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
@@ -98,6 +99,7 @@ function WellnessValleyApp() {
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
+  const weightAnalysisShareRef = useRef(null);
 
   // Duplicate food detection state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -141,6 +143,9 @@ function WellnessValleyApp() {
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
+
+  // Weight analysis share state
+  const [isWeightSharing, setIsWeightSharing] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -2578,58 +2583,85 @@ function WellnessValleyApp() {
 
         {imageType === "weight" && weightResult && (
           <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-            <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
-              Weight Analysis
-            </h2>
+            {/* Hidden container for sharing - includes image + card */}
+            <div
+              ref={weightAnalysisShareRef}
+              className="space-y-4"
+            >
+              {/* Show image if available */}
+              {imagePreview && (
+                <div className="relative rounded-lg overflow-hidden">
+                  <img
+                    src={imagePreview}
+                    alt="Weight Scale"
+                    className="w-full h-48 object-cover"
+                  />
+                  <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
+                    <span className="w-2 h-2 bg-white rounded-full"></span>
+                    Ready
+                  </div>
+                </div>
+              )}
 
-            {/* <div className="grid grid-cols-2 gap-4"> */}
-            <div className="">
-              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-                <p className="text-sm text-purple-600 font-medium mb-1">
-                  Weight
-                </p>
+              <h2 className="text-xl font-bold text-green-700 flex items-center">
+                Weight Analysis
+              </h2>
 
-                <p className="text-3xl font-bold text-purple-700">
-                  {weightResult.weightValue}
-                  <span className="text-lg font-normal ml-1">
-                    {weightResult.unit}
-                  </span>
-                </p>
+              <div className="">
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
+                  <p className="text-sm text-purple-600 font-medium mb-1">
+                    Weight
+                  </p>
+
+                  <p className="text-3xl font-bold text-purple-700">
+                    {weightResult.weightValue}
+                    <span className="text-lg font-normal ml-1">
+                      {weightResult.unit}
+                    </span>
+                  </p>
+                </div>
               </div>
 
-              {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
-                <p className="text-3xl font-bold text-blue-700">
-                  {weightResult.bmi || '--'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
-                <p className="text-3xl font-bold text-green-700">
-                  {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-                <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
-                <p className="text-3xl font-bold text-orange-700">
-                  {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
-                <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
-                <p className="text-3xl font-bold text-red-700">
-                  {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
-                </p>
-              </div> */}
+              {/* Share Button at Bottom - Only show if there's an image */}
+              {imagePreview && (
+                <button
+                  onClick={async () => {
+                    if (isWeightSharing) return;
+                    setIsWeightSharing(true);
+                    try {
+                      await captureAndShare(weightAnalysisShareRef.current, {
+                        title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
+                        text: `My weight: ${weightResult.weightValue} ${weightResult.unit}\n\nTracked with Wellness Valley \uD83D\uDC9A`,
+                        fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
+                      });
+                    } catch (error) {
+                      console.error("Failed to share:", error);
+                    } finally {
+                      setIsWeightSharing(false);
+                    }
+                  }}
+                  disabled={isWeightSharing}
+                  className={`w-full py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                    isWeightSharing
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:shadow-lg active:scale-[0.98]"
+                  }`}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {isWeightSharing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Sharing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-5 h-5" />
+                      <span>Share Weight</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
-
-            {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
-              <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
-              <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
-            </div> */}
           </div>
         )}
 

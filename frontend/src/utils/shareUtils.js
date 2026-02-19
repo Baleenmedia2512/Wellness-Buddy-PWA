@@ -267,64 +267,64 @@ const blobToBase64 = (blob) => {
   });
 };
 
-// /**
-//  * Share directly to WhatsApp (if app is installed)
-//  * Note: This requires the WhatsApp app to be installed on the device
-//  */
-// export const shareToWhatsApp = async (element, message = "") => {
-//   try {
-//     // First capture the image
-//     const canvas = await html2canvas(element, {
-//       backgroundColor: "#ffffff",
-//       scale: 2,
-//       useCORS: true,
-//       allowTaint: true,
-//       logging: false,
-//     });
+/**
+ * Share directly to WhatsApp (if app is installed)
+ * Note: This requires the WhatsApp app to be installed on the device
+ */
+export const shareToWhatsApp = async (element, message = "") => {
+  try {
+    // First capture the image
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      useCORS: true,
+      allowTaint: true,
+      logging: false,
+    });
 
-//     const blob = await new Promise((resolve) => {
-//       canvas.toBlob(resolve, "image/png", 1.0);
-//     });
+    const blob = await new Promise((resolve) => {
+      canvas.toBlob(resolve, "image/png", 1.0);
+    });
 
-//     const base64Data = await blobToBase64(blob);
-//     const base64String = base64Data.split(",")[1];
+    const base64Data = await blobToBase64(blob);
+    const base64String = base64Data.split(",")[1];
 
-//     // Save to filesystem
-//     const fileName = `wellness-valley-${Date.now()}.png`;
-//     const savedFile = await Filesystem.writeFile({
-//       path: fileName,
-//       data: base64String,
-//       directory: Directory.Cache,
-//     });
+    // Save to filesystem
+    const fileName = `wellness-valley-${Date.now()}.png`;
+    const savedFile = await Filesystem.writeFile({
+      path: fileName,
+      data: base64String,
+      directory: Directory.Cache,
+    });
 
-//     // Construct WhatsApp share intent URL
-//     const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
+    // Construct WhatsApp share intent URL
+    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
 
-//     // On Android, we can use Share with specific app
-//     const shareResult = await Share.share({
-//       title: "Share to WhatsApp",
-//       text: message,
-//       url: savedFile.uri,
-//       dialogTitle: "Share to WhatsApp",
-//     });
+    // On Android, we can use Share with specific app
+    const shareResult = await Share.share({
+      title: "Share to WhatsApp",
+      text: message,
+      url: savedFile.uri,
+      dialogTitle: "Share to WhatsApp",
+    });
 
-//     console.log("✅ Shared to WhatsApp:", shareResult);
+    console.log("✅ Shared to WhatsApp:", shareResult);
 
-//     // Clean up
-//     setTimeout(async () => {
-//       try {
-//         await Filesystem.deleteFile({
-//           path: fileName,
-//           directory: Directory.Cache,
-//         });
-//       } catch (error) {
-//         console.warn("⚠️ Failed to clean up temporary file:", error);
-//       }
-//     }, 5000);
-//   } catch (error) {
-//     console.error("❌ WhatsApp share failed:", error);
-//     throw new Error(
-//       "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
-//     );
-//   }
-// };
+    // Clean up
+    setTimeout(async () => {
+      try {
+        await Filesystem.deleteFile({
+          path: fileName,
+          directory: Directory.Cache,
+        });
+      } catch (error) {
+        console.warn("⚠️ Failed to clean up temporary file:", error);
+      }
+    }, 5000);
+  } catch (error) {
+    console.error("❌ WhatsApp share failed:", error);
+    throw new Error(
+      "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
+    );
+  }
+};
