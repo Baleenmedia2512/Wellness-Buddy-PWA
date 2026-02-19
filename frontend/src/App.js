@@ -2589,65 +2589,27 @@ function WellnessValleyApp() {
               className="fixed -left-[9999px] top-0 w-[400px]"
               style={{ position: "fixed", left: "-9999px" }}
             >
-              <div className="bg-white rounded-2xl shadow-xl border-2 border-emerald-300 overflow-hidden">
+              <div className="bg-white rounded-2xl shadow-xl border-2 border-teal-400 overflow-hidden">
                 {/* Weight Image for sharing */}
                 {imagePreview && (
-                  <div className="relative">
+                  <div className="relative bg-black">
                     <img
                       src={imagePreview}
                       alt="Weight Scale"
-                      className="w-full h-64 object-cover"
+                      className="w-full h-64 object-contain"
                     />
-                    <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-                      <span className="w-2 h-2 bg-white rounded-full"></span>
-                      Ready
-                    </div>
                   </div>
                 )}
 
-                {/* Card content for sharing */}
-                <div className="p-6">
-                  {/* Header */}
-                  <div className="flex items-center gap-4 mb-6">
-                    <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center ring-4 ring-emerald-50">
-                      <span className="text-2xl">⚖️</span>
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-gray-900 tracking-tight">Weight Logged</h3>
-                      <p className="text-sm text-gray-500 font-medium">Tracking your progress!</p>
-                    </div>
-                  </div>
-
-                  {/* Weight Details */}
-                  <div className="bg-purple-50/80 rounded-2xl p-5 border border-purple-100 text-center">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-                      Weight
-                    </p>
-                    <p className="text-4xl font-bold text-purple-700">
+                {/* Card content for sharing - Simple and Clean */}
+                <div className="bg-white p-8">
+                  <h2 className="text-2xl font-bold text-emerald-600 mb-6 text-center">Weight Analysis</h2>
+                  
+                  <div className="bg-purple-50 rounded-2xl p-6 text-center">
+                    <p className="text-sm font-semibold text-purple-600 mb-2 uppercase tracking-wide">Weight</p>
+                    <p className="text-5xl font-bold text-purple-700">
                       {weightResult.weightValue}
-                      <span className="text-xl font-normal ml-1">
-                        {weightResult.unit}
-                      </span>
-                    </p>
-                    <p className="text-xs text-gray-500 mt-2">
-                      {new Date().toLocaleString('en-US', { 
-                        month: 'short', 
-                        day: 'numeric', 
-                        year: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      })}
-                    </p>
-                  </div>
-
-                  {/* Success Message */}
-                  <div className="mt-5 flex items-center gap-3 bg-emerald-50/80 border border-emerald-100 rounded-xl p-4">
-                    <div className="bg-emerald-100 rounded-full p-1">
-                      <span className="text-emerald-600">✓</span>
-                    </div>
-                    <p className="text-sm text-emerald-800 font-semibold">
-                      Your weight has been recorded
+                      <span className="text-2xl font-normal ml-2">{weightResult.unit}</span>
                     </p>
                   </div>
                 </div>
