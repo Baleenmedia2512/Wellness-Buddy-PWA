@@ -283,8 +283,11 @@ const NutritionCard = ({
         // whatsappOnly: true, // Explicitly enable WhatsApp sharing
       });
     } catch (error) {
-      console.error("Failed to share:", error);
-      // Silently handle error (user might have cancelled)
+      console.error("❌ Failed to share:", error);
+      // Show error to user if it's not a cancellation
+      if (!error?.message?.toLowerCase().includes('cancel')) {
+        alert('Unable to share. Please check your device settings and permissions.');
+      }
     } finally {
       setIsSharing(false);
     }
@@ -722,14 +725,13 @@ const NutritionCard = ({
           {(imagePreview || selectedImage) && (
             <button
               onClick={handleShare}
-              onTouchEnd={(e) => e.preventDefault()}
               disabled={isSharing || isSaving}
               className={`w-full mt-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
                 isSharing || isSaving
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:shadow-lg active:scale-[0.98]"
               }`}
-              style={{ touchAction: "manipulation" }}
+              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
             >
               {isSharing ? (
                 <>

@@ -209,14 +209,13 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
       {imagePreview && (
         <button
           onClick={handleShare}
-          onTouchEnd={(e) => e.preventDefault()}
           disabled={isSharing}
           className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
             isSharing
               ? "opacity-50 cursor-not-allowed"
               : "hover:shadow-lg active:scale-[0.98]"
           }`}
-          style={{ touchAction: "manipulation" }}
+          style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
         >
           {isSharing ? (
             <>

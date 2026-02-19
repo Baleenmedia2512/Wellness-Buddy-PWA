@@ -396,7 +396,6 @@ const WeightCard = React.memo(({
             {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' && (
               <button
                 onClick={handleShare}
-                onTouchEnd={(e) => e.preventDefault()}
                 disabled={isSharing}
                 className={`w-9 h-9 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center transition-all duration-200 border border-emerald-200 ${
                   isSharing
@@ -404,7 +403,7 @@ const WeightCard = React.memo(({
                     : "hover:bg-emerald-200 active:scale-95"
                 }`}
                 title="Share"
-                style={{ touchAction: "manipulation" }}
+                style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
               >
                 {isSharing ? (
                   <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>

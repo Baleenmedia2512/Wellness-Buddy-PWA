@@ -23,6 +23,7 @@ export const captureAndShare = async (element, options = {}) => {
 
   try {
     console.log("📸 Starting capture and share process...");
+    console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
 
     // Step 1: Capture the element as canvas
     const canvas = await html2canvas(element, {
@@ -142,9 +143,9 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       // Use Capacitor Share API with proper options
       console.log("🔗 Initiating native share with URI:", fileUri);
       
+      // Only share the image without text to keep it clean
       const shareOptions = {
         title: title,
-        text: text,
         url: fileUri,
         dialogTitle: "Share via",
       };
@@ -160,6 +161,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       }
 
       // Perform the share
+      console.log("🚀 Calling Share.share() with options:", JSON.stringify(shareOptions, null, 2));
       const shareResult = await Share.share(shareOptions);
 
       console.log("✅ Share completed:", shareResult);
@@ -250,11 +252,10 @@ const shareWeb = async (blob, { title, text, fileName }) => {
         }
       }
 
-      // Second try: Share text only (will still open share sheet)
+      // Second try: Share with title only (image couldn't be shared as file)
       try {
         await navigator.share({
           title: title,
-          text: text,
         });
         console.log("✅ Shared via Web Share API (text only)");
 
