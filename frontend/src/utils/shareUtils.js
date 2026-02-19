@@ -92,6 +92,7 @@ export const captureAndShare = async (element, options = {}) => {
 
 /**
  * Native mobile share using Capacitor Share plugin
+ * Enhanced with better Android support and error handling
  */
 const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) => {
   try {
@@ -107,47 +108,63 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
 
     console.log("📝 Attempting to write file:", uniqueFileName);
 
+    // Write file to cache directory
     const savedFile = await Filesystem.writeFile({
       path: uniqueFileName,
       data: base64String,
       directory: Directory.Cache,
-      recursive: true, // Ensure directory exists
+      recursive: true,
     });
 
     console.log("✅ File saved to cache:", savedFile.uri);
 
-    // Get the file URI - Capacitor automatically provides correct format
+    // Get the file URI with proper formatting for Android
     let fileUri = savedFile.uri;
 
-    // For Android, ensure we have the correct URI format
+    // Android-specific URI handling
     if (isPlatform("android")) {
-      console.log("📱 Android file URI:", fileUri);
+      console.log("📱 Android detected - processing file URI");
+      console.log("📱 Original URI:", fileUri);
       
-      // Check if URI is valid
+      // Validate URI
       if (!fileUri || fileUri === "") {
         throw new Error("Invalid file URI generated");
+      }
+
+      // Ensure proper content:// URI format for Android FileProvider
+      // Capacitor should handle this automatically, but we'll verify
+      if (!fileUri.startsWith("content://")) {
+        console.warn("⚠️ URI doesn't start with content://, may cause issues");
       }
     }
 
     try {
       // Use Capacitor Share API with proper options
-      console.log("🔗 Initiating share with URI:", fileUri);
+      console.log("🔗 Initiating native share with URI:", fileUri);
       
       const shareOptions = {
         title: title,
         text: text,
         url: fileUri,
-        // dialogTitle: whatsappOnly ? "Share to WhatsApp" : "Share via",
         dialogTitle: "Share via",
       };
       
-      console.log("📤 Share options:", shareOptions);
+      console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
       
+      // Check if Share API is available
+      const canShare = await Share.canShare().catch(() => ({ value: false }));
+      console.log("📊 Can share:", canShare);
+      
+      if (!canShare.value) {
+        throw new Error("Share API not available on this device");
+      }
+
+      // Perform the share
       const shareResult = await Share.share(shareOptions);
 
       console.log("✅ Share completed:", shareResult);
       
-      // Check if share was successful
+      // Log activity type if available (iOS specific)
       if (shareResult && shareResult.activityType) {
         console.log("📱 Shared via:", shareResult.activityType);
       }
@@ -155,14 +172,31 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       console.error("❌ Share error:", shareError);
       console.error("❌ Share error details:", JSON.stringify(shareError));
 
-      // If user didn't cancel, show error
-      if (shareError && !shareError.message?.includes("cancel") && !shareError.message?.includes("User cancelled")) {
-        alert(
-          "Unable to share. Please make sure you have a sharing app (Messages, etc.) installed.\n\nError: " + (shareError.message || "Unknown error"),
-        );
-      } else {
+      // Check if user canceled the share
+      const isCanceled = 
+        shareError?.message?.toLowerCase().includes("cancel") ||
+        shareError?.message?.toLowerCase().includes("cancelled") ||
+        shareError?.code === "0" ||
+        shareError === "Share canceled";
+
+      if (isCanceled) {
         console.log("ℹ️ User cancelled share");
+        // Don't throw error for user cancellation
+        return;
       }
+
+      // Show error for actual failures
+      const errorMessage = shareError?.message || "Unknown error";
+      alert(
+        `Unable to share the image.\n\n` +
+        `Error: ${errorMessage}\n\n` +
+        `Please ensure:\n` +
+        `1. You have sharing apps installed (Messages, WhatsApp, etc.)\n` +
+        `2. Grant necessary permissions if prompted\n` +
+        `3. Your device has enough storage space`
+      );
+      
+      throw shareError;
     }
 
     // Clean up the temporary file after a delay
@@ -175,11 +209,17 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         console.log("✅ Temporary file cleaned up");
       } catch (error) {
         console.warn("⚠️ Failed to clean up temporary file:", error);
+        // Don't throw error for cleanup failures
       }
     }, 10000);
   } catch (error) {
     console.error("❌ Native share failed:", error);
-    alert("Failed to share image. Please try again.");
+    
+    // Only alert if we haven't already shown an error
+    if (!error?.message?.includes("cancelled")) {
+      alert("Failed to share image. Please try again or check your app permissions.");
+    }
+    
     throw error;
   }
 };
