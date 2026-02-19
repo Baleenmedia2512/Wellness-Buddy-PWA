@@ -292,7 +292,7 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
             </div>
 
             <div className="text-xs text-gray-500 text-center">
-              Camera works best on mobile devices • Max 10MB •{' '}
+              {/* Camera works best on mobile devices • Max 10MB •{' '} */}
               <button
                 onClick={onHelpClick}
                 className="text-red-500 font-normal hover:text-red-600 focus:outline-none"

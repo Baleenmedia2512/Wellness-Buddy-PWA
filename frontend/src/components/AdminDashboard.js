@@ -1292,25 +1292,35 @@ const AdminDashboard = ({ user, onClose }) => {
             msOverflowStyle: 'none'
           }}
         >
-          {["today", "yesterday", "week", "month", "all"].map((range) => (
-            <TouchFeedbackButton
-              key={range}
-              onClick={() => {
-                setTimeRange(range);
-                setCustomStartDate(null);
-                setCustomEndDate(null);
-                setShowDatePicker(false);
-              }}
-              className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 min-w-fit ${
-                timeRange === range
-                  ? "bg-green-600 text-white shadow-md shadow-green-200"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-              }`}
-              ariaLabel={`Filter by ${range}`}
-            >
-              {range.charAt(0).toUpperCase() + range.slice(1)}
-            </TouchFeedbackButton>
-          ))}
+          {["today", "yesterday", "week", "month", "all"].map((range) => {
+            const labels = {
+              today: "Today",
+              yesterday: "Yesterday",
+              week: "Last 7 Days",
+              month: "Last 30 Days",
+              all: "All"
+            };
+            
+            return (
+              <TouchFeedbackButton
+                key={range}
+                onClick={() => {
+                  setTimeRange(range);
+                  setCustomStartDate(null);
+                  setCustomEndDate(null);
+                  setShowDatePicker(false);
+                }}
+                className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 min-w-fit ${
+                  timeRange === range
+                    ? "bg-green-600 text-white shadow-md shadow-green-200"
+                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                }`}
+                ariaLabel={`Filter by ${range}`}
+              >
+                {labels[range]}
+              </TouchFeedbackButton>
+            );
+          })}
           <TouchFeedbackButton
             onClick={() => setShowDatePicker(!showDatePicker)}
             className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 min-w-fit ${
