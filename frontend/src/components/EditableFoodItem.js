@@ -1580,7 +1580,7 @@ const EditableFoodItem = forwardRef(
         {/* Serving Size and Grams Controls - Always visible in edit mode */}
         <div className="space-y-2.5">
           {/* Serving Size Dropdown */}
-          {selectedFood && servingOptions.length > 0 && (
+          {/* {selectedFood && servingOptions.length > 0 && (
             <div className="relative">
               <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
                 <Utensils className="w-3.5 h-3.5 text-gray-500" />
@@ -1588,7 +1588,7 @@ const EditableFoodItem = forwardRef(
               </label>
 
               {/* Dropdown Toggle Button */}
-              <button
+              {/* <button
                 type="button"
                 onClick={() => setIsServingDropdownOpen(!isServingDropdownOpen)}
                 className="w-full px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
@@ -1613,10 +1613,10 @@ const EditableFoodItem = forwardRef(
                     d="M19 9l-7 7-7-7"
                   />
                 </svg>
-              </button>
+              </button> */}
 
               {/* Dropdown Options - Overlapping */}
-              {isServingDropdownOpen && (
+              {/* {isServingDropdownOpen && (
                 <div className="absolute z-50 w-full mt-1 space-y-1 max-h-64 overflow-y-auto bg-white rounded-lg border-2 border-gray-300 shadow-lg p-2">
                   {servingOptions.map((option, idx) => (
                     <button
@@ -1689,9 +1689,9 @@ const EditableFoodItem = forwardRef(
                     </button>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+              )} */}
+            {/* </div>
+          )} */}
 
           {/* Custom Grams/ML Input - Always visible */}
           <div>
