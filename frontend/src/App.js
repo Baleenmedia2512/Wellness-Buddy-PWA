@@ -2505,7 +2505,7 @@ function WellnessValleyApp() {
         onSignOut={handleSignOut}
       />
 
-      <div className="min-h-screen flex items-center justify-center px-4 -mt-16">
+      <div className="min-h-screen flex items-start justify-center px-4 pt-20">
         <div className="max-w-md w-full space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
