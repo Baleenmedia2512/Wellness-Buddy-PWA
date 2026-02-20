@@ -58,9 +58,14 @@ export default async function handler(req, res) {
     console.log("🌍 [GLOBAL-AUTO] Fetching global correction patterns...");
 
     // Fetch all corrections with LastCorrected timestamp for most recent override
+    // Include corrected nutrition and quantity fields (AI values are in meals table)
     const { data: allCorrections, error } = await supabase
       .from("food_corrections_table")
-      .select('"AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected"')
+      .select(`
+        "AiDetected", "UserCorrected", "UserId", "TimesCorrected", "LastCorrected",
+        "CorrectedQuantity", "CorrectedUnit", "CorrectedFoodType", 
+        "CorrectedCalories", "CorrectedCarbs", "CorrectedProtein", "CorrectedFat", "CorrectedFiber"
+      `)
       .order('"LastCorrected"', { ascending: false }); // Most recent first
 
     if (error) throw error;
@@ -82,6 +87,15 @@ export default async function handler(req, res) {
           userId: row.UserId,
           timesCorrected: row.TimesCorrected || 1,
           lastCorrected: row.LastCorrected,
+          // Corrected nutrition values
+          correctedQuantity: row.CorrectedQuantity,
+          correctedUnit: row.CorrectedUnit,
+          correctedFoodType: row.CorrectedFoodType,
+          correctedCalories: row.CorrectedCalories,
+          correctedCarbs: row.CorrectedCarbs,
+          correctedProtein: row.CorrectedProtein,
+          correctedFat: row.CorrectedFat,
+          correctedFiber: row.CorrectedFiber,
         });
       });
     }
@@ -115,6 +129,15 @@ export default async function handler(req, res) {
           totalCorrections: latestCorrection.timesCorrected,
           lastCorrected: latestCorrection.lastCorrected,
           lastCorrectedByUserId: latestCorrection.userId,
+          // Corrected nutrition values
+          correctedQuantity: latestCorrection.correctedQuantity,
+          correctedUnit: latestCorrection.correctedUnit,
+          correctedFoodType: latestCorrection.correctedFoodType,
+          correctedCalories: latestCorrection.correctedCalories,
+          correctedCarbs: latestCorrection.correctedCarbs,
+          correctedProtein: latestCorrection.correctedProtein,
+          correctedFat: latestCorrection.correctedFat,
+          correctedFiber: latestCorrection.correctedFiber,
         });
       }
     });
@@ -145,6 +168,15 @@ export default async function handler(req, res) {
         last_corrected_by_user_id: p.lastCorrectedByUserId,
         last_corrected: p.lastCorrected,
         confidence: 1.0, // Full confidence - latest correction always wins
+        // Corrected nutrition values
+        corrected_quantity: p.correctedQuantity,
+        corrected_unit: p.correctedUnit,
+        corrected_food_type: p.correctedFoodType,
+        corrected_calories: p.correctedCalories,
+        corrected_carbs: p.correctedCarbs,
+        corrected_protein: p.correctedProtein,
+        corrected_fat: p.correctedFat,
+        corrected_fiber: p.correctedFiber,
       }));
 
     console.log(
@@ -163,6 +195,15 @@ export default async function handler(req, res) {
         lastCorrectedByUserId: pattern.last_corrected_by_user_id,
         lastCorrected: pattern.last_corrected,
         confidence: pattern.confidence,
+        // Corrected nutrition values
+        correctedQuantity: pattern.corrected_quantity,
+        correctedUnit: pattern.corrected_unit,
+        correctedFoodType: pattern.corrected_food_type,
+        correctedCalories: pattern.corrected_calories,
+        correctedCarbs: pattern.corrected_carbs,
+        correctedProtein: pattern.corrected_protein,
+        correctedFat: pattern.corrected_fat,
+        correctedFiber: pattern.corrected_fiber,
       };
     });
 

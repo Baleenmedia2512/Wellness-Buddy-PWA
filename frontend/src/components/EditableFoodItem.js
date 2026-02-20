@@ -716,8 +716,25 @@ const EditableFoodItem = forwardRef(
             console.log("   UserCorrected:", newName);
 
             console.log("[CORRECTION DEBUG] Calling saveFoodCorrection API...");
-            // Save correction with the original AI detected name
-            saveFoodCorrection(userId, aiDetectedName, newName)
+            
+            // Build corrected nutrition data object (only corrected values, not AI values)
+            const correctedData = {};
+            
+            // User corrected values (from new food selection)
+            if (food) {
+              if (food.serving?.weight) correctedData.correctedQuantity = parseFloat(food.serving.weight);
+              if (food.serving?.unit) correctedData.correctedUnit = food.serving.unit;
+              if (food.calories) correctedData.correctedCalories = parseFloat(food.calories);
+              if (food.carbs) correctedData.correctedCarbs = parseFloat(food.carbs);
+              if (food.protein) correctedData.correctedProtein = parseFloat(food.protein);
+              if (food.fat) correctedData.correctedFat = parseFloat(food.fat);
+              if (food.fiber) correctedData.correctedFiber = parseFloat(food.fiber);
+            }
+            
+            console.log("[CORRECTION DEBUG] Corrected nutrition data:", correctedData);
+            
+            // Save correction with the original AI detected name and corrected values only
+            saveFoodCorrection(userId, aiDetectedName, newName, correctedData)
               .then((response) => {
               console.log("[CORRECTION DEBUG] ✅ API Response:", response);
               console.log("✅ ========== CORRECTION SAVED ==========");

@@ -2,6 +2,7 @@
   getSupabaseClient,
   getISTTimestamp,
 } from "../../utils/supabaseClient.js";
+import { identifyFoodType } from "../../utils/foodTypeDetection.js";
 
 export default async function handler(req, res) {
   // Set CORS headers
@@ -22,9 +23,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, aiDetected, userCorrected } = req.body;
+    const { 
+      userId, 
+      aiDetected, 
+      userCorrected,
+      // Corrected values only (AI values are already in meals table)
+      correctedQuantity,
+      correctedUnit,
+      correctedCalories,
+      correctedCarbs,
+      correctedProtein,
+      correctedFat,
+      correctedFiber
+    } = req.body;
 
-    // Validate input
+    // Validate required fields
     if (!userId || !aiDetected || !userCorrected) {
       res.status(400).json({
         error: "Missing required fields",
@@ -36,13 +49,20 @@ export default async function handler(req, res) {
     console.log("💾 [SAVE CORRECTION] Request received:");
     console.log("   User ID:", userId);
     console.log("   AI Detected:", aiDetected);
-    console.log("   User Corrected:", userCorrected);
+    console.log("   User Corrected:", userCorrected, correctedQuantity, correctedUnit);
+    console.log("   Nutrition:", { correctedCalories, correctedCarbs });
+
+    // Auto-detect food type from corrected values
+    const correctedFoodType = identifyFoodType({ name: userCorrected, unit: correctedUnit });
+
+    console.log("   Corrected Food Type:", correctedFoodType);
 
     // Database connection
     const supabase = getSupabaseClient();
     const currentTime = getISTTimestamp();
 
     // 🔍 Check if this exact correction already exists for this user
+    // Match by userId, aiDetected, userCorrected, and aiUnit (to differentiate solid vs liquid)
     const { data: existingCorrection, error: selectError } = await supabase
       .from("food_corrections_table")
       .select("*")
@@ -60,12 +80,24 @@ export default async function handler(req, res) {
       // ♻️ UPDATE: Same user making the same correction again
       const newCount = existingCorrection.TimesCorrected + 1;
       
+      const updateData = {
+        TimesCorrected: newCount,
+        LastCorrected: currentTime,
+      };
+
+      // Update corrected nutrition values if provided
+      if (correctedQuantity !== undefined) updateData.CorrectedQuantity = correctedQuantity;
+      if (correctedUnit !== undefined) updateData.CorrectedUnit = correctedUnit;
+      if (correctedFoodType !== undefined) updateData.CorrectedFoodType = correctedFoodType;
+      if (correctedCalories !== undefined) updateData.CorrectedCalories = correctedCalories;
+      if (correctedCarbs !== undefined) updateData.CorrectedCarbs = correctedCarbs;
+      if (correctedProtein !== undefined) updateData.CorrectedProtein = correctedProtein;
+      if (correctedFat !== undefined) updateData.CorrectedFat = correctedFat;
+      if (correctedFiber !== undefined) updateData.CorrectedFiber = correctedFiber;
+      
       const { data: updatedData, error: updateError } = await supabase
         .from("food_corrections_table")
-        .update({
-          TimesCorrected: newCount,
-          LastCorrected: currentTime,
-        })
+        .update(updateData)
         .eq('"Id"', existingCorrection.Id)
         .select()
         .single();
@@ -79,7 +111,7 @@ export default async function handler(req, res) {
       console.log("   → Record ID:", updatedData?.Id);
       console.log("   → Times Corrected:", newCount);
       console.log("   → AI Detected:", aiDetected);
-      console.log("   → User Corrected:", userCorrected);
+      console.log("   → User Corrected:", userCorrected, `(${correctedQuantity} ${correctedUnit})`);
 
       res.status(200).json({
         success: true,
@@ -92,16 +124,28 @@ export default async function handler(req, res) {
       });
     } else {
       // ➕ INSERT: New correction (different user or different target)
+      const insertData = {
+        UserId: userId,
+        AiDetected: aiDetected,
+        UserCorrected: userCorrected,
+        TimesCorrected: 1,
+        CreatedAt: currentTime,
+        LastCorrected: currentTime,
+      };
+
+      // Add corrected nutrition and quantity fields if provided
+      if (correctedQuantity !== undefined) insertData.CorrectedQuantity = correctedQuantity;
+      if (correctedUnit !== undefined) insertData.CorrectedUnit = correctedUnit;
+      if (correctedFoodType !== undefined) insertData.CorrectedFoodType = correctedFoodType;
+      if (correctedCalories !== undefined) insertData.CorrectedCalories = correctedCalories;
+      if (correctedCarbs !== undefined) insertData.CorrectedCarbs = correctedCarbs;
+      if (correctedProtein !== undefined) insertData.CorrectedProtein = correctedProtein;
+      if (correctedFat !== undefined) insertData.CorrectedFat = correctedFat;
+      if (correctedFiber !== undefined) insertData.CorrectedFiber = correctedFiber;
+      
       const { data: insertedData, error: insertError } = await supabase
         .from("food_corrections_table")
-        .insert({
-          UserId: userId,
-          AiDetected: aiDetected,
-          UserCorrected: userCorrected,
-          TimesCorrected: 1,
-          CreatedAt: currentTime,
-          LastCorrected: currentTime,
-        })
+        .insert(insertData)
         .select()
         .single();
 
@@ -113,7 +157,8 @@ export default async function handler(req, res) {
       console.log("✅ BACKEND: NEW Correction SAVED to database");
       console.log("   → New Correction ID:", insertedData?.Id);
       console.log("   → AI Detected:", aiDetected);
-      console.log("   → User Corrected:", userCorrected);
+      console.log("   → User Corrected:", userCorrected, `(${correctedQuantity} ${correctedUnit}, ${correctedFoodType})`);
+      console.log("   → Nutrition:", { calories: correctedCalories, carbs: correctedCarbs });
 
       res.status(201).json({
         success: true,
