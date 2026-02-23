@@ -801,7 +801,7 @@ const NutritionCard = ({
               ) : (
                 <>
                   <Share2 className="w-5 h-5" />
-                  <span>Share Meal</span>
+                  <span>Share</span>
                 </>
               )}
             </button>
