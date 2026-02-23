@@ -121,8 +121,11 @@ const EditableFoodItem = forwardRef(
       }
     }, [foodItem, isEditing]);
 
+    // ❌ DISABLED: Auto-save removed - now saves only on "Close Edit" button click
     // Phase 1: Debounced Auto-Save (Weight Input Only)
     // Automatically save changes after 1 second of inactivity when typing weight
+    // COMMENTED OUT - User requested manual save on Close Edit only
+    /*
     useEffect(() => {
       // Skip if Phase 2 instant save is in progress
       if (isInstantSavingRef.current) {
@@ -163,6 +166,7 @@ const EditableFoodItem = forwardRef(
         }
       };
     }, [customGrams, isEditing]);
+    */
 
     // Smart debounced search with prefetching
     const debouncedSearch = useCallback((query) => {
@@ -915,7 +919,10 @@ const EditableFoodItem = forwardRef(
         console.log("   ✅ Set default serving:", options[0].description, "-", options[0].grams, "g/ml");
       }
 
+      // ❌ DISABLED: Instant save removed - now saves only on "Close Edit" button click
       // Phase 2: Instant save when food is selected (no delay)
+      // COMMENTED OUT - User requested manual save on Close Edit only
+      /*
       // Set flag to prevent Phase 1 from interfering
       isInstantSavingRef.current = true;
 
@@ -945,6 +952,7 @@ const EditableFoodItem = forwardRef(
           isInstantSavingRef.current = false;
         }, 200);
       }, 150);
+      */
     };
 
     // Handle custom grams input
@@ -1301,8 +1309,27 @@ const EditableFoodItem = forwardRef(
       handleAutoSave(); // This will handle the save and update status accordingly
     };
 
-    // Close edit mode - data already auto-saved
+    // Close edit mode - SAVE FIRST, then close
     const handleDone = async () => {
+      console.log("\n🔒 [CLOSE EDIT] User clicked Close Edit button");
+      
+      // Check if there are unsaved changes
+      if (hasUserChangesRef.current && customGrams) {
+        console.log("   💾 Unsaved changes detected - saving now...");
+        
+        // Save the changes before closing
+        try {
+          await handleAutoSave();
+          console.log("   ✅ Save completed successfully");
+        } catch (error) {
+          console.error("   ❌ Save failed:", error);
+          // Don't close if save failed - let user see error and retry
+          return;
+        }
+      } else {
+        console.log("   ⏭️ No unsaved changes - closing immediately");
+      }
+      
       // Clear any pending auto-save timers
       if (autoSaveTimeoutRef.current) {
         clearTimeout(autoSaveTimeoutRef.current);
@@ -1339,6 +1366,8 @@ const EditableFoodItem = forwardRef(
       if (onSave) {
         onSave(index);
       }
+      
+      console.log("   🚪 Modal closed\n");
     };
 
     // Cancel editing
