@@ -1607,18 +1607,26 @@ function WellnessValleyApp() {
           //   foods.map((f) => f.name),
           // );
 
-          const total =
-            detectedType.details.total ||
-            foods.reduce(
-              (acc, food) => ({
-                calories: acc.calories + (food.nutrition?.calories || 0),
-                protein: acc.protein + (food.nutrition?.protein || 0),
-                carbs: acc.carbs + (food.nutrition?.carbs || 0),
-                fat: acc.fat + (food.nutrition?.fat || 0),
-                fiber: acc.fiber + (food.nutrition?.fiber || 0),
-              }),
-              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-            );
+          // 🎯 ALWAYS recalculate totals from corrected foods (don't use original AI total)
+          // Original code used: detectedType.details.total || foods.reduce(...)
+          // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
+          const total = foods.reduce(
+            (acc, food) => ({
+              calories: acc.calories + (food.nutrition?.calories || food.calories || 0),
+              protein: acc.protein + (food.nutrition?.protein || food.protein || 0),
+              carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
+              fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
+              fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
+            }),
+            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+          );
+          
+          console.log('📊 [App.js] Calculated total from corrected foods:', {
+            totalCalories: total.calories,
+            totalCarbs: total.carbs,
+            totalProtein: total.protein,
+            foodCount: foods.length
+          });
 
           // Generate category name from food items
           let categoryName = "";
@@ -1658,22 +1666,37 @@ function WellnessValleyApp() {
                 : detectedType.confidence > 0.5
                 ? "medium"
                 : "low",
-            detailedItems: foods.map((food) => ({
-              name: food.name,
-              originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
-              wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
-              correctionSource: food.correctionSource,  // 🔴 Track correction source
-              correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
-              portionDescription: food.portion || "Unknown portion",
-              estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
-              unit: food.unit || (food.volume_ml ? "ml" : "g"),
-              isLiquid: food.isLiquid || false,
-              calories: Math.round(food.nutrition?.calories || 0),
-              protein: Math.round(food.nutrition?.protein || 0),
-              carbs: Math.round(food.nutrition?.carbs || 0),
-              fat: Math.round(food.nutrition?.fat || 0),
-              fiber: Math.round(food.nutrition?.fiber || 0),
-            })),
+            detailedItems: foods.map((food) => {
+              // 🎯 Extract nutrition values from the corrected food object
+              const nutritionValues = {
+                calories: Math.round(food.nutrition?.calories || food.calories || 0),
+                protein: Math.round(food.nutrition?.protein || food.protein || 0),
+                carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
+                fat: Math.round(food.nutrition?.fat || food.fat || 0),
+                fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+              };
+              
+              console.log(`📊 [App.js] Mapping food "${food.name}" to detailedItem:`);
+              console.log(`   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`);
+              console.log(`   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`);
+              console.log(`   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`);
+              
+              return {
+                name: food.name,
+                originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
+                wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
+                correctionSource: food.correctionSource,  // 🔴 Track correction source
+                correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
+                portionDescription: food.portion || "Unknown portion",
+                estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
+                unit: food.unit || (food.volume_ml ? "ml" : "g"),
+                isLiquid: food.isLiquid || false,
+                // Store nutrition values at TOP LEVEL (for backward compatibility)
+                ...nutritionValues,
+                // ALSO store in nutrition object (for NutritionCard's item.nutrition?.calories pattern)
+                nutrition: nutritionValues,
+              };
+            }),
           };
         } else {
           // Fallback: No food data extracted, show specific actionable error

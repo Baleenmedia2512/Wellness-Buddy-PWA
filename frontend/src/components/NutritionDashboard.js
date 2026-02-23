@@ -75,6 +75,20 @@ const NutritionDashboard = ({
   useEffect(() => {
     if (selectedMeal) {
       const foodData = parseAnalysisData(selectedMeal.AnalysisData);
+      
+      // 🔍 DEBUG: Log what we're loading from database
+      console.log("🔍 [NutritionDashboard] Loading from database:", {
+        foods: foodData.detailedItems?.map(item => ({
+          name: item.name,
+          weight_g: item.weight_g,
+          volume_ml: item.volume_ml,
+          grams: item.grams,
+          unit: item.unit,
+          isLiquid: item.isLiquid,
+          portion: item.portion
+        }))
+      });
+      
       // Transform database format to EditableFoodItem expected format
       const transformedItems = (foodData.detailedItems || []).map((item) => {
         // Auto-detect liquids from name if not explicitly set (for backwards compatibility)
@@ -104,22 +118,29 @@ const NutritionDashboard = ({
           nameToCheck.includes(keyword),
         );
 
-        // Determine if this is a liquid food
+        // Determine if this is a liquid food - check both explicit flag and volume_ml presence
         const isLiquid =
-          item.isLiquid || (item.volume_ml ? true : false) || isLiquidByName;
-        const unit =
-          item.unit || (item.volume_ml ? "ml" : isLiquid ? "ml" : "g");
+          item.isLiquid === true || 
+          (item.volume_ml !== null && item.volume_ml !== undefined) || 
+          isLiquidByName;
+        
+        // ✅ Get the correct value based on liquid/solid
+        const actualGrams = isLiquid 
+          ? (item.volume_ml || item.grams || item.weight_g || 100)
+          : (item.weight_g || item.grams || item.volume_ml || 100);
+        
+        const unit = item.unit || (isLiquid ? "ml" : "g");
 
         const transformed = {
           ...item,
           serving: {
             description: item.portion,
-            grams: item.weight_g || item.volume_ml || item.grams || 100,
+            grams: actualGrams,
             unit: unit,
             isLiquid: isLiquid,
           },
           portionDescription: item.portion,
-          grams: item.weight_g || item.volume_ml || item.grams || 100,
+          grams: actualGrams,
           unit: unit,
           isLiquid: isLiquid,
           // 🔴 CRITICAL: Preserve correction metadata if it exists
@@ -220,19 +241,27 @@ const NutritionDashboard = ({
 
       // Determine if this is a liquid food
       const isLiquid =
-        item.isLiquid || (item.volume_ml ? true : false) || isLiquidByName;
-      const unit = item.unit || (item.volume_ml ? "ml" : isLiquid ? "ml" : "g");
+        item.isLiquid === true || 
+        (item.volume_ml !== null && item.volume_ml !== undefined) || 
+        isLiquidByName;
+      
+      // ✅ Get the correct value based on liquid/solid  
+      const actualGrams = isLiquid 
+        ? (item.volume_ml || item.grams || item.weight_g || 100)
+        : (item.weight_g || item.grams || item.volume_ml || 100);
+      
+      const unit = item.unit || (isLiquid ? "ml" : "g");
 
       return {
         ...item,
         serving: {
           description: item.portion,
-          grams: item.weight_g || item.volume_ml || item.grams || 100,
+          grams: actualGrams,
           unit: unit,
           isLiquid: isLiquid,
         },
         portionDescription: item.portion,
-        grams: item.weight_g || item.volume_ml || item.grams || 100,
+        grams: actualGrams,
         unit: unit,
         isLiquid: isLiquid,
         // 🔴 CRITICAL: Preserve correction metadata if it exists

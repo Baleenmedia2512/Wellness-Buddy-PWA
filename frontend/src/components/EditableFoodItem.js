@@ -80,6 +80,9 @@ const EditableFoodItem = forwardRef(
     // Track if Phase 2 instant save is in progress (prevents Phase 1 from interfering)
     const isInstantSavingRef = useRef(false);
 
+    // Track if correction has been saved (to avoid duplicate saves)
+    const correctionSavedRef = useRef(false);
+
     // Phase 3: Sync status indicator
     const [syncStatus, setSyncStatus] = useState("idle"); // idle|syncing|saved|error|retrying
     const syncStatusTimeoutRef = useRef(null);
@@ -584,6 +587,9 @@ const EditableFoodItem = forwardRef(
       setSelectedFood(null);
       setServingOptions([]);
       setSearchError(null); // Clear errors when typing
+      
+      // Reset correction saved flag to allow saving the new food name
+      correctionSavedRef.current = false;
 
       // Trigger debounced search
       debouncedSearch(value);
@@ -597,38 +603,50 @@ const EditableFoodItem = forwardRef(
         originalFoodRef.current?.name,
       );
       console.log("[CORRECTION DEBUG] New food selected:", food.name);
+      console.log("\n🔍 [GRAM/ML DEBUG] Selected food properties:");
+      console.log("   - food.name:", food.name);
+      console.log("   - food.isLiquid:", food.isLiquid);
+      console.log("   - food.unit:", food.unit);
+      console.log("   - food.defaultServing:", food.defaultServing);
+      console.log("   - food.per100g:", food.per100g);
 
       setSelectedFood(food);
       setSearchQuery(food.name);
       setSearchResults([]);
 
-      // Track food correction if name changed
+      // Mark that name has changed - correction will be saved in handleAutoSave with final nutrition data
+      const originalName = originalFoodRef.current?.name;
+      const newName = food.name;
+      
+      if (
+        originalName &&
+        newName &&
+        originalName.trim().toLowerCase() !== newName.trim().toLowerCase()
+      ) {
+        console.log("[CORRECTION DEBUG] ✅ Name changed - will save correction after serving adjustment");
+        correctionSavedRef.current = false; // Reset to allow saving in handleAutoSave
+      }
+
+      // Get userId and cache it for later use in handleAutoSave
       try {
-        const originalName = originalFoodRef.current?.name;
-        const newName = food.name;
-
-        // Check if user changed the food name
-        if (
-          originalName &&
-          newName &&
-          originalName.trim().toLowerCase() !== newName.trim().toLowerCase()
-        ) {
-          console.log("[CORRECTION DEBUG] ✅ Name changed - saving correction");
-
-          // Get userId (use cache first, then fetch if needed)
-          let userId = userIdRef.current || user?.id;
-          if (!userId && user) {
-            console.log("[CORRECTION DEBUG] Fetching userId from database...");
-            const { getUserId } = await import("../services/getUserId");
-            userId = await getUserId(user);
-            // Cache it for future use
-            if (userId) {
-              userIdRef.current = userId;
-            }
-          }
-          console.log("[CORRECTION DEBUG] User ID:", userId);
-
+        if (!userIdRef.current && user) {
+          console.log("[CORRECTION DEBUG] Caching userId for later...");
+          const { getUserId } = await import("../services/getUserId");
+          const userId = await getUserId(user);
           if (userId) {
+            userIdRef.current = userId;
+          }
+        }
+      } catch (error) {
+        console.error("[CORRECTION DEBUG] Failed to cache userId:", error);
+      }
+
+      // REMOVED: Correction save moved to handleAutoSave
+      // The old code saved correction here without nutrition data
+      // Now it will save in handleAutoSave with final serving size and nutrition
+      
+      /* DISABLED - Old correction save code (moved to handleAutoSave)
+      {
             // 🔗 CORRECTION CHAIN SUPPORT - CRITICAL FIX
             // ALWAYS use the ORIGINAL AI name, never use auto-corrected name
             // This prevents correction chains from breaking
@@ -778,9 +796,8 @@ const EditableFoodItem = forwardRef(
           console.log("💾 No correction saved to database");
           console.log("=======================================");
         }
-      } catch (error) {
-        console.error("[CORRECTION DEBUG] ❌ Exception:", error);
-      }
+      } 
+      END OF DISABLED CODE BLOCK */
 
       // Generate serving options locally using our consistent logic
       // IMPORTANT: Preserve the user's existing unit if they already have a value entered
@@ -870,6 +887,12 @@ const EditableFoodItem = forwardRef(
 
       setServingOptions(options);
 
+      console.log("\n🍽️ [GRAM/ML DEBUG] Generated", options.length, "serving options:");
+      options.slice(0, 3).forEach((opt, idx) => {
+        console.log(`   [${idx}]:`, opt.description, "-", opt.grams, "g/ml");
+      });
+      if (options.length > 3) console.log("   ... and", options.length - 3, "more options");
+
       // Find the closest serving option to the existing weight (for display purposes)
       if (hasExistingWeight) {
         const closestIndex = options.reduce((closestIdx, opt, idx) => {
@@ -882,12 +905,14 @@ const EditableFoodItem = forwardRef(
 
         setCurrentServing(options[closestIndex]);
         setCurrentServingIndex(closestIndex);
+        console.log("   ✅ Kept existing weight:", existingGrams, "g/ml (closest option index:", closestIndex, ")");
         // Keep the existing customGrams value - DO NOT override it
       } else {
         // Fallback to default serving only if no valid existing weight
         setCurrentServing(options[0]);
         setCurrentServingIndex(0);
         setCustomGrams(options[0].grams.toString());
+        console.log("   ✅ Set default serving:", options[0].description, "-", options[0].grams, "g/ml");
       }
 
       // Phase 2: Instant save when food is selected (no delay)
@@ -909,6 +934,10 @@ const EditableFoodItem = forwardRef(
             ? existingGrams.toString()
             : options[0].grams.toString();
 
+        console.log("\n🚀 [GRAM/ML DEBUG] Instant save triggered:");
+        console.log("   - gramsToUse:", gramsToUse);
+        console.log("   - Food:", food.name);
+
         handleAutoSave(food, gramsToUse);
 
         // Reset flag after save completes
@@ -920,16 +949,36 @@ const EditableFoodItem = forwardRef(
 
     // Handle custom grams input
     const handleGramsChange = (e) => {
-      const value = e.target.value;
+      let value = e.target.value;
+
+      console.log("\n⌨️ [GRAM/ML DEBUG] User typing in input:");
+      console.log("   - Raw input value:", value);
+      console.log("   - Previous customGrams:", customGrams);
+
+      // Strip any non-numeric characters except decimal point
+      value = value.replace(/[^0-9.]/g, '');
+      
+      // Ensure only one decimal point
+      const parts = value.split('.');
+      if (parts.length > 2) {
+        value = parts[0] + '.' + parts.slice(1).join('');
+      }
+
+      console.log("   - Sanitized value:", value);
 
       // Allow only numbers and decimal point
       if (value === "" || /^\d*\.?\d*$/.test(value)) {
         setCustomGrams(value);
+        console.log("   ✅ Valid input - customGrams updated to:", value);
 
         // Phase 1: Mark that user made a change
         hasUserChangesRef.current = true;
+        
+        // Reset correction saved flag to allow saving the new quantity
+        correctionSavedRef.current = false;
 
         const gramsValue = parseFloat(value);
+        console.log("   - Parsed gramsValue:", gramsValue, "(Type:", typeof gramsValue, ")");
 
         if (!isNaN(gramsValue) && servingOptions.length > 0) {
           // Check if grams exactly match any serving option (within 1g tolerance)
@@ -941,6 +990,8 @@ const EditableFoodItem = forwardRef(
             // Exact match found - update serving display to match
             setCurrentServing(servingOptions[exactMatchIndex]);
             setCurrentServingIndex(exactMatchIndex);
+            console.log("   🎯 Exact match found at index:", exactMatchIndex);
+            console.log("      - Serving:", servingOptions[exactMatchIndex].description);
           } else {
             // Find closest serving option for display only
             // IMPORTANT: Never override customGrams - let user type any value
@@ -957,9 +1008,135 @@ const EditableFoodItem = forwardRef(
 
             setCurrentServing(servingOptions[closestIndex]);
             setCurrentServingIndex(closestIndex);
+            console.log("   🔍 Closest match at index:", closestIndex);
+            console.log("      - Serving:", servingOptions[closestIndex].description);
             // customGrams is already set above - don't override it
           }
+        } else {
+          console.log("   ⚠️ No valid gramsValue or no serving options available");
         }
+      } else {
+        console.log("   ❌ Invalid input - not updating customGrams");
+      }
+    };
+
+    // Save food correction with final nutrition data
+    const saveCorrectionIfNeeded = async (updatedFood) => {
+      // Skip if already saved (flag is reset when user makes new changes)
+      if (correctionSavedRef.current) {
+        console.log("[CORRECTION DEBUG] ⏭️ Skipping - already saved (will reset if user makes new changes)");
+        return;
+      }
+
+      const originalName = originalFoodRef.current?.name;
+      const newName = updatedFood.name;
+      const originalGrams = originalFoodRef.current?.grams || originalFoodRef.current?.serving?.grams;
+      const newGrams = updatedFood.grams || updatedFood.serving?.grams;
+      const originalUnit = originalFoodRef.current?.unit || originalFoodRef.current?.serving?.unit;
+      const newUnit = updatedFood.unit || updatedFood.serving?.unit;
+
+      console.log("\n🔍 [CORRECTION CHECK] Comparing values:");
+      console.log("   📝 Name: ", originalName, "→", newName);
+      console.log("   ⚖️ Weight/Volume:", originalGrams, originalUnit, "→", newGrams, newUnit);
+
+      // Check if user changed the food name OR weight/volume
+      const nameChanged = originalName && newName && 
+        originalName.trim().toLowerCase() !== newName.trim().toLowerCase();
+      const weightChanged = originalGrams && newGrams && 
+        Math.abs(originalGrams - newGrams) > 0.5; // Changed by more than 0.5 units
+
+      console.log("   🔄 Name changed:", nameChanged);
+      console.log("   🔄 Weight changed:", weightChanged);
+      console.log("      - Original:", originalGrams, originalUnit);
+      console.log("      - New:", newGrams, newUnit);
+      console.log("      - Difference:", Math.abs(originalGrams - newGrams));
+
+      if (!nameChanged && !weightChanged) {
+        console.log("   ❌ No changes detected - skipping correction save");
+        return; // Nothing changed
+      }
+
+      // Get userId
+      const userId = userIdRef.current || user?.id;
+      if (!userId) {
+        console.warn("[CORRECTION DEBUG] No userId available for saving correction");
+        return;
+      }
+
+      try {
+        console.log("\n💾 [CORRECTION DEBUG] Saving correction with final nutrition data...");
+        console.log("   - Name changed:", nameChanged);
+        console.log("   - Weight changed:", weightChanged, `(${originalGrams}${originalUnit} → ${newGrams}${newUnit})`);
+
+        // Determine original AI detected name (preserve correction chain)
+        let aiDetectedName =
+          originalFoodRef.current?.originalAiName ||
+          foodItem.originalAiName ||
+          originalFoodRef.current?.correctionMetadata?.aiDetected ||
+          foodItem.correctionMetadata?.aiDetected;
+
+        if (!aiDetectedName && (originalFoodRef.current?.wasAutoCorrected || foodItem.wasAutoCorrected)) {
+          console.error("🚨 CRITICAL ERROR: Auto-corrected item has NO originalAiName!");
+          aiDetectedName = originalName;
+        } else if (!aiDetectedName) {
+          aiDetectedName = originalName;
+        }
+
+        // Use new name if changed, otherwise use original name
+        const userCorrectedName = nameChanged ? newName : originalName;
+
+        console.log("\n✏️ ========== USER CORRECTION (FINAL) ==========");
+        console.log("🔴 Original AI Detection:", aiDetectedName);
+        console.log("🟢 User Corrected To:", userCorrectedName);
+        console.log("⚖️ Weight/Volume Change:", `${originalGrams}${originalUnit} → ${newGrams}${newUnit}`);
+        console.log("👤 User ID:", userId);
+        console.log("\n🔍 [GRAM/ML DEBUG] updatedFood structure:");
+        console.log("   - updatedFood.grams:", updatedFood.grams);
+        console.log("   - updatedFood.unit:", updatedFood.unit);
+        console.log("   - updatedFood.isLiquid:", updatedFood.isLiquid);
+        console.log("   - updatedFood.serving?.grams:", updatedFood.serving?.grams);
+        console.log("   - updatedFood.serving?.unit:", updatedFood.serving?.unit);
+        console.log("   - updatedFood.serving?.isLiquid:", updatedFood.serving?.isLiquid);
+        console.log("   - updatedFood.nutrition:", updatedFood.nutrition);
+
+        // Build corrected nutrition data from final updatedFood
+        const correctedData = {
+          correctedQuantity: updatedFood.grams || updatedFood.serving?.grams,
+          correctedUnit: updatedFood.unit || updatedFood.serving?.unit,
+          correctedCalories: updatedFood.nutrition?.calories,
+          correctedCarbs: updatedFood.nutrition?.carbs,
+          correctedProtein: updatedFood.nutrition?.protein,
+          correctedFat: updatedFood.nutrition?.fat,
+          correctedFiber: updatedFood.nutrition?.fiber,
+        };
+
+        console.log("\n📊 [GRAM/ML DEBUG] Corrected Nutrition Data to be saved:");
+        console.log("   - correctedQuantity:", correctedData.correctedQuantity, "(Type:", typeof correctedData.correctedQuantity, ")");
+        console.log("   - correctedUnit:", correctedData.correctedUnit);
+        console.log("   - correctedCalories:", correctedData.correctedCalories);
+        console.log("   - correctedCarbs:", correctedData.correctedCarbs);
+        console.log("   - correctedProtein:", correctedData.correctedProtein);
+        console.log("   - correctedFat:", correctedData.correctedFat);
+        console.log("   - correctedFiber:", correctedData.correctedFiber);
+
+        // Save correction
+        const { saveFoodCorrection } = await import("../services/foodCorrectionService");
+        const response = await saveFoodCorrection(userId, aiDetectedName, userCorrectedName, correctedData);
+
+        if (response.success) {
+          console.log("✅ Food correction saved with nutrition:", response.message);
+          correctionSavedRef.current = true; // Mark as saved
+
+          // Refresh user context
+          const { getUserContext } = await import("../services/userContextService");
+          getUserContext(userId)
+            .then(() => console.log("✅ User context refreshed"))
+            .catch((error) => console.error("❌ Failed to refresh context:", error));
+        }
+
+        console.log("===============================================\n");
+      } catch (error) {
+        console.error("[CORRECTION DEBUG] ❌ Failed to save correction:", error);
       }
     };
 
@@ -972,12 +1149,21 @@ const EditableFoodItem = forwardRef(
     ) => {
       const gramsToUse = overrideGrams || customGrams;
 
+      console.log("\n💾 [GRAM/ML DEBUG] handleAutoSave called:");
+      console.log("   - overrideGrams:", overrideGrams);
+      console.log("   - customGrams:", customGrams);
+      console.log("   - gramsToUse:", gramsToUse);
+
       if (!gramsToUse) {
+        console.log("   ❌ No grams to use - aborting save");
         return;
       }
 
       const grams = parseFloat(gramsToUse);
+      console.log("   - Parsed grams:", grams, "(Type:", typeof grams, ")");
+      
       if (isNaN(grams) || grams <= 0) {
+        console.log("   ❌ Invalid grams value - aborting save");
         return;
       }
 
@@ -987,7 +1173,11 @@ const EditableFoodItem = forwardRef(
           name: foodItem.name,
           category: foodItem.category,
           per100g: foodItem.per100g,
+          isLiquid: foodItem.isLiquid || false,
         };
+
+      console.log("   - foodToSave.name:", foodToSave.name);
+      console.log("   - foodToSave.isLiquid:", foodToSave.isLiquid);
 
       // Validate per100g exists
       if (!foodToSave.per100g) {
@@ -998,8 +1188,13 @@ const EditableFoodItem = forwardRef(
 
       // Calculate final nutrition
       const nutrition = calculateNutrition(foodToSave.per100g, grams);
+      console.log("   - Calculated nutrition for", grams, "grams:", nutrition);
 
-      const unit = foodToSave.unit || (foodToSave.isLiquid ? "ml" : "g");
+      // ✅ Determine unit based on isLiquid flag (prioritize this over stored unit)
+      const isLiquid = foodToSave.isLiquid || false;
+      const unit = isLiquid ? "ml" : "g";
+      console.log("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
+      
       const updatedFood = {
         name: foodToSave.name,
         category: foodToSave.category,
@@ -1010,11 +1205,11 @@ const EditableFoodItem = forwardRef(
             `${grams}${unit}`,
           grams: grams,
           unit: unit,
-          isLiquid: foodToSave.isLiquid || false,
+          isLiquid: isLiquid,
         },
         grams: grams,
         unit: unit,
-        isLiquid: foodToSave.isLiquid || false,
+        isLiquid: isLiquid,
         nutrition: nutrition,
         per100g: foodToSave.per100g,
         // 🔴 CRITICAL: Preserve originalAiName and correction metadata
@@ -1023,6 +1218,16 @@ const EditableFoodItem = forwardRef(
         correctionSource: foodItem.correctionSource || null,
         correctionMetadata: foodItem.correctionMetadata || null,
       };
+
+      console.log("\n📦 [GRAM/ML DEBUG] Final updatedFood object:");
+      console.log("   - updatedFood.grams:", updatedFood.grams);
+      console.log("   - updatedFood.unit:", updatedFood.unit);
+      console.log("   - updatedFood.isLiquid:", updatedFood.isLiquid);
+      console.log("   - updatedFood.serving.grams:", updatedFood.serving.grams);
+      console.log("   - updatedFood.serving.unit:", updatedFood.serving.unit);
+      console.log("   - updatedFood.serving.isLiquid:", updatedFood.serving.isLiquid);
+      console.log("   - updatedFood.serving.description:", updatedFood.serving.description);
+      console.log("   - updatedFood.nutrition:", updatedFood.nutrition);
 
       try {
         // Phase 7: Cancel any pending save request
@@ -1040,6 +1245,9 @@ const EditableFoodItem = forwardRef(
         );
 
         await Promise.race([onUpdate(index, updatedFood), timeoutPromise]);
+
+        // Success - now save the correction with final nutrition data
+        await saveCorrectionIfNeeded(updatedFood);
 
         // Success - reset retry count and show saved status
         setRetryCount(0);
@@ -1115,6 +1323,7 @@ const EditableFoodItem = forwardRef(
       // Reset change tracking
       hasUserChangesRef.current = false;
       isInstantSavingRef.current = false;
+      correctionSavedRef.current = false; // Reset for next edit
       setRetryCount(0);
 
       // Exit edit mode
@@ -1146,6 +1355,7 @@ const EditableFoodItem = forwardRef(
 
       // Phase 1: Reset change tracking
       hasUserChangesRef.current = false;
+      correctionSavedRef.current = false; // Reset on cancel
       setRetryCount(0);
 
       setIsEditing(false);
@@ -1168,6 +1378,34 @@ const EditableFoodItem = forwardRef(
 
       // Phase 1: Reset change tracking when entering edit mode
       hasUserChangesRef.current = false;
+      correctionSavedRef.current = false; // Reset to allow saving corrections again
+
+      // ✅ CRITICAL: Capture original values FIRST before any modifications
+      const originalGrams = foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight || 100;
+      const originalUnit = foodItem.unit || foodItem.serving?.unit || 'g';
+      
+      // Capture originalAiName
+      let originalAiName = 
+        foodItem.originalAiName || 
+        foodItem.correctionMetadata?.aiDetected ||
+        foodItem.name;
+      
+      originalFoodRef.current = { 
+        ...foodItem,
+        name: foodItem.name,
+        originalAiName: originalAiName,
+        wasAutoCorrected: foodItem.wasAutoCorrected || false,
+        correctionSource: foodItem.correctionSource || null,
+        grams: originalGrams,
+        unit: originalUnit,
+      };
+      
+      console.log("🔍 [EDIT MODE] Captured original values:", {
+        name: originalFoodRef.current.name,
+        grams: originalFoodRef.current.grams,
+        unit: originalFoodRef.current.unit,
+        originalAiName: originalFoodRef.current.originalAiName,
+      });
 
       // Debug: Log foodItem to see what data we have
       console.log("🔍 [EditableFoodItem] handleEdit - foodItem:", {
@@ -1260,43 +1498,7 @@ const EditableFoodItem = forwardRef(
       setCurrentServing(originalServing);
       setCurrentServingIndex(originalIndexFinal);
 
-      // ✅ CRITICAL FIX: Preserve originalAiName for correction chain support
-      // This ensures we always save corrections against the TRUE AI-detected name
-      
-      // 🔍 DEBUG: Log what we receive from parent (with defaults)
-      const hasMetadata = foodItem.originalAiName !== undefined;
-      console.log("🔍 [INIT] EditableFoodItem initialization:");
-      console.log("   foodItem.name:", foodItem.name);
-      console.log("   foodItem.originalAiName:", foodItem.originalAiName || "(not set - will reverse-lookup)");
-      console.log("   foodItem.wasAutoCorrected:", foodItem.wasAutoCorrected ?? "(not set)");
-      console.log("   foodItem.correctionMetadata:", foodItem.correctionMetadata || "(not set)");
-      console.log("   hasMetadata:", hasMetadata ? "✅ Yes" : "⚠️ No (likely loaded from old database record)");
-      
-      // CRITICAL: Get originalAiName from multiple sources
-      // Priority: 1) foodItem.originalAiName, 2) correctionMetadata, 3) current name as fallback
-      let originalAiName = 
-        foodItem.originalAiName || 
-        foodItem.correctionMetadata?.aiDetected ||
-        foodItem.name;  // Fallback to current name
-      
-      console.log("✅ [INIT] Using originalAiName:", originalAiName);
-      console.log("   hasMetadata:", hasMetadata ? "Yes" : "No (using fallback)");
-      
-      console.log("   ✅ USING originalAiName:", originalAiName);
-      
-      originalFoodRef.current = { 
-        ...foodItem,
-        // Ensure originalAiName is preserved (set during auto-correction in App.js)
-        originalAiName: originalAiName,
-        wasAutoCorrected: foodItem.wasAutoCorrected || false,
-        correctionSource: foodItem.correctionSource || null,
-      };
-      
-      console.log("🔍 [EditableFoodItem] Initialized originalFoodRef:", {
-        name: originalFoodRef.current.name,
-        originalAiName: originalFoodRef.current.originalAiName,
-        wasAutoCorrected: originalFoodRef.current.wasAutoCorrected,
-      });
+      // Note: originalFoodRef.current is already set at the start of handleEdit
     };
 
     // Display mode
@@ -1306,8 +1508,8 @@ const EditableFoodItem = forwardRef(
         foodItem.grams ||
         foodItem.estimatedWeight ||
         "";
-      const unit = foodItem.unit || foodItem.serving?.unit || "g";
       const isLiquid = foodItem.isLiquid || foodItem.serving?.isLiquid || false;
+      const unit = isLiquid ? "ml" : "g";
 
       let servingDesc =
         foodItem.serving?.description || foodItem.portionDescription || "";
@@ -1719,8 +1921,17 @@ const EditableFoodItem = forwardRef(
             <div className="relative">
               <input
                 type="text"
+                inputMode="decimal"
+                pattern="[0-9]*\.?[0-9]*"
                 value={customGrams}
                 onChange={handleGramsChange}
+                onPaste={(e) => {
+                  e.preventDefault();
+                  const pastedText = e.clipboardData.getData('text');
+                  const sanitized = pastedText.replace(/[^0-9.]/g, '');
+                  e.target.value = sanitized;
+                  handleGramsChange(e);
+                }}
                 onContextMenu={(e) => e.preventDefault()}
                 placeholder={
                   selectedFood?.isLiquid ? "Enter ml" : "Enter grams"
@@ -1728,7 +1939,7 @@ const EditableFoodItem = forwardRef(
                 className="w-full px-3 py-2 pr-10 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-blue-500 focus:border-blue-500 transition-colors"
               />
               <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">
-                {selectedFood?.unit || (selectedFood?.isLiquid ? "ml" : "g")}
+                {selectedFood?.isLiquid ? "ml" : "g"}
               </span>
             </div>
           </div>
@@ -1740,7 +1951,7 @@ const EditableFoodItem = forwardRef(
                 <Utensils className="w-3.5 h-3.5 text-gray-500" />
                 <span>
                   Preview ({customGrams}
-                  {selectedFood?.unit || (selectedFood?.isLiquid ? "ml" : "g")})
+                  {selectedFood?.isLiquid ? "ml" : "g"})
                 </span>
               </label>
               {(() => {

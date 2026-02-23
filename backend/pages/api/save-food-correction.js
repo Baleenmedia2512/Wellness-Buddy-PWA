@@ -95,6 +95,22 @@ export default async function handler(req, res) {
       if (correctedFat !== undefined) updateData.CorrectedFat = correctedFat;
       if (correctedFiber !== undefined) updateData.CorrectedFiber = correctedFiber;
       
+      console.log("\n📊 ============ DATABASE UPDATE ============");
+      console.log("📋 TABLE: food_corrections_table");
+      console.log("🔄 ACTION: UPDATE");
+      console.log("🆔 Record ID:", existingCorrection.Id);
+      console.log("\n📝 BEFORE (existing values):");
+      console.log("   - CorrectedQuantity:", existingCorrection.CorrectedQuantity);
+      console.log("   - CorrectedUnit:", existingCorrection.CorrectedUnit);
+      console.log("   - CorrectedCalories:", existingCorrection.CorrectedCalories);
+      console.log("   - TimesCorrected:", existingCorrection.TimesCorrected);
+      console.log("\n📝 AFTER (new values):");
+      console.log("   - CorrectedQuantity:", correctedQuantity);
+      console.log("   - CorrectedUnit:", correctedUnit);
+      console.log("   - CorrectedCalories:", correctedCalories);
+      console.log("   - TimesCorrected:", newCount);
+      console.log("\n💾 Executing UPDATE query...");
+      
       const { data: updatedData, error: updateError } = await supabase
         .from("food_corrections_table")
         .update(updateData)
@@ -107,11 +123,13 @@ export default async function handler(req, res) {
       result = { insertId: updatedData?.Id };
       action = "updated";
 
-      console.log("♻️ BACKEND: UPDATED Existing Correction");
+      console.log("✅ UPDATE SUCCESS!");
       console.log("   → Record ID:", updatedData?.Id);
       console.log("   → Times Corrected:", newCount);
       console.log("   → AI Detected:", aiDetected);
-      console.log("   → User Corrected:", userCorrected, `(${correctedQuantity} ${correctedUnit})`);
+      console.log("   → User Corrected:", userCorrected);
+      console.log("   → Weight/Volume:", correctedQuantity, correctedUnit);
+      console.log("==========================================\n");
 
       res.status(200).json({
         success: true,
@@ -124,6 +142,22 @@ export default async function handler(req, res) {
       });
     } else {
       // ➕ INSERT: New correction (different user or different target)
+      console.log("\n📊 ============ DATABASE INSERT ============");
+      console.log("📋 TABLE: food_corrections_table");
+      console.log("🆕 ACTION: INSERT (New Correction)");
+      console.log("\n📝 Data to be inserted:");
+      console.log("   - UserId:", userId);
+      console.log("   - AiDetected:", aiDetected);
+      console.log("   - UserCorrected:", userCorrected);
+      console.log("   - CorrectedQuantity:", correctedQuantity);
+      console.log("   - CorrectedUnit:", correctedUnit);
+      console.log("   - CorrectedCalories:", correctedCalories);
+      console.log("   - CorrectedProtein:", correctedProtein);
+      console.log("   - CorrectedCarbs:", correctedCarbs);
+      console.log("   - CorrectedFat:", correctedFat);
+      console.log("   - CorrectedFiber:", correctedFiber);
+      console.log("\n💾 Executing INSERT query...");
+      
       const insertData = {
         UserId: userId,
         AiDetected: aiDetected,
@@ -154,11 +188,17 @@ export default async function handler(req, res) {
       result = { insertId: insertedData?.Id };
       action = "created";
 
-      console.log("✅ BACKEND: NEW Correction SAVED to database");
-      console.log("   → New Correction ID:", insertedData?.Id);
+      console.log("✅ INSERT SUCCESS!");
+      console.log("   → New Record ID:", insertedData?.Id);
       console.log("   → AI Detected:", aiDetected);
-      console.log("   → User Corrected:", userCorrected, `(${correctedQuantity} ${correctedUnit}, ${correctedFoodType})`);
-      console.log("   → Nutrition:", { calories: correctedCalories, carbs: correctedCarbs });
+      console.log("   → User Corrected:", userCorrected);
+      console.log("   → Weight/Volume:", correctedQuantity, correctedUnit);
+      console.log("   → Calories:", correctedCalories);
+      console.log("   → Protein:", correctedProtein);
+      console.log("   → Carbs:", correctedCarbs);
+      console.log("   → Fat:", correctedFat);
+      console.log("   → Fiber:", correctedFiber);
+      console.log("==========================================\n");
 
       res.status(201).json({
         success: true,

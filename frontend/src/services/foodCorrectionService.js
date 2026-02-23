@@ -107,8 +107,31 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
     console.log("      - UserId:", userId);
     console.log("      - AiDetected:", aiDetected.trim());
     console.log("      - UserCorrected:", userCorrected.trim());
-    if (correctedData.correctedQuantity) {
-      console.log("      - Corrected:", correctedData.correctedQuantity, correctedData.correctedUnit, `(${correctedData.correctedCalories} cal)`);
+    console.log("\n   🔍 [GRAM/ML DEBUG] Corrected nutrition data being sent:");
+    if (correctedData.correctedQuantity !== undefined) {
+      console.log("      - CorrectedQuantity:", correctedData.correctedQuantity, "(Type:", typeof correctedData.correctedQuantity, ")");
+    } else {
+      console.log("      - CorrectedQuantity: ❌ MISSING/UNDEFINED");
+    }
+    if (correctedData.correctedUnit !== undefined) {
+      console.log("      - CorrectedUnit:", correctedData.correctedUnit);
+    } else {
+      console.log("      - CorrectedUnit: ❌ MISSING/UNDEFINED");
+    }
+    if (correctedData.correctedCalories !== undefined) {
+      console.log("      - CorrectedCalories:", correctedData.correctedCalories);
+    }
+    if (correctedData.correctedCarbs !== undefined) {
+      console.log("      - CorrectedCarbs:", correctedData.correctedCarbs);
+    }
+    if (correctedData.correctedProtein !== undefined) {
+      console.log("      - CorrectedProtein:", correctedData.correctedProtein);
+    }
+    if (correctedData.correctedFat !== undefined) {
+      console.log("      - CorrectedFat:", correctedData.correctedFat);
+    }
+    if (correctedData.correctedFiber !== undefined) {
+      console.log("      - CorrectedFiber:", correctedData.correctedFiber);
     }
     console.log("==========================================\n");
 
@@ -386,7 +409,9 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
             `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`
         );
 
-        // Apply nutrition corrections if available
+        // 🎯 Apply EXACT corrected values from database (name, quantity, nutrition)
+        // This ensures consistent user experience - what they corrected is what everyone sees
+        
         const correctedFood = {
           ...food,
           name: correction.correctedName,
@@ -398,32 +423,95 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
             userCorrected: correction.correctedName,
             finalDisplay: correction.correctedName,
             userCount: correction.userCount
-          }
+          },
+          // Ensure per100g is explicitly preserved
+          per100g: food.per100g || food.defaultServing?.per100g
         };
 
-        // Apply corrected nutrition values if provided in correction
+        // Apply corrected weight/volume if available AND recalculate nutrition
         if (correction.correctedQuantity !== undefined && correction.correctedQuantity !== null) {
+          const isLiquid = correction.correctedUnit === 'ml';
           correctedFood.quantity = correction.correctedQuantity;
-          console.log(`   📊 Quantity: ${food.quantity || 'N/A'} → ${correction.correctedQuantity}`);
+          correctedFood.grams = correction.correctedQuantity;
+          correctedFood.weight_g = isLiquid ? null : correction.correctedQuantity;
+          correctedFood.volume_ml = isLiquid ? correction.correctedQuantity : null;
+          
+          // Update serving object
+          if (correctedFood.serving) {
+            correctedFood.serving.grams = correction.correctedQuantity;
+            correctedFood.serving.unit = correction.correctedUnit || (isLiquid ? 'ml' : 'g');
+            correctedFood.serving.isLiquid = isLiquid;
+          } else {
+            correctedFood.serving = {
+              grams: correction.correctedQuantity,
+              unit: correction.correctedUnit || (isLiquid ? 'ml' : 'g'),
+              isLiquid: isLiquid,
+              description: `${correction.correctedQuantity}${correction.correctedUnit || (isLiquid ? 'ml' : 'g')}`
+            };
+          }
+          
+          console.log(`   ⚖️ Weight/Volume: ${food.quantity || food.grams || 'N/A'} → ${correction.correctedQuantity}${correction.correctedUnit || 'g'}`);
         }
+        
         if (correction.correctedUnit) {
           correctedFood.unit = correction.correctedUnit;
+          correctedFood.isLiquid = correction.correctedUnit === 'ml';
         }
+        
+        // 🎯 Apply EXACT corrected nutrition values from database (not recalculated)
+        // Initialize nutrition object to ensure it exists
+        if (!correctedFood.nutrition) {
+          correctedFood.nutrition = {};
+        }
+        
+        let nutritionApplied = false;
+        
         if (correction.correctedCalories !== undefined && correction.correctedCalories !== null) {
           correctedFood.calories = correction.correctedCalories;
-          console.log(`   🔥 Calories: ${food.calories || 'N/A'} → ${correction.correctedCalories}`);
+          correctedFood.nutrition.calories = correction.correctedCalories;
+          nutritionApplied = true;
+          console.log(`   🔥 Calories: ${food.calories || 'N/A'} → ${correction.correctedCalories} (from DB)`);
         }
+        
         if (correction.correctedCarbs !== undefined && correction.correctedCarbs !== null) {
           correctedFood.carbs = correction.correctedCarbs;
+          correctedFood.nutrition.carbs = correction.correctedCarbs;
+          nutritionApplied = true;
+          console.log(`   🌾 Carbs: ${food.carbs || 'N/A'} → ${correction.correctedCarbs}g (from DB)`);
         }
+        
         if (correction.correctedProtein !== undefined && correction.correctedProtein !== null) {
           correctedFood.protein = correction.correctedProtein;
+          correctedFood.nutrition.protein = correction.correctedProtein;
+          nutritionApplied = true;
+          console.log(`   🥩 Protein: ${food.protein || 'N/A'} → ${correction.correctedProtein}g (from DB)`);
         }
+        
         if (correction.correctedFat !== undefined && correction.correctedFat !== null) {
           correctedFood.fat = correction.correctedFat;
+          correctedFood.nutrition.fat = correction.correctedFat;
+          nutritionApplied = true;
+          console.log(`   🧈 Fat: ${food.fat || 'N/A'} → ${correction.correctedFat}g (from DB)`);
         }
+        
         if (correction.correctedFiber !== undefined && correction.correctedFiber !== null) {
           correctedFood.fiber = correction.correctedFiber;
+          correctedFood.nutrition.fiber = correction.correctedFiber;
+          nutritionApplied = true;
+          console.log(`   🌿 Fiber: ${food.fiber || 'N/A'} → ${correction.correctedFiber}g (from DB)`);
+        }
+        
+        if (nutritionApplied) {
+          console.log(`   ✅ Applied EXACT corrected nutrition values from database`);
+          console.log(`   📊 Final corrected object:`, JSON.stringify({
+            name: correctedFood.name,
+            calories: correctedFood.calories,
+            carbs: correctedFood.carbs,
+            protein: correctedFood.protein,
+            nutrition: correctedFood.nutrition
+          }, null, 2));
+        } else {
+          console.log(`   ⚠️ No corrected nutrition values in database - keeping AI detected values`);
         }
 
         return correctedFood;
