@@ -131,6 +131,16 @@ const NutritionDashboard = ({
         
         const unit = item.unit || (isLiquid ? "ml" : "g");
 
+        // Calculate per100g if not present (needed for editing)
+        const nutrition = item.nutrition || {};
+        const per100g = item.per100g || {
+          calories: (nutrition.calories || 0) * (100 / actualGrams),
+          protein: (nutrition.protein || 0) * (100 / actualGrams),
+          carbs: (nutrition.carbs || 0) * (100 / actualGrams),
+          fat: (nutrition.fat || 0) * (100 / actualGrams),
+          fiber: (nutrition.fiber || 0) * (100 / actualGrams),
+        };
+
         const transformed = {
           ...item,
           serving: {
@@ -143,6 +153,7 @@ const NutritionDashboard = ({
           grams: actualGrams,
           unit: unit,
           isLiquid: isLiquid,
+          per100g: per100g, // ✅ Add per100g for editing calculations
           // 🔴 CRITICAL: Preserve correction metadata if it exists
           // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
           originalAiName: item.originalAiName || null, // Use null instead of fallback
@@ -208,7 +219,41 @@ const NutritionDashboard = ({
     [],
   );
 
-  // Handle cancel editing
+  // Handle closing edit mode (save changes first)
+  const handleCloseEditing = useCallback(async () => {
+    // Save all editing items before closing
+    setIsSaving(true);
+    
+    try {
+      // Get all item refs and call save() on editing items
+      const savePromises = Object.keys(itemRefs.current).map((index) => {
+        const itemRef = itemRefs.current[index];
+        // Check if this item is currently editing
+        if (itemRef && editingStates[index] && itemRef.save) {
+          console.log(`💾 Saving item ${index} before closing...`);
+          return itemRef.save();
+        }
+        return Promise.resolve();
+      });
+      
+      // Wait for all saves to complete
+      await Promise.all(savePromises);
+      console.log("✅ All items saved successfully");
+      
+    } catch (error) {
+      console.error("❌ Error saving items:", error);
+      // Continue to close even if save fails - items already handle errors
+    } finally {
+      setIsSaving(false);
+    }
+    
+    // Exit edit mode
+    setIsEditing(false);
+    setEditingStates({});
+    setEditingIndex(null);
+  }, [editingStates]);
+
+  // Handle cancel editing (discard changes)
   const handleCancelEditing = useCallback(() => {
     // Reset to original data
     const foodData = parseAnalysisData(selectedMeal.AnalysisData);
@@ -2159,7 +2204,7 @@ const NutritionDashboard = ({
                                 onUpdate={handleFoodUpdate}
                                 onEditingChange={handleEditingChange}
                                 disabled={isEditing && !editingStates[index]}
-                                hideButtons={true}
+                                hideButtons={false}
                                 user={user}
                               />
                             </div>
@@ -2170,55 +2215,7 @@ const NutritionDashboard = ({
                   </div>
 
                   {/* Action buttons area */}
-                  {isEditing ? (
-                    // Close Edit button when editing
-                    <div className="p-4 pt-0">
-                      <button
-                        onClick={handleCancelEditing}
-                        disabled={isSaving}
-                        aria-busy={isSaving}
-                        aria-live="polite"
-                        className={`w-full rounded-lg text-white text-sm font-medium px-4 py-2.5 shadow-sm hover:shadow-md transition-all ${
-                          isSaving
-                            ? "bg-gray-400 cursor-not-allowed opacity-50"
-                            : "bg-indigo-600 hover:bg-indigo-700"
-                        }`}
-                      >
-                        <div className="flex items-center justify-center gap-2 h-5">
-                          {isSaving ? (
-                            <>
-                              <div
-                                className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"
-                                aria-hidden="true"
-                              />
-                              <span className="inline-block">Saving...</span>
-                              <span className="sr-only">
-                                Saving changes, please wait
-                              </span>
-                            </>
-                          ) : (
-                            <>
-                              <svg
-                                className="w-4 h-4"
-                                fill="none"
-                                stroke="currentColor"
-                                viewBox="0 0 24 24"
-                                aria-hidden="true"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  strokeWidth={2}
-                                  d="M6 18L18 6M6 6l12 12"
-                                />
-                              </svg>
-                              <span className="inline-block">Close Edit</span>
-                            </>
-                          )}
-                        </div>
-                      </button>
-                    </div>
-                  ) : (
+                  {isEditing ? null : (
                     // Delete button when not editing
                     <div className="p-4 pt-0">
                       <TouchFeedbackButton

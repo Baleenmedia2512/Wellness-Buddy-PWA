@@ -94,11 +94,15 @@ const EditableFoodItem = forwardRef(
 
     // Phase 7: AbortController to cancel pending saves
     const abortControllerRef = useRef(null);
+    
+    // Define handleDone as forward reference (implementation below)
+    const handleDoneRef = useRef();
+    const handleCancelRef = useRef();
 
     // Expose save and cancel methods to parent via ref
     useImperativeHandle(ref, () => ({
-      save: handleDone, // Changed from handleSave to handleDone
-      cancel: handleCancel,
+      save: (...args) => handleDoneRef.current?.(...args),
+      cancel: (...args) => handleCancelRef.current?.(...args),
       isEditing,
     }));
 
@@ -1176,16 +1180,35 @@ const EditableFoodItem = forwardRef(
       }
 
       // Use override food (for instant saves) or selected food or current food item
-      const foodToSave = overrideFood ||
-        selectedFood || {
+      let foodToSave = overrideFood || selectedFood;
+      
+      // If no override or selected food, create fallback from current foodItem
+      if (!foodToSave) {
+        // Calculate per100g if missing (needed for foods from auto-correction)
+        const nutritionData = foodItem.nutrition || foodItem;
+        const currentGrams = parseFloat(
+          foodItem.serving?.grams || foodItem.grams || foodItem.estimatedWeight
+        ) || 100;
+        
+        const per100gCalculated = foodItem.per100g || {
+          calories: (nutritionData.calories || 0) * (100 / currentGrams),
+          protein: (nutritionData.protein || 0) * (100 / currentGrams),
+          carbs: (nutritionData.carbs || 0) * (100 / currentGrams),
+          fat: (nutritionData.fat || 0) * (100 / currentGrams),
+          fiber: (nutritionData.fiber || 0) * (100 / currentGrams),
+        };
+        
+        foodToSave = {
           name: foodItem.name,
           category: foodItem.category,
-          per100g: foodItem.per100g,
+          per100g: per100gCalculated,
           isLiquid: foodItem.isLiquid || false,
         };
+      }
 
       console.log("   - foodToSave.name:", foodToSave.name);
       console.log("   - foodToSave.isLiquid:", foodToSave.isLiquid);
+      console.log("   - foodToSave.per100g:", foodToSave.per100g);
 
       // Validate per100g exists
       if (!foodToSave.per100g) {
@@ -1369,6 +1392,9 @@ const EditableFoodItem = forwardRef(
       
       console.log("   🚪 Modal closed\n");
     };
+    
+    // Assign to ref for useImperativeHandle
+    handleDoneRef.current = handleDone;
 
     // Cancel editing
     const handleCancel = () => {
@@ -1400,6 +1426,9 @@ const EditableFoodItem = forwardRef(
         onCancel(index);
       }
     };
+    
+    // Assign to ref for useImperativeHandle
+    handleCancelRef.current = handleCancel;
 
     // Enter edit mode
     const handleEdit = () => {
@@ -1827,119 +1856,7 @@ const EditableFoodItem = forwardRef(
 
         {/* Serving Size and Grams Controls - Always visible in edit mode */}
         <div className="space-y-2.5">
-          {/* Serving Size Dropdown */}
-          {/* {selectedFood && servingOptions.length > 0 && (
-            <div className="relative">
-              <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-                <Utensils className="w-3.5 h-3.5 text-gray-500" />
-                <span>Serving Size</span>
-              </label>
-
-              {/* Dropdown Toggle Button */}
-              {/* <button
-                type="button"
-                onClick={() => setIsServingDropdownOpen(!isServingDropdownOpen)}
-                className="w-full px-3 py-2 rounded-lg border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 flex items-center justify-between"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 text-sm truncate">
-                    {currentServing?.description || "Select serving size"}
-                  </div>
-                </div>
-                <svg
-                  className={`w-4 h-4 text-gray-400 transition-transform flex-shrink-0 ml-2 ${
-                    isServingDropdownOpen ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button> */}
-
-              {/* Dropdown Options - Overlapping */}
-              {/* {isServingDropdownOpen && (
-                <div className="absolute z-50 w-full mt-1 space-y-1 max-h-64 overflow-y-auto bg-white rounded-lg border-2 border-gray-300 shadow-lg p-2">
-                  {servingOptions.map((option, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => {
-                        // Phase 2: Set flag to prevent Phase 1 from interfering
-                        isInstantSavingRef.current = true;
-
-                        setCurrentServing(option);
-                        setCurrentServingIndex(idx);
-                        setCustomGrams(option.grams.toString());
-                        setIsServingDropdownOpen(false);
-
-                        // Phase 2: Instant save on dropdown change
-                        // Cancel any pending auto-save timer from Phase 1
-                        if (autoSaveTimeoutRef.current) {
-                          clearTimeout(autoSaveTimeoutRef.current);
-                          autoSaveTimeoutRef.current = null;
-                        }
-
-                        // Save immediately with the selected serving's grams
-                        setTimeout(() => {
-                          handleAutoSave(
-                            null,
-                            option.grams.toString(),
-                            option.description,
-                          );
-                          // Reset flag after save completes
-                          setTimeout(() => {
-                            isInstantSavingRef.current = false;
-                          }, 200);
-                        }, 150);
-                      }}
-                      className={`w-full px-3 py-2 rounded-lg transition-all text-left text-sm ${
-                        currentServingIndex === idx
-                          ? "bg-blue-50 text-blue-900"
-                          : "text-gray-700 hover:bg-gray-50"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">
-                            {option.description}
-                          </div>
-                          <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
-                            <span>
-                              {option.grams}
-                              {selectedFood?.unit ||
-                                (selectedFood?.isLiquid ? "ml" : "g")}
-                            </span>
-                            <span>•</span>
-                            <span>{option.nutrition.calories} cal</span>
-                          </div>
-                        </div>
-                        {currentServingIndex === idx && (
-                          <svg
-                            className="w-5 h-5 text-blue-600 flex-shrink-0 ml-2"
-                            fill="currentColor"
-                            viewBox="0 0 20 20"
-                          >
-                            <path
-                              fillRule="evenodd"
-                              d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                              clipRule="evenodd"
-                            />
-                          </svg>
-                        )}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )} */}
-            {/* </div>
-          )} */}
+          {/* Serving Size Dropdown - DISABLED (save on Done button instead) */}
 
           {/* Custom Grams/ML Input - Always visible */}
           <div>

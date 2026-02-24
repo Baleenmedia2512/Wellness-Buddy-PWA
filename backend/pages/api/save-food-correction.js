@@ -56,6 +56,20 @@ export default async function handler(req, res) {
     const correctedFoodType = identifyFoodType({ name: userCorrected, unit: correctedUnit });
 
     console.log("   Corrected Food Type:", correctedFoodType);
+    
+    // Validate unit matches food type
+    if (correctedUnit) {
+      const unitSuggestedType = identifyFoodType({ name: '', unit: correctedUnit });
+      const nameSuggestedType = identifyFoodType({ name: userCorrected, unit: '' });
+      
+      if (unitSuggestedType !== 'unknown' && nameSuggestedType !== 'unknown' && 
+          unitSuggestedType !== nameSuggestedType) {
+        console.warn(`   ⚠️ [VALIDATION] Unit mismatch detected!`);
+        console.warn(`      Name suggests: ${nameSuggestedType}`);
+        console.warn(`      Unit suggests: ${unitSuggestedType}`);
+        console.warn(`      Using type: ${correctedFoodType} (prioritized name)`);
+      }
+    }
 
     // Database connection
     const supabase = getSupabaseClient();

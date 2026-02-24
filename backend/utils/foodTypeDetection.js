@@ -74,8 +74,8 @@ function getFoodTypeByName(name) {
 }
 
 /**
- * Identify food type using hybrid approach
- * Priority: Unit-based detection > Name-based detection > Default to solid
+ * Identify food type using hybrid approach with conflict detection
+ * Priority: Name-based (for obvious liquids) > Unit-based > Name-based (general) > Default to solid
  * 
  * @param {Object} food - Food object
  * @param {string} food.name - Food name
@@ -87,21 +87,49 @@ function identifyFoodType(food) {
   
   const { name, unit } = food;
   
-  // Priority 1: Check unit (most reliable)
+  // Priority 1: Check for OBVIOUS liquids by name (overrides unit)
+  // These should NEVER be classified as solid, even if unit says "g"
+  const obviousLiquidPatterns = [
+    'milkshake', 'milk shake', 'smoothie', 'juice', 'lassi',
+    'tea', 'coffee', 'shake', 'beverage', 'drink', 'soup',
+    'broth', 'formula 1', 'afresh', 'water', 'lemonade',
+    'buttermilk', 'energy drink', 'soda', 'cola', 'cocktail'
+  ];
+  
+  if (name) {
+    const nameLower = name.toLowerCase();
+    const isObviousLiquid = obviousLiquidPatterns.some(pattern => 
+      nameLower.includes(pattern)
+    );
+    
+    if (isObviousLiquid) {
+      // Check for unit conflict (warning)
+      const unitType = getFoodTypeByUnit(unit);
+      if (unitType === 'solid') {
+        console.warn(`  ⚠️ [FOOD-TYPE] CONFLICT: "${name}" is liquid but unit is "${unit}" (solid)`);
+        console.warn(`  ⚠️ [FOOD-TYPE] Overriding to liquid based on name`);
+      } else {
+        console.log(`  [FOOD-TYPE] Identified as obvious liquid by name: ${name} → liquid`);
+      }
+      return 'liquid';
+    }
+  }
+  
+  // Priority 2: Check unit (most reliable for non-obvious cases)
   const unitType = getFoodTypeByUnit(unit);
   if (unitType !== 'unknown') {
     console.log(`  [FOOD-TYPE] Identified by unit: ${unit} → ${unitType}`);
     return unitType;
   }
   
-  // Priority 2: Check food name patterns
+  // Priority 3: Check food name patterns (general keywords)
   const nameType = getFoodTypeByName(name);
   if (nameType !== 'unknown') {
     console.log(`  [FOOD-TYPE] Identified by name: ${name} → ${nameType}`);
     return nameType;
   }
   
-  // Priority 3: Default to solid if unsure (safer default)
+  // Priority 4: Default to solid if unsure (safer default)
   console.log(`  [FOOD-TYPE] Unknown type for: ${name}, defaulting to solid`);
   return 'solid';
 }
