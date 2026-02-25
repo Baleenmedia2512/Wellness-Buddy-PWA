@@ -2512,7 +2512,7 @@ function WellnessValleyApp() {
 
   // Main app interface
   return (
-    <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
+    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
@@ -2528,7 +2528,7 @@ function WellnessValleyApp() {
         onSignOut={handleSignOut}
       />
 
-      <div className="min-h-screen flex items-start justify-center px-4 pt-20">
+      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden">
         <div className="max-w-md w-full space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
