@@ -4,6 +4,7 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.Uri;
 import android.view.View;
 import android.view.WindowManager;
@@ -51,6 +52,9 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
+        
+        // ✅ CACHE FIX: Clear cache when new version is installed
+        clearCacheOnVersionUpdate();
         
         // ✅ CRITICAL FIX: Force splash screen dismissal after WebView is ready
         // This ensures no splash window remains in the window hierarchy
@@ -141,6 +145,36 @@ public class MainActivity extends BridgeActivity {
                 intent.setData(Uri.parse("package:" + getPackageName()));
                 startActivity(intent);
             }
+        }
+    }
+    
+    /**
+     * ✅ CACHE FIX: Clear WebView cache when app version changes
+     * This ensures users always see the latest content after updating the app
+     */
+    private void clearCacheOnVersionUpdate() {
+        try {
+            SharedPreferences prefs = getSharedPreferences("app_prefs", MODE_PRIVATE);
+            int currentVersion = BuildConfig.VERSION_CODE;
+            int savedVersion = prefs.getInt("app_version", 0);
+            
+            if (savedVersion != currentVersion) {
+                // New version installed - clear all caches
+                WebView webView = getBridge().getWebView();
+                if (webView != null) {
+                    webView.clearCache(true);
+                    webView.clearHistory();
+                    android.webkit.CookieManager.getInstance().removeAllCookies(null);
+                    android.util.Log.d("MainActivity", "✅ Cache cleared for version update: v" + savedVersion + " → v" + currentVersion);
+                }
+                
+                // Save new version
+                prefs.edit().putInt("app_version", currentVersion).apply();
+            } else {
+                android.util.Log.d("MainActivity", "✅ Version unchanged (v" + currentVersion + "), using cached content");
+            }
+        } catch (Exception e) {
+            android.util.Log.e("MainActivity", "Failed to clear cache on version update", e);
         }
     }
     

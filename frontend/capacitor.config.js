@@ -37,6 +37,18 @@ const config = {
     GalleryMonitor: {},
     CameraMonitor: {},
     
+    // ✅ Share plugin configuration for optimal Android sharing
+    Share: {
+      // Allow sharing of images and text
+      enabledShareTypes: ['image', 'text', 'url']
+    },
+    
+    // ✅ Filesystem plugin for share operations
+    Filesystem: {
+      // Configure cache directory for temporary share files
+      cacheDir: 'cache'
+    },
+    
     // ✅ Optimize splash screen for faster startup
     SplashScreen: {
       launchShowDuration: 0,

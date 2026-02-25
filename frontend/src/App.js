@@ -12,7 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { SplashScreen } from "@capacitor/splash-screen";
-import { Bug } from "lucide-react";
+import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
 import EducationLogCard from "./components/EducationLogCard";
@@ -42,6 +42,7 @@ import { weightDetectionService } from "./services/weightDetectionService";
 import { educationDetectionService } from "./services/educationDetectionService";
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
+import { captureAndShare } from "./utils/shareUtils";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
@@ -98,6 +99,7 @@ function WellnessValleyApp() {
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
+  const weightAnalysisShareRef = useRef(null);
 
   // Duplicate food detection state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -141,6 +143,9 @@ function WellnessValleyApp() {
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
+
+  // Weight analysis share state
+  const [isWeightSharing, setIsWeightSharing] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -1602,18 +1607,26 @@ function WellnessValleyApp() {
           //   foods.map((f) => f.name),
           // );
 
-          const total =
-            detectedType.details.total ||
-            foods.reduce(
-              (acc, food) => ({
-                calories: acc.calories + (food.nutrition?.calories || 0),
-                protein: acc.protein + (food.nutrition?.protein || 0),
-                carbs: acc.carbs + (food.nutrition?.carbs || 0),
-                fat: acc.fat + (food.nutrition?.fat || 0),
-                fiber: acc.fiber + (food.nutrition?.fiber || 0),
-              }),
-              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-            );
+          // 🎯 ALWAYS recalculate totals from corrected foods (don't use original AI total)
+          // Original code used: detectedType.details.total || foods.reduce(...)
+          // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
+          const total = foods.reduce(
+            (acc, food) => ({
+              calories: acc.calories + (food.nutrition?.calories || food.calories || 0),
+              protein: acc.protein + (food.nutrition?.protein || food.protein || 0),
+              carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
+              fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
+              fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
+            }),
+            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+          );
+          
+          console.log('📊 [App.js] Calculated total from corrected foods:', {
+            totalCalories: total.calories,
+            totalCarbs: total.carbs,
+            totalProtein: total.protein,
+            foodCount: foods.length
+          });
 
           // Generate category name from food items
           let categoryName = "";
@@ -1653,22 +1666,37 @@ function WellnessValleyApp() {
                 : detectedType.confidence > 0.5
                 ? "medium"
                 : "low",
-            detailedItems: foods.map((food) => ({
-              name: food.name,
-              originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
-              wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
-              correctionSource: food.correctionSource,  // 🔴 Track correction source
-              correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
-              portionDescription: food.portion || "Unknown portion",
-              estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
-              unit: food.unit || (food.volume_ml ? "ml" : "g"),
-              isLiquid: food.isLiquid || false,
-              calories: Math.round(food.nutrition?.calories || 0),
-              protein: Math.round(food.nutrition?.protein || 0),
-              carbs: Math.round(food.nutrition?.carbs || 0),
-              fat: Math.round(food.nutrition?.fat || 0),
-              fiber: Math.round(food.nutrition?.fiber || 0),
-            })),
+            detailedItems: foods.map((food) => {
+              // 🎯 Extract nutrition values from the corrected food object
+              const nutritionValues = {
+                calories: Math.round(food.nutrition?.calories || food.calories || 0),
+                protein: Math.round(food.nutrition?.protein || food.protein || 0),
+                carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
+                fat: Math.round(food.nutrition?.fat || food.fat || 0),
+                fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+              };
+              
+              console.log(`📊 [App.js] Mapping food "${food.name}" to detailedItem:`);
+              console.log(`   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`);
+              console.log(`   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`);
+              console.log(`   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`);
+              
+              return {
+                name: food.name,
+                originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
+                wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
+                correctionSource: food.correctionSource,  // 🔴 Track correction source
+                correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
+                portionDescription: food.portion || "Unknown portion",
+                estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
+                unit: food.unit || (food.volume_ml ? "ml" : "g"),
+                isLiquid: food.isLiquid || false,
+                // Store nutrition values at TOP LEVEL (for backward compatibility)
+                ...nutritionValues,
+                // ALSO store in nutrition object (for NutritionCard's item.nutrition?.calories pattern)
+                nutrition: nutritionValues,
+              };
+            }),
           };
         } else {
           // Fallback: No food data extracted, show specific actionable error
@@ -2484,7 +2512,7 @@ function WellnessValleyApp() {
 
   // Main app interface
   return (
-    <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
+    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
@@ -2500,7 +2528,8 @@ function WellnessValleyApp() {
         onSignOut={handleSignOut}
       />
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden">
+        <div className="max-w-md w-full space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
@@ -2577,13 +2606,46 @@ function WellnessValleyApp() {
         )}
 
         {imageType === "weight" && weightResult && (
-          <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-            <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
-              Weight Analysis
-            </h2>
+          <>
+            {/* Hidden container for sharing - includes image + card */}
+            <div
+              ref={weightAnalysisShareRef}
+              className="fixed -left-[9999px] top-0 w-[400px]"
+              style={{ position: "fixed", left: "-9999px" }}
+            >
+              <div className="bg-white rounded-2xl shadow-xl border-2 border-teal-400 overflow-hidden">
+                {/* Weight Image for sharing */}
+                {imagePreview && (
+                  <div className="relative bg-black">
+                    <img
+                      src={imagePreview}
+                      alt="Weight Scale"
+                      className="w-full h-64 object-contain"
+                    />
+                  </div>
+                )}
 
-            {/* <div className="grid grid-cols-2 gap-4"> */}
-            <div className="">
+                {/* Card content for sharing - Simple and Clean */}
+                <div className="bg-white p-8">
+                  <h2 className="text-2xl font-bold text-emerald-600 mb-6 text-center">Weight Analysis</h2>
+                  
+                  <div className="bg-purple-50 rounded-2xl p-6 text-center">
+                    <p className="text-sm font-semibold text-purple-600 mb-2 uppercase tracking-wide">Weight</p>
+                    <p className="text-5xl font-bold text-purple-700">
+                      {weightResult.weightValue}
+                      <span className="text-2xl font-normal ml-2">{weightResult.unit}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Visible card */}
+            <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+              <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
+                Weight Analysis
+              </h2>
+
               <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
                 <p className="text-sm text-purple-600 font-medium mb-1">
                   Weight
@@ -2597,40 +2659,50 @@ function WellnessValleyApp() {
                 </p>
               </div>
 
-              {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
-                <p className="text-3xl font-bold text-blue-700">
-                  {weightResult.bmi || '--'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
-                <p className="text-3xl font-bold text-green-700">
-                  {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-                <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
-                <p className="text-3xl font-bold text-orange-700">
-                  {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
-                <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
-                <p className="text-3xl font-bold text-red-700">
-                  {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
-                </p>
-              </div> */}
+              {/* Share Button at Bottom - Only show if there's an image */}
+              {imagePreview && (
+                <button
+                  onClick={async () => {
+                    if (isWeightSharing) return;
+                    setIsWeightSharing(true);
+                    try {
+                      // Small delay to ensure hidden container is fully rendered
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                      
+                      await captureAndShare(weightAnalysisShareRef.current, {
+                        title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
+                        text: `My weight: ${weightResult.weightValue} ${weightResult.unit}\n\nTracked with Wellness Valley \uD83D\uDC9A`,
+                        fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
+                      });
+                    } catch (error) {
+                      console.error("Failed to share:", error);
+                    } finally {
+                      setIsWeightSharing(false);
+                    }
+                  }}
+                  disabled={isWeightSharing}
+                  className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                    isWeightSharing
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:shadow-lg active:scale-[0.98]"
+                  }`}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {isWeightSharing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Sharing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-5 h-5" />
+                      <span>Share Weight</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
-
-            {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
-              <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
-              <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
-            </div> */}
-          </div>
+          </>
         )}
 
         {/* Saving Toast */}
@@ -2689,6 +2761,7 @@ function WellnessValleyApp() {
           isVisible={showTestGuide}
           onClose={() => setShowTestGuide(false)}
         />
+        </div>
       </div>
 
       {/* Version badge - positioned in header area like web view */}

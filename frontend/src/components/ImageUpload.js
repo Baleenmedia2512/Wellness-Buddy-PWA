@@ -266,13 +266,15 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
           </div>
         </div>
       ) : (
-        <div className="text-center">
-          <div className="border-2 border-dashed border-green-300 rounded-lg p-8 hover:border-green-400 transition-colors duration-200">
-            <div className="text-6xl mb-4">🍎</div>
-            <h3 className="text-lg font-semibold text-green-700 mb-2">Upload Food Or Weight Photo</h3>
-            <p className="text-gray-600 mb-4 text-sm">Take a photo with camera or select from gallery</p>
+        <div className="flex items-center justify-center">
+          <div className="border-2 border-dashed border-green-300 rounded-lg p-8 hover:border-green-400 transition-colors duration-200 text-center max-w-lg w-full">
+            <div className="flex justify-center mb-4">
+              <div className="text-6xl">🍎</div>
+            </div>
+            <h3 className="text-lg font-semibold text-green-700 mb-2 text-center">Take photo of your Food • Weighing scale • Meeting screenshot• Smartwatch</h3>
+            <p className="text-gray-600 mb-6 text-sm text-center">Take a photo with camera or select from gallery</p>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <TouchFeedbackButton
                 onClick={triggerCamera}
                 className="bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-6 rounded-lg font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex items-center justify-center gap-2"
@@ -289,4 +291,22 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
               </TouchFeedbackButton>
             </div>
 
-<div className="mt-4 text-xs text-gray-500"> Camera works best on mobile devices • Max 10MB •{' '} <button onClick={onHelpClick} className="text-red-500 font-normal hover:text-red-500 focus:outline-none" > Help </button> </div> </div> </div> )} </div> ); }); ImageUpload.displayName = 'ImageUpload'; export default ImageUpload; 
+            <div className="text-xs text-gray-500 text-center">
+              {/* Camera works best on mobile devices • Max 10MB •{' '} */}
+              <button
+                onClick={onHelpClick}
+                className="text-red-500 font-normal hover:text-red-600 focus:outline-none"
+              >
+                Help
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+});
+
+ImageUpload.displayName = 'ImageUpload';
+
+export default ImageUpload; 

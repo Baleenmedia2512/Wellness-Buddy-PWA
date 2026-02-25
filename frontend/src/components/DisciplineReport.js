@@ -231,7 +231,14 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
 // --- TeamFilterPills Component ---
 const TeamFilterPills = ({ filters, activeFilter, onChange }) => {
   return (
-    <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2">
+    <div 
+      className="flex gap-2 overflow-x-scroll pb-2" 
+      style={{ 
+        WebkitOverflowScrolling: 'touch',
+        scrollbarWidth: 'thin',
+        scrollbarColor: '#cbd5e0 #f7fafc'
+      }}
+    >
       <button
         onClick={() => onChange("all")}
         className={`whitespace-nowrap px-4 py-1.5 rounded-full text-sm font-medium transition-all border ${

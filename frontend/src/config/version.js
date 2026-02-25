@@ -72,20 +72,28 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.8',
+  VERSION: '1.9',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 20,
+  VERSION_CODE: 21,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Team Selection & Upload Enhancements',
+  RELEASE_NAME: 'WhatsApp Share & UI Enhancements',
   
   // Build date
-  BUILD_DATE: '2026-02-18',
+  BUILD_DATE: '2026-02-24',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 1.9 (Code 21) - 2026-02-24
+ *   📱 WhatsApp share feature implemented for easy content sharing
+ *   💾 Enhanced cache management for better performance and data freshness
+ *   🎨 UI enhancements across multiple screens for improved user experience
+ *   ✏️ Fixed nutrition value editing - protein values now properly update in database
+ *   🧹 Removed camera instruction text from main page for cleaner UI
+ *   🔧 General stability improvements and bug fixes
  * 
  * Version 1.8 (Code 20) - 2026-02-18
  *   � Made team selection optional for better user flexibility

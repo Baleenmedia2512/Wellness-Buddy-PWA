@@ -670,7 +670,7 @@ const AdminDashboard = ({ user, onClose }) => {
         const pricingResponse = await fetch(
           `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
             user?.email,
-          )}&modelName=gemini-2.5-flash-lite`,
+          )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
           {
             cache: "no-store",
             headers: {
@@ -733,7 +733,7 @@ const AdminDashboard = ({ user, onClose }) => {
           const pricingResponse = await fetch(
             `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
               user?.email,
-            )}&modelName=gemini-2.5-flash-lite`,
+            )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
             {
               cache: "no-store",
               headers: {
@@ -1078,6 +1078,44 @@ const AdminDashboard = ({ user, onClose }) => {
         clearPricingCache(user?.email);
         console.log("🗑️ All pricing caches cleared");
 
+        // Refetch pricing configuration from database to confirm it was saved
+        try {
+          const pricingResponse = await fetch(
+            `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+              user?.email,
+            )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
+            {
+              cache: "no-store",
+              headers: {
+                "Cache-Control": "no-cache",
+                Pragma: "no-cache",
+              },
+            },
+          );
+
+          if (pricingResponse.ok) {
+            const pricingData = await pricingResponse.json();
+            if (pricingData.success && pricingData.data) {
+              const pricing = pricingData.data;
+              setPerMillionCosts({
+                inputPerMillion: pricing.inputPerMillion,
+                outputPerMillion: pricing.outputPerMillion,
+              });
+              setOriginalPerMillionCosts({
+                inputPerMillion: pricing.inputPerMillion,
+                outputPerMillion: pricing.outputPerMillion,
+              });
+              setPerMillionInputs({
+                inputPerMillion: pricing.inputPerMillion.toFixed(2),
+                outputPerMillion: pricing.outputPerMillion.toFixed(2),
+              });
+              console.log("✅ Pricing reloaded from DB after save:", pricing);
+            }
+          }
+        } catch (pricingError) {
+          console.error("⚠️ Error reloading pricing after save:", pricingError);
+        }
+
         // Update the original costs to the newly saved values
         setOriginalTokenCosts({
           inputCost: tokenCosts.inputCost,
@@ -1288,32 +1326,42 @@ const AdminDashboard = ({ user, onClose }) => {
           className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide" 
           style={{ 
             WebkitOverflowScrolling: 'touch',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none'
+            scrollBehavior: 'smooth',
+            overscrollBehaviorX: 'contain'
           }}
         >
-          {["today", "yesterday", "week", "month", "all"].map((range) => (
-            <TouchFeedbackButton
-              key={range}
-              onClick={() => {
-                setTimeRange(range);
-                setCustomStartDate(null);
-                setCustomEndDate(null);
-                setShowDatePicker(false);
-              }}
-              className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 min-w-fit ${
-                timeRange === range
-                  ? "bg-green-600 text-white shadow-md shadow-green-200"
-                  : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
-              }`}
-              ariaLabel={`Filter by ${range}`}
-            >
-              {range.charAt(0).toUpperCase() + range.slice(1)}
-            </TouchFeedbackButton>
-          ))}
+          {["today", "yesterday", "week", "month", "all"].map((range) => {
+            const labels = {
+              today: "Today",
+              yesterday: "Yesterday",
+              week: "Last 7 Days",
+              month: "Last 30 Days",
+              all: "All"
+            };
+            
+            return (
+              <TouchFeedbackButton
+                key={range}
+                onClick={() => {
+                  setTimeRange(range);
+                  setCustomStartDate(null);
+                  setCustomEndDate(null);
+                  setShowDatePicker(false);
+                }}
+                className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 min-w-fit focus:outline-none focus:ring-0 cursor-pointer ${
+                  timeRange === range
+                    ? "bg-green-600 text-white shadow-md shadow-green-200"
+                    : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+                }`}
+                ariaLabel={`Filter by ${range}`}
+              >
+                {labels[range]}
+              </TouchFeedbackButton>
+            );
+          })}
           <TouchFeedbackButton
             onClick={() => setShowDatePicker(!showDatePicker)}
-            className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 min-w-fit ${
+            className={`px-4 py-2.5 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 min-w-fit focus:outline-none focus:ring-0 cursor-pointer ${
               timeRange === "custom"
                 ? "bg-green-600 text-white shadow-md shadow-green-200"
                 : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
@@ -1889,7 +1937,8 @@ const AdminDashboard = ({ user, onClose }) => {
                   </div>
                 </div>
 
-                {/* Total Costs in INR */}
+                {/* Total Costs in INR - COMMENTED OUT */}
+                {/* 
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="block text-sm font-medium text-gray-700">
@@ -2007,6 +2056,7 @@ const AdminDashboard = ({ user, onClose }) => {
                     </p>
                   )}
                 </div>
+                */}
               </div>
 
               {!savingCorrection ? (

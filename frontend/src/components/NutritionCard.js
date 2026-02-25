@@ -1,5 +1,5 @@
 //src\components\NutritionCard.js
-import React, { useState, useCallback, useRef } from "react";
+import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
@@ -24,6 +24,20 @@ const NutritionCard = ({
   const [isSharing, setIsSharing] = useState(false);
   const cardRef = useRef(null);
   const shareRef = useRef(null);
+
+  // Sync local state when data prop changes (e.g., after correction is applied)
+  useEffect(() => {
+    console.log('🔄 [NutritionCard] Data prop changed, syncing local state');
+    console.log('   New nutrition values:', data?.nutrition);
+    console.log('   New detailedItems count:', data?.detailedItems?.length);
+    
+    if (data?.nutrition) {
+      setLocalNutrition(data.nutrition);
+    }
+    if (data?.detailedItems) {
+      setLocalDetailedItems(data.detailedItems);
+    }
+  }, [data?.nutrition, data?.detailedItems]);
 
   // Handle editing state change from EditableFoodItem - wrapped in useCallback to prevent re-creation
   const handleEditingChange = useCallback(
@@ -58,31 +72,55 @@ const NutritionCard = ({
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
+    console.log('🧮 [NutritionCard] recalculateTotals - Processing items:', items.length);
+    
     const totals = items.reduce(
-      (acc, item) => ({
-        calories:
-          acc.calories + (item.nutrition?.calories || item.calories || 0),
-        protein: acc.protein + (item.nutrition?.protein || item.protein || 0),
-        carbs: acc.carbs + (item.nutrition?.carbs || item.carbs || 0),
-        fat: acc.fat + (item.nutrition?.fat || item.fat || 0),
-        fiber: acc.fiber + (item.nutrition?.fiber || item.fiber || 0),
-      }),
+      (acc, item, index) => {
+        const itemCalories = item.nutrition?.calories || item.calories || 0;
+        const itemProtein = item.nutrition?.protein || item.protein || 0;
+        const itemCarbs = item.nutrition?.carbs || item.carbs || 0;
+        const itemFat = item.nutrition?.fat || item.fat || 0;
+        const itemFiber = item.nutrition?.fiber || item.fiber || 0;
+        
+        console.log(`   📊 Item ${index + 1}: ${item.name}`);
+        console.log(`      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`);
+        console.log(`      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`);
+        console.log(`      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`);
+        
+        return {
+          calories: acc.calories + itemCalories,
+          protein: acc.protein + itemProtein,
+          carbs: acc.carbs + itemCarbs,
+          fat: acc.fat + itemFat,
+          fiber: acc.fiber + itemFiber,
+        };
+      },
       { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
     );
 
     // Round to 1 decimal
-    return {
+    const rounded = {
       calories: Math.round(totals.calories),
       protein: Math.round(totals.protein * 10) / 10,
       carbs: Math.round(totals.carbs * 10) / 10,
       fat: Math.round(totals.fat * 10) / 10,
       fiber: Math.round(totals.fiber * 10) / 10,
     };
+    
+    console.log('   ✅ Final totals:', rounded);
+    return rounded;
   };
 
   // Handle food item update with auto-save
   const handleFoodUpdate = async (index, updatedFood) => {
     console.log("🔄 [NutritionCard] Updating food item at index:", index);
+    console.log("🔍 [NutritionCard] Received updatedFood:", {
+      name: updatedFood.name,
+      grams: updatedFood.grams,
+      serving_grams: updatedFood.serving?.grams,
+      unit: updatedFood.unit,
+      serving_unit: updatedFood.serving?.unit
+    });
 
     const newItems = [...localDetailedItems];
     newItems[index] = {
@@ -126,32 +164,41 @@ const NutritionCard = ({
 
       // Prepare analysis data
       const analysisData = {
-        foods: newItems.map((item) => ({
-          name: item.name,
-          // 🔴 CRITICAL: Preserve correction metadata for database persistence
-          originalAiName: item.originalAiName || item.name,
-          wasAutoCorrected: item.wasAutoCorrected || false,
-          correctionSource: item.correctionSource || null,
-          correctionMetadata: item.correctionMetadata || null,
-          portion:
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "1 serving",
-          weight_g: item.serving?.grams || item.grams || item.weight_g || 100,
-          volume_ml: item.volume_ml || null,
-          unit: item.unit || "g",
-          isLiquid: item.isLiquid || false,
-          nutrition: {
-            calories: Math.round(
-              item.nutrition?.calories || item.calories || 0,
-            ),
-            protein: Math.round(item.nutrition?.protein || item.protein || 0),
-            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
-            fat: Math.round(item.nutrition?.fat || item.fat || 0),
-            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
-          },
-        })),
+        foods: newItems.map((item) => {
+          // 🔍 Get the actual grams value from the serving or item
+          const actualGrams = item.serving?.grams || item.grams || item.weight_g || item.volume_ml || 100;
+          const isLiquid = item.isLiquid || false;
+          const unit = item.unit || (isLiquid ? "ml" : "g");
+          
+          return {
+            name: item.name,
+            // 🔴 CRITICAL: Preserve correction metadata for database persistence
+            originalAiName: item.originalAiName || item.name,
+            wasAutoCorrected: item.wasAutoCorrected || false,
+            correctionSource: item.correctionSource || null,
+            correctionMetadata: item.correctionMetadata || null,
+            portion:
+              item.serving?.description ||
+              item.portionDescription ||
+              item.portion ||
+              "1 serving",
+            // ✅ Save to correct field based on liquid/solid
+            weight_g: isLiquid ? null : actualGrams,
+            volume_ml: isLiquid ? actualGrams : null,
+            grams: actualGrams, // Also save to grams field for backwards compatibility
+            unit: unit,
+            isLiquid: isLiquid,
+            nutrition: {
+              calories: Math.round(
+                item.nutrition?.calories || item.calories || 0,
+              ),
+              protein: Math.round(item.nutrition?.protein || item.protein || 0),
+              carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
+              fat: Math.round(item.nutrition?.fat || item.fat || 0),
+              fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
+            },
+          };
+        }),
         total: {
           calories: Math.round(newTotals.calories || 0),
           protein: Math.round(newTotals.protein || 0),
@@ -161,6 +208,19 @@ const NutritionCard = ({
         },
         confidence: "high",
       };
+
+      // 🔍 DEBUG: Log what we're sending to the API
+      console.log("🔍 [NutritionCard] Sending to API - Foods with weights:", 
+        analysisData.foods.map(f => ({
+          name: f.name,
+          weight_g: f.weight_g,
+          volume_ml: f.volume_ml,
+          grams: f.grams,
+          unit: f.unit,
+          isLiquid: f.isLiquid,
+          portion: f.portion
+        }))
+      );
 
       // Update existing meal
       console.log(
@@ -283,8 +343,11 @@ const NutritionCard = ({
         // whatsappOnly: true, // Explicitly enable WhatsApp sharing
       });
     } catch (error) {
-      console.error("Failed to share:", error);
-      // Silently handle error (user might have cancelled)
+      console.error("❌ Failed to share:", error);
+      // Show error to user if it's not a cancellation
+      if (!error?.message?.toLowerCase().includes('cancel')) {
+        alert('Unable to share. Please check your device settings and permissions.');
+      }
     } finally {
       setIsSharing(false);
     }
@@ -319,10 +382,6 @@ const NutritionCard = ({
                 alt="Food"
                 className="w-full h-64 object-cover"
               />
-              <div className="absolute top-3 right-3 bg-green-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-                <span className="w-2 h-2 bg-white rounded-full"></span>
-                Ready
-              </div>
             </div>
           )}
 
@@ -448,36 +507,44 @@ const NutritionCard = ({
                         className="pb-3 border-b border-gray-100 last:border-0"
                       >
                         <div className="flex justify-between items-start mb-1">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="font-medium text-gray-900">
-                                {item.name}
-                              </span>
-                              {item.wasAutoCorrected && (
-                                <span className="text-[10px] bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                                  ✓ Auto
-                                </span>
-                              )}
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-gray-900">
+                              {item.name}
                             </div>
                             <div className="text-xs text-gray-500 mt-0.5">
                               {portion} {weight ? `(${weight}g)` : ""}
                             </div>
                           </div>
-                          <div className="text-base font-bold text-red-600 ml-2">
+                          
+                          {/* Calories */}
+                          <div className="text-base font-bold text-red-600 flex-shrink-0 ml-2">
                             {itemCals} kcal
                           </div>
                         </div>
-                        <div className="text-[11px] text-red-600 font-medium">
-                          Protein{" "}
-                          {Math.round(
-                            item.nutrition?.protein || item.protein || 0,
-                          )}
-                          g • Carbs{" "}
-                          {Math.round(item.nutrition?.carbs || item.carbs || 0)}
-                          g • Fiber{" "}
-                          {Math.round(item.nutrition?.fiber || item.fiber || 0)}
-                          g • Fat{" "}
-                          {Math.round(item.nutrition?.fat || item.fat || 0)}g
+                        
+                        {/* Nutrient breakdown */}
+                        <div className="text-[11px] font-medium flex flex-wrap gap-2">
+                          <span className="text-blue-600">
+                            Protein{" "}
+                            {Math.round(
+                              item.nutrition?.protein || item.protein || 0,
+                            )}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-yellow-600">
+                            Carbs{" "}
+                            {Math.round(item.nutrition?.carbs || item.carbs || 0)}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-green-600">
+                            Fiber{" "}
+                            {Math.round(item.nutrition?.fiber || item.fiber || 0)}g
+                          </span>
+                          <span className="text-gray-400">•</span>
+                          <span className="text-purple-600">
+                            Fat{" "}
+                            {Math.round(item.nutrition?.fat || item.fat || 0)}g
+                          </span>
                         </div>
                       </div>
                     );
@@ -496,27 +563,6 @@ const NutritionCard = ({
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4 relative">
-          {/* Share Button - COMMENTED OUT
-          <button
-            onClick={handleShare}
-            onTouchEnd={(e) => e.preventDefault()}
-            disabled={isSharing || isSaving}
-            className={`absolute top-3 right-3 w-10 h-10 bg-white/20 backdrop-blur-sm text-white rounded-full flex items-center justify-center transition-all duration-200 border border-white/30 ${
-              isSharing || isSaving
-                ? "opacity-50 cursor-not-allowed"
-                : "hover:bg-white/30 active:scale-95"
-            }`}
-            title="Share"
-            style={{ touchAction: "manipulation" }}
-          >
-            {isSharing ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            ) : (
-              <Share2 className="w-5 h-5" />
-            )}
-          </button>
-          */}
-
           <div className="flex items-center justify-center gap-3">
             <div className="flex-1 text-center">
               <h2 className="text-xl font-bold">{generateMealName()}</h2>
@@ -733,6 +779,32 @@ const NutritionCard = ({
                   <span> ({servingInfo.description})</span>
                 )}
             </div>
+          )}
+
+          {/* Share Button at Bottom - Only show if there's an image */}
+          {(imagePreview || selectedImage) && (
+            <button
+              onClick={handleShare}
+              disabled={isSharing || isSaving}
+              className={`w-full mt-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                isSharing || isSaving
+                  ? "opacity-50 cursor-not-allowed"
+                  : "hover:shadow-lg active:scale-[0.98]"
+              }`}
+              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
+          
+              {isSharing ? (
+                <>
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <span>Sharing...</span>
+                </>
+              ) : (
+                <>
+                  <Share2 className="w-5 h-5" />
+                  <span>Share</span>
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>

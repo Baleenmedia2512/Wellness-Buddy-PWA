@@ -1,5 +1,5 @@
 // Wellness Valley PWA Service Worker
-const CACHE_NAME = 'wellness-valley-v1';
+const CACHE_NAME = 'wellness-valley-v2';
 const urlsToCache = [
   '/',
   '/index.html',
