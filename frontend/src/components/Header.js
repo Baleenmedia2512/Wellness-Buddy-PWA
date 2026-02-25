@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Settings } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
+import LeaderboardSettingsDropdown from './LeaderboardSettingsDropdown';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowLeaderboardSettings }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   
@@ -108,30 +109,35 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
           </div>
         </div>
 
-        <div className="relative flex-shrink-0">
-          <TouchFeedbackButton
-            onClick={toggleMenu}
-            className="focus:outline-none rounded-full"
-            title="User Menu"
-            ariaLabel="User Menu"
-          >
-            <img
-              src={avatarUrl}
-              alt="User Avatar"
-              className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-            />
-          </TouchFeedbackButton>
-
-          {menuOpen && (
-            <>
-              {/* Overlay for mobile */}
-              <div 
-                className="fixed inset-0 z-40 bg-black/20 md:hidden"
-                onClick={closeMenu}
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* Leaderboard Settings Dropdown */}
+          <LeaderboardSettingsDropdown />
+          
+          {/* User Profile Menu */}
+          <div className="relative">
+            <TouchFeedbackButton
+              onClick={toggleMenu}
+              className="focus:outline-none rounded-full"
+              title="User Menu"
+              ariaLabel="User Menu"
+            >
+              <img
+                src={avatarUrl}
+                alt="User Avatar"
+                className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
               />
-              
-              {/* Menu dropdown */}
-              <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
+            </TouchFeedbackButton>
+
+            {menuOpen && (
+              <>
+                {/* Overlay for mobile */}
+                <div 
+                  className="fixed inset-0 z-40 bg-black/20 md:hidden"
+                  onClick={closeMenu}
+                />
+                
+                {/* Menu dropdown */}
+                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
                 {/* User info section - clickable to open profile */}
                 <TouchFeedbackButton
                   onClick={() => {
@@ -198,12 +204,30 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-purple-50 text-left transition-colors"
-                      ariaLabel="Open Discipline Report"
+                      ariaLabel="View Discipline Report"
                     >
                       <FileBarChart className="h-5 w-5 text-purple-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
-                        <p className="text-xs text-gray-500">Track team performance</p>
+                        <p className="text-xs text-gray-500">Team performance insights</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Leaderboard Settings - shown for admin/developer roles only */}
+                  {onShowLeaderboardSettings && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowLeaderboardSettings();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
+                      ariaLabel="Leaderboard Settings"
+                    >
+                      <Settings className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Leaderboard Settings</p>
+                        <p className="text-xs text-gray-500">Configure display mode</p>
                       </div>
                     </TouchFeedbackButton>
                   )}
@@ -232,7 +256,8 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 </div>
               </div>
             </>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
