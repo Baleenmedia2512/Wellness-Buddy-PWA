@@ -36,8 +36,8 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
-    // Get topN parameter (default to 3, max 7)
-    const topN = Math.min(parseInt(req.query.topN) || 3, 7);
+    // Get topN parameter (default to 10, max 10)
+    const topN = Math.min(parseInt(req.query.topN) || 10, 10);
 
     console.log(`🏆 [LEADERBOARD] Calculating global weight loss leaderboard (Top ${topN})...`);
 
@@ -61,17 +61,15 @@ export default async function handler(req, res) {
 
     console.log(`✅ [LEADERBOARD] Found ${activeUsers.length} active users`);
 
-    // Step 2: Calculate date ranges for today and yesterday (IST timezone)
+    // Step 2: Calculate date ranges for today and yesterday
     const now = new Date();
     
-    // Today: Start of day (00:00:00) to end of day (23:59:59) in IST
     const todayStart = new Date(now);
     todayStart.setHours(0, 0, 0, 0);
     
     const todayEnd = new Date(now);
     todayEnd.setHours(23, 59, 59, 999);
 
-    // Yesterday: Start to end
     const yesterdayStart = new Date(now);
     yesterdayStart.setDate(yesterdayStart.getDate() - 1);
     yesterdayStart.setHours(0, 0, 0, 0);
@@ -89,72 +87,87 @@ export default async function handler(req, res) {
     console.log(`📅 [LEADERBOARD] Today: ${todayStartStr} to ${todayEndStr}`);
     console.log(`📅 [LEADERBOARD] Yesterday: ${yesterdayStartStr} to ${yesterdayEndStr}`);
 
-    // Step 3: Calculate weight loss for each active user
+    // Step 3: OPTIMIZED - Fetch all weight records in 2 batch queries instead of per-user
+    const activeUserIds = activeUsers.map(u => u.UserId);
+
+    // Fetch all today's weights for active users
+    const { data: todayWeights, error: todayError } = await supabase
+      .from('weight_records_table')
+      .select('UserId, Weight, CreatedAt')
+      .in('UserId', activeUserIds)
+      .gte('CreatedAt', todayStartStr)
+      .lte('CreatedAt', todayEndStr)
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
+
+    if (todayError) throw todayError;
+
+    // Fetch all yesterday's weights for active users
+    const { data: yesterdayWeights, error: yesterdayError } = await supabase
+      .from('weight_records_table')
+      .select('UserId, Weight, CreatedAt')
+      .in('UserId', activeUserIds)
+      .gte('CreatedAt', yesterdayStartStr)
+      .lte('CreatedAt', yesterdayEndStr)
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false });
+
+    if (yesterdayError) throw yesterdayError;
+
+    // Create maps for quick lookup (get latest weight per user)
+    const todayWeightMap = new Map();
+    const yesterdayWeightMap = new Map();
+
+    todayWeights?.forEach(record => {
+      if (!todayWeightMap.has(record.UserId)) {
+        todayWeightMap.set(record.UserId, record);
+      }
+    });
+
+    yesterdayWeights?.forEach(record => {
+      if (!yesterdayWeightMap.has(record.UserId)) {
+        yesterdayWeightMap.set(record.UserId, record);
+      }
+    });
+
+    console.log(`📊 [LEADERBOARD] Found ${todayWeightMap.size} users with today's weight, ${yesterdayWeightMap.size} with yesterday's weight`);
+
+    // Step 4: Calculate weight loss for eligible users
     const leaderboardData = [];
 
     for (const user of activeUsers) {
-      try {
-        // Get today's latest weight
-        const { data: todayWeights, error: todayError } = await supabase
-          .from('weight_records_table')
-          .select('Weight, CreatedAt')
-          .eq('UserId', user.UserId)
-          .gte('CreatedAt', todayStartStr)
-          .lte('CreatedAt', todayEndStr)
-          .or('IsDeleted.is.null,IsDeleted.eq.0')
-          .order('CreatedAt', { ascending: false })
-          .limit(1);
+      const todayRecord = todayWeightMap.get(user.UserId);
+      const yesterdayRecord = yesterdayWeightMap.get(user.UserId);
 
-        if (todayError) throw todayError;
+      // Calculate weight loss if both records exist
+      if (todayRecord && yesterdayRecord) {
+        const todayWeight = parseFloat(todayRecord.Weight);
+        const yesterdayWeight = parseFloat(yesterdayRecord.Weight);
+        const weightLoss = yesterdayWeight - todayWeight; // Positive = weight lost
 
-        // Get yesterday's latest weight
-        const { data: yesterdayWeights, error: yesterdayError } = await supabase
-          .from('weight_records_table')
-          .select('Weight, CreatedAt')
-          .eq('UserId', user.UserId)
-          .gte('CreatedAt', yesterdayStartStr)
-          .lte('CreatedAt', yesterdayEndStr)
-          .or('IsDeleted.is.null,IsDeleted.eq.0')
-          .order('CreatedAt', { ascending: false })
-          .limit(1);
-
-        if (yesterdayError) throw yesterdayError;
-
-        // Calculate weight loss if both records exist
-        if (todayWeights && todayWeights.length > 0 && 
-            yesterdayWeights && yesterdayWeights.length > 0) {
-          
-          const todayWeight = parseFloat(todayWeights[0].Weight);
-          const yesterdayWeight = parseFloat(yesterdayWeights[0].Weight);
-          const weightLoss = yesterdayWeight - todayWeight; // Positive = weight lost
-
-          // Only include users who have lost weight (weightLoss > 0)
-          if (weightLoss > 0) {
-            leaderboardData.push({
-              userId: user.UserId,
-              userName: user.UserName || 'Unknown',
-              email: user.Email || '',
-              coachName: user.CoachName || 'No Coach',
-              weightLoss: parseFloat(weightLoss.toFixed(2)),
-              todayWeight: parseFloat(todayWeight.toFixed(2)),
-              yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
-              todayDate: todayWeights[0].CreatedAt,
-              yesterdayDate: yesterdayWeights[0].CreatedAt
-            });
-          }
+        // Only include users who have lost weight (weightLoss > 0)
+        if (weightLoss > 0) {
+          leaderboardData.push({
+            userId: user.UserId,
+            userName: user.UserName || 'Unknown',
+            email: user.Email || '',
+            coachName: user.CoachName || 'No Coach',
+            weightLoss: parseFloat(weightLoss.toFixed(2)),
+            todayWeight: parseFloat(todayWeight.toFixed(2)),
+            yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
+            todayDate: todayRecord.CreatedAt,
+            yesterdayDate: yesterdayRecord.CreatedAt
+          });
         }
-      } catch (userError) {
-        console.error(`❌ [LEADERBOARD] Error processing user ${user.UserId}:`, userError.message);
-        // Continue with other users
       }
     }
 
-    // Step 4: Sort by weight loss (descending - highest first)
+    // Step 5: Sort by weight loss (descending - highest first)
     leaderboardData.sort((a, b) => b.weightLoss - a.weightLoss);
 
-    // Step 5: Limit to topN and add rank
+    // Step 6: Limit to topN and add rank (descending: top performer gets highest rank number)
     const topResults = leaderboardData.slice(0, topN).map((user, index) => ({
-      rank: index + 1,
+      rank: topN - index,  // Descending rank: 10, 9, 8, 7...1
       userId: user.userId,
       userName: user.userName,
       email: user.email,

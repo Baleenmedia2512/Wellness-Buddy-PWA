@@ -8,15 +8,15 @@ import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
  * 
  * Features:
  * - Shows rank, profile avatar, user name, coach name, weight loss
- * - Auto-slides every 10 seconds for Top 3/7
+ * - Auto-slides every 5 seconds for Top 10
  * - Testimonial-style animation for Top 1
  * - Hides completely if no eligible users
  * 
  * @param {string} apiBaseUrl - API base URL
- * @param {number} topN - Number of top users to show (1, 3, or 7)
+ * @param {number} topN - Number of top users to show (default: 10)
  * @param {boolean} debug - Show debug info when no data (for testing)
  */
-const WeightLossLeaderboard = ({ apiBaseUrl, topN = 3, debug = false, useDemoData = false }) => {
+const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoData = false }) => {
   // Demo data for testing/preview (7 users to support all display modes)
   const demoData = [
     {
@@ -165,7 +165,7 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 3, debug = false, useDemoDat
     return () => clearInterval(refreshInterval);
   }, [fetchLeaderboard]);
 
-  // Auto-slide animation (10 seconds)
+  // Auto-slide animation (5 seconds)
   useEffect(() => {
     if (leaderboardData.length <= 1) return;
 
@@ -205,7 +205,22 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 3, debug = false, useDemoDat
 
   // Don't render if no data or loading failed
   if (!isVisible || leaderboardData.length === 0) {
-    // Debug mode: Show a message when no data
+    // Show message when no real data is available (instead of hiding completely)
+    if (!useDemoData) {
+      return (
+        <div className="w-full bg-blue-50 border-b border-blue-200 py-3 px-4">
+          <div className="max-w-4xl mx-auto text-center">
+            <p className="text-sm text-blue-800">
+              🏆 <strong>Weight Loss Leaderboard</strong>
+              <br />
+              <span className="text-xs">No weight loss data yet. Users need today's & yesterday's weight entries, and must have lost weight to appear here.</span>
+            </p>
+          </div>
+        </div>
+      );
+    }
+    
+    // Debug mode: Show additional debug info
     if (debug) {
       return (
         <div className="w-full bg-yellow-50 border-b border-yellow-200 py-3 px-4">

@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Settings } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
-import LeaderboardSettingsDropdown from './LeaderboardSettingsDropdown';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowLeaderboardSettings }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   
@@ -110,9 +109,6 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-          {/* Leaderboard Settings Dropdown */}
-          <LeaderboardSettingsDropdown />
-          
           {/* User Profile Menu */}
           <div className="relative">
             <TouchFeedbackButton
@@ -210,24 +206,6 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
                         <p className="text-xs text-gray-500">Team performance insights</p>
-                      </div>
-                    </TouchFeedbackButton>
-                  )}
-
-                  {/* Leaderboard Settings - shown for admin/developer roles only */}
-                  {onShowLeaderboardSettings && (
-                    <TouchFeedbackButton
-                      onClick={() => {
-                        onShowLeaderboardSettings();
-                        closeMenu();
-                      }}
-                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
-                      ariaLabel="Leaderboard Settings"
-                    >
-                      <Settings className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Leaderboard Settings</p>
-                        <p className="text-xs text-gray-500">Configure display mode</p>
                       </div>
                     </TouchFeedbackButton>
                   )}

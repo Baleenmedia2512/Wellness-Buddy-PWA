@@ -47,7 +47,6 @@ import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
-import LeaderboardSettingsModal from "./components/LeaderboardSettingsModal";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -121,9 +120,6 @@ function WellnessValleyApp() {
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
   const [userContextLoading, setUserContextLoading] = useState(false);
-
-  // Leaderboard settings state
-  const [showLeaderboardSettings, setShowLeaderboardSettings] = useState(false);
 
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
@@ -2531,11 +2527,6 @@ function WellnessValleyApp() {
           setShowDisciplineReport(true);
           localStorage.setItem("currentPage", "discipline-report");
         }}
-        onShowLeaderboardSettings={
-          userRole === "admin" || userRole === "developer"
-            ? () => setShowLeaderboardSettings(true)
-            : null
-        }
         onSignOut={handleSignOut}
       />
 
@@ -3098,15 +3089,6 @@ function WellnessValleyApp() {
           </div>
         </div>
       )}
-
-      {/* Leaderboard Settings Modal */}
-      <LeaderboardSettingsModal
-        isOpen={showLeaderboardSettings}
-        onClose={() => setShowLeaderboardSettings(false)}
-        onSettingsChange={(settings) => {
-          console.log('✅ Leaderboard settings updated:', settings);
-        }}
-      />
     </div>
   );
 }
