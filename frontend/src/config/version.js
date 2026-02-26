@@ -72,20 +72,25 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.9',
+  VERSION: '2.0',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 21,
+  VERSION_CODE: 22,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'WhatsApp Share & UI Enhancements',
+  RELEASE_NAME: 'UI Enhancement',
   
   // Build date
-  BUILD_DATE: '2026-02-24',
+  BUILD_DATE: '2026-02-26',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.0 (Code 22) - 2026-02-26
+ *   🎉 Major version release
+ *   📦 Version synchronization across all build files
+ *   ✨ Enhanced stability and performance improvements
  * 
  * Version 1.9 (Code 21) - 2026-02-24
  *   📱 WhatsApp share feature implemented for easy content sharing
