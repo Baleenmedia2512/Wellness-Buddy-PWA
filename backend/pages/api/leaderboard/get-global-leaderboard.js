@@ -1,4 +1,4 @@
-/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
+// LEADERBOARD FUNCTIONALITY COMMENTED OUT
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 /**
@@ -206,4 +206,3 @@ export default async function handler(req, res) {
     });
   }
 }
-*/
