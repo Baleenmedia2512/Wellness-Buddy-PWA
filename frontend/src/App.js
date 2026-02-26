@@ -2537,8 +2537,8 @@ function WellnessValleyApp() {
         useDemoData={LEADERBOARD_CONFIG.USE_DEMO_DATA}
       />
 
-      <div className="flex-1 flex items-center justify-center px-4 overflow-hidden">
-        <div className="max-w-md w-full space-y-6">
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-md w-full mx-auto space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
