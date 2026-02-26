@@ -1,4 +1,3 @@
-// LEADERBOARD FUNCTIONALITY COMMENTED OUT
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 /**

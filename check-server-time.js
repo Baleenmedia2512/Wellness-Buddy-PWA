@@ -1,4 +1,3 @@
-/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 async function checkServerTime() {
   console.log('🕐 Checking server date/time calculations...\n');
   
@@ -46,4 +45,3 @@ async function checkServerTime() {
 }
 
 checkServerTime();
-*/

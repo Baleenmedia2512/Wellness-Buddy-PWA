@@ -1,4 +1,3 @@
-/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 import React, { useState, useEffect, useCallback } from 'react';
 import { Trophy, TrendingDown } from 'lucide-react';
 import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
@@ -19,60 +18,17 @@ import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
  */
 const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoData = false }) => {
   // Demo data for testing/preview (7 users to support all display modes)
+  // Ordered from worst to best (Rank 7 → Rank 1) for suspenseful display
   const demoData = [
     {
-      rank: 1,
-      userId: 101,
-      userName: 'Priya Sharma',
-      email: 'priya@example.com',
-      coachName: 'Coach Rahul',
-      weightLoss: 2.1,
-      todayWeight: 67.9,
+      rank: 7,
+      userId: 107,
+      userName: 'Kavita Singh',
+      email: 'kavita@example.com',
+      coachName: 'Coach Arun',
+      weightLoss: 0.5,
+      todayWeight: 69.5,
       yesterdayWeight: 70.0,
-      comparison: 'Today vs Yesterday'
-    },
-    {
-      rank: 2,
-      userId: 102,
-      userName: 'Amit Kumar',
-      email: 'amit@example.com',
-      coachName: 'Coach Neha',
-      weightLoss: 1.7,
-      todayWeight: 78.3,
-      yesterdayWeight: 80.0,
-      comparison: 'Today vs Yesterday'
-    },
-    {
-      rank: 3,
-      userId: 103,
-      userName: 'Sneha Patel',
-      email: 'sneha@example.com',
-      coachName: 'Coach Vikram',
-      weightLoss: 1.3,
-      todayWeight: 63.7,
-      yesterdayWeight: 65.0,
-      comparison: 'Today vs Yesterday'
-    },
-    {
-      rank: 4,
-      userId: 104,
-      userName: 'Rajesh Verma',
-      email: 'rajesh@example.com',
-      coachName: 'Coach Shalini',
-      weightLoss: 1.1,
-      todayWeight: 82.9,
-      yesterdayWeight: 84.0,
-      comparison: 'Today vs Yesterday'
-    },
-    {
-      rank: 5,
-      userId: 105,
-      userName: 'Anita Desai',
-      email: 'anita@example.com',
-      coachName: 'Coach Kiran',
-      weightLoss: 0.9,
-      todayWeight: 59.1,
-      yesterdayWeight: 60.0,
       comparison: 'Today vs Yesterday'
     },
     {
@@ -87,13 +43,57 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
       comparison: 'Today vs Yesterday'
     },
     {
-      rank: 7,
-      userId: 107,
-      userName: 'Kavita Singh',
-      email: 'kavita@example.com',
-      coachName: 'Coach Arun',
-      weightLoss: 0.5,
-      todayWeight: 69.5,
+      rank: 5,
+      userId: 105,
+      userName: 'Anita Desai',
+      email: 'anita@example.com',
+      coachName: 'Coach Kiran',
+      weightLoss: 0.9,
+      todayWeight: 59.1,
+      yesterdayWeight: 60.0,
+      comparison: 'Today vs Yesterday'
+    },
+    {
+      rank: 4,
+      userId: 104,
+      userName: 'Rajesh Verma',
+      email: 'rajesh@example.com',
+      coachName: 'Coach Shalini',
+      weightLoss: 1.1,
+      todayWeight: 82.9,
+      yesterdayWeight: 84.0,
+      comparison: 'Today vs Yesterday'
+    },
+    {
+      rank: 3,
+      userId: 103,
+      userName: 'Sneha Patel',
+      email: 'sneha@example.com',
+      coachName: 'Coach Vikram',
+      weightLoss: 1.3,
+      todayWeight: 63.7,
+      yesterdayWeight: 65.0,
+      comparison: 'Today vs Yesterday'
+    },
+    {
+      rank: 2,
+      userId: 102,
+      userName: 'Amit Kumar',
+      email: 'amit@example.com',
+      coachName: 'Coach Neha',
+      weightLoss: 1.7,
+      todayWeight: 78.3,
+      yesterdayWeight: 80.0,
+      comparison: 'Today vs Yesterday'
+    },
+    {
+      rank: 1,
+      userId: 101,
+      userName: 'Priya Sharma',
+      email: 'priya@example.com',
+      coachName: 'Coach Rahul',
+      weightLoss: 2.1,
+      todayWeight: 67.9,
       yesterdayWeight: 70.0,
       comparison: 'Today vs Yesterday'
     }
@@ -348,4 +348,3 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
 };
 
 export default WeightLossLeaderboard;
-*/

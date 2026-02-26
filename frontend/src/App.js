@@ -46,8 +46,8 @@ import { captureAndShare } from "./utils/shareUtils";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
-// import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
-// import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
+import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
+import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
 import {
@@ -2531,11 +2531,11 @@ function WellnessValleyApp() {
       />
 
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
-      {/* <WeightLossLeaderboard 
+      <WeightLossLeaderboard 
         apiBaseUrl={apiBaseUrl} 
         topN={LEADERBOARD_CONFIG.TOP_N} 
         useDemoData={LEADERBOARD_CONFIG.USE_DEMO_DATA}
-      /> */}
+      />
 
       <div className="flex-1 overflow-y-auto px-4 pt-28 pb-6">
         <div className="max-w-md w-full mx-auto space-y-6">

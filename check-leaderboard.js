@@ -1,4 +1,3 @@
-/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 async function checkLeaderboard() {
   try {
     console.log('Checking leaderboard API...');
@@ -29,4 +28,3 @@ async function checkLeaderboard() {
 }
 
 checkLeaderboard();
-*/
