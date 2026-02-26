@@ -1,3 +1,4 @@
+/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 import React, { useState, useEffect, useCallback } from 'react';
 import { Trophy, TrendingDown } from 'lucide-react';
 import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
@@ -347,3 +348,4 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
 };
 
 export default WeightLossLeaderboard;
+*/

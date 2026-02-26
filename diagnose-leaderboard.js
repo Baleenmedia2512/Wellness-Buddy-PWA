@@ -1,3 +1,4 @@
+/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 async function diagnose() {
   try {
     console.log('🔍 Diagnosing leaderboard issue...\n');
@@ -72,3 +73,4 @@ async function diagnose() {
 }
 
 diagnose();
+*/

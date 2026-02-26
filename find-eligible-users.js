@@ -1,3 +1,4 @@
+/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 async function findEligibleUsers() {
   try {
     console.log('🔍 Finding users closest to leaderboard eligibility...\n');
@@ -69,3 +70,4 @@ async function findEligibleUsers() {
 }
 
 findEligibleUsers();
+*/

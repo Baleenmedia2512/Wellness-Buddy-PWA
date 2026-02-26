@@ -1,3 +1,4 @@
+/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 /**
  * Weight Loss Leaderboard Configuration
  * 
@@ -38,3 +39,4 @@ export const LEADERBOARD_CONFIG = {
 };
 
 export default LEADERBOARD_CONFIG;
+*/

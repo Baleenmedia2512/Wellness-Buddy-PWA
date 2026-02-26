@@ -1,3 +1,4 @@
+/* LEADERBOARD FUNCTIONALITY COMMENTED OUT
 async function testLeaderboard() {
   try {
     console.log('🏆 Testing Leaderboard API after status update...\n');
@@ -34,3 +35,4 @@ async function testLeaderboard() {
 }
 
 testLeaderboard();
+*/
