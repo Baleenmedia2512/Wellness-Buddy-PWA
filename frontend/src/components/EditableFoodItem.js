@@ -622,6 +622,11 @@ const EditableFoodItem = forwardRef(
       setSearchQuery(food.name);
       setSearchResults([]);
 
+      // ✅ CRITICAL FIX: Mark that user made a change (food selection)
+      // This ensures "Close Edit" button will save the change
+      hasUserChangesRef.current = true;
+      console.log("   ✅ Marked as user change - will save on Close Edit");
+
       // Mark that name has changed - correction will be saved in handleAutoSave with final nutrition data
       const originalName = originalFoodRef.current?.name;
       const newName = food.name;

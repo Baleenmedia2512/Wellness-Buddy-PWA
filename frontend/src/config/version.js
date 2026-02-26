@@ -72,13 +72,13 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.0',
+  VERSION: '2.1',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 22,
+  VERSION_CODE: 23,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'UI Enhancement',
+  RELEASE_NAME: 'Food Editor Fix',
   
   // Build date
   BUILD_DATE: '2026-02-26',
@@ -86,6 +86,13 @@ export const APP_VERSION = {
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.1 (Code 23) - 2026-02-26
+ *   🍽️ Fixed food editor save functionality
+ *   ✨ Users can now update food name without modifying gram values
+ *   🔧 Previously, editing a food item required changing the gram value to save
+ *   📝 Now any field can be edited independently and saved successfully
+ *   ✅ Enhanced user experience for food item management
  * 
  * Version 2.0 (Code 22) - 2026-02-26
  *   🎉 Major version release
