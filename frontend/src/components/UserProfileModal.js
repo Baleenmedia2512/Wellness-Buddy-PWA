@@ -282,6 +282,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                     src={profileImagePreview || user.photoURL}
                     alt={user.displayName || user.name || 'User'}
                     className="w-full h-full object-cover"
+                    loading="lazy"
+                    decoding="async"
                     referrerPolicy="no-referrer"
                   />
                 ) : (

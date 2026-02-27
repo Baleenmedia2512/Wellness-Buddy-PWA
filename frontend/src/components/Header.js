@@ -151,6 +151,8 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                   src={savedProfileImage || user.photoURL}
                   alt="User Avatar"
                   className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                  loading="lazy"
+                  decoding="async"
                   referrerPolicy="no-referrer"
                 />
               ) : (

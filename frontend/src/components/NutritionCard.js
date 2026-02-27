@@ -375,12 +375,13 @@ const NutritionCard = ({
       >
         <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden">
           {/* Food Image for sharing */}
-          {imagePreview && (
+          {(imagePreview || selectedImage) && (
             <div className="relative">
               <img
-                src={imagePreview}
+                src={imagePreview || selectedImage}
                 alt="Food"
                 className="w-full h-64 object-cover"
+                crossOrigin="anonymous"
               />
             </div>
           )}
