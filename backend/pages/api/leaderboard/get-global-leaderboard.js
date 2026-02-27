@@ -44,7 +44,7 @@ export default async function handler(req, res) {
     // Step 1: Get all active users
     const { data: activeUsers, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachName, Status')
+      .select('UserId, UserName, Email, CoachName, Status, ProfileImage')
       .ilike('Status', 'Active'); // Case-insensitive match for 'active' or 'Active'
 
     if (usersError) throw usersError;
@@ -152,6 +152,7 @@ export default async function handler(req, res) {
             userName: user.UserName || 'Unknown',
             email: user.Email || '',
             coachName: user.CoachName || 'No Coach',
+            profileImage: user.ProfileImage || null,
             weightLoss: parseFloat(weightLoss.toFixed(2)),
             todayWeight: parseFloat(todayWeight.toFixed(2)),
             yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
@@ -172,6 +173,7 @@ export default async function handler(req, res) {
       userName: user.userName,
       email: user.email,
       coachName: user.coachName,
+      profileImage: user.profileImage,
       weightLoss: user.weightLoss,
       todayWeight: user.todayWeight,
       yesterdayWeight: user.yesterdayWeight,

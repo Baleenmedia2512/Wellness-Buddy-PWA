@@ -143,6 +143,9 @@ function WellnessValleyApp() {
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
+  // Ref for leaderboard to trigger manual refresh
+  const leaderboardRef = useRef(null);
+
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
 
@@ -382,6 +385,13 @@ function WellnessValleyApp() {
   );
 
   // Helper functions for navigation with localStorage persistence
+  // Callback to refresh leaderboard after profile updates
+  const handleLeaderboardRefresh = useCallback(() => {
+    if (leaderboardRef.current) {
+      leaderboardRef.current.refresh();
+    }
+  }, []);
+
   const showDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
@@ -2528,10 +2538,12 @@ function WellnessValleyApp() {
           localStorage.setItem("currentPage", "discipline-report");
         }}
         onSignOut={handleSignOut}
+        onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
       <WeightLossLeaderboard 
+        ref={leaderboardRef}
         apiBaseUrl={apiBaseUrl} 
         topN={LEADERBOARD_CONFIG.TOP_N} 
         useDemoData={LEADERBOARD_CONFIG.USE_DEMO_DATA}

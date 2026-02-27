@@ -1,6 +1,6 @@
 // src/components/UserProfileModal.js
-import React, { useState, useEffect, useRef } from 'react';
-import { X, User, Save, CheckCircle, Flame, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Save, CheckCircle, Flame, ChevronDown, Camera } from 'lucide-react';
 import { getUserContext } from '../services/userContextService';
 import TouchFeedbackButton from './TouchFeedbackButton';
 
@@ -13,6 +13,8 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const [height, setHeight] = useState('');
   const [bmr, setBmr] = useState('');
   const [dietType, setDietType] = useState('');
+  const [profileImage, setProfileImage] = useState(null);
+  const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [isDietDropdownOpen, setIsDietDropdownOpen] = useState(false);
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -23,44 +25,10 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const dropdownOptionsRef = useRef(null);
   const modalContentRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Auto-scroll to show all dropdown options when dropdown opens
-  useEffect(() => {
-    if (isDietDropdownOpen && dropdownOptionsRef.current && modalContentRef.current) {
-      setTimeout(() => {
-        // Scroll to the dropdown options to ensure they're fully visible
-        dropdownOptionsRef.current.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'end', // Align to bottom to show all options
-          inline: 'nearest'
-        });
-      }, 100);
-    }
-  }, [isDietDropdownOpen]);
-
-  // Fetch user profile when modal opens
-  useEffect(() => {
-    if (isOpen && user?.email) {
-      // Reset states when modal opens
-      setSuccessMessage('');
-      setHasSaved(false);
-      setError('');
-      fetchUserProfile();
-    }
-  }, [isOpen, user?.email]);
-
-  // Auto-dismiss success message and close modal after 5 seconds
-  useEffect(() => {
-    if (successMessage) {
-      const timer = setTimeout(() => {
-        setSuccessMessage('');
-        onClose();
-      }, 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [successMessage, onClose]);
-
-  const fetchUserProfile = async () => {
+  // Fetch user profile data
+  const fetchUserProfile = useCallback(async () => {
     try {
       setIsLoading(true);
       setError('');
@@ -89,6 +57,10 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         setHeight(profile.height ? String(profile.height) : '');
         setBmr(profile.latestBmr ? String(Math.round(profile.latestBmr)) : '');
         setDietType(profile.dietType || '');
+        // Set existing profile image if available
+        if (profile.profileImage) {
+          setProfileImagePreview(profile.profileImage);
+        }
       }
     } catch (err) {
       console.error('❌ Error fetching user profile:', err);
@@ -100,6 +72,80 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
     } finally {
       setIsLoading(false);
     }
+  }, [apiBaseUrl, user]);
+
+  // Auto-scroll to show all dropdown options when dropdown opens
+  useEffect(() => {
+    if (isDietDropdownOpen && dropdownOptionsRef.current && modalContentRef.current) {
+      setTimeout(() => {
+        // Scroll to the dropdown options to ensure they're fully visible
+        dropdownOptionsRef.current.scrollIntoView({ 
+          behavior: 'smooth', 
+          block: 'end', // Align to bottom to show all options
+          inline: 'nearest'
+        });
+      }, 100);
+    }
+  }, [isDietDropdownOpen]);
+
+  // Fetch user profile when modal opens
+  useEffect(() => {
+    if (isOpen && user?.email) {
+      // Reset states when modal opens
+      setSuccessMessage('');
+      setHasSaved(false);
+      setError('');
+      setProfileImage(null);
+      setProfileImagePreview(null);
+      fetchUserProfile();
+    }
+  }, [isOpen, user?.email, fetchUserProfile]);
+
+  // Auto-dismiss success message and close modal after 5 seconds
+  useEffect(() => {
+    if (successMessage) {
+      const timer = setTimeout(() => {
+        setSuccessMessage('');
+        onClose();
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [successMessage, onClose]);
+
+  // Handle profile image selection
+  const handleImageSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      setError('Please select a valid image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image size must be less than 5MB');
+      return;
+    }
+
+    // Read file and convert to base64
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64String = event.target.result;
+      setProfileImage(base64String);
+      setProfileImagePreview(base64String);
+      setError('');
+    };
+    reader.onerror = () => {
+      setError('Failed to read image file');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Trigger file input click
+  const handleProfileImageClick = () => {
+    fileInputRef.current?.click();
   };
 
   const handleSave = async () => {
@@ -136,6 +182,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           height: height ? parseFloat(height) : undefined,
           bmr: bmr && bmr.trim() !== '' ? parseFloat(bmr) : undefined,
           dietType: dietType || undefined,
+          profileImage: profileImage || undefined,
         }),
       });
 
@@ -158,6 +205,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             height: height ? parseFloat(height) : null,
             bmr: data.data?.bmr || (bmr ? parseFloat(bmr) : null),
             dietType: dietType || null,
+            profileImage: profileImagePreview || null,
           });
         }
         
@@ -172,6 +220,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         // Show success message and keep modal open
         setSuccessMessage('Profile saved successfully!');
         setHasSaved(true);
+        setProfileImage(null); // Clear temp image data after save
       } else {
         throw new Error(data.message || 'Failed to update profile');
       }
@@ -190,6 +239,27 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
     onClose();
   };
 
+  // Generate initial for avatar fallback
+  const getInitialAvatar = () => {
+    const userName = name || user?.displayName || user?.name || '';
+    const userEmail = user?.email || '';
+    if (userName) return userName.charAt(0).toUpperCase();
+    if (userEmail) return userEmail.charAt(0).toUpperCase();
+    return 'U';
+  };
+
+  // Generate color based on name/email
+  const getInitialAvatarColor = () => {
+    const userName = name || user?.displayName || user?.name || '';
+    const userEmail = user?.email || '';
+    const colors = [
+      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500',
+      'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'
+    ];
+    const colorIndex = (userName || userEmail || '').length % colors.length;
+    return colors[colorIndex];
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -201,21 +271,45 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         {/* Header with User Photo and Name */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <div className="flex items-center space-x-3">
-            {user?.photoURL ? (
-              <img
-                src={user.photoURL}
-                alt={user.displayName || user.name || 'User'}
-                className="w-12 h-12 rounded-full border-2 border-green-200 object-cover"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center">
-                <User className="w-6 h-6 text-green-600" />
+            {/* Profile Image with Upload */}
+            <div className="relative">
+              <div 
+                onClick={handleProfileImageClick}
+                className="w-16 h-16 rounded-full border-2 border-green-200 overflow-hidden cursor-pointer hover:border-green-400 transition-all group relative"
+              >
+                {profileImagePreview || user?.photoURL ? (
+                  <img
+                    src={profileImagePreview || user.photoURL}
+                    alt={user.displayName || user.name || 'User'}
+                    className="w-full h-full object-cover"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div className={`w-full h-full flex items-center justify-center text-white font-bold text-2xl ${getInitialAvatarColor()}`}>
+                    {getInitialAvatar()}
+                  </div>
+                )}
+                {/* Camera overlay on hover */}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Camera className="w-6 h-6 text-white" />
+                </div>
               </div>
-            )}
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleImageSelect}
+                className="hidden"
+              />
+            </div>
+            
             <div>
-              <h2 className="text-xl font-bold text-gray-800">{name || user?.displayName || user?.name || 'User'}</h2>
+              <h2 className="text-xl font-bold text-gray-800">
+                {name || user?.displayName || user?.name || 'User'}
+              </h2>
               <p className="text-sm text-gray-500">{user?.email}</p>
+              <p className="text-xs text-gray-400 mt-1">Click photo to change</p>
             </div>
           </div>
           <TouchFeedbackButton

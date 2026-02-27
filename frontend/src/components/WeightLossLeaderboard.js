@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { Trophy, TrendingDown } from 'lucide-react';
 import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
 
@@ -11,12 +11,13 @@ import LEADERBOARD_CONFIG from '../config/leaderboardConfig';
  * - Auto-slides every 5 seconds for Top 10
  * - Testimonial-style animation for Top 1
  * - Hides completely if no eligible users
+ * - Exposes refresh method via ref for manual updates
  * 
  * @param {string} apiBaseUrl - API base URL
  * @param {number} topN - Number of top users to show (default: 10)
  * @param {boolean} debug - Show debug info when no data (for testing)
  */
-const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoData = false }) => {
+const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10, debug = false, useDemoData = false }, ref) => {
   // Demo data for testing/preview (7 users to support all display modes)
   // Ordered from worst to best (Rank 7 → Rank 1) for suspenseful display
   const demoData = [
@@ -158,6 +159,11 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
     }
   }, [apiBaseUrl, topN, useDemoData]);
 
+  // Expose refresh method to parent via ref
+  useImperativeHandle(ref, () => ({
+    refresh: fetchLeaderboard
+  }));
+
   // Initial fetch
   useEffect(() => {
     fetchLeaderboard();
@@ -178,7 +184,19 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
   }, [leaderboardData]);
 
   // Generate profile avatar from email or name
-  const getAvatar = (email, userName) => {
+  const getAvatar = (email, userName, profileImage) => {
+    // If profile image exists, use it
+    if (profileImage) {
+      return (
+        <img
+          src={profileImage}
+          alt={userName || 'User'}
+          className="w-10 h-10 rounded-full object-cover shadow-md border-2 border-white"
+        />
+      );
+    }
+    
+    // Otherwise, generate initial-based avatar
     const initial = userName ? userName.charAt(0).toUpperCase() : 
                     email ? email.charAt(0).toUpperCase() : '?';
     
@@ -271,7 +289,7 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
             <div className={`px-3 py-1 rounded-full text-sm font-bold ${getRankColor(user.rank)} flex-shrink-0`}>
               Rank #{user.rank}
             </div>
-            {getAvatar(user.email, user.userName)}
+            {getAvatar(user.email, user.userName, user.profileImage)}
             <div className="flex flex-col flex-shrink-0">
               <span className="font-bold text-gray-800 text-base">{user.userName}</span>
               <span className="text-sm text-gray-600">Coach: {user.coachName}</span>
@@ -306,7 +324,7 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
 
           {/* Center: Profile + Details */}
           <div className="flex items-center gap-2 flex-1">
-            {getAvatar(currentUser.email, currentUser.userName)}
+            {getAvatar(currentUser.email, currentUser.userName, currentUser.profileImage)}
             <div className="flex flex-col">
               <span className="font-bold text-gray-800 text-sm leading-tight whitespace-nowrap">{currentUser.userName}</span>
               <span className="text-xs text-gray-500 leading-tight whitespace-nowrap">
@@ -345,6 +363,6 @@ const WeightLossLeaderboard = ({ apiBaseUrl, topN = 10, debug = false, useDemoDa
       </div>
     </div>
   );
-};
+});
 
 export default WeightLossLeaderboard;
