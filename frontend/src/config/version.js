@@ -72,20 +72,26 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.1',
+  VERSION: '2.2',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 23,
+  VERSION_CODE: 24,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Food Editor Fix',
+  RELEASE_NAME: 'Leaderboard & Share Screenshots',
   
   // Build date
-  BUILD_DATE: '2026-02-26',
+  BUILD_DATE: '2026-02-27',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.2 (Code 24) - 2026-02-27
+ *   🏆 Weight loss leaderboard strip with real-time tracking
+ *   📤 Enhanced WhatsApp share with clear screenshots (no quiz pop-ups)
+ *   💾 Updated cache management for improved performance and data freshness
+ *   ✨ Enhanced overall stability and user experience
  * 
  * Version 2.1 (Code 23) - 2026-02-26
  *   🍽️ Fixed food editor save functionality

@@ -99,121 +99,137 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
   try {
     // Convert blob to base64
     const base64Data = await blobToBase64(blob);
+    console.log("📝 Base64 data prepared, size:", base64Data.length, "characters");
 
-    // Remove the data:image/png;base64, prefix
-    const base64String = base64Data.split(",")[1];
-
-    // Save to filesystem temporarily with unique name
-    const timestamp = Date.now();
-    const uniqueFileName = `${timestamp}-${fileName}`;
-
-    console.log("📝 Attempting to write file:", uniqueFileName);
-
-    // Write file to cache directory
-    const savedFile = await Filesystem.writeFile({
-      path: uniqueFileName,
-      data: base64String,
-      directory: Directory.Cache,
-      recursive: true,
-    });
-
-    console.log("✅ File saved to cache:", savedFile.uri);
-
-    // Get the file URI with proper formatting for Android
-    let fileUri = savedFile.uri;
-
-    // Android-specific URI handling
+    // For Android, use external storage for better sharing compatibility
     if (isPlatform("android")) {
-      console.log("📱 Android detected - processing file URI");
-      console.log("📱 Original URI:", fileUri);
+      console.log("📱 Android detected - using external storage method");
       
-      // Validate URI
-      if (!fileUri || fileUri === "") {
-        throw new Error("Invalid file URI generated");
-      }
+      try {
+        const timestamp = Date.now();
+        const uniqueFileName = `wellness-valley-${timestamp}.png`;
+        const base64String = base64Data.split(",")[1];
+        
+        // Write to External directory (better for sharing on Android)
+        console.log("💾 Writing file to external storage...");
+        const writeResult = await Filesystem.writeFile({
+          path: `Download/${uniqueFileName}`,
+          data: base64String,
+          directory: Directory.External,
+        });
+        
+        console.log("✅ File written:", writeResult.uri);
+        
+        // Get the content URI
+        let fileUri = writeResult.uri;
+        
+        // Log the URI for debugging
+        console.log("🔍 Original URI from writeFile:", fileUri);
+        console.log("🔍 URI starts with content://:", fileUri.startsWith("content://"));
+        console.log("🔍 URI starts with file://:", fileUri.startsWith("file://"));
+        
+        const shareOptions = {
+          title: title,
+          files: [fileUri],
+          dialogTitle: "Share via",
+        };
+        
+        console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
+        
+        // Check if Share API is available
+        const canShare = await Share.canShare().catch(() => ({ value: false }));
+        console.log("📊 Can share:", canShare);
+        
+        if (!canShare.value) {
+          throw new Error("Share API not available on this device");
+        }
 
-      // Ensure proper content:// URI format for Android FileProvider
-      // Capacitor should handle this automatically, but we'll verify
-      if (!fileUri.startsWith("content://")) {
-        console.warn("⚠️ URI doesn't start with content://, may cause issues");
-      }
-    }
+        // Perform the share
+        console.log("🚀 Calling Share.share() with options:", JSON.stringify(shareOptions, null, 2));
+        const shareResult = await Share.share(shareOptions);
 
-    try {
-      // Use Capacitor Share API with proper options
-      console.log("🔗 Initiating native share with URI:", fileUri);
+        console.log("✅ Share completed:", shareResult);
+        
+        // Log activity type if available (iOS specific)
+        if (shareResult && shareResult.activityType) {
+          console.log("📱 Shared via:", shareResult.activityType);
+        }
+        
+        // Clean up the file from Downloads after a delay
+        setTimeout(async () => {
+          try {
+            await Filesystem.deleteFile({
+              path: `Download/${uniqueFileName}`,
+              directory: Directory.External,
+            });
+            console.log("✅ Temporary file cleaned up from Downloads");
+          } catch (cleanupError) {
+            console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
+          }
+        }, 10000);
+        
+      } catch (shareError) {
+        console.error("❌ Share error:", shareError);
+        console.error("❌ Share error details:", JSON.stringify(shareError));
+
+        // Check if user canceled the share
+        const isCanceled = 
+          shareError?.message?.toLowerCase().includes("cancel") ||
+          shareError?.message?.toLowerCase().includes("cancelled") ||
+          shareError?.code === "0" ||
+          shareError === "Share canceled";
+
+        if (isCanceled) {
+          console.log("ℹ️ User cancelled share");
+          // Don't throw error for user cancellation
+          return;
+        }
+
+        // Show error for actual failures
+        const errorMessage = shareError?.message || "Unknown error";
+        alert(
+          `Unable to share the image.\n\n` +
+          `Error: ${errorMessage}\n\n` +
+          `Please ensure:\n` +
+          `1. You have sharing apps installed (Messages, WhatsApp, etc.)\n` +
+          `2. Grant necessary permissions if prompted\n` +
+          `3. Your device has enough storage space`
+        );
+        
+        throw shareError;
+      }
+    } else {
+      // iOS or other platforms - use cache directory
+      const timestamp = Date.now();
+      const uniqueFileName = `wellness-valley-${timestamp}.png`;
+      const base64String = base64Data.split(",")[1];
       
-      // Only share the image without text to keep it clean
+      const savedFile = await Filesystem.writeFile({
+        path: uniqueFileName,
+        data: base64String,
+        directory: Directory.Cache,
+      });
+      
       const shareOptions = {
         title: title,
-        url: fileUri,
+        files: [savedFile.uri],
         dialogTitle: "Share via",
       };
       
-      console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
+      await Share.share(shareOptions);
       
-      // Check if Share API is available
-      const canShare = await Share.canShare().catch(() => ({ value: false }));
-      console.log("📊 Can share:", canShare);
-      
-      if (!canShare.value) {
-        throw new Error("Share API not available on this device");
-      }
-
-      // Perform the share
-      console.log("🚀 Calling Share.share() with options:", JSON.stringify(shareOptions, null, 2));
-      const shareResult = await Share.share(shareOptions);
-
-      console.log("✅ Share completed:", shareResult);
-      
-      // Log activity type if available (iOS specific)
-      if (shareResult && shareResult.activityType) {
-        console.log("📱 Shared via:", shareResult.activityType);
-      }
-    } catch (shareError) {
-      console.error("❌ Share error:", shareError);
-      console.error("❌ Share error details:", JSON.stringify(shareError));
-
-      // Check if user canceled the share
-      const isCanceled = 
-        shareError?.message?.toLowerCase().includes("cancel") ||
-        shareError?.message?.toLowerCase().includes("cancelled") ||
-        shareError?.code === "0" ||
-        shareError === "Share canceled";
-
-      if (isCanceled) {
-        console.log("ℹ️ User cancelled share");
-        // Don't throw error for user cancellation
-        return;
-      }
-
-      // Show error for actual failures
-      const errorMessage = shareError?.message || "Unknown error";
-      alert(
-        `Unable to share the image.\n\n` +
-        `Error: ${errorMessage}\n\n` +
-        `Please ensure:\n` +
-        `1. You have sharing apps installed (Messages, WhatsApp, etc.)\n` +
-        `2. Grant necessary permissions if prompted\n` +
-        `3. Your device has enough storage space`
-      );
-      
-      throw shareError;
+      // Cleanup
+      setTimeout(async () => {
+        try {
+          await Filesystem.deleteFile({
+            path: uniqueFileName,
+            directory: Directory.Cache,
+          });
+        } catch (error) {
+          console.warn("⚠️ Failed to clean up temporary file:", error);
+        }
+      }, 10000);
     }
-
-    // Clean up the temporary file after a delay
-    setTimeout(async () => {
-      try {
-        await Filesystem.deleteFile({
-          path: uniqueFileName,
-          directory: Directory.Cache,
-        });
-        console.log("✅ Temporary file cleaned up");
-      } catch (error) {
-        console.warn("⚠️ Failed to clean up temporary file:", error);
-        // Don't throw error for cleanup failures
-      }
-    }, 10000);
   } catch (error) {
     console.error("❌ Native share failed:", error);
     

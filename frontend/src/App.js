@@ -46,8 +46,8 @@ import { captureAndShare } from "./utils/shareUtils";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
-// import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
-// import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
+import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
+import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
 import {
@@ -142,6 +142,9 @@ function WellnessValleyApp() {
 
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
+
+  // Ref for leaderboard to trigger manual refresh
+  const leaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -382,6 +385,13 @@ function WellnessValleyApp() {
   );
 
   // Helper functions for navigation with localStorage persistence
+  // Callback to refresh leaderboard after profile updates
+  const handleLeaderboardRefresh = useCallback(() => {
+    if (leaderboardRef.current) {
+      leaderboardRef.current.refresh();
+    }
+  }, []);
+
   const showDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
@@ -2528,16 +2538,17 @@ function WellnessValleyApp() {
           localStorage.setItem("currentPage", "discipline-report");
         }}
         onSignOut={handleSignOut}
+        onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
-      {/* <WeightLossLeaderboard 
+      <WeightLossLeaderboard 
+        ref={leaderboardRef}
         apiBaseUrl={apiBaseUrl} 
-        topN={LEADERBOARD_CONFIG.TOP_N} 
-        useDemoData={LEADERBOARD_CONFIG.USE_DEMO_DATA}
-      /> */}
+        topN={LEADERBOARD_CONFIG.TOP_N}
+      />
 
-      <div className="flex-1 overflow-y-auto px-4 pt-28 pb-6">
+      <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
         <div className="max-w-md w-full mx-auto space-y-6">
         {/* Back button toast message */}
         {toast.visible && (

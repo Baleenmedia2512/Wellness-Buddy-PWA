@@ -1,5 +1,9 @@
 // Wellness Valley PWA Service Worker
-const CACHE_NAME = 'wellness-valley-v2';
+// Version changes automatically on each build to force cache update
+const VERSION = '2.0.BUILD_TIMESTAMP'; // Will be replaced during build
+const CACHE_NAME = `wellness-valley-${VERSION}`;
+const DATA_CACHE_NAME = `wellness-data-${VERSION}`;
+
 const urlsToCache = [
   '/',
   '/index.html',
@@ -11,7 +15,7 @@ const urlsToCache = [
 
 // Install event - cache assets
 self.addEventListener('install', (event) => {
-  console.log('[Service Worker] Installing...');
+  console.log('[Service Worker] Installing new version...');
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -23,28 +27,44 @@ self.addEventListener('install', (event) => {
           });
       })
   );
+  // Force the waiting service worker to become the active service worker
   self.skipWaiting();
 });
 
-// Activate event - clean up old caches
+// Activate event - clean up old caches and take control immediately
 self.addEventListener('activate', (event) => {
-  console.log('[Service Worker] Activating...');
+  console.log('[Service Worker] Activating new version...');
   event.waitUntil(
     caches.keys().then((cacheNames) => {
       return Promise.all(
         cacheNames.map((cacheName) => {
-          if (cacheName !== CACHE_NAME) {
+          // Delete all old caches (both app and data caches)
+          if (cacheName !== CACHE_NAME && cacheName !== DATA_CACHE_NAME) {
             console.log('[Service Worker] Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
       );
+    }).then(() => {
+      // Take control of all pages immediately
+      console.log('[Service Worker] Taking control of all pages');
+      return self.clients.claim();
+    }).then(() => {
+      // Notify all clients that new version is active
+      return self.clients.matchAll().then(clients => {
+        clients.forEach(client => {
+          client.postMessage({
+            type: 'SW_UPDATED',
+            version: VERSION,
+            message: 'App updated! Refresh for latest version.'
+          });
+        });
+      });
     })
   );
-  self.clients.claim();
 });
 
-// Fetch event - serve from cache, fallback to network
+// Fetch event - smart caching strategy
 self.addEventListener('fetch', (event) => {
   // Skip cross-origin requests
   if (!event.request.url.startsWith(self.location.origin)) {
@@ -56,15 +76,38 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first strategy for HTML/navigation (ensures immediate updates)
+  if (event.request.mode === 'navigate' || event.request.destination === 'document') {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          // Clone and cache the response
+          const responseToCache = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(event.request, responseToCache);
+          });
+          return response;
+        })
+        .catch(() => {
+          // Network failed, try cache
+          return caches.match(event.request).then(response => {
+            return response || caches.match('/index.html');
+          });
+        })
+    );
+    return;
+  }
+
+  // Cache-first strategy for static assets (CSS, JS, images)
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Cache hit - return response
         if (response) {
+          // Cache hit - return cached version
           return response;
         }
 
-        // Clone the request
+        // Not in cache - fetch from network
         const fetchRequest = event.request.clone();
 
         return fetch(fetchRequest).then((response) => {
@@ -73,7 +116,7 @@ self.addEventListener('fetch', (event) => {
             return response;
           }
 
-          // Clone the response
+          // Clone and cache the response
           const responseToCache = response.clone();
 
           caches.open(CACHE_NAME)
@@ -83,10 +126,8 @@ self.addEventListener('fetch', (event) => {
 
           return response;
         }).catch(() => {
-          // Offline fallback
-          if (event.request.destination === 'document') {
-            return caches.match('/index.html');
-          }
+          // Network and cache failed
+          console.warn('[Service Worker] Fetch failed for:', event.request.url);
         });
       })
   );

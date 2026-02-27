@@ -1,4 +1,3 @@
-// LEADERBOARD FUNCTIONALITY COMMENTED OUT
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 
 /**
@@ -45,7 +44,7 @@ export default async function handler(req, res) {
     // Step 1: Get all active users
     const { data: activeUsers, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachName, Status')
+      .select('UserId, UserName, Email, CoachName, Status, ProfileImage')
       .ilike('Status', 'Active'); // Case-insensitive match for 'active' or 'Active'
 
     if (usersError) throw usersError;
@@ -153,6 +152,7 @@ export default async function handler(req, res) {
             userName: user.UserName || 'Unknown',
             email: user.Email || '',
             coachName: user.CoachName || 'No Coach',
+            profileImage: user.ProfileImage || null,
             weightLoss: parseFloat(weightLoss.toFixed(2)),
             todayWeight: parseFloat(todayWeight.toFixed(2)),
             yesterdayWeight: parseFloat(yesterdayWeight.toFixed(2)),
@@ -166,18 +166,22 @@ export default async function handler(req, res) {
     // Step 5: Sort by weight loss (descending - highest first)
     leaderboardData.sort((a, b) => b.weightLoss - a.weightLoss);
 
-    // Step 6: Limit to topN and add rank (descending: top performer gets highest rank number)
+    // Step 6: Limit to topN and add rank (ascending: top performer gets rank #1)
     const topResults = leaderboardData.slice(0, topN).map((user, index) => ({
-      rank: topN - index,  // Descending rank: 10, 9, 8, 7...1
+      rank: index + 1,  // Ascending rank: 1, 2, 3...10 (1 = BEST)
       userId: user.userId,
       userName: user.userName,
       email: user.email,
       coachName: user.coachName,
+      profileImage: user.profileImage,
       weightLoss: user.weightLoss,
       todayWeight: user.todayWeight,
       yesterdayWeight: user.yesterdayWeight,
       comparison: 'Today vs Yesterday'
     }));
+
+    // Step 7: Reverse order for display (show worst to best: Rank 10 → Rank 1)
+    topResults.reverse();
 
     console.log(`🏆 [LEADERBOARD] Top ${topResults.length} weight losers calculated`);
     console.table(topResults.map(u => ({

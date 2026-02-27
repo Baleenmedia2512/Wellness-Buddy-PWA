@@ -1,6 +1,6 @@
 {
   "name": "wellness-valley-pwa-frontend",
-  "version": "2.1",
+  "version": "2.2",
   "private": true,
   "homepage": ".",
   "dependencies": {
@@ -45,13 +45,15 @@
   "scripts": {
     "start": "react-scripts start",
     "build": "react-scripts build",
+    "postbuild": "node update-sw-version.js",
     "test": "react-scripts test",
     "eject": "react-scripts eject",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "android:clean": "cd android && gradlew.bat clean",
     "android:assembleDebug": "cd android && gradlew.bat assembleDebug",
-    "android:fullbuild": "npm run build && npx cap sync android && npm run android:clean && npm run android:assembleDebug"
+    "android:fullbuild": "npm run build && npx cap sync android && npm run android:clean && npm run android:assembleDebug",
+    "android:test-cache": "npm run build && echo === Cache Version Updated === && npx cap sync android && echo === Ready to test debug APK ==="
   },
   "eslintConfig": {
     "extends": [
