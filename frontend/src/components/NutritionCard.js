@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
-import { captureAndShare } from "../utils/shareUtils";
+import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
 
 const NutritionCard = ({
   data,
@@ -334,14 +334,26 @@ const NutritionCard = ({
 
       breakdownText += `Tracked with Wellness Valley 💚`;
 
-      await captureAndShare(shareRef.current, {
-        title: `${mealName} - Wellness Valley`,
-        text: breakdownText,
-        fileName: `wellness-valley-${mealName
-          .toLowerCase()
-          .replace(/\s+/g, "-")}.png`,
-        // whatsappOnly: true, // Explicitly enable WhatsApp sharing
-      });
+      // Share the actual original image (not a screenshot)
+      const imageToShare = imagePreview || selectedImage;
+      if (imageToShare) {
+        await shareImageDirectly(imageToShare, {
+          title: `${mealName} - Wellness Valley`,
+          text: breakdownText,
+          fileName: `wellness-valley-${mealName
+            .toLowerCase()
+            .replace(/\s+/g, "-")}.png`,
+        });
+      } else {
+        // Fallback to capturing the card if no image available
+        await captureAndShare(shareRef.current, {
+          title: `${mealName} - Wellness Valley`,
+          text: breakdownText,
+          fileName: `wellness-valley-${mealName
+            .toLowerCase()
+            .replace(/\s+/g, "-")}.png`,
+        });
+      }
     } catch (error) {
       console.error("❌ Failed to share:", error);
       // Show error to user if it's not a cancellation

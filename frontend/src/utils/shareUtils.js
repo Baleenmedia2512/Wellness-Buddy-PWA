@@ -5,6 +5,78 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { isPlatform } from "@ionic/react";
 
 /**
+ * Share an actual image directly (original quality, no screenshot)
+ * @param {string} imageUrl - The image URL (data URL or blob URL)
+ * @param {Object} options - Share options
+ * @param {string} options.title - Share title
+ * @param {string} options.text - Share message text
+ * @param {string} options.fileName - Name of the file to save/share
+ */
+export const shareImageDirectly = async (imageUrl, options = {}) => {
+  const {
+    title = "My Meal Analysis",
+    text = "Tracked with Wellness Valley",
+    fileName = "wellness-valley-meal.png",
+  } = options;
+
+  try {
+    console.log("📸 Starting direct image share...");
+    console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
+
+    // Convert image URL to blob
+    let blob;
+    if (imageUrl.startsWith('data:')) {
+      // Data URL - convert to blob
+      const response = await fetch(imageUrl);
+      blob = await response.blob();
+    } else if (imageUrl.startsWith('http')) {
+      // Remote URL - fetch and convert
+      const response = await fetch(imageUrl, { mode: 'cors' });
+      blob = await response.blob();
+    } else {
+      // Blob URL - convert to blob
+      const response = await fetch(imageUrl);
+      blob = await response.blob();
+    }
+
+    console.log("✅ Image blob created:", blob.size, "bytes", blob.type);
+
+    // Check if we're on a native platform (Android/iOS) or mobile browser
+    const isNativePlatform =
+      isPlatform("capacitor") || isPlatform("android") || isPlatform("ios");
+
+    const isMobileBrowser =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+      );
+
+    if (isNativePlatform) {
+      // Native mobile sharing (Capacitor)
+      await shareNativeImage(blob, { title, text, fileName });
+    } else if (isMobileBrowser && navigator.share) {
+      // Mobile browser with Web Share API
+      console.log("📱 Mobile browser detected, using Web Share API");
+      await shareWeb(blob, { title, text, fileName });
+    } else {
+      // Desktop or browser without share support
+      await shareWeb(blob, { title, text, fileName });
+    }
+
+    console.log("✅ Direct image share completed successfully");
+  } catch (error) {
+    console.error("❌ Direct image share failed:", error);
+    throw new Error("Failed to share image. Please try again.");
+  }
+};
+
+/**
+ * Native share for direct images (same as shareNative but for clarity)
+ */
+const shareNativeImage = async (blob, { title, text, fileName }) => {
+  return shareNative(blob, { title, text, fileName });
+};
+
+/**
  * Captures an HTML element as an image and shares it using native share functionality
  * @param {HTMLElement} element - The DOM element to capture
  * @param {Object} options - Share options
@@ -110,12 +182,12 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         const uniqueFileName = `wellness-valley-${timestamp}.png`;
         const base64String = base64Data.split(",")[1];
         
-        // Write to External directory (better for sharing on Android)
-        console.log("💾 Writing file to external storage...");
+        // Write to Cache directory (always exists, no permission issues)
+        console.log("💾 Writing file to cache storage...");
         const writeResult = await Filesystem.writeFile({
-          path: `Download/${uniqueFileName}`,
+          path: uniqueFileName,
           data: base64String,
-          directory: Directory.External,
+          directory: Directory.Cache,
         });
         
         console.log("✅ File written:", writeResult.uri);
@@ -155,14 +227,14 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
           console.log("📱 Shared via:", shareResult.activityType);
         }
         
-        // Clean up the file from Downloads after a delay
+        // Clean up the file from Cache after a delay
         setTimeout(async () => {
           try {
             await Filesystem.deleteFile({
-              path: `Download/${uniqueFileName}`,
-              directory: Directory.External,
+              path: uniqueFileName,
+              directory: Directory.Cache,
             });
-            console.log("✅ Temporary file cleaned up from Downloads");
+            console.log("✅ Temporary file cleaned up from Cache");
           } catch (cleanupError) {
             console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }

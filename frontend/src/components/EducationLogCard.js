@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
-import { captureAndShare } from '../utils/shareUtils';
+import { captureAndShare, shareImageDirectly } from '../utils/shareUtils';
 
 const EducationLogCard = ({ educationData, imagePreview }) => {
   const [isSharing, setIsSharing] = useState(false);
@@ -27,12 +27,21 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
 
     setIsSharing(true);
     try {
-      await captureAndShare(shareRef.current, {
-        title: `Education Session - ${educationData.topic}`,
-        text: `${educationData.topic} on ${educationData.platform}`,
-        fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
-        // whatsappOnly: true,
-      });
+      // Share the actual original image if available
+      if (imagePreview) {
+        await shareImageDirectly(imagePreview, {
+          title: `Education Session - ${educationData.topic}`,
+          text: `${educationData.topic} on ${educationData.platform}`,
+          fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
+        });
+      } else {
+        // Fallback to card capture if no image
+        await captureAndShare(shareRef.current, {
+          title: `Education Session - ${educationData.topic}`,
+          text: `${educationData.topic} on ${educationData.platform}`,
+          fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
+        });
+      }
     } catch (error) {
       console.error("Failed to share:", error);
     } finally {
