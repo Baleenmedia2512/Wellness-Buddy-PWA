@@ -21,7 +21,7 @@ export const LEADERBOARD_CONFIG = {
   },
   
   // Static configuration (not changed via UI)
-  REFRESH_INTERVAL: 5 * 60 * 1000, // 5 minutes
+  REFRESH_INTERVAL: 1 * 60 * 1000, // 1 minute (real-time updates)
   SLIDE_INTERVAL: 5 * 1000,        // 5 seconds
   MARQUEE_DURATION: 20,             // 20 seconds for scroll
 };

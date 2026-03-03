@@ -22,8 +22,27 @@ const NutritionCard = ({
   const [isSaving, setIsSaving] = useState(false);
   const [editingStates, setEditingStates] = useState({});
   const [isSharing, setIsSharing] = useState(false);
+  const [highResImageUrl, setHighResImageUrl] = useState(null);
   const cardRef = useRef(null);
   const shareRef = useRef(null);
+
+  // Create high-resolution image URL from original file for sharing
+  useEffect(() => {
+    if (selectedImage && selectedImage instanceof File) {
+      // Create object URL from original file (no compression)
+      const url = URL.createObjectURL(selectedImage);
+      setHighResImageUrl(url);
+      console.log('📸 Created high-res image URL for sharing');
+      
+      // Cleanup on unmount
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } else if (imagePreview) {
+      // Fallback to preview if no file available
+      setHighResImageUrl(imagePreview);
+    }
+  }, [selectedImage, imagePreview]);
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
@@ -334,7 +353,7 @@ const NutritionCard = ({
 
       breakdownText += `Tracked with Wellness Valley 💚`;
 
-      // Capture and share the entire nutrition card (image only, no text)
+      // Capture and share the complete nutrition card (food image + all nutrition details)
       await captureAndShare(shareRef.current, {
         title: `${mealName} - Wellness Valley`,
         fileName: `wellness-valley-${mealName
@@ -366,87 +385,104 @@ const NutritionCard = ({
 
   return (
     <>
-      {/* Hidden container for sharing - includes image + card */}
+      {/* Hidden container for sharing - includes image + card at high resolution */}
       <div
         ref={shareRef}
-        className="fixed -left-[9999px] top-0 w-[400px]"
-        style={{ position: "fixed", left: "-9999px" }}
+        className="fixed -left-[9999px] top-0"
+        style={{ 
+          position: "fixed", 
+          left: "-9999px",
+          top: "0",
+          width: "1200px",
+          maxHeight: "none",
+          height: "auto"
+        }}
       >
-        <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden">
-          {/* Food Image for sharing */}
-          {(imagePreview || selectedImage) && (
-            <div className="relative">
+        <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-visible"
+          style={{ height: "auto" }}
+        >
+          {/* Food Image for sharing - Maximum Quality */}
+          {highResImageUrl && (
+            <div className="relative" style={{ height: "1200px", overflow: "hidden" }}>
               <img
-                src={imagePreview || selectedImage}
+                src={highResImageUrl}
                 alt="Food"
-                className="w-full h-64 object-cover"
+                style={{ 
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  imageRendering: "-webkit-optimize-contrast"
+                }}
+                className="high-quality-image"
                 crossOrigin="anonymous"
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
 
-          {/* Duplicate card content for sharing */}
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
+          {/* Duplicate card content for sharing - Scaled up for high resolution */}
+          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white" style={{ padding: "32px" }}>
             <div className="text-center">
-              <h2 className="text-xl font-bold">{generateMealName()}</h2>
+              <h2 style={{ fontSize: "48px", fontWeight: "bold" }}>{generateMealName()}</h2>
               {localDetailedItems.length > 1 && (
-                <p className="text-green-100 text-sm mt-1">
+                <p className="text-green-100" style={{ fontSize: "32px", marginTop: "8px" }}>
                   {localDetailedItems.length} food items analyzed
                 </p>
               )}
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-red-600">
+          <div style={{ padding: "48px" }}>
+            <div className="grid grid-cols-2 gap-3 mb-4" style={{ gap: "24px", marginBottom: "32px" }}>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
+                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-red-600">
                   {localNutrition.calories}
                 </div>
-                <div className="text-sm font-medium text-red-700 mt-1">
+                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-red-700">
                   Calories
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-yellow-600">
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
+                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-yellow-600">
                   {localNutrition.carbs}g
                 </div>
-                <div className="text-sm font-medium text-yellow-700 mt-1">
+                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-yellow-700">
                   Carbs
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-blue-600">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
+                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-blue-600">
                   {localNutrition.protein}g
                 </div>
-                <div className="text-sm font-medium text-blue-700 mt-1">
+                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-blue-700">
                   Protein
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-purple-600">
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
+                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-purple-600">
                   {localNutrition.fat}g
                 </div>
-                <div className="text-sm font-medium text-purple-700 mt-1">
+                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-purple-700">
                   Fat
                 </div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
-              <div className="text-3xl font-bold text-green-600">
+            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px", marginBottom: "32px" }}>
+              <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-green-600">
                 {localNutrition.fiber}g
               </div>
-              <div className="text-sm font-medium text-green-700 mt-1">
+              <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-green-700">
                 Fiber
               </div>
             </div>
 
             {/* Macronutrient Bar */}
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            <div style={{ marginTop: "32px" }}>
+              <h3 style={{ fontSize: "28px", fontWeight: "600", marginBottom: "16px" }} className="text-gray-700">
                 Macronutrient Distribution
               </h3>
-              <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
+              <div className="flex rounded-lg overflow-hidden bg-gray-200" style={{ height: "32px", borderRadius: "16px" }}>
                 {(() => {
                   const totalCals =
                     nutrition.carbs * 4 +
@@ -482,13 +518,13 @@ const NutritionCard = ({
               </div>
             </div>
 
-            {/* Food Breakdown for sharing */}
+            {/* Food Breakdown for sharing - Scaled up */}
             {localDetailedItems && localDetailedItems.length > 0 && (
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+              <div style={{ marginTop: "48px", paddingTop: "32px" }} className="border-t border-gray-200">
+                <h3 style={{ fontSize: "42px", fontWeight: "600", marginBottom: "24px" }} className="text-gray-800">
                   Food Breakdown
                 </h3>
-                <div className="space-y-3">
+                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
                   {localDetailedItems.map((item, index) => {
                     const itemCals = Math.round(
                       item.nutrition?.calories || item.calories || 0,
@@ -504,26 +540,27 @@ const NutritionCard = ({
                     return (
                       <div
                         key={index}
-                        className="pb-3 border-b border-gray-100 last:border-0"
+                        style={{ paddingBottom: "24px" }}
+                        className="border-b border-gray-100 last:border-0"
                       >
-                        <div className="flex justify-between items-start mb-1">
+                        <div className="flex justify-between items-start" style={{ marginBottom: "12px" }}>
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900">
+                            <div style={{ fontSize: "32px", fontWeight: "500" }} className="text-gray-900">
                               {item.name}
                             </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
+                            <div style={{ fontSize: "24px", marginTop: "8px" }} className="text-gray-500">
                               {portion} {weight ? `(${weight}g)` : ""}
                             </div>
                           </div>
                           
                           {/* Calories */}
-                          <div className="text-base font-bold text-red-600 flex-shrink-0 ml-2">
+                          <div style={{ fontSize: "36px", fontWeight: "bold", marginLeft: "16px" }} className="text-red-600 flex-shrink-0">
                             {itemCals} kcal
                           </div>
                         </div>
                         
                         {/* Nutrient breakdown */}
-                        <div className="text-[11px] font-medium flex flex-wrap gap-2">
+                        <div style={{ fontSize: "24px", fontWeight: "500", display: "flex", flexWrap: "wrap", gap: "16px" }}>
                           <span className="text-blue-600">
                             Protein{" "}
                             {Math.round(

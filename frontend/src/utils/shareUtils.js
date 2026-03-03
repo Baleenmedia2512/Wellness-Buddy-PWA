@@ -97,22 +97,69 @@ export const captureAndShare = async (element, options = {}) => {
     console.log("📸 Starting capture and share process...");
     console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
 
-    // Step 1: Capture the element as canvas with high quality
-    const canvas = await html2canvas(element, {
-      backgroundColor: "#ffffff",
-      scale: 3, // Higher quality for WhatsApp and social media (3x resolution)
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      imageTimeout: 0,
-      removeContainer: true,
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
-      width: element.scrollWidth,
-      height: element.scrollHeight,
+    // Ensure all images in the element are fully loaded before capture
+    const images = element.querySelectorAll('img');
+    console.log("🖼️ Found", images.length, "images in element");
+    
+    await Promise.all(
+      Array.from(images).map((img) => {
+        if (img.complete && img.naturalWidth > 0) {
+          console.log("✅ Image already loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+          return Promise.resolve();
+        }
+        console.log("⏳ Waiting for image to load:", img.src.substring(0, 50));
+        return new Promise((resolve) => {
+          img.onload = () => {
+            console.log("✅ Image loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+            resolve();
+          };
+          img.onerror = () => {
+            console.log("⚠️ Image failed to load:", img.src.substring(0, 50));
+            resolve(); // Continue anyway
+          };
+          // Fallback timeout
+          setTimeout(resolve, 2000);
+        });
+      })
+    );
+    
+    // Quick delay for rendering
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Log element dimensions
+    console.log("📏 Element dimensions:", {
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      offsetWidth: element.offsetWidth,
+      offsetHeight: element.offsetHeight,
+      clientHeight: element.clientHeight
     });
 
-    console.log("✅ Canvas created successfully");
+    // Step 1: Capture the element as canvas with optimized quality/speed balance
+    // Using 3x scale on a 1200px wide card = 3600px final width (high quality + fast)
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#ffffff",
+      scale: 3, // 3x scale for 1200px card = 3600px width (balanced quality/speed)
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      imageTimeout: 10000,
+      removeContainer: true,
+      scrollY: -window.scrollY,
+      scrollX: -window.scrollX,
+      foreignObjectRendering: false,
+      onclone: (clonedDoc) => {
+        // Ensure all images in the cloned document use high quality rendering
+        const images = clonedDoc.getElementsByTagName('img');
+        for (let img of images) {
+          img.style.imageRendering = '-webkit-optimize-contrast';
+          img.style.maxWidth = 'none';
+          img.style.maxHeight = 'none';
+        }
+      }
+    });
+
+    console.log("✅ Canvas created successfully with dimensions:", canvas.width, "x", canvas.height);
 
     // Step 2: Convert canvas to high-quality blob
     const blob = await new Promise((resolve, reject) => {
@@ -229,7 +276,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
           console.log("📱 Shared via:", shareResult.activityType);
         }
         
-        // Clean up the file from Cache after a delay
+        // Clean up the file from Cache after 2 minutes
         setTimeout(async () => {
           try {
             await Filesystem.deleteFile({
@@ -240,7 +287,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
           } catch (cleanupError) {
             console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }
-        }, 10000);
+        }, 120000);
         
       } catch (shareError) {
         console.error("❌ Share error:", shareError);
@@ -292,7 +339,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       
       await Share.share(shareOptions);
       
-      // Cleanup
+      // Cleanup after 2 minutes
       setTimeout(async () => {
         try {
           await Filesystem.deleteFile({
@@ -302,7 +349,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         } catch (error) {
           console.warn("⚠️ Failed to clean up temporary file:", error);
         }
-      }, 10000);
+      }, 120000);
     }
   } catch (error) {
     console.error("❌ Native share failed:", error);
