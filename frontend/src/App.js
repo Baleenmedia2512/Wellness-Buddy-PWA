@@ -1018,8 +1018,8 @@ function WellnessValleyApp() {
       // Show success popup (similar to nutrition save)
       setError(null);
 
-      // Refresh leaderboard immediately after weight save
-      handleLeaderboardRefresh();
+      // Leaderboard refresh disabled - don't show leaderboard after weight save
+      // handleLeaderboardRefresh();
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -2544,12 +2544,12 @@ function WellnessValleyApp() {
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
-      {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
-      <WeightLossLeaderboard 
+      {/* Weight Loss Leaderboard Strip - DISABLED (user requested removal) */}
+      {/* <WeightLossLeaderboard 
         ref={leaderboardRef}
         apiBaseUrl={apiBaseUrl} 
         topN={LEADERBOARD_CONFIG.TOP_N}
-      />
+      /> */}
 
       <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
         <div className="max-w-md w-full mx-auto space-y-6">
