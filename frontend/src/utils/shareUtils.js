@@ -294,10 +294,9 @@ const shareNative = async (
           "💾 Sharing via custom HIGH-QUALITY plugin (zero compression)...",
         );
         console.log(
-          "   Using lossless PNG format at",
-          canvas.width,
-          "x",
-          canvas.height,
+          "   Using lossless PNG format, file size:",
+          Math.round(blob.size / 1024),
+          "KB",
         );
 
         const result = await WhatsAppShare.shareImage({
