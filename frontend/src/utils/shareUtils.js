@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { isPlatform } from "@ionic/react";
+import { Capacitor } from "@capacitor/core";
 
 /**
  * Share an actual image directly (original quality, no screenshot)
@@ -23,17 +24,24 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 
   try {
     console.log("📸 Starting direct image share...");
-    console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
+    console.log(
+      "📱 Platform check - Capacitor:",
+      isPlatform("capacitor"),
+      "Android:",
+      isPlatform("android"),
+      "iOS:",
+      isPlatform("ios"),
+    );
 
     // Convert image URL to blob
     let blob;
-    if (imageUrl.startsWith('data:')) {
+    if (imageUrl.startsWith("data:")) {
       // Data URL - convert to blob
       const response = await fetch(imageUrl);
       blob = await response.blob();
-    } else if (imageUrl.startsWith('http')) {
+    } else if (imageUrl.startsWith("http")) {
       // Remote URL - fetch and convert
-      const response = await fetch(imageUrl, { mode: 'cors' });
+      const response = await fetch(imageUrl, { mode: "cors" });
       blob = await response.blob();
     } else {
       // Blob URL - convert to blob
@@ -74,7 +82,10 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 /**
  * Native share for direct images (same as shareNative but for clarity)
  */
-const shareNativeImage = async (blob, { title, text, fileName, shareAsDocument }) => {
+const shareNativeImage = async (
+  blob,
+  { title, text, fileName, shareAsDocument },
+) => {
   return shareNative(blob, { title, text, fileName, shareAsDocument });
 };
 
@@ -97,22 +108,37 @@ export const captureAndShare = async (element, options = {}) => {
 
   try {
     console.log("📸 Starting capture and share process...");
-    console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
+    console.log(
+      "📱 Platform check - Capacitor:",
+      isPlatform("capacitor"),
+      "Android:",
+      isPlatform("android"),
+      "iOS:",
+      isPlatform("ios"),
+    );
 
     // Ensure all images in the element are fully loaded before capture
-    const images = element.querySelectorAll('img');
+    const images = element.querySelectorAll("img");
     console.log("🖼️ Found", images.length, "images in element");
-    
+
     await Promise.all(
       Array.from(images).map((img) => {
         if (img.complete && img.naturalWidth > 0) {
-          console.log("✅ Image already loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+          console.log(
+            "✅ Image already loaded:",
+            img.src.substring(0, 50),
+            `${img.naturalWidth}x${img.naturalHeight}`,
+          );
           return Promise.resolve();
         }
         console.log("⏳ Waiting for image to load:", img.src.substring(0, 50));
         return new Promise((resolve) => {
           img.onload = () => {
-            console.log("✅ Image loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+            console.log(
+              "✅ Image loaded:",
+              img.src.substring(0, 50),
+              `${img.naturalWidth}x${img.naturalHeight}`,
+            );
             resolve();
           };
           img.onerror = () => {
@@ -122,11 +148,11 @@ export const captureAndShare = async (element, options = {}) => {
           // Fallback timeout
           setTimeout(resolve, 2000);
         });
-      })
+      }),
     );
-    
+
     // Quick delay for rendering
-    await new Promise(resolve => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 200));
 
     // Log element dimensions
     console.log("📏 Element dimensions:", {
@@ -134,14 +160,14 @@ export const captureAndShare = async (element, options = {}) => {
       scrollHeight: element.scrollHeight,
       offsetWidth: element.offsetWidth,
       offsetHeight: element.offsetHeight,
-      clientHeight: element.clientHeight
+      clientHeight: element.clientHeight,
     });
 
-    // Step 1: Capture the element as canvas with optimized quality/speed balance
-    // Using 3x scale on a 1200px wide card = 3600px final width (high quality + fast)
+    // Step 1: Capture the element as canvas with MAXIMUM QUALITY
+    // Using 3x scale on a 1200px wide card = 3600px final width (ultra high quality)
     const canvas = await html2canvas(element, {
       backgroundColor: "#ffffff",
-      scale: 3, // 3x scale for 1200px card = 3600px width (balanced quality/speed)
+      scale: 3, // 3x scale = 3600px width for crystal clear quality
       useCORS: true,
       allowTaint: false,
       logging: false,
@@ -150,20 +176,30 @@ export const captureAndShare = async (element, options = {}) => {
       scrollY: -window.scrollY,
       scrollX: -window.scrollX,
       foreignObjectRendering: false,
+      // HIGH QUALITY IMAGE RENDERING
       onclone: (clonedDoc) => {
-        // Ensure all images in the cloned document use high quality rendering
-        const images = clonedDoc.getElementsByTagName('img');
+        // Force high quality rendering for all images
+        const images = clonedDoc.getElementsByTagName("img");
         for (let img of images) {
-          img.style.imageRendering = '-webkit-optimize-contrast';
-          img.style.maxWidth = 'none';
-          img.style.maxHeight = 'none';
+          // Use crisp-edges for sharp rendering (no blur)
+          img.style.imageRendering = "crisp-edges";
+          img.style.WebkitImageRendering = "crisp-edges";
+          img.style.maxWidth = "none";
+          img.style.maxHeight = "none";
+          // Disable any potential compression
+          img.style.imageSmoothing = "false";
         }
-      }
+      },
     });
 
-    console.log("✅ Canvas created successfully with dimensions:", canvas.width, "x", canvas.height);
+    console.log(
+      "✅ Canvas created successfully with dimensions:",
+      canvas.width,
+      "x",
+      canvas.height,
+    );
 
-    // Step 2: Convert canvas to high-quality blob
+    // Step 2: Convert canvas to LOSSLESS PNG blob (NO COMPRESSION)
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
@@ -173,12 +209,20 @@ export const captureAndShare = async (element, options = {}) => {
             reject(new Error("Failed to create blob from canvas"));
           }
         },
-        "image/png",
-        1.0, // Maximum quality
+        "image/png", // PNG = lossless format (no quality loss)
+        1.0, // Quality parameter (1.0 = maximum, though PNG is always lossless)
       );
     });
 
-    console.log("✅ Blob created:", blob.size, "bytes");
+    const fileSizeKB = Math.round(blob.size / 1024);
+    console.log(
+      "✅ High-quality PNG blob created:",
+      blob.size,
+      "bytes (",
+      fileSizeKB,
+      "KB)",
+    );
+    console.log("   Resolution:", canvas.width, "x", canvas.height, "pixels");
 
     // Step 3: Check if we're on a native platform (Android/iOS) or mobile browser
     const isNativePlatform =
@@ -219,41 +263,113 @@ export const captureAndShare = async (element, options = {}) => {
  * Enhanced with better Android support and error handling
  * Supports sharing as document to prevent WhatsApp compression
  */
-const shareNative = async (blob, { title, text, fileName, shareAsDocument = true }) => {
+const shareNative = async (
+  blob,
+  { title, text, fileName, shareAsDocument = true },
+) => {
   try {
     // Convert blob to base64
     const base64Data = await blobToBase64(blob);
-    console.log("📝 Base64 data prepared, size:", base64Data.length, "characters");
+    console.log(
+      "📝 Base64 data prepared, size:",
+      base64Data.length,
+      "characters",
+    );
 
-    // For Android, use external storage for better sharing compatibility
+    // For Android, use custom WhatsAppSharePlugin for better quality
     if (isPlatform("android")) {
-      console.log("📱 Android detected - using external storage method");
-      
+      console.log(
+        "📱 Android detected - using custom WhatsAppSharePlugin for high-quality sharing",
+      );
+
+      try {
+        // Use custom Android plugin that prevents compression
+        const { WhatsAppShare } = Capacitor.Plugins;
+
+        if (!WhatsAppShare) {
+          throw new Error("WhatsAppShare plugin not available");
+        }
+
+        console.log(
+          "💾 Sharing via custom HIGH-QUALITY plugin (zero compression)...",
+        );
+        console.log(
+          "   Using lossless PNG format at",
+          canvas.width,
+          "x",
+          canvas.height,
+        );
+
+        const result = await WhatsAppShare.shareImage({
+          base64Data: base64Data,
+          fileName: fileName,
+          title: title,
+          text: text,
+        });
+
+        console.log(
+          "✅ Custom plugin share completed (full quality preserved):",
+          result,
+        );
+        return;
+      } catch (pluginError) {
+        console.error("❌ Custom plugin share failed:", pluginError);
+
+        // Check if user canceled
+        const isCanceled =
+          pluginError?.message?.toLowerCase().includes("cancel") ||
+          pluginError?.message?.toLowerCase().includes("cancelled");
+
+        if (isCanceled) {
+          console.log("ℹ️ User cancelled share");
+          return;
+        }
+
+        // Fall back to standard Capacitor share method
+        console.log("⚠️ Falling back to standard Capacitor share...");
+        // Continue to fallback method below
+      }
+    }
+
+    // iOS or Android fallback - use standard Capacitor share
+    // For Android, use external storage for better sharing compatibility
+    if (isPlatform("android") || isPlatform("ios")) {
+      console.log("📱 Using standard Capacitor share method");
+
       try {
         const timestamp = Date.now();
         // Use .png extension for compatibility, but share with text to trigger document mode
         const uniqueFileName = `wellness-valley-${timestamp}.png`;
         const base64String = base64Data.split(",")[1];
-        
+
         // Write to Cache directory (always exists, no permission issues)
         console.log("💾 Writing file to cache storage...");
-        console.log("📄 Document mode:", shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED");
+        console.log(
+          "📄 Document mode:",
+          shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED",
+        );
         const writeResult = await Filesystem.writeFile({
           path: uniqueFileName,
           data: base64String,
           directory: Directory.Cache,
         });
-        
+
         console.log("✅ File written:", writeResult.uri);
-        
+
         // Get the content URI
         let fileUri = writeResult.uri;
-        
+
         // Log the URI for debugging
         console.log("🔍 Original URI from writeFile:", fileUri);
-        console.log("🔍 URI starts with content://:", fileUri.startsWith("content://"));
-        console.log("🔍 URI starts with file://:", fileUri.startsWith("file://"));
-        
+        console.log(
+          "🔍 URI starts with content://:",
+          fileUri.startsWith("content://"),
+        );
+        console.log(
+          "🔍 URI starts with file://:",
+          fileUri.startsWith("file://"),
+        );
+
         // When shareAsDocument is true, include text to trigger document mode in WhatsApp
         // This prevents automatic compression and maintains full image quality
         const shareOptions = {
@@ -262,30 +378,36 @@ const shareNative = async (blob, { title, text, fileName, shareAsDocument = true
           files: [fileUri],
           dialogTitle: "Share via",
         };
-        
-        console.log("💡 Share mode:", shareAsDocument ? "Document (full quality)" : "Image (may compress)");
-        
+
+        console.log(
+          "💡 Share mode:",
+          shareAsDocument ? "Document (full quality)" : "Image (may compress)",
+        );
+
         console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
-        
+
         // Check if Share API is available
         const canShare = await Share.canShare().catch(() => ({ value: false }));
         console.log("📊 Can share:", canShare);
-        
+
         if (!canShare.value) {
           throw new Error("Share API not available on this device");
         }
 
         // Perform the share
-        console.log("🚀 Calling Share.share() with options:", JSON.stringify(shareOptions, null, 2));
+        console.log(
+          "🚀 Calling Share.share() with options:",
+          JSON.stringify(shareOptions, null, 2),
+        );
         const shareResult = await Share.share(shareOptions);
 
         console.log("✅ Share completed:", shareResult);
-        
+
         // Log activity type if available (iOS specific)
         if (shareResult && shareResult.activityType) {
           console.log("📱 Shared via:", shareResult.activityType);
         }
-        
+
         // Clean up the file from Cache after 2 minutes
         setTimeout(async () => {
           try {
@@ -298,13 +420,12 @@ const shareNative = async (blob, { title, text, fileName, shareAsDocument = true
             console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }
         }, 120000);
-        
       } catch (shareError) {
         console.error("❌ Share error:", shareError);
         console.error("❌ Share error details:", JSON.stringify(shareError));
 
         // Check if user canceled the share
-        const isCanceled = 
+        const isCanceled =
           shareError?.message?.toLowerCase().includes("cancel") ||
           shareError?.message?.toLowerCase().includes("cancelled") ||
           shareError?.code === "0" ||
@@ -320,60 +441,26 @@ const shareNative = async (blob, { title, text, fileName, shareAsDocument = true
         const errorMessage = shareError?.message || "Unknown error";
         alert(
           `Unable to share the image.\n\n` +
-          `Error: ${errorMessage}\n\n` +
-          `Please ensure:\n` +
-          `1. You have sharing apps installed (Messages, WhatsApp, etc.)\n` +
-          `2. Grant necessary permissions if prompted\n` +
-          `3. Your device has enough storage space`
+            `Error: ${errorMessage}\n\n` +
+            `Please ensure:\n` +
+            `1. You have sharing apps installed (Messages, WhatsApp, etc.)\n` +
+            `2. Grant necessary permissions if prompted\n` +
+            `3. Your device has enough storage space`,
         );
-        
+
         throw shareError;
       }
-    } else {
-      // iOS or other platforms - use cache directory
-      const timestamp = Date.now();
-      const uniqueFileName = `wellness-valley-${timestamp}.png`;
-      const base64String = base64Data.split(",")[1];
-      
-      console.log("📄 Document mode:", shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED");
-      const savedFile = await Filesystem.writeFile({
-        path: uniqueFileName,
-        data: base64String,
-        directory: Directory.Cache,
-      });
-      
-      // Include text when sharing as document to prevent compression
-      const shareOptions = {
-        title: title,
-        text: shareAsDocument ? text : undefined,
-        files: [savedFile.uri],
-        dialogTitle: "Share via",
-      };
-      
-      console.log("💡 Share mode:", shareAsDocument ? "Document (full quality)" : "Image (may compress)");
-      
-      await Share.share(shareOptions);
-      
-      // Cleanup after 2 minutes
-      setTimeout(async () => {
-        try {
-          await Filesystem.deleteFile({
-            path: uniqueFileName,
-            directory: Directory.Cache,
-          });
-        } catch (error) {
-          console.warn("⚠️ Failed to clean up temporary file:", error);
-        }
-      }, 120000);
     }
   } catch (error) {
     console.error("❌ Native share failed:", error);
-    
+
     // Only alert if we haven't already shown an error
     if (!error?.message?.includes("cancelled")) {
-      alert("Failed to share image. Please try again or check your app permissions.");
+      alert(
+        "Failed to share image. Please try again or check your app permissions.",
+      );
     }
-    
+
     throw error;
   }
 };
@@ -382,7 +469,10 @@ const shareNative = async (blob, { title, text, fileName, shareAsDocument = true
  * Web fallback share using Web Share API or download
  * @param {boolean} shareAsDocument - If true, share as document to prevent compression
  */
-const shareWeb = async (blob, { title, text, fileName, shareAsDocument = true }) => {
+const shareWeb = async (
+  blob,
+  { title, text, fileName, shareAsDocument = true },
+) => {
   try {
     // First try: Web Share API with files (best option)
     if (navigator.share) {
@@ -400,7 +490,10 @@ const shareWeb = async (blob, { title, text, fileName, shareAsDocument = true })
             webShareOptions.title = title;
           }
           await navigator.share(webShareOptions);
-          console.log("✅ Shared via Web Share API with file", shareAsDocument ? "(document mode)" : "");
+          console.log(
+            "✅ Shared via Web Share API with file",
+            shareAsDocument ? "(document mode)" : "",
+          );
           return;
         } catch (shareError) {
           if (shareError.name === "AbortError") {
