@@ -166,19 +166,33 @@ export default async function handler(req, res) {
     // Step 5: Sort by weight loss (descending - highest first)
     leaderboardData.sort((a, b) => b.weightLoss - a.weightLoss);
 
-    // Step 6: Limit to topN and add rank (ascending: top performer gets rank #1)
-    const topResults = leaderboardData.slice(0, topN).map((user, index) => ({
-      rank: index + 1,  // Ascending rank: 1, 2, 3...10 (1 = BEST)
-      userId: user.userId,
-      userName: user.userName,
-      email: user.email,
-      coachName: user.coachName,
-      profileImage: user.profileImage,
-      weightLoss: user.weightLoss,
-      todayWeight: user.todayWeight,
-      yesterdayWeight: user.yesterdayWeight,
-      comparison: 'Today vs Yesterday'
-    }));
+    // Step 6: Limit to topN and add rank with tie handling (dense ranking)
+    // Users with same weight loss get same rank, next rank continues sequentially
+    const topResults = [];
+    let currentRank = 1;
+    let previousWeightLoss = null;
+    
+    leaderboardData.slice(0, topN).forEach((user) => {
+      // If weight loss is different from previous, increment rank by 1 only
+      if (previousWeightLoss !== null && user.weightLoss !== previousWeightLoss) {
+        currentRank++;
+      }
+      
+      topResults.push({
+        rank: currentRank,  // Same rank for tied users, next distinct value gets next consecutive rank
+        userId: user.userId,
+        userName: user.userName,
+        email: user.email,
+        coachName: user.coachName,
+        profileImage: user.profileImage,
+        weightLoss: user.weightLoss,
+        todayWeight: user.todayWeight,
+        yesterdayWeight: user.yesterdayWeight,
+        comparison: 'Today vs Yesterday'
+      });
+      
+      previousWeightLoss = user.weightLoss;
+    });
 
     // Step 7: Reverse order for display (show worst to best: Rank 10 → Rank 1)
     topResults.reverse();

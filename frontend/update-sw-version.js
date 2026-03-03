@@ -33,5 +33,5 @@ fs.writeFileSync(SW_PATH, swContent, 'utf8');
 
 console.log('✅ Service Worker version updated:');
 console.log(`   Build Time: ${buildDate}`);
-console.log(`   Version: 2.0.${buildTimestamp}`);
+console.log(`   Version: 2.3.${buildTimestamp}`);
 console.log('   Cache will be automatically cleared on deployment!');

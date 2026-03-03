@@ -1018,6 +1018,9 @@ function WellnessValleyApp() {
       // Show success popup (similar to nutrition save)
       setError(null);
 
+      // Refresh leaderboard immediately after weight save
+      handleLeaderboardRefresh();
+
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
     } catch (err) {

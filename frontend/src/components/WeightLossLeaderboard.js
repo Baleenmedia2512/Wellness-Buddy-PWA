@@ -26,11 +26,11 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     try {
       console.log('🏆 [LEADERBOARD] Fetching data from:', `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`);
       
-      const response = await fetch(`${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`, {
+      const response = await fetch(`${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache'
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
         }
       });
 
@@ -62,8 +62,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Initial fetch
   useEffect(() => {
     fetchLeaderboard();
-    // Refresh every 5 minutes (configurable)
-    const refreshInterval = setInterval(fetchLeaderboard, LEADERBOARD_CONFIG.REFRESH_INTERVAL);
+    // Refresh every 1 minute for real-time updates
+    const refreshInterval = setInterval(fetchLeaderboard, 1 * 60 * 1000);
     return () => clearInterval(refreshInterval);
   }, [fetchLeaderboard]);
 
@@ -118,7 +118,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       const grams = Math.round(weightLoss * 1000);
       return `${grams}g`;
     }
-    return `${weightLoss} kg`;
+    return `${weightLoss}kg`;
   };
 
   // Get rank badge color
@@ -145,40 +145,38 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
           style={{ animationDuration: `${LEADERBOARD_CONFIG.MARQUEE_DURATION}s` }}
         >
           <div className="inline-flex items-center gap-4 mx-8">
-            <Trophy className="w-6 h-6 text-yellow-500 flex-shrink-0" />
-            <div className={`px-3 py-1 rounded-full text-sm font-bold ${getRankColor(user.rank)} flex-shrink-0`}>
-              Rank #{user.rank}
+            <div className="inline-flex flex-col items-center gap-1 flex-shrink-0">
+              <Trophy className="w-6 h-6 text-yellow-500" />
+              <div className={`px-3 py-1 rounded-full text-sm font-bold ${getRankColor(user.rank)}`}>
+                #{user.rank}
+              </div>
             </div>
             {getAvatar(user.email, user.userName)}
             <div className="flex flex-col flex-shrink-0">
               <span className="font-bold text-gray-800 text-base">{user.userName}</span>
-              <span className="text-sm text-gray-600">Coach: {user.coachName}</span>
+              {user.coachName && user.coachName.toLowerCase() !== 'no coach' && <span className="text-sm text-gray-600">Coach: {user.coachName}</span>}
             </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm flex-shrink-0">
+            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm flex-shrink-0">
               <TrendingDown className="w-5 h-5 text-green-600" />
-              <div className="flex flex-col">
-                <span className="font-bold text-green-600 text-lg">-{formatWeightLoss(user.weightLoss)}</span>
-                <span className="text-xs text-gray-500">{user.comparison}</span>
-              </div>
+              <span className="font-bold text-green-600 text-lg whitespace-nowrap">-{formatWeightLoss(user.weightLoss)}</span>
             </div>
           </div>
           {/* Duplicate for seamless loop */}
           <div className="inline-flex items-center gap-4 mx-8">
-            <Trophy className="w-6 h-6 text-yellow-500 flex-shrink-0" />
-            <div className={`px-3 py-1 rounded-full text-sm font-bold ${getRankColor(user.rank)} flex-shrink-0`}>
-              Rank #{user.rank}
+            <div className="inline-flex flex-col items-center gap-1 flex-shrink-0">
+              <Trophy className="w-6 h-6 text-yellow-500" />
+              <div className={`px-3 py-1 rounded-full text-sm font-bold ${getRankColor(user.rank)}`}>
+                #{user.rank}
+              </div>
             </div>
             {getAvatar(user.email, user.userName, user.profileImage)}
             <div className="flex flex-col flex-shrink-0">
               <span className="font-bold text-gray-800 text-base">{user.userName}</span>
-              <span className="text-sm text-gray-600">Coach: {user.coachName}</span>
+              {user.coachName && user.coachName.toLowerCase() !== 'no coach' && <span className="text-sm text-gray-600">Coach: {user.coachName}</span>}
             </div>
-            <div className="flex items-center gap-2 bg-white px-4 py-2 rounded-lg shadow-sm flex-shrink-0">
+            <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-lg shadow-sm flex-shrink-0">
               <TrendingDown className="w-5 h-5 text-green-600" />
-              <div className="flex flex-col">
-                <span className="font-bold text-green-600 text-lg">-{formatWeightLoss(user.weightLoss)}</span>
-                <span className="text-xs text-gray-500">{user.comparison}</span>
-              </div>
+              <span className="font-bold text-green-600 text-lg whitespace-nowrap">-{formatWeightLoss(user.weightLoss)}</span>
             </div>
           </div>
         </div>
@@ -202,32 +200,31 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
                 key={user.userId}
                 className="min-w-full flex-shrink-0 flex items-center gap-2 sm:gap-3 px-0.5"
               >
-                {/* Left: Trophy + Rank */}
-                <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Left: Trophy + Rank (stacked vertically) */}
+                <div className="flex flex-col items-center gap-1 flex-shrink-0">
                   <Trophy className="w-5 h-5 text-yellow-500" />
-                  <div className={`px-2 py-1 rounded-full text-xs font-bold ${getRankColor(user.rank)}`}>
+                  <div className={`px-2 py-0.5 rounded-full text-xs font-bold ${getRankColor(user.rank)}`}>
                     #{user.rank}
                   </div>
                 </div>
 
                 {/* Center: Profile + Details */}
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
                   {getAvatar(user.email, user.userName, user.profileImage)}
-                  <div className="flex flex-col">
-                    <span className="font-bold text-gray-800 text-sm leading-tight whitespace-nowrap">{user.userName}</span>
-                    <span className="text-xs text-gray-500 leading-tight whitespace-nowrap">
-                      Coach: {user.coachName}
-                    </span>
+                  <div className="flex flex-col min-w-0 flex-1">
+                    <span className="font-bold text-gray-800 text-sm leading-tight truncate">{user.userName}</span>
+                    {user.coachName && user.coachName.toLowerCase() !== 'no coach' && (
+                      <span className="text-xs text-gray-500 leading-tight truncate">
+                        Coach: {user.coachName}
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 {/* Right: Weight Loss */}
-                <div className="flex items-center gap-1.5 bg-white px-3 py-2 rounded-lg shadow-sm flex-shrink-0">
+                <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-lg shadow-sm flex-shrink-0">
                   <TrendingDown className="w-4 h-4 text-green-600" />
-                  <div className="flex flex-col">
-                    <span className="font-bold text-green-600 text-base leading-tight">-{formatWeightLoss(user.weightLoss)}</span>
-                    <span className="text-[10px] text-gray-500 leading-tight">{user.comparison}</span>
-                  </div>
+                  <span className="font-bold text-green-600 text-base whitespace-nowrap">-{formatWeightLoss(user.weightLoss)}</span>
                 </div>
               </div>
             ))}

@@ -5,6 +5,78 @@ import { Filesystem, Directory } from "@capacitor/filesystem";
 import { isPlatform } from "@ionic/react";
 
 /**
+ * Share an actual image directly (original quality, no screenshot)
+ * @param {string} imageUrl - The image URL (data URL or blob URL)
+ * @param {Object} options - Share options
+ * @param {string} options.title - Share title
+ * @param {string} options.text - Share message text
+ * @param {string} options.fileName - Name of the file to save/share
+ */
+export const shareImageDirectly = async (imageUrl, options = {}) => {
+  const {
+    title = "My Meal Analysis",
+    text = "Tracked with Wellness Valley",
+    fileName = "wellness-valley-meal.png",
+  } = options;
+
+  try {
+    console.log("📸 Starting direct image share...");
+    console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
+
+    // Convert image URL to blob
+    let blob;
+    if (imageUrl.startsWith('data:')) {
+      // Data URL - convert to blob
+      const response = await fetch(imageUrl);
+      blob = await response.blob();
+    } else if (imageUrl.startsWith('http')) {
+      // Remote URL - fetch and convert
+      const response = await fetch(imageUrl, { mode: 'cors' });
+      blob = await response.blob();
+    } else {
+      // Blob URL - convert to blob
+      const response = await fetch(imageUrl);
+      blob = await response.blob();
+    }
+
+    console.log("✅ Image blob created:", blob.size, "bytes", blob.type);
+
+    // Check if we're on a native platform (Android/iOS) or mobile browser
+    const isNativePlatform =
+      isPlatform("capacitor") || isPlatform("android") || isPlatform("ios");
+
+    const isMobileBrowser =
+      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent,
+      );
+
+    if (isNativePlatform) {
+      // Native mobile sharing (Capacitor)
+      await shareNativeImage(blob, { title, text, fileName });
+    } else if (isMobileBrowser && navigator.share) {
+      // Mobile browser with Web Share API
+      console.log("📱 Mobile browser detected, using Web Share API");
+      await shareWeb(blob, { title, text, fileName });
+    } else {
+      // Desktop or browser without share support
+      await shareWeb(blob, { title, text, fileName });
+    }
+
+    console.log("✅ Direct image share completed successfully");
+  } catch (error) {
+    console.error("❌ Direct image share failed:", error);
+    throw new Error("Failed to share image. Please try again.");
+  }
+};
+
+/**
+ * Native share for direct images (same as shareNative but for clarity)
+ */
+const shareNativeImage = async (blob, { title, text, fileName }) => {
+  return shareNative(blob, { title, text, fileName });
+};
+
+/**
  * Captures an HTML element as an image and shares it using native share functionality
  * @param {HTMLElement} element - The DOM element to capture
  * @param {Object} options - Share options
@@ -25,22 +97,71 @@ export const captureAndShare = async (element, options = {}) => {
     console.log("📸 Starting capture and share process...");
     console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
 
-    // Step 1: Capture the element as canvas
-    const canvas = await html2canvas(element, {
-      backgroundColor: "#ffffff",
-      scale: 2, // Higher quality for social media
-      useCORS: true,
-      allowTaint: true,
-      logging: false,
-      imageTimeout: 0,
-      removeContainer: true,
-      windowWidth: element.scrollWidth,
-      windowHeight: element.scrollHeight,
+    // Ensure all images in the element are fully loaded before capture
+    const images = element.querySelectorAll('img');
+    console.log("🖼️ Found", images.length, "images in element");
+    
+    await Promise.all(
+      Array.from(images).map((img) => {
+        if (img.complete && img.naturalWidth > 0) {
+          console.log("✅ Image already loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+          return Promise.resolve();
+        }
+        console.log("⏳ Waiting for image to load:", img.src.substring(0, 50));
+        return new Promise((resolve) => {
+          img.onload = () => {
+            console.log("✅ Image loaded:", img.src.substring(0, 50), `${img.naturalWidth}x${img.naturalHeight}`);
+            resolve();
+          };
+          img.onerror = () => {
+            console.log("⚠️ Image failed to load:", img.src.substring(0, 50));
+            resolve(); // Continue anyway
+          };
+          // Fallback timeout
+          setTimeout(resolve, 2000);
+        });
+      })
+    );
+    
+    // Quick delay for rendering
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Log element dimensions
+    console.log("📏 Element dimensions:", {
+      scrollWidth: element.scrollWidth,
+      scrollHeight: element.scrollHeight,
+      offsetWidth: element.offsetWidth,
+      offsetHeight: element.offsetHeight,
+      clientHeight: element.clientHeight
     });
 
-    console.log("✅ Canvas created successfully");
+    // Step 1: Capture the element as canvas with optimized quality/speed balance
+    // Using 3x scale on a 1200px wide card = 3600px final width (high quality + fast)
+    const canvas = await html2canvas(element, {
+      backgroundColor: "#ffffff",
+      scale: 3, // 3x scale for 1200px card = 3600px width (balanced quality/speed)
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      imageTimeout: 10000,
+      removeContainer: true,
+      scrollY: -window.scrollY,
+      scrollX: -window.scrollX,
+      foreignObjectRendering: false,
+      onclone: (clonedDoc) => {
+        // Ensure all images in the cloned document use high quality rendering
+        const images = clonedDoc.getElementsByTagName('img');
+        for (let img of images) {
+          img.style.imageRendering = '-webkit-optimize-contrast';
+          img.style.maxWidth = 'none';
+          img.style.maxHeight = 'none';
+        }
+      }
+    });
 
-    // Step 2: Convert canvas to blob
+    console.log("✅ Canvas created successfully with dimensions:", canvas.width, "x", canvas.height);
+
+    // Step 2: Convert canvas to high-quality blob
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
@@ -51,7 +172,7 @@ export const captureAndShare = async (element, options = {}) => {
           }
         },
         "image/png",
-        1.0,
+        1.0, // Maximum quality
       );
     });
 
@@ -110,12 +231,12 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         const uniqueFileName = `wellness-valley-${timestamp}.png`;
         const base64String = base64Data.split(",")[1];
         
-        // Write to External directory (better for sharing on Android)
-        console.log("💾 Writing file to external storage...");
+        // Write to Cache directory (always exists, no permission issues)
+        console.log("💾 Writing file to cache storage...");
         const writeResult = await Filesystem.writeFile({
-          path: `Download/${uniqueFileName}`,
+          path: uniqueFileName,
           data: base64String,
-          directory: Directory.External,
+          directory: Directory.Cache,
         });
         
         console.log("✅ File written:", writeResult.uri);
@@ -155,18 +276,18 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
           console.log("📱 Shared via:", shareResult.activityType);
         }
         
-        // Clean up the file from Downloads after a delay
+        // Clean up the file from Cache after 2 minutes
         setTimeout(async () => {
           try {
             await Filesystem.deleteFile({
-              path: `Download/${uniqueFileName}`,
-              directory: Directory.External,
+              path: uniqueFileName,
+              directory: Directory.Cache,
             });
-            console.log("✅ Temporary file cleaned up from Downloads");
+            console.log("✅ Temporary file cleaned up from Cache");
           } catch (cleanupError) {
             console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }
-        }, 10000);
+        }, 120000);
         
       } catch (shareError) {
         console.error("❌ Share error:", shareError);
@@ -218,7 +339,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       
       await Share.share(shareOptions);
       
-      // Cleanup
+      // Cleanup after 2 minutes
       setTimeout(async () => {
         try {
           await Filesystem.deleteFile({
@@ -228,7 +349,7 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         } catch (error) {
           console.warn("⚠️ Failed to clean up temporary file:", error);
         }
-      }, 10000);
+      }, 120000);
     }
   } catch (error) {
     console.error("❌ Native share failed:", error);
