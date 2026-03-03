@@ -97,10 +97,10 @@ export const captureAndShare = async (element, options = {}) => {
     console.log("📸 Starting capture and share process...");
     console.log("📱 Platform check - Capacitor:", isPlatform("capacitor"), "Android:", isPlatform("android"), "iOS:", isPlatform("ios"));
 
-    // Step 1: Capture the element as canvas
+    // Step 1: Capture the element as canvas with high quality
     const canvas = await html2canvas(element, {
       backgroundColor: "#ffffff",
-      scale: 2, // Higher quality for social media
+      scale: 3, // Higher quality for WhatsApp and social media (3x resolution)
       useCORS: true,
       allowTaint: true,
       logging: false,
@@ -108,11 +108,13 @@ export const captureAndShare = async (element, options = {}) => {
       removeContainer: true,
       windowWidth: element.scrollWidth,
       windowHeight: element.scrollHeight,
+      width: element.scrollWidth,
+      height: element.scrollHeight,
     });
 
     console.log("✅ Canvas created successfully");
 
-    // Step 2: Convert canvas to blob
+    // Step 2: Convert canvas to high-quality blob
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob(
         (blob) => {
@@ -123,7 +125,7 @@ export const captureAndShare = async (element, options = {}) => {
           }
         },
         "image/png",
-        1.0,
+        1.0, // Maximum quality
       );
     });
 

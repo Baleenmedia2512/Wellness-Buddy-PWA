@@ -334,26 +334,13 @@ const NutritionCard = ({
 
       breakdownText += `Tracked with Wellness Valley 💚`;
 
-      // Share the actual original image (not a screenshot)
-      const imageToShare = imagePreview || selectedImage;
-      if (imageToShare) {
-        await shareImageDirectly(imageToShare, {
-          title: `${mealName} - Wellness Valley`,
-          text: breakdownText,
-          fileName: `wellness-valley-${mealName
-            .toLowerCase()
-            .replace(/\s+/g, "-")}.png`,
-        });
-      } else {
-        // Fallback to capturing the card if no image available
-        await captureAndShare(shareRef.current, {
-          title: `${mealName} - Wellness Valley`,
-          text: breakdownText,
-          fileName: `wellness-valley-${mealName
-            .toLowerCase()
-            .replace(/\s+/g, "-")}.png`,
-        });
-      }
+      // Capture and share the entire nutrition card (image only, no text)
+      await captureAndShare(shareRef.current, {
+        title: `${mealName} - Wellness Valley`,
+        fileName: `wellness-valley-${mealName
+          .toLowerCase()
+          .replace(/\s+/g, "-")}.png`,
+      });
     } catch (error) {
       console.error("❌ Failed to share:", error);
       // Show error to user if it's not a cancellation
