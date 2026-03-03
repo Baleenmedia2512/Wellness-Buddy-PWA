@@ -269,11 +269,13 @@ const ImageUpload = forwardRef(({ onImageSelect, imagePreview, loading = false, 
         <div className="flex items-center justify-center">
           <div className="border-2 border-dashed border-green-300 rounded-lg p-8 hover:border-green-400 transition-colors duration-200 text-center max-w-lg w-full">
             <div className="flex justify-center mb-4">
-              <div className="text-6xl">🍎</div>
+              {/* 🍎 */}
+              <div className="text-6xl"></div>
             </div>
-            <h3 className="text-lg font-semibold text-green-700 mb-2 text-center">Take photo of your Food • Weighing scale • Meeting screenshot• Smartwatch</h3>
-            <p className="text-gray-600 mb-6 text-sm text-center">Take a photo with camera or select from gallery</p>
-
+            <h3 className="text-lg font-semibold text-green-700 mb-2 text-center"> </h3>
+            {/* Take photo of your Food • Weighing scale • Meeting screenshot• Smartwatch */}
+            <p className="text-gray-600 mb-6 text-sm text-center"></p>
+{/* Take a photo with camera or select from gallery */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <TouchFeedbackButton
                 onClick={triggerCamera}
