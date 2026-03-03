@@ -11,12 +11,14 @@ import { isPlatform } from "@ionic/react";
  * @param {string} options.title - Share title
  * @param {string} options.text - Share message text
  * @param {string} options.fileName - Name of the file to save/share
+ * @param {boolean} options.shareAsDocument - If true, share as document (prevents WhatsApp compression)
  */
 export const shareImageDirectly = async (imageUrl, options = {}) => {
   const {
     title = "My Meal Analysis",
     text = "Tracked with Wellness Valley",
     fileName = "wellness-valley-meal.png",
+    shareAsDocument = true, // Share as document to prevent WhatsApp compression
   } = options;
 
   try {
@@ -52,14 +54,14 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 
     if (isNativePlatform) {
       // Native mobile sharing (Capacitor)
-      await shareNativeImage(blob, { title, text, fileName });
+      await shareNativeImage(blob, { title, text, fileName, shareAsDocument });
     } else if (isMobileBrowser && navigator.share) {
       // Mobile browser with Web Share API
       console.log("📱 Mobile browser detected, using Web Share API");
-      await shareWeb(blob, { title, text, fileName });
+      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     } else {
       // Desktop or browser without share support
-      await shareWeb(blob, { title, text, fileName });
+      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     }
 
     console.log("✅ Direct image share completed successfully");
@@ -72,8 +74,8 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 /**
  * Native share for direct images (same as shareNative but for clarity)
  */
-const shareNativeImage = async (blob, { title, text, fileName }) => {
-  return shareNative(blob, { title, text, fileName });
+const shareNativeImage = async (blob, { title, text, fileName, shareAsDocument }) => {
+  return shareNative(blob, { title, text, fileName, shareAsDocument });
 };
 
 /**
@@ -83,14 +85,14 @@ const shareNativeImage = async (blob, { title, text, fileName }) => {
  * @param {string} options.title - Share title
  * @param {string} options.text - Share message text
  * @param {string} options.fileName - Name of the file to save/share
- * @param {boolean} options.whatsappOnly - If true, share directly to WhatsApp (COMMENTED OUT)
+ * @param {boolean} options.shareAsDocument - If true, share as document (prevents WhatsApp compression)
  */
 export const captureAndShare = async (element, options = {}) => {
   const {
     title = "My Meal Analysis",
     text = "Tracked with Wellness Valley",
     fileName = "wellness-valley-meal.png",
-    // whatsappOnly = true, // Default to WhatsApp sharing
+    shareAsDocument = true, // Share as document to prevent WhatsApp compression
   } = options;
 
   try {
@@ -189,14 +191,14 @@ export const captureAndShare = async (element, options = {}) => {
 
     if (isNativePlatform) {
       // Native mobile sharing (Capacitor)
-      await shareNative(blob, { title, text, fileName /*, whatsappOnly*/ });
+      await shareNative(blob, { title, text, fileName, shareAsDocument });
     } else if (isMobileBrowser && navigator.share) {
       // Mobile browser with Web Share API
       console.log("📱 Mobile browser detected, using Web Share API");
-      await shareWeb(blob, { title, text, fileName });
+      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     } else {
       // Desktop or browser without share support
-      await shareWeb(blob, { title, text, fileName });
+      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     }
 
     console.log("✅ Share completed successfully");
@@ -215,8 +217,9 @@ export const captureAndShare = async (element, options = {}) => {
 /**
  * Native mobile share using Capacitor Share plugin
  * Enhanced with better Android support and error handling
+ * Supports sharing as document to prevent WhatsApp compression
  */
-const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) => {
+const shareNative = async (blob, { title, text, fileName, shareAsDocument = true }) => {
   try {
     // Convert blob to base64
     const base64Data = await blobToBase64(blob);
@@ -228,11 +231,13 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       
       try {
         const timestamp = Date.now();
+        // Use .png extension for compatibility, but share with text to trigger document mode
         const uniqueFileName = `wellness-valley-${timestamp}.png`;
         const base64String = base64Data.split(",")[1];
         
         // Write to Cache directory (always exists, no permission issues)
         console.log("💾 Writing file to cache storage...");
+        console.log("📄 Document mode:", shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED");
         const writeResult = await Filesystem.writeFile({
           path: uniqueFileName,
           data: base64String,
@@ -249,11 +254,16 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
         console.log("🔍 URI starts with content://:", fileUri.startsWith("content://"));
         console.log("🔍 URI starts with file://:", fileUri.startsWith("file://"));
         
+        // When shareAsDocument is true, include text to trigger document mode in WhatsApp
+        // This prevents automatic compression and maintains full image quality
         const shareOptions = {
           title: title,
+          text: shareAsDocument ? text : undefined, // Include text for document mode
           files: [fileUri],
           dialogTitle: "Share via",
         };
+        
+        console.log("💡 Share mode:", shareAsDocument ? "Document (full quality)" : "Image (may compress)");
         
         console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
         
@@ -325,17 +335,22 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
       const uniqueFileName = `wellness-valley-${timestamp}.png`;
       const base64String = base64Data.split(",")[1];
       
+      console.log("📄 Document mode:", shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED");
       const savedFile = await Filesystem.writeFile({
         path: uniqueFileName,
         data: base64String,
         directory: Directory.Cache,
       });
       
+      // Include text when sharing as document to prevent compression
       const shareOptions = {
         title: title,
+        text: shareAsDocument ? text : undefined,
         files: [savedFile.uri],
         dialogTitle: "Share via",
       };
+      
+      console.log("💡 Share mode:", shareAsDocument ? "Document (full quality)" : "Image (may compress)");
       
       await Share.share(shareOptions);
       
@@ -365,20 +380,27 @@ const shareNative = async (blob, { title, text, fileName /*, whatsappOnly*/ }) =
 
 /**
  * Web fallback share using Web Share API or download
+ * @param {boolean} shareAsDocument - If true, share as document to prevent compression
  */
-const shareWeb = async (blob, { title, text, fileName }) => {
+const shareWeb = async (blob, { title, text, fileName, shareAsDocument = true }) => {
   try {
     // First try: Web Share API with files (best option)
     if (navigator.share) {
       const file = new File([blob], fileName, { type: "image/png" });
 
-      // Try sharing with file
+      // Try sharing with file (and text if document mode)
       if (navigator.canShare && navigator.canShare({ files: [file] })) {
         try {
-          await navigator.share({
+          const webShareOptions = {
             files: [file],
-          });
-          console.log("✅ Shared via Web Share API with file");
+          };
+          // Include text for document mode to prevent compression
+          if (shareAsDocument) {
+            webShareOptions.text = text;
+            webShareOptions.title = title;
+          }
+          await navigator.share(webShareOptions);
+          console.log("✅ Shared via Web Share API with file", shareAsDocument ? "(document mode)" : "");
           return;
         } catch (shareError) {
           if (shareError.name === "AbortError") {

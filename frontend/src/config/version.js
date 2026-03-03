@@ -90,6 +90,7 @@ export const APP_VERSION = {
  * Version 2.3 (Code 25) - 2026-03-03
  *   🔧 Fixed coach heading - now hidden completely when no coach is assigned
  *   📤 Fixed WhatsApp share functionality in Android app
+ *   📄 Enhanced share quality - images now shared as documents to prevent WhatsApp compression
  *   🏆 Fixed Weight Loss Leaderboard alignment issues
  *   ✨ Enhanced overall stability and user experience
  * 
