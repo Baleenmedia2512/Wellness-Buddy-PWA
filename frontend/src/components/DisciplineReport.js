@@ -29,6 +29,7 @@ import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import HierarchicalTeamView from "./HierarchicalTeamView";
+import HierarchicalScoreCard from "./HierarchicalScoreCard";
 // Removed LoadingSpinner import as we are using custom skeleton
 
 // --- DateRangePicker Component (Exact Copy from AI Token Monitor) ---
@@ -1386,6 +1387,17 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                           ))}
                         </div>
                       </div>
+                      
+                      {/* Hierarchical Score Card inside coach's expanded card */}
+                      {teamData.teamMembers && teamData.teamMembers.length > 0 && (
+                        <div className="px-4 pb-4">
+                          <HierarchicalScoreCard 
+                            teamData={teamData}
+                            coachPerformance={teamData.coachPerformance}
+                          />
+                        </div>
+                      )}
+                      
                       <div className="px-4 pb-4 pt-0 text-center">
                         <p className="text-xs text-gray-400 font-medium">
                           {teamData.coachPerformance.periodDiscipline
@@ -1447,6 +1459,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 )}
               </div>
 
+              {/* Hierarchical Score Card - Show in All Members view */}
+              {teamData && teamData.coachPerformance && (
+                <HierarchicalScoreCard 
+                  teamData={teamData}
+                  coachPerformance={teamData.coachPerformance}
+                />
+              )}
+
               {/* Hierarchical Team View */}
               <HierarchicalTeamView
                 hierarchy={sortedHierarchy || hierarchyData.hierarchy}
@@ -1492,6 +1512,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         ) : (
           /* Flat Member List for My Direct Team */
           <div className="space-y-3">
+            
+            {/* Hierarchical Score Card - Show at top for coaches */}
+            {teamData && teamData.coachPerformance && teamData.teamMembers && teamData.teamMembers.length > 0 && (
+              <HierarchicalScoreCard 
+                teamData={teamData}
+                coachPerformance={teamData.coachPerformance}
+              />
+            )}
+            
             <AnimatePresence>
               {filteredDirectTeamMembers.map((member) => (
                 <motion.div
