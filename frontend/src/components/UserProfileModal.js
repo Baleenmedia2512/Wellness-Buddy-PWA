@@ -269,13 +269,13 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-y-auto"
       >
         {/* Header with User Photo and Name */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+        <div className="flex items-center justify-between p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
           <div className="flex items-center space-x-3">
             {/* Profile Image with Upload */}
             <div className="relative">
               <div 
                 onClick={handleProfileImageClick}
-                className="w-16 h-16 rounded-full border-2 border-green-200 overflow-hidden cursor-pointer hover:border-green-400 transition-all group relative"
+                className="w-16 h-16 rounded-full border-2 border-white overflow-hidden cursor-pointer hover:border-green-100 transition-all group relative"
               >
                 {profileImagePreview || user?.photoURL ? (
                   <img
@@ -307,20 +307,20 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             </div>
             
             <div>
-              <h2 className="text-xl font-bold text-gray-800">
+              <h2 className="text-xl font-bold text-white">
                 {name || user?.displayName || user?.name || 'User'}
               </h2>
-              <p className="text-sm text-gray-500">{user?.email}</p>
-              <p className="text-xs text-gray-400 mt-1">Click photo to change</p>
+              <p className="text-sm text-green-50">{user?.email}</p>
+              <p className="text-xs text-green-100 mt-1">Click photo to change</p>
             </div>
           </div>
           <TouchFeedbackButton
             onClick={handleCancel}
             disabled={isSaving}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="p-2 hover:bg-green-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-white"
             ariaLabel="Close"
           >
-            <X className="w-5 h-5 text-gray-500" />
+            <X className="w-5 h-5 text-white" />
           </TouchFeedbackButton>
         </div>
 

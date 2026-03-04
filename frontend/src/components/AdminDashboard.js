@@ -1277,21 +1277,21 @@ const AdminDashboard = ({ user, onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 overflow-y-auto">
+    <div className="fixed inset-0 z-50 bg-gradient-to-br from-green-50 to-green-100 overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white border-b border-gray-100 px-4 py-4">
+      <div className="sticky top-0 z-10 bg-gradient-to-r from-green-500 to-green-600 border-b border-green-700 px-4 py-4 shadow-md">
         <div className="flex items-center justify-between">
           <TouchFeedbackButton
             onClick={onClose}
-            className="p-2 -ml-2 rounded-full hover:bg-gray-100 transition-colors text-gray-700"
+            className="p-2 -ml-2 rounded-full hover:bg-green-700 transition-colors text-white"
             ariaLabel="Go back"
           >
             <ChevronLeft className="w-6 h-6" />
           </TouchFeedbackButton>
 
           <div className="flex-1 text-center">
-            <h1 className="text-lg font-bold text-gray-800">AI Monitor</h1>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <h1 className="text-lg font-bold text-white">AI Monitor</h1>
+            <p className="text-xs text-green-50 mt-0.5">
               Track token usage and spending
             </p>
           </div>
@@ -1300,18 +1300,18 @@ const AdminDashboard = ({ user, onClose }) => {
           <div className="flex items-center gap-1">
             <TouchFeedbackButton
               onClick={() => setShowEditPopup(true)}
-              className="p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+              className="p-2 rounded-full hover:bg-green-700 transition-colors text-white"
               ariaLabel="Edit token pricing"
             >
               <Edit3 className="w-5 h-5" />
             </TouchFeedbackButton>
             {showSuccessMessage && (
-              <div className="text-green-600 text-sm mr-2">Saved!</div>
+              <div className="text-white bg-green-700 px-3 py-1 rounded-full text-sm mr-2 font-medium">Saved!</div>
             )}
             <TouchFeedbackButton
               onClick={fetchTokenData}
-              className={`p-2 -mr-2 rounded-full hover:bg-gray-100 transition-colors ${
-                refreshing ? "animate-spin text-green-600" : "text-gray-500"
+              className={`p-2 -mr-2 rounded-full hover:bg-green-700 transition-colors text-white ${
+                refreshing ? "animate-spin" : ""
               }`}
               ariaLabel="Refresh data"
             >
@@ -2046,7 +2046,7 @@ const AdminDashboard = ({ user, onClose }) => {
                       }}
                       className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium ${
                         manuallyEditedINR.input
-                          ? "border-orange-300 bg-orange-50"
+                          ? "border-green-300 bg-green-50"
                           : "border-gray-200"
                       }`}
                       placeholder="0.001"
@@ -2105,7 +2105,7 @@ const AdminDashboard = ({ user, onClose }) => {
                       }}
                       className={`w-full pl-10 pr-4 py-3 border-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg font-medium ${
                         manuallyEditedINR.output
-                          ? "border-orange-300 bg-orange-50"
+                          ? "border-green-300 bg-green-50"
                           : "border-gray-200"
                       }`}
                       placeholder="0.004"

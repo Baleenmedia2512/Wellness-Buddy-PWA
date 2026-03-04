@@ -15,17 +15,128 @@ module.exports = {
     },
     extend: {
       colors: {
+        // Herbalife-inspired unified theme - Green shades + White
+        herbalife: {
+          50: '#f4fef1',    // Very light green (almost white)
+          100: '#e6fce0',   // Extra light green
+          200: '#cef9c1',   // Light green tint
+          300: '#a8f089',   // Soft green
+          400: '#8ee960',   // Medium-light green
+          500: '#79B928',   // Herbalife signature green (primary)
+          600: '#6ba024',   // Medium green
+          700: '#5a8620',   // Dark green
+          800: '#4a6b1a',   // Extra dark green
+          900: '#3a5414',   // Deep green
+        },
+        // Keep green as alias for herbalife for backward compatibility
         green: {
-          50: '#f0fdf4',
-          100: '#dcfce7',
-          200: '#bbf7d0',
-          300: '#86efac',
-          400: '#4ade80',
-          500: '#22c55e',
-          600: '#16a34a',
-          700: '#15803d',
-          800: '#166534',
-          900: '#14532d',
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        // Override blue, purple, orange with green shades for unified theme
+        blue: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        purple: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        orange: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        teal: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        cyan: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        indigo: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        pink: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
+        },
+        emerald: {
+          50: '#f4fef1',
+          100: '#e6fce0',
+          200: '#cef9c1',
+          300: '#a8f089',
+          400: '#8ee960',
+          500: '#79B928',
+          600: '#6ba024',
+          700: '#5a8620',
+          800: '#4a6b1a',
+          900: '#3a5414',
         }
       }
     },
