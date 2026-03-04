@@ -164,30 +164,36 @@ export const captureAndShare = async (element, options = {}) => {
     });
 
     // Step 1: Capture the element as canvas with MAXIMUM QUALITY
-    // Using 3x scale on a 1200px wide card = 3600px final width (ultra high quality)
+    // Using 5x scale on a 1200px wide card = 6000px final width (ultra high quality - no compression loss)
     const canvas = await html2canvas(element, {
       backgroundColor: "#ffffff",
-      scale: 3, // 3x scale = 3600px width for crystal clear quality
+      scale: 5, // 5x scale = 6000px width for maximum quality that survives compression
       useCORS: true,
       allowTaint: false,
       logging: false,
-      imageTimeout: 10000,
+      imageTimeout: 15000,
       removeContainer: true,
       scrollY: -window.scrollY,
       scrollX: -window.scrollX,
       foreignObjectRendering: false,
-      // HIGH QUALITY IMAGE RENDERING
+      // ULTRA HIGH QUALITY IMAGE RENDERING
       onclone: (clonedDoc) => {
         // Force high quality rendering for all images
         const images = clonedDoc.getElementsByTagName("img");
         for (let img of images) {
-          // Use crisp-edges for sharp rendering (no blur)
+          // Use high-quality rendering (no blur, no smoothing)
+          img.style.imageRendering = "-webkit-optimize-contrast";
+          img.style.WebkitImageRendering = "-webkit-optimize-contrast";
           img.style.imageRendering = "crisp-edges";
-          img.style.WebkitImageRendering = "crisp-edges";
           img.style.maxWidth = "none";
           img.style.maxHeight = "none";
-          // Disable any potential compression
+          // Disable any potential compression or smoothing
           img.style.imageSmoothing = "false";
+          // Force full resolution
+          if (img.naturalWidth) {
+            img.width = img.naturalWidth;
+            img.height = img.naturalHeight;
+          }
         }
       },
     });
