@@ -47,6 +47,7 @@ import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
+import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -143,8 +144,9 @@ function WellnessValleyApp() {
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
-  // Ref for leaderboard to trigger manual refresh
+  // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
+  const disciplineLeaderboardRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -385,10 +387,13 @@ function WellnessValleyApp() {
   );
 
   // Helper functions for navigation with localStorage persistence
-  // Callback to refresh leaderboard after profile updates
+  // Callback to refresh leaderboards after profile updates
   const handleLeaderboardRefresh = useCallback(() => {
     if (leaderboardRef.current) {
       leaderboardRef.current.refresh();
+    }
+    if (disciplineLeaderboardRef.current) {
+      disciplineLeaderboardRef.current.refresh();
     }
   }, []);
 
@@ -2549,6 +2554,13 @@ function WellnessValleyApp() {
         ref={leaderboardRef}
         apiBaseUrl={apiBaseUrl} 
         topN={LEADERBOARD_CONFIG.TOP_N}
+      />
+
+      {/* Discipline Leaderboard Strip - Top 5 Discipline Champions */}
+      <DisciplineLeaderboard 
+        ref={disciplineLeaderboardRef}
+        apiBaseUrl={apiBaseUrl} 
+        topN={5}
       />
 
       <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">

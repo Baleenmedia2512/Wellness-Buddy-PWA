@@ -408,6 +408,8 @@ export default async function handler(req, res) {
           inputTokens: 0,
           outputTokens: 0,
           totalTokens: 0,
+          inputCost: 0,
+          outputCost: 0,
           totalCost: 0,
           requestCount: 0
         };
@@ -415,6 +417,8 @@ export default async function handler(req, res) {
       userSpendingMap[key].inputTokens += Number(r.InputTokens) || 0;
       userSpendingMap[key].outputTokens += Number(r.OutputTokens) || 0;
       userSpendingMap[key].totalTokens += Number(r.TotalTokens) || 0;
+      userSpendingMap[key].inputCost += Number(r.InputTokenCost) || 0;
+      userSpendingMap[key].outputCost += Number(r.OutputTokenCost) || 0;
       userSpendingMap[key].totalCost += Number(r.TotalTokenCost) || 0;
       userSpendingMap[key].requestCount += 1;
     });

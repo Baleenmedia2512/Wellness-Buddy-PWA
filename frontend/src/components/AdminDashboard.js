@@ -527,6 +527,7 @@ const AdminDashboard = ({ user, onClose }) => {
   const [sortDirection, setSortDirection] = useState("desc");
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
+  const [expandedUserId, setExpandedUserId] = useState(null);
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
   const [showEditPopup, setShowEditPopup] = useState(false);
   const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
@@ -1417,39 +1418,52 @@ const AdminDashboard = ({ user, onClose }) => {
               </div>
             </div>
 
-            {/* Skeleton for Table */}
+            {/* Skeleton for Tiles */}
             <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-50 bg-gray-50/50">
                 <div className="flex items-center justify-between mb-3">
                   <div className="h-4 bg-gray-200 rounded w-28 animate-pulse"></div>
                   <div className="h-3 bg-gray-200 rounded w-14 animate-pulse"></div>
                 </div>
-                <div className="h-10 bg-gray-100 rounded-lg animate-pulse"></div>
+                <div className="flex gap-2">
+                  <div className="h-10 bg-gray-100 rounded-lg animate-pulse flex-1"></div>
+                  <div className="h-10 w-20 bg-gray-100 rounded-lg animate-pulse"></div>
+                </div>
               </div>
-              <div className="divide-y divide-gray-50">
-                {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+              <div className="space-y-3 p-4">
+                {[1, 2, 3, 4, 5].map((i) => (
                   <div
                     key={i}
-                    className="px-6 py-4 flex items-center justify-between"
+                    className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4"
                   >
-                    <div className="flex-1">
-                      <div className="h-4 bg-gray-200 rounded w-28 mb-2 animate-pulse"></div>
-                      <div className="h-3 bg-gray-100 rounded w-40 animate-pulse"></div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
-                      <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
-                      <div className="h-4 bg-gray-200 rounded w-10 animate-pulse"></div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-12 h-12 bg-gray-200 rounded-full animate-pulse"></div>
+                        <div className="flex-1">
+                          <div className="h-4 bg-gray-200 rounded w-32 mb-2 animate-pulse"></div>
+                          <div className="h-3 bg-gray-100 rounded w-48 mb-1 animate-pulse"></div>
+                          <div className="h-3 bg-gray-100 rounded w-24 animate-pulse"></div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-4">
+                        <div className="text-right">
+                          <div className="h-6 bg-gray-200 rounded w-16 mb-1 animate-pulse"></div>
+                          <div className="h-3 bg-gray-100 rounded w-12 animate-pulse"></div>
+                        </div>
+                        <div className="h-5 w-5 bg-gray-100 rounded animate-pulse"></div>
+                      </div>
                     </div>
                   </div>
                 ))}
               </div>
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between">
-                <div className="h-3 bg-gray-100 rounded w-20 animate-pulse"></div>
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
-                  <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
-                  <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+              <div className="px-4 sm:px-6 py-3 sm:py-4 border-t border-gray-100 bg-gray-50/30">
+                <div className="flex items-center justify-between">
+                  <div className="h-3 bg-gray-100 rounded w-20 animate-pulse"></div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                    <div className="h-4 bg-gray-200 rounded w-12 animate-pulse"></div>
+                    <div className="h-8 w-8 bg-gray-100 rounded animate-pulse"></div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1516,14 +1530,14 @@ const AdminDashboard = ({ user, onClose }) => {
               </div>
             </motion.div>
 
-            {/* User Spending Table */}
+            {/* User Spending Cards */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 }}
               className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden"
             >
-              <div className="px-6 py-4 border-b border-gray-50 bg-gray-50/50">
+              <div className="px-4 sm:px-6 py-4 border-b border-gray-50 bg-gray-50/50">
                 <div className="flex items-center justify-between mb-3">
                   <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
                     User Spending
@@ -1532,118 +1546,151 @@ const AdminDashboard = ({ user, onClose }) => {
                     {filteredAndSortedUsers.length} users
                   </span>
                 </div>
-                {/* Search Bar */}
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="Search by name or email..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  />
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery("")}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
+                {/* Search Bar and Sort */}
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search by name or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    />
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                  {/* Sort Button */}
+                  <TouchFeedbackButton
+                    onClick={() => handleSort(sortField)}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium text-gray-700 transition-colors flex-shrink-0"
+                    ariaLabel="Toggle sort direction"
+                  >
+                    <ArrowUpDown className="w-4 h-4" />
+                    {sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                  </TouchFeedbackButton>
                 </div>
               </div>
-              <div className="overflow-x-auto">
+              <div className="space-y-3 p-4">
                 {filteredAndSortedUsers.length > 0 ? (
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50/50 border-b border-gray-100">
-                        <th
-                          onClick={() => handleSort("userName")}
-                          className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
+                  <AnimatePresence>
+                    {paginatedUsers.map((user, index) => (
+                      <motion.div
+                        key={user.userId || index}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95 }}
+                        layout
+                        className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
+                      >
+                        {/* User Card Content */}
+                        <div
+                          onClick={() =>
+                            setExpandedUserId(
+                              expandedUserId === user.userId
+                                ? null
+                                : user.userId,
+                            )
+                          }
+                          className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
                         >
-                          <div className="flex items-center space-x-1">
-                            <span>User</span>
-                            <SortIcon field="userName" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort("totalCost")}
-                          className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                        >
-                          <div className="flex items-center justify-end space-x-1">
-                            <span>Cost</span>
-                            <SortIcon field="totalCost" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort("totalTokens")}
-                          className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                        >
-                          <div className="flex items-center justify-end space-x-1">
-                            <span>Total Tokens</span>
-                            <SortIcon field="totalTokens" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort("inputTokens")}
-                          className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                        >
-                          <div className="flex items-center justify-end space-x-1">
-                            <span>Input Tokens</span>
-                            <SortIcon field="inputTokens" />
-                          </div>
-                        </th>
-                        <th
-                          onClick={() => handleSort("outputTokens")}
-                          className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 transition-colors group"
-                        >
-                          <div className="flex items-center justify-end space-x-1">
-                            <span>Output Tokens</span>
-                            <SortIcon field="outputTokens" />
-                          </div>
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-50">
-                      {paginatedUsers.map((user, index) => (
-                        <tr
-                          key={user.userId || index}
-                          className="hover:bg-gray-50 transition-colors"
-                        >
-                          <td className="px-6 py-4">
-                            <div>
-                              <p className="text-sm font-medium text-gray-800">
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-gradient-to-br from-green-50 to-green-100 border-green-200 text-green-700">
+                              {(user.userName || "U").charAt(0).toUpperCase()}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-bold text-gray-900 text-sm sm:text-[15px] truncate">
                                 {user.userName}
-                              </p>
-                              <p className="text-xs text-gray-400 truncate max-w-[180px]">
+                              </h3>
+                              <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
                                 {user.email}
                               </p>
+                              <div className="flex items-center gap-2 mt-1.5">
+                                <p className="text-[11px] text-gray-400 font-medium">
+                                  {formatNumber(user.totalTokens)} tokens
+                                </p>
+                              </div>
                             </div>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <p className="text-sm font-bold text-green-600">
-                              {formatCurrency(user.totalCost)}
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <p className="text-sm font-medium text-gray-800">
-                              {formatNumber(user.totalTokens)}
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <p className="text-sm font-medium text-gray-800">
-                              {formatNumber(user.inputTokens || 0)}
-                            </p>
-                          </td>
-                          <td className="px-6 py-4 text-right">
-                            <p className="text-sm font-medium text-gray-800">
-                              {formatNumber(user.outputTokens || 0)}
-                            </p>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                          </div>
+                          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                            <div className="text-right">
+                              <div className="text-lg sm:text-xl font-bold text-green-600">
+                                {formatCurrency(user.totalCost)}
+                              </div>
+                              <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                                Cost
+                              </div>
+                            </div>
+                            {expandedUserId === user.userId ? (
+                              <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300 rotate-180 transition-transform" />
+                            ) : (
+                              <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300 transition-transform" />
+                            )}
+                          </div>
+                        </div>
+                        {/* Expanded Token Details */}
+                        <AnimatePresence>
+                          {expandedUserId === user.userId && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              className="border-t border-gray-50 bg-gray-50/30"
+                            >
+                              <div className="p-4">
+                                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                                  Token Breakdown
+                                </h4>
+                                <div className="grid grid-cols-2 gap-3">
+                                  {/* Input Tokens */}
+                                  <div className="flex flex-col items-center p-3 rounded-lg bg-white border border-blue-100">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border bg-blue-50 border-blue-200 text-blue-700 mb-2">
+                                      <ArrowDown className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                                      Input
+                                    </span>
+                                    <span className="text-sm font-bold text-gray-800 mt-1">
+                                      {formatNumber(user.inputTokens || 0)}
+                                    </span>
+                                    <span className="text-xs text-blue-600 font-semibold mt-0.5">
+                                      {formatCurrency(user.inputCost || 0)}
+                                    </span>
+                                  </div>
+                                  {/* Output Tokens */}
+                                  <div className="flex flex-col items-center p-3 rounded-lg bg-white border border-purple-100">
+                                    <div className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border bg-purple-50 border-purple-200 text-purple-700 mb-2">
+                                      <ArrowUp className="w-5 h-5" />
+                                    </div>
+                                    <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
+                                      Output
+                                    </span>
+                                    <span className="text-sm font-bold text-gray-800 mt-1">
+                                      {formatNumber(user.outputTokens || 0)}
+                                    </span>
+                                    <span className="text-xs text-purple-600 font-semibold mt-0.5">
+                                      {formatCurrency(user.outputCost || 0)}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="px-4 pb-4 pt-0 text-center">
+                                <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
+                                  Total: {formatNumber(user.totalTokens)} tokens • {formatCurrency(user.totalCost)}
+                                </p>
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 ) : (
                   <div className="p-6 text-center text-sm">
                     {apiError ? (
@@ -1652,11 +1699,25 @@ const AdminDashboard = ({ user, onClose }) => {
                         <p className="text-xs mt-1">{apiError}</p>
                       </div>
                     ) : searchQuery ? (
-                      <span className="text-gray-400">{`No users found matching "${searchQuery}"`}</span>
+                      <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Search className="h-8 w-8 text-gray-300" />
+                        </div>
+                        <h3 className="text-gray-900 font-medium">No users found</h3>
+                        <p className="text-gray-500 text-sm mt-1">
+                          No users found matching "{searchQuery}"
+                        </p>
+                      </div>
                     ) : (
-                      <span className="text-gray-400">
-                        No user spending data
-                      </span>
+                      <div className="text-center py-12">
+                        <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <Activity className="h-8 w-8 text-gray-300" />
+                        </div>
+                        <h3 className="text-gray-900 font-medium">No data available</h3>
+                        <p className="text-gray-500 text-sm mt-1">
+                          No user spending data for this period
+                        </p>
+                      </div>
                     )}
                   </div>
                 )}
