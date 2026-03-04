@@ -104,6 +104,8 @@ export const disciplineReportService = {
     const headers = [
       'Name',
       'Email',
+      'Coach',
+      'Co-Coach',
       'Period %',
       'Weight %',
       'Education %',
@@ -115,6 +117,8 @@ export const disciplineReportService = {
     const rows = teamData.teamMembers.map(member => [
       member.userName,
       member.email,
+      member.coachName || '-',
+      member.coCoachName || '-',
       member.periodDiscipline.percentage,
       member.activities.weight.percentage,
       member.activities.education.percentage,

@@ -49,8 +49,12 @@ export const teamHierarchyService = {
           userName: node.userName,
           email: node.email,
           role: node.role,
-          uplineCoachId: node.uplineCoachId,
-          isCoCoach: node.isCoCoach,
+          coachId: node.coachId,
+          coCoachId: node.coCoachId,
+          coachName: node.coachName,
+          coCoachName: node.coCoachName,
+          parentCoachId: node.parentCoachId,
+          isCoachRelationship: node.isCoachRelationship,
           level: 0, // Will be calculated based on depth
         });
 

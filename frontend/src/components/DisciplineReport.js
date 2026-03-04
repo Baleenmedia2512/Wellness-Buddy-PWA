@@ -21,6 +21,7 @@ import {
   ArrowUp,
   ArrowDown,
   Target,
+  Users,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { disciplineReportService, clearDisciplineReportCache } from "../services/disciplineReportService";
@@ -369,7 +370,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [teamFilter, setTeamFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
-  const [adminView, setAdminView] = useState("allMembers"); // 'myTeam' or 'allMembers' - start with All Teams for admin
+  const adminView = "allMembers"; // Always show hierarchical tree view
   const [allMembersData, setAllMembersData] = useState(null); // Store all members data for admin
   const [hierarchyData, setHierarchyData] = useState(null); // Hierarchical team structure
   const [hierarchyLoading, setHierarchyLoading] = useState(false);
@@ -413,8 +414,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           };
         }
 
-        // ⚡ OPTIMIZATION: Fetch both reports in parallel instead of sequentially
-        // This cuts loading time in half!
+        // Fetch both reports in parallel
         const [teamDataResponse, allMembersResponse] = await Promise.all([
           disciplineReportService.getDisciplineReport(
             user.id,
@@ -450,7 +450,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   // Load hierarchical team structure
   const loadHierarchyData = React.useCallback(async () => {
-    if (!user?.id || !adminView === "allMembers") return;
+    if (!user?.id) return;
 
     setHierarchyLoading(true);
     try {
@@ -462,18 +462,18 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     } finally {
       setHierarchyLoading(false);
     }
-  }, [user?.id, adminView]);
+  }, [user?.id]);
 
   useEffect(() => {
     loadDisciplineReportCallback();
   }, [loadDisciplineReportCallback]);
 
-  // Load hierarchy when switching to All My Team view
+  // Load hierarchy on mount
   useEffect(() => {
-    if (adminView === "allMembers" && !hierarchyData) {
+    if (!hierarchyData) {
       loadHierarchyData();
     }
-  }, [adminView, hierarchyData, loadHierarchyData]);
+  }, [hierarchyData, loadHierarchyData]);
 
   // Scroll active date range button into view after data loads
   useEffect(() => {
@@ -1269,35 +1269,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
         )}
 
-        {/* View Tabs - Only show for coaches with teams */}
-        {isUserACoach && (
-          <div className="mb-4 flex gap-2">
-            <TouchFeedbackButton
-              onClick={() => setAdminView("allMembers")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                adminView === "allMembers"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              All My Team{" "}
-              {adminView === "allMembers" && `(${allMembers.length})`}
-            </TouchFeedbackButton>
-            <TouchFeedbackButton
-              onClick={() => setAdminView("myTeam")}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                adminView === "myTeam"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              My Direct Team{" "}
-              {adminView === "myTeam" &&
-                `(${teamData?.teamSummary?.totalMembers || 0})`}
-            </TouchFeedbackButton>
-          </div>
-        )}
-
         {/* Conditional Rendering */}
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -1432,189 +1403,92 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             )}
           </div>
         ) : adminView === "allMembers" ? (
-          /* Flat sorted list for All My Team */
-          <div className="space-y-3">
-            <AnimatePresence>
-              {filteredAndSortedMembers.map((member) => (
-                <motion.div
-                  key={member.userId}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  layout
-                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
-                >
-                  {/* Member Card Content */}
-                  <div
-                    onClick={() =>
-                      setExpandedMemberId(
-                        expandedMemberId === member.userId
-                          ? null
-                          : member.userId,
-                      )
-                    }
-                    className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 ${getScoreColor(
-                          member.periodDiscipline?.percentage || 0,
-                        ).replace("bg-", "bg-opacity-10 bg-")}`}
-                      >
-                        {member.userName.charAt(0).toUpperCase()}
+          /* Hierarchical tree view for All My Team */
+          hierarchyLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-3 text-gray-600">Loading team hierarchy...</span>
+            </div>
+          ) : hierarchyData?.hierarchy ? (
+            <div className="space-y-4">
+              {/* Hierarchy Header */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
+                <h2 className="text-lg font-bold text-gray-900 mb-2">Team Hierarchy</h2>
+                <p className="text-sm text-gray-600">
+                  Expand coaches and co-coaches to see their team members
+                </p>
+                
+                {hierarchyData && (
+                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-sm">
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Users className="w-4 h-4 text-blue-600" />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-gray-900 text-sm sm:text-[15px]">
-                            {member.userName}
-                          </h3>
-                          {member.isLoggedInCoach && (
-                            <span className="text-[9px] sm:text-[10px] bg-green-50 text-green-700 border border-green-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                              YOU
-                            </span>
-                          )}
-                          {member.isCoCoachRoot && (
-                            <span className="text-[9px] sm:text-[10px] bg-purple-50 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                              🤝 CO-COACH
-                            </span>
-                          )}
-                          {member.isParentCoach && (
-                            <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                              👨‍🏫 PARENT COACH
-                            </span>
-                          )}
-                          {!member.isLoggedInCoach &&
-                            !member.isCoCoachRoot &&
-                            !member.isParentCoach &&
-                            member.isCoach && (
-                              <span className="text-[9px] sm:text-[10px] bg-blue-50 text-blue-700 border border-blue-200 px-1.5 py-0.5 rounded font-bold tracking-wide">
-                                {member.role === "coach"
-                                  ? "👨‍🏫 CO-COACH"
-                                  : "👤 COACH"}
-                              </span>
-                            )}
+                        <div className="font-semibold text-gray-900">
+                          {hierarchyData.stats?.totalCoaches || 0}
                         </div>
-                        <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
-                          {member.email}
-                        </p>
-                        {!member.isLoggedInCoach &&
-                          !member.isCoCoachRoot &&
-                          member.uplineCoachName && (
-                            <p className="text-[11px] text-gray-400 mt-1">
-                              Coach:{" "}
-                              <span className="text-gray-600 font-medium">
-                                {member.uplineCoachName}
-                                {member.uplineCoachId === user.id
-                                  ? " (You)"
-                                  : ""}
-                              </span>
-                            </p>
-                          )}
-                        {(member.isLoggedInCoach || member.isCoCoachRoot) && (
-                          <p className="text-[11px] text-green-600 font-medium mt-1.5 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-green-500"></span>
-                            My Performance
-                          </p>
-                        )}
+                        <div className="text-xs text-gray-500">Coaches</div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 sm:gap-4">
-                      <div className="text-right">
-                        <div
-                          className={`text-lg sm:text-xl font-bold ${getScoreColorText(
-                            member.periodDiscipline?.percentage || 0,
-                          )}`}
-                        >
-                          {member.periodDiscipline?.percentage ?? 0}%
-                        </div>
-                        <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                          Score
-                        </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+                        <Users className="w-4 h-4 text-green-600" />
                       </div>
-                      {expandedMemberId === member.userId ? (
-                        <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
-                      ) : (
-                        <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300" />
-                      )}
+                      <div>
+                        <div className="font-semibold text-gray-900">
+                          {hierarchyData.stats?.totalMembers || 0}
+                        </div>
+                        <div className="text-xs text-gray-500">Members</div>
+                      </div>
                     </div>
                   </div>
-                  {/* Expanded Activities */}
-                  <AnimatePresence>
-                    {expandedMemberId === member.userId && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        className="border-t border-gray-50 bg-gray-50/30"
-                      >
-                        <div className="p-4 grid grid-cols-3 sm:grid-cols-5 gap-3 sm:gap-2">
-                          {[
-                            "weight",
-                            "education",
-                            "breakfast",
-                            "lunch",
-                            "dinner",
-                          ].map((activityKey) => {
-                            const activity =
-                              member.activities?.[activityKey] ||
-                              member.periodActivities?.[activityKey];
-                            if (!activity) return null;
-                            return (
-                              <div
-                                key={activityKey}
-                                className="flex flex-col items-center gap-2"
-                              >
-                                <div
-                                  className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-sm border ${
-                                    activity.percentage >= 80
-                                      ? "bg-green-50 border-green-200 text-green-700"
-                                      : activity.percentage >= 60
-                                      ? "bg-yellow-50 border-yellow-200 text-yellow-700"
-                                      : "bg-red-50 border-red-200 text-red-700"
-                                  }`}
-                                >
-                                  {activityIcons[activityKey]}
-                                </div>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">
-                                  {activityKey.slice(0, 3)}
-                                </span>
-                                <span
-                                  className={`text-xs font-bold ${getScoreColorText(
-                                    activity.percentage,
-                                  )}`}
-                                >
-                                  {activity.percentage}%
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        <div className="px-4 pb-4 pt-0 text-center">
-                          <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
-                            {member.periodDiscipline?.onTimePosts ?? 0} on-time
-                            posts out of{" "}
-                            {member.periodDiscipline?.expectedPosts ?? 0}{" "}
-                            expected
-                          </p>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-              ))}
-            </AnimatePresence>
-            {filteredAndSortedMembers.length === 0 && (
-              <div className="text-center py-12">
-                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Search className="h-8 w-8 text-gray-300" />
-                </div>
-                <h3 className="text-gray-900 font-medium">No members found</h3>
-                <p className="text-gray-500 text-sm mt-1">
-                  Try adjusting your search or filters
-                </p>
+                )}
               </div>
-            )}
-          </div>
+
+              {/* Hierarchical Team View */}
+              <HierarchicalTeamView
+                hierarchy={sortedHierarchy || hierarchyData.hierarchy}
+                onNodeClick={(node) => {
+                  console.log('Node clicked:', node);
+                }}
+                showDisciplineScores={true}
+                disciplineScores={
+                  allMembersData?.allMembers
+                    ? Object.fromEntries(
+                        allMembersData.allMembers.map((m) => [
+                          m.userId,
+                          m.periodDiscipline?.percentage || 0,
+                        ])
+                      )
+                    : {}
+                }
+                memberActivities={
+                  allMembersData?.allMembers
+                    ? Object.fromEntries(
+                        allMembersData.allMembers.map((m) => [
+                          m.userId,
+                          m.periodActivities || m.activities || {},
+                        ])
+                      )
+                    : {}
+                }
+                emptyMessage="No team structure found"
+              />
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <p className="text-gray-500 mb-4">Failed to load team hierarchy</p>
+              <button
+                onClick={loadHierarchyData}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Retry
+              </button>
+            </div>
+          )
         ) : (
           /* Flat Member List for My Direct Team */
           <div className="space-y-3">
@@ -1661,12 +1535,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                         <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5">
                           {member.email}
                         </p>
-                        {!member.isLoggedInCoach && member.uplineCoachName && (
+                        {!member.isLoggedInCoach && (member.coachName || member.coCoachName) && (
                           <p className="text-[11px] text-gray-400 mt-1">
-                            Coach:{" "}
+                            Reports to:{" "}
                             <span className="text-gray-600 font-medium">
-                              {member.uplineCoachName}
-                              {member.uplineCoachId === user.id ? " (You)" : ""}
+                              {member.coachName}
+                              {member.coachName && member.coCoachName && ", "}
+                              {member.coCoachName}
                             </span>
                           </p>
                         )}

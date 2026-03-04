@@ -138,6 +138,16 @@ const TeamNode = ({
               )}
             </div>
             <p className="text-xs text-gray-500 mt-0.5">{node.email}</p>
+            {(node.coachName || node.coCoachName) && (
+              <p className="text-[11px] text-gray-400 mt-1">
+                Reports to:{" "}
+                <span className="text-gray-600 font-medium">
+                  {node.coachName}
+                  {node.coachName && node.coCoachName && ", "}
+                  {node.coCoachName}
+                </span>
+              </p>
+            )}
             {hasChildren && (
               <p className="text-[11px] text-gray-400 font-medium mt-1 flex items-center gap-1">
                 <Users className="w-3 h-3" />
