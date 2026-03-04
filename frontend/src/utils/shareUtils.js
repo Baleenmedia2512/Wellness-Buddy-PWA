@@ -17,7 +17,7 @@ import { Capacitor } from "@capacitor/core";
 export const shareImageDirectly = async (imageUrl, options = {}) => {
   const {
     title = "My Meal Analysis",
-    text = "Tracked with Wellness Valley",
+    text = "",
     fileName = "wellness-valley-meal.png",
     shareAsDocument = true, // Share as document to prevent WhatsApp compression
   } = options;
@@ -101,7 +101,7 @@ const shareNativeImage = async (
 export const captureAndShare = async (element, options = {}) => {
   const {
     title = "My Meal Analysis",
-    text = "Tracked with Wellness Valley",
+    text = "",
     fileName = "wellness-valley-meal.png",
     shareAsDocument = true, // Share as document to prevent WhatsApp compression
   } = options;

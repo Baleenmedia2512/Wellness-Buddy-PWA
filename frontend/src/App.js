@@ -2694,7 +2694,7 @@ function WellnessValleyApp() {
                       
                       await captureAndShare(weightAnalysisShareRef.current, {
                         title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
-                        text: `My weight: ${weightResult.weightValue} ${weightResult.unit}\n\nTracked with Wellness Valley \uD83D\uDC9A`,
+                        text: `My weight: ${weightResult.weightValue} ${weightResult.unit}`,
                         fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
                       });
                     } catch (error) {

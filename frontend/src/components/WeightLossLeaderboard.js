@@ -181,66 +181,70 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             animationDuration: `${LEADERBOARD_CONFIG.MARQUEE_DURATION}s`,
           }}
         >
-          <div className="inline-flex items-center gap-3 sm:gap-4 mx-6 sm:mx-8">
-            <div className="inline-flex flex-col items-center gap-1 flex-shrink-0">
-              <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500" />
+          <div className="inline-flex items-center gap-2 sm:gap-3 md:gap-4 mx-4 sm:mx-6 md:mx-8">
+            <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-10 sm:w-12 md:w-14">
+              <Trophy className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500" />
               <div
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold ${getRankColor(
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-bold leading-none ${getRankColor(
                   user.rank,
                 )}`}
               >
                 #{user.rank}
               </div>
             </div>
-            {getAvatar(user.email, user.userName, user.profileImage)}
-            <div className="flex flex-col flex-shrink-0">
-              <span className="font-bold text-gray-800 text-base sm:text-lg">
+            <div className="flex-shrink-0">
+              {getAvatar(user.email, user.userName, user.profileImage)}
+            </div>
+            <div className="flex flex-col justify-center flex-shrink-0 min-w-0 max-w-[140px] sm:max-w-[180px] md:max-w-none">
+              <span className="font-bold text-gray-800 text-sm sm:text-base md:text-lg truncate">
                 {user.userName}
               </span>
               {user.coachName &&
                 user.coachName.toLowerCase() !== "no coach" && (
-                  <span className="text-sm sm:text-base text-gray-600">
+                  <span className="text-xs sm:text-sm md:text-base text-gray-600 truncate">
                     Coach: {user.coachName}
                   </span>
                 )}
             </div>
-            <div className="flex items-center gap-0.5 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
-              <span className="font-bold text-green-600 text-base sm:text-lg whitespace-nowrap">
+            <div className="flex items-center gap-0.5 bg-white px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
+              <span className="font-bold text-green-600 text-sm sm:text-base md:text-lg whitespace-nowrap">
                 -{formatWeightLoss(user.weightLoss).value}{" "}
-                <span className="font-medium text-sm sm:text-base">
+                <span className="font-medium text-xs sm:text-sm md:text-base">
                   {formatWeightLoss(user.weightLoss).unit}
                 </span>
               </span>
             </div>
           </div>
           {/* Duplicate for seamless loop */}
-          <div className="inline-flex items-center gap-3 sm:gap-4 mx-6 sm:mx-8">
-            <div className="inline-flex flex-col items-center gap-1 flex-shrink-0">
-              <Trophy className="w-6 h-6 sm:w-7 sm:h-7 text-yellow-500" />
+          <div className="inline-flex items-center gap-2 sm:gap-3 md:gap-4 mx-4 sm:mx-6 md:mx-8">
+            <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-10 sm:w-12 md:w-14">
+              <Trophy className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500" />
               <div
-                className={`px-2.5 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold ${getRankColor(
+                className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-bold leading-none ${getRankColor(
                   user.rank,
                 )}`}
               >
                 #{user.rank}
               </div>
             </div>
-            {getAvatar(user.email, user.userName, user.profileImage)}
-            <div className="flex flex-col flex-shrink-0">
-              <span className="font-bold text-gray-800 text-base sm:text-lg">
+            <div className="flex-shrink-0">
+              {getAvatar(user.email, user.userName, user.profileImage)}
+            </div>
+            <div className="flex flex-col justify-center flex-shrink-0 min-w-0">
+              <span className="font-bold text-gray-800 text-sm sm:text-base md:text-lg truncate">
                 {user.userName}
               </span>
               {user.coachName &&
                 user.coachName.toLowerCase() !== "no coach" && (
-                  <span className="text-sm sm:text-base text-gray-600">
+                  <span className="text-xs sm:text-sm md:text-base text-gray-600 truncate">
                     Coach: {user.coachName}
                   </span>
                 )}
             </div>
-            <div className="flex items-center gap-0.5 bg-white px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
-              <span className="font-bold text-green-600 text-base sm:text-lg whitespace-nowrap">
+            <div className="flex items-center gap-0.5 bg-white px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
+              <span className="font-bold text-green-600 text-sm sm:text-base md:text-lg whitespace-nowrap">
                 -{formatWeightLoss(user.weightLoss).value}{" "}
-                <span className="font-medium text-sm sm:text-base">
+                <span className="font-medium text-xs sm:text-sm md:text-base">
                   {formatWeightLoss(user.weightLoss).unit}
                 </span>
               </span>
@@ -253,9 +257,9 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Top 3 or Top 7: Auto-slide one card at a time
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50">
-      <div className="max-w-4xl mx-auto px-3 sm:px-4 py-3">
-        <div className="overflow-hidden">
+    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 overflow-hidden">
+      <div className="max-w-4xl mx-auto px-2 sm:px-3 md:px-4 py-2.5 sm:py-3">
+        <div className="overflow-hidden relative">
           <div
             className="flex transition-transform duration-1000 ease-in-out"
             style={{
@@ -265,13 +269,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             {leaderboardData.map((user) => (
               <div
                 key={user.userId}
-                className="min-w-full flex-shrink-0 flex items-center gap-2 sm:gap-3 px-0.5"
+                className="min-w-full flex-shrink-0 flex items-center gap-1.5 sm:gap-2 md:gap-2.5 px-1.5 sm:px-2"
               >
                 {/* Left: Trophy + Rank (stacked vertically) */}
-                <div className="flex flex-col items-center gap-1 flex-shrink-0">
-                  <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-yellow-500" />
+                <div className="flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-10 sm:w-12 md:w-14">
+                  <Trophy className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500" />
                   <div
-                    className={`px-2 py-0.5 rounded-full text-xs sm:text-sm font-bold ${getRankColor(
+                    className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-bold leading-none ${getRankColor(
                       user.rank,
                     )}`}
                   >
@@ -280,15 +284,17 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
                 </div>
 
                 {/* Center: Profile + Details */}
-                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                  {getAvatar(user.email, user.userName, user.profileImage)}
-                  <div className="flex flex-col min-w-0 flex-1">
-                    <span className="font-bold text-gray-800 text-sm sm:text-base leading-tight truncate">
+                <div className="flex items-center gap-1.5 sm:gap-2 md:gap-2.5 flex-1 min-w-0">
+                  <div className="flex-shrink-0">
+                    {getAvatar(user.email, user.userName, user.profileImage)}
+                  </div>
+                  <div className="flex flex-col justify-center min-w-0 flex-1 max-w-[140px] sm:max-w-[180px] md:max-w-none">
+                    <span className="font-bold text-gray-800 text-xs sm:text-sm md:text-base leading-tight truncate">
                       {user.userName}
                     </span>
                     {user.coachName &&
                       user.coachName.toLowerCase() !== "no coach" && (
-                        <span className="text-xs sm:text-sm text-gray-500 leading-tight truncate">
+                        <span className="text-[10px] sm:text-xs md:text-sm text-gray-500 leading-tight truncate">
                           Coach: {user.coachName}
                         </span>
                       )}
@@ -296,10 +302,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
                 </div>
 
                 {/* Right: Weight Loss */}
-                <div className="flex items-center gap-0.5 bg-white px-2.5 sm:px-3 py-1.5 rounded-lg shadow-sm flex-shrink-0 ml-auto">
-                  <span className="font-bold text-green-600 text-sm sm:text-base whitespace-nowrap">
+                <div className="flex items-center gap-0.5 bg-white px-2 sm:px-2.5 md:px-3 py-1 sm:py-1.5 rounded-lg shadow-sm flex-shrink-0">
+                  <span className="font-bold text-green-600 text-xs sm:text-sm md:text-base whitespace-nowrap">
                     -{formatWeightLoss(user.weightLoss).value}{" "}
-                    <span className="font-medium text-xs sm:text-sm">
+                    <span className="font-medium text-[10px] sm:text-xs md:text-sm">
                       {formatWeightLoss(user.weightLoss).unit}
                     </span>
                   </span>

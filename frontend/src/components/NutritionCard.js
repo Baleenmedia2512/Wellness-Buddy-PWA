@@ -366,8 +366,6 @@ const NutritionCard = ({
         breakdownText += `\n`;
       }
 
-      breakdownText += `Tracked with Wellness Valley 💚`;
-
       // Capture and share the complete nutrition card (food image + all nutrition details)
       await captureAndShare(shareRef.current, {
         title: `${mealName} - Wellness Valley`,
