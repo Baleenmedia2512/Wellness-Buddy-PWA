@@ -1528,15 +1528,39 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             )}
             
             <AnimatePresence>
-              {filteredDirectTeamMembers.map((member) => (
-                <motion.div
-                  key={member.userId}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  layout
-                  className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow"
-                >
+              {filteredDirectTeamMembers.map((member, index) => {
+                // Determine hierarchy level for tree visualization
+                const isRoot = member.isLoggedInCoach;
+                const hasCoach = !isRoot && (member.coachName || member.coCoachName);
+                
+                // Find parent in the list
+                const parentIndex = filteredDirectTeamMembers.findIndex(
+                  m => m.userName === member.coachName || m.userName === member.coCoachName
+                );
+                const isDirectChild = hasCoach && parentIndex >= 0 && parentIndex < index;
+                
+                return (
+                  <motion.div
+                    key={member.userId}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.95 }}
+                    layout
+                    className={`bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-md transition-shadow relative ${
+                      isDirectChild ? 'ml-8' : ''
+                    }`}
+                    style={isDirectChild ? {
+                      borderLeft: '3px solid #3b82f6'
+                    } : {}}
+                  >
+                  {/* Tree connector line */}
+                  {isDirectChild && (
+                    <div className="absolute left-0 top-0 bottom-0 w-8 pointer-events-none">
+                      <div className="absolute left-0 top-1/2 w-6 h-0.5 bg-blue-400"></div>
+                      <div className="absolute left-0 top-0 bottom-1/2 w-0.5 bg-blue-400 ml-0"></div>
+                    </div>
+                  )}
+                  
                   {/* Member Card Content */}
                   <div
                     onClick={() =>
@@ -1664,8 +1688,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       </motion.div>
                     )}
                   </AnimatePresence>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </AnimatePresence>
             {filteredDirectTeamMembers.length === 0 && (
               <div className="text-center py-12">
