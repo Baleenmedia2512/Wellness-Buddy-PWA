@@ -4,6 +4,7 @@ import { Share2 } from "lucide-react";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
 import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
+import { geminiService } from "../services/geminiService";
 
 const NutritionCard = ({
   data,
@@ -25,6 +26,20 @@ const NutritionCard = ({
   const [highResImageUrl, setHighResImageUrl] = useState(null);
   const cardRef = useRef(null);
   const shareRef = useRef(null);
+
+  // Add Missing Item feature state
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemQuantity, setNewItemQuantity] = useState("100");
+  const [newItemUnit, setNewItemUnit] = useState("g");
+  const [newItemPortion, setNewItemPortion] = useState("");
+  const [addItemError, setAddItemError] = useState("");
+  const [selectedAddFood, setSelectedAddFood] = useState(null);
+  const [addSearchResults, setAddSearchResults] = useState([]);
+  const [showAddSuggestions, setShowAddSuggestions] = useState(false);
+  const [activeAddSuggestionIndex, setActiveAddSuggestionIndex] = useState(0);
+  const [isAddSearching, setIsAddSearching] = useState(false);
+  const addSearchTimeoutRef = useRef(null);
 
   // Create high-resolution image URL from original file for sharing
   useEffect(() => {
@@ -137,6 +152,216 @@ const NutritionCard = ({
 
     console.log("   ✅ Final totals:", rounded);
     return rounded;
+  };
+
+  // Helper: Update local state and notify parent
+  const updateLocalAndParentState = (newItems, newTotals) => {
+    setLocalDetailedItems(newItems);
+    setLocalNutrition(newTotals);
+    if (onDataUpdate) {
+      onDataUpdate({
+        ...data,
+        detailedItems: newItems,
+        nutrition: newTotals,
+      });
+    }
+  };
+
+  // Helper: Save meal updates to backend
+  const saveMealUpdate = async (newItems, newTotals) => {
+    if (!savedMealId) {
+      console.warn("⚠️ [NutritionCard] No saved meal ID - skipping auto-save");
+      return;
+    }
+
+    const apiBaseUrl =
+      process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+
+    // Get userId - either from user object directly or via lookup
+    let userId = user?.id;
+    if (!userId) {
+      userId = await getUserId(user);
+    }
+
+    if (!userId) {
+      throw new Error("User not authenticated or not found in database");
+    }
+
+    // Prepare analysis data
+    const analysisData = {
+      foods: newItems.map((item) => {
+        const actualGrams =
+          item.serving?.grams ||
+          item.grams ||
+          item.weight_g ||
+          item.volume_ml ||
+          100;
+        const isLiquid = item.isLiquid || false;
+        const unit = item.unit || (isLiquid ? "ml" : "g");
+
+        return {
+          name: item.name,
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
+          portion:
+            item.serving?.description ||
+            item.portionDescription ||
+            item.portion ||
+            "1 serving",
+          weight_g: isLiquid ? null : actualGrams,
+          volume_ml: isLiquid ? actualGrams : null,
+          grams: actualGrams,
+          unit: unit,
+          isLiquid: isLiquid,
+          nutrition: {
+            calories: Math.round(
+              item.nutrition?.calories || item.calories || 0,
+            ),
+            protein: Math.round(item.nutrition?.protein || item.protein || 0),
+            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
+            fat: Math.round(item.nutrition?.fat || item.fat || 0),
+            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
+          },
+        };
+      }),
+      total: {
+        calories: Math.round(newTotals.calories || 0),
+        protein: Math.round(newTotals.protein || 0),
+        carbs: Math.round(newTotals.carbs || 0),
+        fat: Math.round(newTotals.fat || 0),
+        fiber: Math.round(newTotals.fiber || 0),
+      },
+      confidence: "high",
+    };
+
+    console.log(
+      "📝 [NutritionCard] Auto-saving update to meal ID:",
+      savedMealId,
+    );
+
+    const response = await fetch(
+      `${apiBaseUrl}/api/update-nutrition-analysis`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: savedMealId,
+          userId: userId,
+          analysisData: analysisData,
+          totalCalories: Math.round(newTotals.calories || 0),
+          totalProtein: Math.round(newTotals.protein || 0),
+          totalCarbs: Math.round(newTotals.carbs || 0),
+          totalFat: Math.round(newTotals.fat || 0),
+          totalFiber: Math.round(newTotals.fiber || 0),
+        }),
+      },
+    );
+
+    const result = await response.json();
+
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || "Failed to update meal");
+    }
+  };
+
+  // Helper: Calculate nutrition from search result
+  const calculateNutritionFromSearchResult = (foodResult, grams) => {
+    if (!foodResult?.per100g) return null;
+    const multiplier = grams / 100;
+    return {
+      calories: Math.round(foodResult.per100g.calories * multiplier),
+      protein: Math.ceil(foodResult.per100g.protein * multiplier),
+      carbs: Math.ceil(foodResult.per100g.carbs * multiplier),
+      fat: Math.ceil(foodResult.per100g.fat * multiplier),
+      fiber: Math.ceil((foodResult.per100g.fiber || 0) * multiplier),
+    };
+  };
+
+  // Helper: Reset add item form
+  const resetAddItemForm = () => {
+    setNewItemName("");
+    setNewItemQuantity("100");
+    setNewItemUnit("g");
+    setNewItemPortion("");
+    setAddItemError("");
+    setSelectedAddFood(null);
+    setAddSearchResults([]);
+    setShowAddSuggestions(false);
+    setActiveAddSuggestionIndex(0);
+    setIsAddingItem(false);
+  };
+
+  // Helper: Handle add item name change with search
+  const handleAddNameChange = (value) => {
+    setNewItemName(value);
+    setAddItemError("");
+    setShowAddSuggestions(false);
+
+    // Clear previous timeout
+    if (addSearchTimeoutRef.current) {
+      clearTimeout(addSearchTimeoutRef.current);
+    }
+
+    if (value.trim().length < 2) {
+      setAddSearchResults([]);
+      setShowAddSuggestions(false);
+      return;
+    }
+
+    // Debounce search
+    addSearchTimeoutRef.current = setTimeout(async () => {
+      setIsAddSearching(true);
+      try {
+        const result = await geminiService.searchFood(value.trim());
+        if (result?.results?.length) {
+          setAddSearchResults(result.results);
+          setShowAddSuggestions(true);
+        } else {
+          setAddSearchResults([]);
+          setShowAddSuggestions(false);
+        }
+      } catch (error) {
+        console.error("[NutritionCard] Add item search error:", error);
+        setAddSearchResults([]);
+        setShowAddSuggestions(false);
+      } finally {
+        setIsAddSearching(false);
+      }
+    }, 500);
+  };
+
+  // Helper: Handle keyboard navigation in add item suggestions
+  const handleAddNameKeyDown = (e) => {
+    if (!showAddSuggestions || addSearchResults.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveAddSuggestionIndex((prev) =>
+        prev < addSearchResults.length - 1 ? prev + 1 : 0,
+      );
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveAddSuggestionIndex((prev) =>
+        prev > 0 ? prev - 1 : addSearchResults.length - 1,
+      );
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (addSearchResults[activeAddSuggestionIndex]) {
+        handleSelectAddSuggestion(addSearchResults[activeAddSuggestionIndex]);
+      }
+    } else if (e.key === "Escape") {
+      setShowAddSuggestions(false);
+    }
+  };
+
+  // Helper: Handle selecting a food suggestion for adding
+  const handleSelectAddSuggestion = (food) => {
+    setNewItemName(food.name);
+    setSelectedAddFood(food);
+    setShowAddSuggestions(false);
+    setAddSearchResults([]);
   };
 
   // Handle food item update with auto-save
@@ -283,44 +508,6 @@ const NutritionCard = ({
 
     if (!response.ok || !result.success) {
       throw new Error(result.message || "Failed to update meal");
-    }
-  };
-
-  // Handle food item update with auto-save
-  const handleFoodUpdate = async (index, updatedFood) => {
-    console.log("[NutritionCard] Updating food item at index:", index);
-    console.log("[NutritionCard] Received updatedFood:", {
-      name: updatedFood.name,
-      grams: updatedFood.grams,
-      serving_grams: updatedFood.serving?.grams,
-      unit: updatedFood.unit,
-      serving_unit: updatedFood.serving?.unit,
-    });
-
-    const newItems = [...localDetailedItems];
-    newItems[index] = {
-      ...newItems[index],
-      ...updatedFood,
-      // Preserve original fields if not in updatedFood
-      calories: updatedFood.nutrition?.calories || updatedFood.calories,
-      protein: updatedFood.nutrition?.protein || updatedFood.protein,
-      carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
-      fat: updatedFood.nutrition?.fat || updatedFood.fat,
-      fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
-    };
-
-    // Recalculate totals
-    const newTotals = recalculateTotals(newItems);
-    updateLocalAndParentState(newItems, newTotals);
-
-    console.log("[NutritionCard] Updated totals:", newTotals);
-
-    try {
-      await saveMealUpdate(newItems, newTotals);
-    } catch (error) {
-      console.error("[NutritionCard] Auto-save failed:", error);
-      // Phase 5: Re-throw error so EditableFoodItem's retry logic can handle it
-      throw error;
     }
   };
 
