@@ -1019,14 +1019,6 @@ const NutritionDashboard = ({
     }));
   };
 
-  // group by meal bucket (placeholders included, but ignored in totals)
-  const groupedMeals = analyses.reduce((groups, analysis) => {
-    const category = getMealCategory(analysis.CreatedAt);
-    if (!groups[category]) groups[category] = [];
-    groups[category].push(analysis);
-    return groups;
-  }, {});
-
   const UndoRow = ({
     pid,
     originalMeal,
@@ -1066,7 +1058,7 @@ const NutritionDashboard = ({
         });
       }, msLeft);
       return () => clearTimeout(t);
-    }, [expiresAt, pid, setAnalyses, setUndoState]);
+    }, [expiresAt, pid]);
 
     const foodName =
       parseAnalysisData(originalMeal.AnalysisData).name || "Food";

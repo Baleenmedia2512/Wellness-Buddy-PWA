@@ -6,7 +6,6 @@ import React, {
   useImperativeHandle,
 } from "react";
 import { Trophy } from "lucide-react";
-import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
 
 /**
  * WeightLossLeaderboard Component

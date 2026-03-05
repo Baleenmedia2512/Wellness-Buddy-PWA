@@ -900,6 +900,28 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user, isUserActive, apiBaseUrl]);
 
+  // ⚡ PERFORMANCE: Preload user context when user logs in (warm the cache)
+  useEffect(() => {
+    const preloadUserContext = async () => {
+      if (!user || !user.id) return;
+
+      try {
+        console.log('⚡ [PRELOAD] Warming user context cache...');
+        const context = await getUserContext(user.id);
+        if (context) {
+          setUserContext(context);
+          console.log('✅ [PRELOAD] Context cached - image analysis will be faster');
+        }
+      } catch (error) {
+        console.warn('⚠️ [PRELOAD] Failed to preload context:', error);
+      }
+    };
+
+    // Preload after a short delay to avoid blocking auth flow
+    const timeoutId = setTimeout(preloadUserContext, 500);
+    return () => clearTimeout(timeoutId);
+  }, [user?.id]); // Re-run when user ID changes
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1175,6 +1197,7 @@ function WellnessValleyApp() {
 
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
+    const saveStart = Date.now();
     try {
       console.log("🔵 [App] Starting nutrition save:", {
         userId: saveData.userId,
@@ -1185,6 +1208,7 @@ function WellnessValleyApp() {
 
       const saveRes = await saveNutritionAnalysis(saveData);
       console.log("✅ [App] Save successful:", saveRes);
+      console.log(`⏱️ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
       if (process.env.NODE_ENV !== "production") {
         // console.log('✅ Save successful:', saveRes);
@@ -1361,44 +1385,53 @@ function WellnessValleyApp() {
     setLoadingState("analyzing"); // Reset to analyzing state
     lastImageFileRef.current = file; // Store for retry
 
+    // ⚡ PERFORMANCE TRACKING
+    const perfStart = Date.now();
+    console.log('⏱️ [PERF] 🟢 Image processing started');
+
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
+      const readStart = Date.now();
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      console.log(`⏱️ [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ✅ ANDROID PERFORMANCE: Intelligent compression based on platform and size
+      // ⚡ OPTIMIZED: Aggressive compression for faster uploads & API calls
+      const compressStart = Date.now();
       const isAndroid = Capacitor.isNativePlatform();
       const imageSizeMB = imageBase64.length / (1024 * 1024);
 
       let processedImage = imageBase64;
       let compressionApplied = false;
 
-      // Aggressive compression for Android or large images
+      // More aggressive compression for speed (AI doesn't need high-res images)
       if (isAndroid) {
-        // Android: Always compress for speed
-        if (imageSizeMB > 0.5) {
-          // > 500KB
-          const maxWidth = 1280; // Optimal for Android
-          const quality = imageSizeMB > 2 ? 0.75 : 0.85; // More aggressive for larger images
+        // Android: Always compress aggressively for speed
+        if (imageSizeMB > 0.3) {
+          // > 300KB
+          const maxWidth = 800; // Smaller = faster upload & API processing
+          const quality = imageSizeMB > 2 ? 0.60 : 0.70; // Higher compression
           processedImage = await compressImage(imageBase64, quality, maxWidth);
           compressionApplied = true;
         }
       } else {
-        // Web: Compress only if needed
-        if (imageSizeMB > 2) {
-          // > 2MB
-          processedImage = await compressImage(imageBase64, 0.8, 1920);
+        // Web: Also compress aggressively
+        if (imageSizeMB > 0.5) {
+          // > 500KB
+          processedImage = await compressImage(imageBase64, 0.70, 800);
           compressionApplied = true;
         }
       }
 
-      if (compressionApplied && process.env.NODE_ENV !== "production") {
+      if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
-        // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
+        console.log(`⏱️ [PERF] Compression: ${Date.now() - compressStart}ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`);
+      } else {
+        console.log(`⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
       }
 
       // Set preview and loading together to ensure overlay shows
@@ -1411,7 +1444,9 @@ function WellnessValleyApp() {
       }
 
       // ✅ Detect image type using Gemini AI (single unified call)
+      const apiStart = Date.now();
       const detectedType = await imageTypeDetector.detectImageType(file);
+      console.log(`⏱️ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
       console.log('🔍 [DEBUG] Image Type Detection Result:', {
         type: detectedType.type,
         confidence: detectedType.confidence,
@@ -1941,6 +1976,8 @@ function WellnessValleyApp() {
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
+      console.log(`⏱️ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   };
 
