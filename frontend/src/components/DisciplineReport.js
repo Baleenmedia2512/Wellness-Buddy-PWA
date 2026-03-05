@@ -1424,37 +1424,37 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <span className="ml-3 text-gray-600">Loading team hierarchy...</span>
             </div>
           ) : hierarchyData?.hierarchy ? (
-            <div className="space-y-4">
+            <div className="space-y-3 sm:space-y-4">
               {/* Hierarchy Header */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
-                <h2 className="text-lg font-bold text-gray-900 mb-2">Team Hierarchy</h2>
-                <p className="text-sm text-gray-600">
-                  Expand coaches and co-coaches to see their team members
+              <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 p-3 sm:p-4">
+                <h2 className="text-base sm:text-lg font-bold text-gray-900 mb-1 sm:mb-2">Team Hierarchy</h2>
+                <p className="text-xs sm:text-sm text-gray-600">
+                  View your team structure and member scores
                 </p>
                 
                 {hierarchyData && (
-                  <div className="flex items-center gap-4 mt-3 pt-3 border-t border-gray-100 text-sm">
+                  <div className="grid grid-cols-2 gap-3 sm:flex sm:items-center sm:gap-4 mt-3 pt-3 border-t border-gray-100">
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                        <Users className="w-4 h-4 text-blue-600" />
+                      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-blue-100 flex items-center justify-center">
+                        <Users className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" />
                       </div>
                       <div>
-                        <div className="font-semibold text-gray-900">
+                        <div className="text-base sm:text-lg font-bold text-gray-900">
                           {hierarchyData.stats?.totalCoaches || 0}
                         </div>
-                        <div className="text-xs text-gray-500">Coaches</div>
+                        <div className="text-[10px] sm:text-xs text-gray-500">Coaches</div>
                       </div>
                     </div>
                     
                     <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
-                        <Users className="w-4 h-4 text-green-600" />
+                      <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-green-100 flex items-center justify-center">
+                        <Users className="w-4 h-4 sm:w-5 sm:h-5 text-green-600" />
                       </div>
                       <div>
-                        <div className="font-semibold text-gray-900">
+                        <div className="text-base sm:text-lg font-bold text-gray-900">
                           {hierarchyData.stats?.totalMembers || 0}
                         </div>
-                        <div className="text-xs text-gray-500">Members</div>
+                        <div className="text-[10px] sm:text-xs text-gray-500">Members</div>
                       </div>
                     </div>
                   </div>
