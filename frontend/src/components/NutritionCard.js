@@ -3,6 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
+import { geminiService } from "../services/geminiService";
 import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
 
 const NutritionCard = ({
@@ -23,8 +24,20 @@ const NutritionCard = ({
   const [editingStates, setEditingStates] = useState({});
   const [isSharing, setIsSharing] = useState(false);
   const [highResImageUrl, setHighResImageUrl] = useState(null);
+  const [isAddingItem, setIsAddingItem] = useState(false);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemPortion, setNewItemPortion] = useState("");
+  const [newItemQuantity, setNewItemQuantity] = useState("100");
+  const [newItemUnit, setNewItemUnit] = useState("g");
+  const [addItemError, setAddItemError] = useState("");
+  const [selectedAddFood, setSelectedAddFood] = useState(null);
+  const [addSearchResults, setAddSearchResults] = useState([]);
+  const [showAddSuggestions, setShowAddSuggestions] = useState(false);
+  const [isAddSearching, setIsAddSearching] = useState(false);
+  const [activeAddSuggestionIndex, setActiveAddSuggestionIndex] = useState(-1);
   const cardRef = useRef(null);
   const shareRef = useRef(null);
+  const addSearchTimeoutRef = useRef(null);
 
   // Create high-resolution image URL from original file for sharing
   useEffect(() => {
@@ -43,6 +56,14 @@ const NutritionCard = ({
       setHighResImageUrl(imagePreview);
     }
   }, [selectedImage, imagePreview]);
+
+  useEffect(() => {
+    return () => {
+      if (addSearchTimeoutRef.current) {
+        clearTimeout(addSearchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
@@ -87,6 +108,161 @@ const NutritionCard = ({
     const firstItem = localDetailedItems[0].name;
     const remaining = localDetailedItems.length - 1;
     return `${firstItem} + ${remaining} more`;
+  };
+
+  const calculateNutritionFromSearchResult = (foodResult, quantity) => {
+    const qty = Number.parseFloat(quantity);
+    if (!Number.isFinite(qty) || qty <= 0 || !foodResult) return null;
+
+    const toNumber = (value) => {
+      const parsed = Number.parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+
+    if (foodResult.per100g) {
+      const factor = qty / 100;
+      return {
+        calories: Math.round(toNumber(foodResult.per100g.calories) * factor),
+        protein: Math.round(toNumber(foodResult.per100g.protein) * factor * 10) / 10,
+        carbs: Math.round(toNumber(foodResult.per100g.carbs) * factor * 10) / 10,
+        fat: Math.round(toNumber(foodResult.per100g.fat) * factor * 10) / 10,
+        fiber: Math.round(toNumber(foodResult.per100g.fiber) * factor * 10) / 10,
+      };
+    }
+
+    if (
+      foodResult.defaultServing?.nutrition &&
+      Number.isFinite(Number.parseFloat(foodResult.defaultServing?.grams)) &&
+      Number.parseFloat(foodResult.defaultServing?.grams) > 0
+    ) {
+      const servingGrams = Number.parseFloat(foodResult.defaultServing.grams);
+      const factor = qty / servingGrams;
+      return {
+        calories: Math.round(
+          toNumber(foodResult.defaultServing.nutrition.calories) * factor,
+        ),
+        protein:
+          Math.round(toNumber(foodResult.defaultServing.nutrition.protein) * factor * 10) /
+          10,
+        carbs:
+          Math.round(toNumber(foodResult.defaultServing.nutrition.carbs) * factor * 10) /
+          10,
+        fat:
+          Math.round(toNumber(foodResult.defaultServing.nutrition.fat) * factor * 10) /
+          10,
+        fiber:
+          Math.round(toNumber(foodResult.defaultServing.nutrition.fiber) * factor * 10) /
+          10,
+      };
+    }
+
+    return null;
+  };
+
+  const resetAddItemForm = () => {
+    if (addSearchTimeoutRef.current) {
+      clearTimeout(addSearchTimeoutRef.current);
+      addSearchTimeoutRef.current = null;
+    }
+    setIsAddingItem(false);
+    setNewItemName("");
+    setNewItemPortion("");
+    setNewItemQuantity("100");
+    setNewItemUnit("g");
+    setAddItemError("");
+    setSelectedAddFood(null);
+    setAddSearchResults([]);
+    setShowAddSuggestions(false);
+    setIsAddSearching(false);
+    setActiveAddSuggestionIndex(-1);
+  };
+
+  const handleSelectAddSuggestion = (food) => {
+    setSelectedAddFood(food);
+    setNewItemName(food?.name || "");
+    if (!newItemPortion && food?.defaultServing?.description) {
+      setNewItemPortion(food.defaultServing.description);
+    }
+    setShowAddSuggestions(false);
+    setAddSearchResults([]);
+    setActiveAddSuggestionIndex(-1);
+  };
+
+  const handleAddNameChange = (value) => {
+    setNewItemName(value);
+    setSelectedAddFood(null);
+    setAddItemError("");
+    setActiveAddSuggestionIndex(-1);
+
+    const trimmed = value.trim();
+
+    if (addSearchTimeoutRef.current) {
+      clearTimeout(addSearchTimeoutRef.current);
+      addSearchTimeoutRef.current = null;
+    }
+
+    if (!trimmed) {
+      setShowAddSuggestions(false);
+      setAddSearchResults([]);
+      setIsAddSearching(false);
+      return;
+    }
+
+    setShowAddSuggestions(true);
+
+    const cached = geminiService.getCachedSearch?.(trimmed);
+    if (cached?.results) {
+      setAddSearchResults(cached.results);
+      setIsAddSearching(false);
+      return;
+    }
+
+    setIsAddSearching(true);
+    addSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const searchRes = await geminiService.searchFood(trimmed);
+        setAddSearchResults(searchRes?.results || []);
+      } catch (error) {
+        console.error("[NutritionCard] Add item search failed:", error);
+        setAddSearchResults([]);
+      } finally {
+        setIsAddSearching(false);
+        addSearchTimeoutRef.current = null;
+      }
+    }, 400);
+  };
+
+  const handleAddNameKeyDown = (e) => {
+    if (!showAddSuggestions || addSearchResults.length === 0) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setActiveAddSuggestionIndex((prev) =>
+        prev < addSearchResults.length - 1 ? prev + 1 : 0,
+      );
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setActiveAddSuggestionIndex((prev) =>
+        prev > 0 ? prev - 1 : addSearchResults.length - 1,
+      );
+      return;
+    }
+
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (activeAddSuggestionIndex >= 0) {
+        handleSelectAddSuggestion(addSearchResults[activeAddSuggestionIndex]);
+      }
+      return;
+    }
+
+    if (e.key === "Escape") {
+      setShowAddSuggestions(false);
+      setActiveAddSuggestionIndex(-1);
+    }
   };
 
   // Recalculate total nutrition from all food items
@@ -139,37 +315,20 @@ const NutritionCard = ({
     return rounded;
   };
 
-  // Handle food item update with auto-save
-  const handleFoodUpdate = async (index, updatedFood) => {
-    console.log("🔄 [NutritionCard] Updating food item at index:", index);
-    console.log("🔍 [NutritionCard] Received updatedFood:", {
-      name: updatedFood.name,
-      grams: updatedFood.grams,
-      serving_grams: updatedFood.serving?.grams,
-      unit: updatedFood.unit,
-      serving_unit: updatedFood.serving?.unit,
-    });
+  const updateLocalAndParentState = (items, totals) => {
+    setLocalDetailedItems(items);
+    setLocalNutrition(totals);
 
-    const newItems = [...localDetailedItems];
-    newItems[index] = {
-      ...newItems[index],
-      ...updatedFood,
-      // Preserve original fields if not in updatedFood
-      calories: updatedFood.nutrition?.calories || updatedFood.calories,
-      protein: updatedFood.nutrition?.protein || updatedFood.protein,
-      carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
-      fat: updatedFood.nutrition?.fat || updatedFood.fat,
-      fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
-    };
+    if (typeof onDataUpdate === "function") {
+      onDataUpdate({
+        ...data,
+        detailedItems: items,
+        nutrition: totals,
+      });
+    }
+  };
 
-    setLocalDetailedItems(newItems);
-
-    // Recalculate totals
-    const newTotals = recalculateTotals(newItems);
-    setLocalNutrition(newTotals);
-
-    console.log("✅ [NutritionCard] Updated totals:", newTotals);
-
+  const saveMealUpdate = async (newItems, newTotals) => {
     // Phase 5: Auto-save update to backend
     if (!savedMealId) {
       console.warn("⚠️ [NutritionCard] No saved meal ID - skipping auto-save");
@@ -189,95 +348,80 @@ const NutritionCard = ({
       throw new Error("User not authenticated or not found in database");
     }
 
-      // Prepare analysis data
-      const analysisData = {
-        foods: newItems.map((item) => {
-          // 🔍 Get the actual grams value from the serving or item
-          const actualGrams =
-            item.serving?.grams ||
-            item.grams ||
-            item.weight_g ||
-            item.volume_ml ||
-            100;
-          const isLiquid = item.isLiquid || false;
-          const unit = item.unit || (isLiquid ? "ml" : "g");
+    // Prepare analysis data
+    const analysisData = {
+      foods: newItems.map((item) => {
+        // Keep the most specific quantity value for persistence.
+        const actualGrams =
+          item.serving?.grams || item.grams || item.weight_g || item.volume_ml || 100;
+        const isLiquid = item.isLiquid || false;
+        const unit = item.unit || (isLiquid ? "ml" : "g");
 
-          return {
-            name: item.name,
-            // 🔴 CRITICAL: Preserve correction metadata for database persistence
-            originalAiName: item.originalAiName || item.name,
-            wasAutoCorrected: item.wasAutoCorrected || false,
-            correctionSource: item.correctionSource || null,
-            correctionMetadata: item.correctionMetadata || null,
-            portion:
-              item.serving?.description ||
-              item.portionDescription ||
-              item.portion ||
-              "1 serving",
-            // ✅ Save to correct field based on liquid/solid
-            weight_g: isLiquid ? null : actualGrams,
-            volume_ml: isLiquid ? actualGrams : null,
-            grams: actualGrams, // Also save to grams field for backwards compatibility
-            unit: unit,
-            isLiquid: isLiquid,
-            nutrition: {
-              calories: Math.round(
-                item.nutrition?.calories || item.calories || 0,
-              ),
-              protein: Math.round(item.nutrition?.protein || item.protein || 0),
-              carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
-              fat: Math.round(item.nutrition?.fat || item.fat || 0),
-              fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
-            },
-          };
-        }),
-        total: {
-          calories: Math.round(newTotals.calories || 0),
-          protein: Math.round(newTotals.protein || 0),
-          carbs: Math.round(newTotals.carbs || 0),
-          fat: Math.round(newTotals.fat || 0),
-          fiber: Math.round(newTotals.fiber || 0),
-        },
-        confidence: "high",
-      };
+        return {
+          name: item.name,
+          // Preserve correction metadata for database persistence.
+          originalAiName: item.originalAiName || item.name,
+          wasAutoCorrected: item.wasAutoCorrected || false,
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
+          portion:
+            item.serving?.description ||
+            item.portionDescription ||
+            item.portion ||
+            "1 serving",
+          weight_g: isLiquid ? null : actualGrams,
+          volume_ml: isLiquid ? actualGrams : null,
+          grams: actualGrams,
+          unit: unit,
+          isLiquid: isLiquid,
+          nutrition: {
+            calories: Math.round(item.nutrition?.calories || item.calories || 0),
+            protein: Math.round(item.nutrition?.protein || item.protein || 0),
+            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
+            fat: Math.round(item.nutrition?.fat || item.fat || 0),
+            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
+          },
+        };
+      }),
+      total: {
+        calories: Math.round(newTotals.calories || 0),
+        protein: Math.round(newTotals.protein || 0),
+        carbs: Math.round(newTotals.carbs || 0),
+        fat: Math.round(newTotals.fat || 0),
+        fiber: Math.round(newTotals.fiber || 0),
+      },
+      confidence: "high",
+    };
 
-      // 🔍 DEBUG: Log what we're sending to the API
-      console.log(
-        "🔍 [NutritionCard] Sending to API - Foods with weights:",
-        analysisData.foods.map((f) => ({
-          name: f.name,
-          weight_g: f.weight_g,
-          volume_ml: f.volume_ml,
-          grams: f.grams,
-          unit: f.unit,
-          isLiquid: f.isLiquid,
-          portion: f.portion,
-        })),
-      );
+    console.log(
+      "🔍 [NutritionCard] Sending to API - Foods with weights:",
+      analysisData.foods.map((f) => ({
+        name: f.name,
+        weight_g: f.weight_g,
+        volume_ml: f.volume_ml,
+        grams: f.grams,
+        unit: f.unit,
+        isLiquid: f.isLiquid,
+        portion: f.portion,
+      })),
+    );
 
-      // Update existing meal
-      console.log(
-        "📝 [NutritionCard] Auto-saving update to meal ID:",
-        savedMealId,
-      );
+    console.log("📝 [NutritionCard] Auto-saving update to meal ID:", savedMealId);
 
-      const response = await fetch(
-        `${apiBaseUrl}/api/update-nutrition-analysis`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: savedMealId,
-            userId: userId,
-            analysisData: analysisData,
-            totalCalories: Math.round(newTotals.calories || 0),
-            totalProtein: Math.round(newTotals.protein || 0),
-            totalCarbs: Math.round(newTotals.carbs || 0),
-            totalFat: Math.round(newTotals.fat || 0),
-            totalFiber: Math.round(newTotals.fiber || 0),
-          }),
-        },
-      );
+    const response = await fetch(`${apiBaseUrl}/api/update-nutrition-analysis`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: savedMealId,
+        userId: userId,
+        analysisData: analysisData,
+        totalCalories: Math.round(newTotals.calories || 0),
+        totalProtein: Math.round(newTotals.protein || 0),
+        totalCarbs: Math.round(newTotals.carbs || 0),
+        totalFat: Math.round(newTotals.fat || 0),
+        totalFiber: Math.round(newTotals.fiber || 0),
+      }),
+    });
 
     const result = await response.json();
 
