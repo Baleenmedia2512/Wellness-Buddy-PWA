@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     // Fetch user profile from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Height", "DietType"')
+      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage"')
       .eq('"Email"', email)
       .maybeSingle();
 
@@ -104,6 +104,7 @@ export default async function handler(req, res) {
       email: user.Email,
       height: user.Height ? parseFloat(user.Height) : null,
       dietType: user.DietType || null,
+      profileImage: user.ProfileImage || null,
       latestWeight: null,
       latestBmr: null,
       weightRecordDate: null,
@@ -118,7 +119,10 @@ export default async function handler(req, res) {
       profileData.weightRecordDate = latestWeight.CreatedAt;
     }
     
-    console.log('📦 [get-user-profile] Compiled profile data:', profileData);
+    console.log('📦 [get-user-profile] Compiled profile data:', {
+      ...profileData,
+      profileImage: profileData.profileImage ? '[IMAGE_DATA]' : null
+    });
 
     console.log('✅ [get-user-profile] Profile data retrieved successfully');
 

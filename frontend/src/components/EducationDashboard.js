@@ -577,10 +577,10 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               })()}
             </div>
 
-            {/* Bottom Row: Last 7 Days Activity */}
+            {/* Bottom Row: Week Activity */}
             <div>
               <div className="flex justify-between items-end mb-2">
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Last 7 Days</p>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Week</p>
                 <p className="text-[10px] font-medium text-gray-400">
                   {summaryLoading ? (
                     <span className="inline-block w-12 h-3 bg-gray-200 rounded animate-pulse"></span>

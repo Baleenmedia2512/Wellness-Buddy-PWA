@@ -27,11 +27,11 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
 
     setIsSharing(true);
     try {
+      // Capture and share the card with image + details
       await captureAndShare(shareRef.current, {
         title: `Education Session - ${educationData.topic}`,
-        text: `${educationData.topic} on ${educationData.platform}`,
+        text: "",
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
-        // whatsappOnly: true,
       });
     } catch (error) {
       console.error("Failed to share:", error);
@@ -139,27 +139,6 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
 
       {/* Visible card */}
       <div className="bg-white rounded-2xl shadow-xl shadow-purple-100/50 p-6 mb-6 animate-slideInUp border border-purple-50 relative">
-        {/* Share Button - COMMENTED OUT
-        <button
-          onClick={handleShare}
-          onTouchEnd={(e) => e.preventDefault()}
-          disabled={isSharing}
-          className={`absolute top-4 right-4 w-10 h-10 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center transition-all duration-200 border border-purple-200 ${
-            isSharing
-              ? "opacity-50 cursor-not-allowed"
-              : "hover:bg-purple-200 active:scale-95"
-          }`}
-          title="Share"
-          style={{ touchAction: "manipulation" }}
-        >
-          {isSharing ? (
-            <div className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin"></div>
-          ) : (
-            <Share2 className="w-5 h-5" />
-          )}
-        </button>
-        */}
-
         {/* Success Header */}
         <div className="flex items-center gap-4 mb-6">
           <div className="w-14 h-14 bg-purple-100 rounded-full flex items-center justify-center ring-4 ring-purple-50">
@@ -225,6 +204,32 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
           Your session has been verified and saved
         </p>
       </div>
+
+      {/* Share Button at Bottom - Only show if there's an image */}
+      {imagePreview && (
+        <button
+          onClick={handleShare}
+          disabled={isSharing}
+          className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+            isSharing
+              ? "opacity-50 cursor-not-allowed"
+              : "hover:shadow-lg active:scale-[0.98]"
+          }`}
+          style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+        >
+          {isSharing ? (
+            <>
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+              <span>Sharing...</span>
+            </>
+          ) : (
+            <>
+              <Share2 className="w-5 h-5" />
+              <span>Share Session</span>
+            </>
+          )}
+        </button>
+      )}
     </div>
     </>
   );

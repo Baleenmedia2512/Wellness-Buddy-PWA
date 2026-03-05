@@ -1,12 +1,11 @@
 // src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
-import { Scale, Share2 } from 'lucide-react';
-import { captureAndShare } from '../utils/shareUtils';
+import { Scale } from 'lucide-react';
 
 /**
  * WeightCard Component
  * Compact horizontal card similar to MealCard in NutritionDashboard
- * Includes swipe-to-delete functionality and share functionality
+ * Includes swipe-to-delete functionality
  */
 const WeightCard = React.memo(({ 
   data, 
@@ -21,12 +20,10 @@ const WeightCard = React.memo(({
   const [armed, setArmed] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [deletedOnce, setDeletedOnce] = useState(false);
-  const [isSharing, setIsSharing] = useState(false);
 
   const startXRef = useRef(0);
   const rafRef = useRef(null);
   const elRef = useRef(null);
-  const shareRef = useRef(null);
 
   const SWIPE_DELETE_THRESHOLD = 100;
   const SWIPE_MAX = 140;
@@ -98,40 +95,6 @@ const WeightCard = React.memo(({
     });
   };
 
-  // Handle share button click
-  const handleShare = async (e) => {
-    // Prevent event propagation and bubbling
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-
-    // Early return if already sharing
-    if (isSharing) {
-      console.log("⚠️ Share already in progress, ignoring duplicate call");
-      return;
-    }
-
-    if (!shareRef.current) {
-      console.error("Share content not found");
-      return;
-    }
-
-    setIsSharing(true);
-    try {
-      await captureAndShare(shareRef.current, {
-        title: `Weight Record - ${parseFloat(data.Weight).toFixed(2)} kg`,
-        text: `My weight: ${parseFloat(data.Weight).toFixed(2)} kg ${weightChange !== null ? `(${parseFloat(weightChange) > 0 ? '+' : ''}${weightChange} kg)` : ''}`,
-        fileName: `wellness-valley-weight-${parseFloat(data.Weight).toFixed(2)}kg.png`,
-        // whatsappOnly: true,
-      });
-    } catch (error) {
-      console.error("Failed to share:", error);
-    } finally {
-      setIsSharing(false);
-    }
-  };
-
   const onPointerDown = (e) => {
     if (!e.isPrimary || leaving) return;
     cancelRAF();
@@ -200,77 +163,7 @@ const WeightCard = React.memo(({
   const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
 
   return (
-    <>
-      {/* Hidden container for sharing - includes image + card */}
-      <div
-        ref={shareRef}
-        className="fixed -left-[9999px] top-0 w-[400px]"
-        style={{ position: "fixed", left: "-9999px" }}
-      >
-        <div className="bg-white rounded-xl shadow-lg border-2 border-emerald-300 overflow-hidden">
-          {/* Weight Image for sharing */}
-          {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' && (
-            <div className="relative">
-              <img
-                src={data.WeightImageBase64.startsWith('data:image') ? data.WeightImageBase64 : `data:image/jpeg;base64,${data.WeightImageBase64}`}
-                alt="Weight Scale"
-                className="w-full h-64 object-cover"
-              />
-              <div className="absolute top-3 right-3 bg-emerald-500 text-white text-xs font-semibold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-lg">
-                <span className="w-2 h-2 bg-white rounded-full"></span>
-                Recorded
-              </div>
-            </div>
-          )}
-
-          {/* Card content for sharing */}
-          <div className="bg-gradient-to-r from-emerald-500 to-emerald-600 text-white p-6">
-            <div className="text-center">
-              <h2 className="text-3xl font-bold mb-2">{parseFloat(data.Weight).toFixed(2)} kg</h2>
-              <p className="text-emerald-100 text-sm">
-                {formatDate(data.CreatedAt)}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-6">
-            {weightChange !== null && (
-              <div className={`text-center p-4 rounded-xl mb-4 ${
-                parseFloat(weightChange) > 0 
-                  ? 'bg-red-50 border border-red-200' 
-                  : parseFloat(weightChange) < 0 
-                    ? 'bg-green-50 border border-green-200' 
-                    : 'bg-gray-50 border border-gray-200'
-              }`}>
-                <p className="text-sm text-gray-600 mb-1">Change from previous</p>
-                <p className={`text-2xl font-bold ${
-                  parseFloat(weightChange) > 0 
-                    ? 'text-red-600' 
-                    : parseFloat(weightChange) < 0 
-                      ? 'text-green-600' 
-                      : 'text-gray-600'
-                }`}>
-                  {parseFloat(weightChange) > 0 ? '↑' : parseFloat(weightChange) < 0 ? '↓' : ''}{' '}
-                  {Math.abs(parseFloat(weightChange)).toFixed(1)} kg
-                </p>
-              </div>
-            )}
-
-            <div className="text-center bg-gray-50 rounded-xl p-4">
-              <div className="flex items-center justify-center gap-2 mb-2">
-                <Scale className="w-5 h-5 text-gray-600" />
-                <p className="text-sm font-semibold text-gray-600">Weight Record</p>
-              </div>
-              <p className="text-xs text-gray-500">
-                Tracked with Wellness Valley 💚
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Visible card */}
-      <div 
+    <div 
         className="relative w-full"
         style={{ 
           touchAction: 'pan-y',
@@ -382,7 +275,7 @@ const WeightCard = React.memo(({
             <p className="text-xs sm:text-sm text-gray-500 mt-1">{formatDate(data.CreatedAt)}</p>
           </div>
 
-          {/* Right side: Large Weight display + Share Button */}
+          {/* Right side: Large Weight display */}
           <div className="flex items-center gap-2 shrink-0 pl-2">
             {/* Large Weight Display */}
             <div className="text-right">
@@ -391,33 +284,11 @@ const WeightCard = React.memo(({
               </p>
               <p className="text-xs text-gray-400">kg</p>
             </div>
-
-            {/* Share Button - COMMENTED OUT
-            <button
-              onClick={handleShare}
-              onTouchEnd={(e) => e.preventDefault()}
-              disabled={isSharing}
-              className={`w-9 h-9 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center transition-all duration-200 border border-emerald-200 ${
-                isSharing
-                  ? "opacity-50 cursor-not-allowed"
-                  : "hover:bg-emerald-200 active:scale-95"
-              }`}
-              title="Share"
-              style={{ touchAction: "manipulation" }}
-            >
-              {isSharing ? (
-                <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin"></div>
-              ) : (
-                <Share2 className="w-4 h-4" />
-              )}
-            </button>
-            */}
           </div>
         </div>
       </div>
       {/* ✅ PERFORMANCE: CSS keyframes moved to WeightDashboard parent to avoid per-card injection */}
     </div>
-    </>
   );
 });
 

@@ -12,7 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { SplashScreen } from "@capacitor/splash-screen";
-import { Bug } from "lucide-react";
+import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
 import EducationLogCard from "./components/EducationLogCard";
@@ -42,9 +42,13 @@ import { weightDetectionService } from "./services/weightDetectionService";
 import { educationDetectionService } from "./services/educationDetectionService";
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
+import { captureAndShare } from "./utils/shareUtils";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
+import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
+import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
+import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
 import {
@@ -98,6 +102,7 @@ function WellnessValleyApp() {
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
+  const weightAnalysisShareRef = useRef(null);
 
   // Duplicate food detection state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -139,8 +144,15 @@ function WellnessValleyApp() {
   // 🔄 Retry state - store last image file for retry capability
   const lastImageFileRef = useRef(null);
 
+  // Ref for leaderboards to trigger manual refresh
+  const leaderboardRef = useRef(null);
+  const disciplineLeaderboardRef = useRef(null);
+
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
+
+  // Weight analysis share state
+  const [isWeightSharing, setIsWeightSharing] = useState(false);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -375,6 +387,16 @@ function WellnessValleyApp() {
   );
 
   // Helper functions for navigation with localStorage persistence
+  // Callback to refresh leaderboards after profile updates
+  const handleLeaderboardRefresh = useCallback(() => {
+    if (leaderboardRef.current) {
+      leaderboardRef.current.refresh();
+    }
+    if (disciplineLeaderboardRef.current) {
+      disciplineLeaderboardRef.current.refresh();
+    }
+  }, []);
+
   const showDashboardPage = useCallback(async () => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
@@ -878,6 +900,28 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user, isUserActive, apiBaseUrl]);
 
+  // ⚡ PERFORMANCE: Preload user context when user logs in (warm the cache)
+  useEffect(() => {
+    const preloadUserContext = async () => {
+      if (!user || !user.id) return;
+
+      try {
+        console.log('⚡ [PRELOAD] Warming user context cache...');
+        const context = await getUserContext(user.id);
+        if (context) {
+          setUserContext(context);
+          console.log('✅ [PRELOAD] Context cached - image analysis will be faster');
+        }
+      } catch (error) {
+        console.warn('⚠️ [PRELOAD] Failed to preload context:', error);
+      }
+    };
+
+    // Preload after a short delay to avoid blocking auth flow
+    const timeoutId = setTimeout(preloadUserContext, 500);
+    return () => clearTimeout(timeoutId);
+  }, [user?.id]); // Re-run when user ID changes
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1000,6 +1044,9 @@ function WellnessValleyApp() {
 
       // Show success popup (similar to nutrition save)
       setError(null);
+
+      // Refresh leaderboard immediately after weight save
+      handleLeaderboardRefresh();
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -1150,6 +1197,7 @@ function WellnessValleyApp() {
 
   // Helper function to perform nutrition save
   const performNutritionSave = async (saveData) => {
+    const saveStart = Date.now();
     try {
       console.log("🔵 [App] Starting nutrition save:", {
         userId: saveData.userId,
@@ -1160,6 +1208,7 @@ function WellnessValleyApp() {
 
       const saveRes = await saveNutritionAnalysis(saveData);
       console.log("✅ [App] Save successful:", saveRes);
+      console.log(`⏱️ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
       if (process.env.NODE_ENV !== "production") {
         // console.log('✅ Save successful:', saveRes);
@@ -1336,44 +1385,53 @@ function WellnessValleyApp() {
     setLoadingState("analyzing"); // Reset to analyzing state
     lastImageFileRef.current = file; // Store for retry
 
+    // ⚡ PERFORMANCE TRACKING
+    const perfStart = Date.now();
+    console.log('⏱️ [PERF] 🟢 Image processing started');
+
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
+      const readStart = Date.now();
       const imageBase64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => resolve(e.target.result);
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
+      console.log(`⏱️ [PERF] File reading: ${Date.now() - readStart}ms`);
 
-      // ✅ ANDROID PERFORMANCE: Intelligent compression based on platform and size
+      // ⚡ OPTIMIZED: Aggressive compression for faster uploads & API calls
+      const compressStart = Date.now();
       const isAndroid = Capacitor.isNativePlatform();
       const imageSizeMB = imageBase64.length / (1024 * 1024);
 
       let processedImage = imageBase64;
       let compressionApplied = false;
 
-      // Aggressive compression for Android or large images
+      // More aggressive compression for speed (AI doesn't need high-res images)
       if (isAndroid) {
-        // Android: Always compress for speed
-        if (imageSizeMB > 0.5) {
-          // > 500KB
-          const maxWidth = 1280; // Optimal for Android
-          const quality = imageSizeMB > 2 ? 0.75 : 0.85; // More aggressive for larger images
+        // Android: Always compress aggressively for speed
+        if (imageSizeMB > 0.3) {
+          // > 300KB
+          const maxWidth = 800; // Smaller = faster upload & API processing
+          const quality = imageSizeMB > 2 ? 0.60 : 0.70; // Higher compression
           processedImage = await compressImage(imageBase64, quality, maxWidth);
           compressionApplied = true;
         }
       } else {
-        // Web: Compress only if needed
-        if (imageSizeMB > 2) {
-          // > 2MB
-          processedImage = await compressImage(imageBase64, 0.8, 1920);
+        // Web: Also compress aggressively
+        if (imageSizeMB > 0.5) {
+          // > 500KB
+          processedImage = await compressImage(imageBase64, 0.70, 800);
           compressionApplied = true;
         }
       }
 
-      if (compressionApplied && process.env.NODE_ENV !== "production") {
+      if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
-        // console.log(`🗜️ Image compressed: ${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB (${((1 - newSizeMB/imageSizeMB) * 100).toFixed(1)}% reduction)`);
+        console.log(`⏱️ [PERF] Compression: ${Date.now() - compressStart}ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`);
+      } else {
+        console.log(`⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
       }
 
       // Set preview and loading together to ensure overlay shows
@@ -1386,7 +1444,9 @@ function WellnessValleyApp() {
       }
 
       // ✅ Detect image type using Gemini AI (single unified call)
+      const apiStart = Date.now();
       const detectedType = await imageTypeDetector.detectImageType(file);
+      console.log(`⏱️ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
       console.log('🔍 [DEBUG] Image Type Detection Result:', {
         type: detectedType.type,
         confidence: detectedType.confidence,
@@ -1602,18 +1662,26 @@ function WellnessValleyApp() {
           //   foods.map((f) => f.name),
           // );
 
-          const total =
-            detectedType.details.total ||
-            foods.reduce(
-              (acc, food) => ({
-                calories: acc.calories + (food.nutrition?.calories || 0),
-                protein: acc.protein + (food.nutrition?.protein || 0),
-                carbs: acc.carbs + (food.nutrition?.carbs || 0),
-                fat: acc.fat + (food.nutrition?.fat || 0),
-                fiber: acc.fiber + (food.nutrition?.fiber || 0),
-              }),
-              { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-            );
+          // 🎯 ALWAYS recalculate totals from corrected foods (don't use original AI total)
+          // Original code used: detectedType.details.total || foods.reduce(...)
+          // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
+          const total = foods.reduce(
+            (acc, food) => ({
+              calories: acc.calories + (food.nutrition?.calories || food.calories || 0),
+              protein: acc.protein + (food.nutrition?.protein || food.protein || 0),
+              carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
+              fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
+              fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
+            }),
+            { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
+          );
+          
+          console.log('📊 [App.js] Calculated total from corrected foods:', {
+            totalCalories: total.calories,
+            totalCarbs: total.carbs,
+            totalProtein: total.protein,
+            foodCount: foods.length
+          });
 
           // Generate category name from food items
           let categoryName = "";
@@ -1653,22 +1721,37 @@ function WellnessValleyApp() {
                 : detectedType.confidence > 0.5
                 ? "medium"
                 : "low",
-            detailedItems: foods.map((food) => ({
-              name: food.name,
-              originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
-              wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
-              correctionSource: food.correctionSource,  // 🔴 Track correction source
-              correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
-              portionDescription: food.portion || "Unknown portion",
-              estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
-              unit: food.unit || (food.volume_ml ? "ml" : "g"),
-              isLiquid: food.isLiquid || false,
-              calories: Math.round(food.nutrition?.calories || 0),
-              protein: Math.round(food.nutrition?.protein || 0),
-              carbs: Math.round(food.nutrition?.carbs || 0),
-              fat: Math.round(food.nutrition?.fat || 0),
-              fiber: Math.round(food.nutrition?.fiber || 0),
-            })),
+            detailedItems: foods.map((food) => {
+              // 🎯 Extract nutrition values from the corrected food object
+              const nutritionValues = {
+                calories: Math.round(food.nutrition?.calories || food.calories || 0),
+                protein: Math.round(food.nutrition?.protein || food.protein || 0),
+                carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
+                fat: Math.round(food.nutrition?.fat || food.fat || 0),
+                fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
+              };
+              
+              console.log(`📊 [App.js] Mapping food "${food.name}" to detailedItem:`);
+              console.log(`   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`);
+              console.log(`   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`);
+              console.log(`   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`);
+              
+              return {
+                name: food.name,
+                originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
+                wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
+                correctionSource: food.correctionSource,  // 🔴 Track correction source
+                correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
+                portionDescription: food.portion || "Unknown portion",
+                estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
+                unit: food.unit || (food.volume_ml ? "ml" : "g"),
+                isLiquid: food.isLiquid || false,
+                // Store nutrition values at TOP LEVEL (for backward compatibility)
+                ...nutritionValues,
+                // ALSO store in nutrition object (for NutritionCard's item.nutrition?.calories pattern)
+                nutrition: nutritionValues,
+              };
+            }),
           };
         } else {
           // Fallback: No food data extracted, show specific actionable error
@@ -1893,6 +1976,8 @@ function WellnessValleyApp() {
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
+      console.log(`⏱️ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`);
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     }
   };
 
@@ -2484,7 +2569,7 @@ function WellnessValleyApp() {
 
   // Main app interface
   return (
-    <div className="min-h-screen h-screen w-screen bg-gradient-to-br from-green-50 to-green-100">
+    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
@@ -2498,9 +2583,25 @@ function WellnessValleyApp() {
           localStorage.setItem("currentPage", "discipline-report");
         }}
         onSignOut={handleSignOut}
+        onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
-      <div className="max-w-md mx-auto px-4 py-6 space-y-6">
+      {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
+      <WeightLossLeaderboard 
+        ref={leaderboardRef}
+        apiBaseUrl={apiBaseUrl} 
+        topN={LEADERBOARD_CONFIG.TOP_N}
+      />
+
+      {/* Discipline Leaderboard Strip - Top 5 Discipline Champions */}
+      <DisciplineLeaderboard 
+        ref={disciplineLeaderboardRef}
+        apiBaseUrl={apiBaseUrl} 
+        topN={5}
+      />
+
+      <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
+        <div className="max-w-md w-full mx-auto space-y-6">
         {/* Back button toast message */}
         {toast.visible && (
           <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
@@ -2577,13 +2678,46 @@ function WellnessValleyApp() {
         )}
 
         {imageType === "weight" && weightResult && (
-          <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-            <h2 className="text-xl font-bold text-green-700 mb-4 flex items-center">
-              Weight Analysis
-            </h2>
+          <>
+            {/* Hidden container for sharing - includes image + card */}
+            <div
+              ref={weightAnalysisShareRef}
+              className="fixed -left-[9999px] top-0 w-[400px]"
+              style={{ position: "fixed", left: "-9999px" }}
+            >
+              <div className="bg-white rounded-2xl shadow-xl border-2 border-teal-400 overflow-hidden">
+                {/* Weight Image for sharing */}
+                {imagePreview && (
+                  <div className="relative bg-black">
+                    <img
+                      src={imagePreview}
+                      alt="Weight Scale"
+                      className="w-full h-64 object-contain"
+                    />
+                  </div>
+                )}
 
-            {/* <div className="grid grid-cols-2 gap-4"> */}
-            <div className="">
+                {/* Card content for sharing - Simple and Clean */}
+                <div className="bg-white p-8">
+                  <h2 className="text-2xl font-bold text-emerald-600 mb-6 text-center">Weight Analysis</h2>
+                  
+                  <div className="bg-purple-50 rounded-2xl p-6 text-center">
+                    <p className="text-sm font-semibold text-purple-600 mb-2 uppercase tracking-wide">Weight</p>
+                    <p className="text-5xl font-bold text-purple-700">
+                      {weightResult.weightValue}
+                      <span className="text-2xl font-normal ml-2">{weightResult.unit}</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Visible card */}
+            <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+              <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
+                Weight Analysis
+              </h2>
+
               <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
                 <p className="text-sm text-purple-600 font-medium mb-1">
                   Weight
@@ -2597,40 +2731,50 @@ function WellnessValleyApp() {
                 </p>
               </div>
 
-              {/* <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
-                <p className="text-sm text-blue-600 font-medium mb-1">BMI</p>
-                <p className="text-3xl font-bold text-blue-700">
-                  {weightResult.bmi || '--'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-                <p className="text-sm text-green-600 font-medium mb-1">Body Fat</p>
-                <p className="text-3xl font-bold text-green-700">
-                  {weightResult.bodyFat ? `${weightResult.bodyFat}%` : '--%'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-                <p className="text-sm text-orange-600 font-medium mb-1">Muscle Mass</p>
-                <p className="text-3xl font-bold text-orange-700">
-                  {weightResult.muscleMass ? `${weightResult.muscleMass} kg` : '-- kg'}
-                </p>
-              </div> */}
-
-              {/* <div className="bg-red-50 rounded-lg p-4 border border-red-100 col-span-2">
-                <p className="text-sm text-red-600 font-medium mb-1">BMR (Basal Metabolic Rate)</p>
-                <p className="text-3xl font-bold text-red-700">
-                  {weightResult.bmr ? `${weightResult.bmr} cal` : '-- cal'}
-                </p>
-              </div> */}
+              {/* Share Button at Bottom - Only show if there's an image */}
+              {imagePreview && (
+                <button
+                  onClick={async () => {
+                    if (isWeightSharing) return;
+                    setIsWeightSharing(true);
+                    try {
+                      // Small delay to ensure hidden container is fully rendered
+                      await new Promise(resolve => setTimeout(resolve, 100));
+                      
+                      await captureAndShare(weightAnalysisShareRef.current, {
+                        title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
+                        text: "",
+                        fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
+                      });
+                    } catch (error) {
+                      console.error("Failed to share:", error);
+                    } finally {
+                      setIsWeightSharing(false);
+                    }
+                  }}
+                  disabled={isWeightSharing}
+                  className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                    isWeightSharing
+                      ? "opacity-50 cursor-not-allowed"
+                      : "hover:shadow-lg active:scale-[0.98]"
+                  }`}
+                  style={{ touchAction: "manipulation" }}
+                >
+                  {isWeightSharing ? (
+                    <>
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      <span>Sharing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Share2 className="w-5 h-5" />
+                      <span>Share Weight</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
-
-            {/* <div className="mt-4 bg-purple-50 border border-purple-100 rounded-lg p-3">
-              <p className="text-xs text-purple-600 font-medium mb-1">✓ Saved Successfully</p>
-              <p className="text-xs text-gray-600">Your weight entry has been recorded. View details in the Weight Dashboard.</p>
-            </div> */}
-          </div>
+          </>
         )}
 
         {/* Saving Toast */}
@@ -2689,6 +2833,7 @@ function WellnessValleyApp() {
           isVisible={showTestGuide}
           onClose={() => setShowTestGuide(false)}
         />
+        </div>
       </div>
 
       {/* Version badge - positioned in header area like web view */}

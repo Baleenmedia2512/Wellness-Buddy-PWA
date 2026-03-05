@@ -6,9 +6,10 @@ import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
+  const [savedProfileImage, setSavedProfileImage] = useState(null);
   
   // Initialize showProfileModal from localStorage to persist across page refreshes
   const [showProfileModal, setShowProfileModal] = useState(() => {
@@ -42,8 +43,13 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
         
         if (response.ok) {
           const data = await response.json();
-          if (data.success && data.data?.userName) {
-            setSavedUserName(data.data.userName);
+          if (data.success && data.data) {
+            if (data.data.userName) {
+              setSavedUserName(data.data.userName);
+            }
+            if (data.data.profileImage) {
+              setSavedProfileImage(data.data.profileImage);
+            }
           }
         }
       } catch (err) {
@@ -59,15 +65,38 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
     if (profileData?.name) {
       setSavedUserName(profileData.name);
     }
+    if (profileData?.profileImage) {
+      setSavedProfileImage(profileData.profileImage);
+      // Trigger leaderboard refresh when profile image is updated
+      if (onLeaderboardRefresh) {
+        onLeaderboardRefresh();
+      }
+    }
   };
 
   const toggleMenu = () => setMenuOpen(!menuOpen);
   const closeMenu = () => setMenuOpen(false);
 
-  const avatarUrl = user?.photoURL || 'https://www.gravatar.com/avatar/?d=mp';
   // Use saved user name from profile first, then fall back to auth displayName
   const userName = savedUserName || user?.displayName || user?.username || user?.email || 'User';
   const userEmail = user?.email || '';
+
+  // Generate initial for avatar fallback
+  const getInitial = () => {
+    if (userName) return userName.charAt(0).toUpperCase();
+    if (userEmail) return userEmail.charAt(0).toUpperCase();
+    return 'U';
+  };
+
+  // Generate color based on name/email
+  const getAvatarColor = () => {
+    const colors = [
+      'bg-blue-500', 'bg-green-500', 'bg-purple-500', 'bg-pink-500',
+      'bg-indigo-500', 'bg-yellow-500', 'bg-red-500', 'bg-teal-500'
+    ];
+    const colorIndex = (userName || userEmail || '').length % colors.length;
+    return colors[colorIndex];
+  };
 
   return (
     <header className="bg-white shadow-lg border-b-4 border-green-500">
@@ -108,30 +137,41 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
           </div>
         </div>
 
-        <div className="relative flex-shrink-0">
-          <TouchFeedbackButton
-            onClick={toggleMenu}
-            className="focus:outline-none rounded-full"
-            title="User Menu"
-            ariaLabel="User Menu"
-          >
-            <img
-              src={avatarUrl}
-              alt="User Avatar"
-              className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-            />
-          </TouchFeedbackButton>
+        <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+          {/* User Profile Menu */}
+          <div className="relative">
+            <TouchFeedbackButton
+              onClick={toggleMenu}
+              className="focus:outline-none rounded-full"
+              title="User Menu"
+              ariaLabel="User Menu"
+            >
+              {savedProfileImage || user?.photoURL ? (
+                <img
+                  src={savedProfileImage || user.photoURL}
+                  alt="User Avatar"
+                  className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                  loading="lazy"
+                  decoding="async"
+                  referrerPolicy="no-referrer"
+                />
+              ) : (
+                <div className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}>
+                  {getInitial()}
+                </div>
+              )}
+            </TouchFeedbackButton>
 
-          {menuOpen && (
-            <>
-              {/* Overlay for mobile */}
-              <div 
-                className="fixed inset-0 z-40 bg-black/20 md:hidden"
-                onClick={closeMenu}
-              />
-              
-              {/* Menu dropdown */}
-              <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
+            {menuOpen && (
+              <>
+                {/* Overlay for mobile */}
+                <div 
+                  className="fixed inset-0 z-40 bg-black/20 md:hidden"
+                  onClick={closeMenu}
+                />
+                
+                {/* Menu dropdown */}
+                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
                 {/* User info section - clickable to open profile */}
                 <TouchFeedbackButton
                   onClick={() => {
@@ -198,12 +238,12 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-purple-50 text-left transition-colors"
-                      ariaLabel="Open Discipline Report"
+                      ariaLabel="View Discipline Report"
                     >
                       <FileBarChart className="h-5 w-5 text-purple-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
-                        <p className="text-xs text-gray-500">Track team performance</p>
+                        <p className="text-xs text-gray-500">Team performance insights</p>
                       </div>
                     </TouchFeedbackButton>
                   )}
@@ -232,7 +272,8 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 </div>
               </div>
             </>
-          )}
+            )}
+          </div>
         </div>
       </div>
 

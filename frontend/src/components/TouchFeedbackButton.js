@@ -124,10 +124,10 @@ const TouchFeedbackButton = ({
       }`}
       style={{
         transition: 'all 150ms cubic-bezier(0.4, 0, 0.2, 1)',
-        touchAction: 'manipulation',
         WebkitTapHighlightColor: 'transparent',
         userSelect: 'none',
         WebkitUserSelect: 'none',
+        cursor: 'pointer',
       }}
       aria-label={ariaLabel}
       {...rest}

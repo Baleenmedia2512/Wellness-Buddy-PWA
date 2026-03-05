@@ -30,6 +30,22 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 🔍 DEBUG: Log the foods data being saved
+    console.log('\n📊 ============ DATABASE UPDATE ============');
+    console.log('📋 TABLE: food_nutrition_data_table');
+    console.log('🔄 ACTION: UPDATE (Meal Data)');
+    console.log('🆔 Meal ID:', id);
+    console.log('\n📝 Foods being saved:', JSON.stringify(analysisData.foods.map(f => ({
+      name: f.name,
+      weight_g: f.weight_g,
+      volume_ml: f.volume_ml,
+      grams: f.grams,
+      unit: f.unit,
+      isLiquid: f.isLiquid,
+      portion: f.portion
+    })), null, 2));
+    console.log('\n💾 Executing UPDATE query...');
+
     // Database connection
     const supabase = getSupabaseClient();
 
@@ -56,6 +72,22 @@ export default async function handler(req, res) {
       res.status(403).json({ success: false, message: 'Unauthorized or meal not found' });
       return;
     }
+
+    // ✅ DEBUG: Confirm what was saved to database
+    console.log('✅ UPDATE SUCCESS!');
+    console.log('📊 TABLE: food_nutrition_data_table');
+    console.log('   → Meal ID:', id);
+    console.log('   → Foods saved:', data[0].AnalysisData ? JSON.parse(data[0].AnalysisData).foods.length : 0);
+    console.log('   → Total Calories:', totalCalories);
+    console.log('\n📝 Saved foods detail:');
+    console.log(JSON.stringify(JSON.parse(data[0].AnalysisData).foods.map(f => ({
+      name: f.name,
+      weight_g: f.weight_g,
+      volume_ml: f.volume_ml,
+      unit: f.unit,
+      isLiquid: f.isLiquid
+    })), null, 2));
+    console.log('==========================================\n');
 
     // Clear nutrition cache only (no extra query - PERFORMANCE FIX)
     cache.delete(cacheKeys.nutritionMeals(userId));

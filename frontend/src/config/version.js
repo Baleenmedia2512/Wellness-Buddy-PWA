@@ -72,20 +72,53 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '1.8',
+  VERSION: '2.3',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 20,
+  VERSION_CODE: 25,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Team Selection & Upload Enhancements',
+  RELEASE_NAME: 'WhatsApp Share Fix & Improvements',
   
   // Build date
-  BUILD_DATE: '2026-02-18',
+  BUILD_DATE: '2026-03-03',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.3 (Code 25) - 2026-03-03
+ *   🔧 Fixed coach heading - now hidden completely when no coach is assigned
+ *   📤 Fixed WhatsApp share functionality in Android app
+ *   📄 Enhanced share quality - images now shared as documents to prevent WhatsApp compression
+ *   🏆 Fixed Weight Loss Leaderboard alignment issues
+ *   ✨ Enhanced overall stability and user experience
+ * 
+ * Version 2.2 (Code 24) - 2026-02-27
+ *   🏆 Weight loss leaderboard strip with real-time tracking
+ *   📤 Enhanced WhatsApp share with clear screenshots (no quiz pop-ups)
+ *   💾 Updated cache management for improved performance and data freshness
+ *   ✨ Enhanced overall stability and user experience
+ * 
+ * Version 2.1 (Code 23) - 2026-02-26
+ *   🍽️ Fixed food editor save functionality
+ *   ✨ Users can now update food name without modifying gram values
+ *   🔧 Previously, editing a food item required changing the gram value to save
+ *   📝 Now any field can be edited independently and saved successfully
+ *   ✅ Enhanced user experience for food item management
+ * 
+ * Version 2.0 (Code 22) - 2026-02-26
+ *   🎉 Major version release
+ *   📦 Version synchronization across all build files
+ *   ✨ Enhanced stability and performance improvements
+ * 
+ * Version 1.9 (Code 21) - 2026-02-24
+ *   📱 WhatsApp share feature implemented for easy content sharing
+ *   💾 Enhanced cache management for better performance and data freshness
+ *   🎨 UI enhancements across multiple screens for improved user experience
+ *   ✏️ Fixed nutrition value editing - protein values now properly update in database
+ *   🧹 Removed camera instruction text from main page for cleaner UI
+ *   🔧 General stability improvements and bug fixes
  * 
  * Version 1.8 (Code 20) - 2026-02-18
  *   � Made team selection optional for better user flexibility

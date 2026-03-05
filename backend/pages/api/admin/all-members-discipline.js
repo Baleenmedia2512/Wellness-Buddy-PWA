@@ -93,7 +93,7 @@ export default async function handler(req, res) {
     // Step 2: Get ALL active members in the system
     const { data: allMembers, error: membersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, Role, EntryDateTime, UplineCoachId, TeamId')
+      .select('UserId, UserName, Email, Role, EntryDateTime, CoachId, CoCoachId, TeamId')
       .eq('Status', 'Active')
       .order('UserName', { ascending: true });
     
@@ -119,15 +119,20 @@ export default async function handler(req, res) {
       return;
     }
     
-    // Step 3: Get upline coach names
-    const uplineCoachIds = [...new Set(allMembers.map(m => m.UplineCoachId).filter(Boolean))];
+    // Step 3: Get coach names for CoachId and CoCoachId
+    const allCoachIds = new Set();
+    allMembers.forEach(m => {
+      if (m.CoachId) allCoachIds.add(m.CoachId);
+      if (m.CoCoachId) allCoachIds.add(m.CoCoachId);
+    });
+    
     const coachNameMap = {};
     
-    if (uplineCoachIds.length > 0) {
+    if (allCoachIds.size > 0) {
       const { data: coaches } = await supabase
         .from('team_table')
-        .select('"UserId", "UserName"')
-        .in('"UserId"', uplineCoachIds);
+        .select('UserId, UserName')
+        .in('UserId', Array.from(allCoachIds));
       
       if (coaches) {
         coaches.forEach(c => {
@@ -136,13 +141,10 @@ export default async function handler(req, res) {
       }
     }
     
-    // Add upline coach names to members
+    // Add coach names to members
     allMembers.forEach(m => {
-      if (m.UplineCoachId) {
-        m.UplineCoachName = coachNameMap[m.UplineCoachId] || null;
-      } else {
-        m.UplineCoachName = null;
-      }
+      m.CoachName = m.CoachId ? coachNameMap[m.CoachId] : null;
+      m.CoCoachName = m.CoCoachId ? coachNameMap[m.CoCoachId] : null;
     });
     
     // Step 4: Get time windows
@@ -400,8 +402,10 @@ export default async function handler(req, res) {
         email: member.Email,
         role: member.Role,
         teamId: member.TeamId,
-        uplineCoachId: member.UplineCoachId,
-        uplineCoachName: member.UplineCoachName,
+        coachId: member.Coach_Id,
+        coCoachId: member.CoCoach_Id,
+        coachName: member.CoachName,
+        coCoachName: member.CoCoachName,
         profileImage: null,
         joinedDate: member.EntryDateTime,
         isLoggedInUser: member.UserId === userIdInt,

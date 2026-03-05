@@ -18,9 +18,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email, name, height, bmr, dietType } = req.body;
+  const { email, name, height, bmr, dietType, profileImage } = req.body;
 
-  console.log('👤 [update-user-profile] Request received:', { email, name, height, bmr, dietType });
+  console.log('👤 [update-user-profile] Request received:', { 
+    email, 
+    name, 
+    height, 
+    bmr, 
+    dietType,
+    hasProfileImage: !!profileImage 
+  });
 
   // Validate required field
   if (!email) {
@@ -74,6 +81,17 @@ export default async function handler(req, res) {
         updateData.DietType = dietType;
       } else {
         console.log('⚠️ [update-user-profile] Invalid diet type:', dietType);
+      }
+    }
+
+    // Handle profile image update
+    if (profileImage !== undefined && profileImage !== null) {
+      // Validate base64 image format
+      if (profileImage.startsWith('data:image/')) {
+        updateData.ProfileImage = profileImage;
+        console.log('✅ [update-user-profile] Profile image will be updated');
+      } else {
+        console.log('⚠️ [update-user-profile] Invalid profile image format');
       }
     }
 
@@ -145,6 +163,7 @@ export default async function handler(req, res) {
         height: height ? parseFloat(height) : undefined,
         bmr: savedBmr || undefined,
         dietType: dietType || undefined,
+        profileImageUpdated: !!profileImage,
       },
     };
 
