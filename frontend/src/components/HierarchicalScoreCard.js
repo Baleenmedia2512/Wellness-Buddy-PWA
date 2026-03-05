@@ -11,7 +11,7 @@ import { motion, AnimatePresence } from "framer-motion";
  *
  * Data
  */
-const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
+const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allMembersData }) => {
   const [expandedCoaches, setExpandedCoaches] = React.useState({});
 
   if (!teamData || !coachPerformance) return null;
@@ -21,13 +21,72 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
     coachPerformance,
     teamMembers: teamData.teamMembers,
     teamMembersCount: teamData.teamMembers?.length,
+    hierarchyData: hierarchyData,
+    hierarchyTeamMembers: hierarchyData?.hierarchy?.teamMembers,
   });
 
   // Get coach's own score
   const myScore = coachPerformance.periodDiscipline?.percentage || 0;
 
-  // Get ALL direct team members (Level 1) - both coaches and regular members
-  const allTeamMembers = teamData.teamMembers || [];
+  // Use hierarchyData if available (has nested structure), otherwise use teamData
+  const sourceTeamMembers = hierarchyData?.hierarchy?.teamMembers || teamData.teamMembers || [];
+  
+  console.log("📦 Using teamMembers from:", hierarchyData?.hierarchy?.teamMembers ? "hierarchyData" : "teamData");
+  console.log("📦 Source teamMembers structure:", sourceTeamMembers);
+  if (sourceTeamMembers && sourceTeamMembers[0]) {
+    console.log("📦 First member has teamMembers?", sourceTeamMembers[0].teamMembers);
+  }
+
+  // Flatten the hierarchy to get ALL team members at all levels
+  const flattenHierarchy = (members) => {
+    const flat = [];
+    const flatten = (member) => {
+      flat.push(member);
+      console.log(`  Flattening ${member.userName}, has teamMembers: ${member.teamMembers ? member.teamMembers.length : 0}`);
+      if (member.teamMembers && member.teamMembers.length > 0) {
+        member.teamMembers.forEach(child => flatten(child));
+      }
+    };
+    members.forEach(member => flatten(member));
+    return flat;
+  };
+
+  // Get ALL team members (all levels flattened)
+  const allTeamMembersFromHierarchy = flattenHierarchy(sourceTeamMembers);
+
+  console.log("🔄 Flattened all team members:", allTeamMembersFromHierarchy.length, allTeamMembersFromHierarchy.map(m => m.userName));
+  console.log("🔄 First hierarchy member data:", allTeamMembersFromHierarchy[0]);
+  console.log("🔄 Second hierarchy member data:", allTeamMembersFromHierarchy[1]);
+
+  // Check if hierarchy members already have periodDiscipline scores
+  const hierarchyHasScores = allTeamMembersFromHierarchy.some(m => m.periodDiscipline);
+  console.log("📊 Hierarchy already has scores?", hierarchyHasScores);
+
+  // Merge scores: Use allMembersData if available (has ALL members), otherwise teamData.teamMembers
+  const scoreDataSource = allMembersData?.allMembers || teamData.teamMembers || [];
+  console.log("📊 Score data source count:", scoreDataSource.length, "Members:", scoreDataSource.map(m => m.userName));
+  
+  const allTeamMembers = allTeamMembersFromHierarchy.map(hierarchyMember => {
+    // First check if hierarchy member already has score
+    if (hierarchyMember.periodDiscipline) {
+      console.log(`  ✅ Hierarchy member ${hierarchyMember.userName} already has score: ${hierarchyMember.periodDiscipline?.percentage || 0}%`);
+      return hierarchyMember;
+    }
+    
+    // Otherwise try to merge from score data source
+    const scoreData = scoreDataSource.find(td => 
+      td.userId === hierarchyMember.userId || 
+      td.email === hierarchyMember.email
+    );
+    
+    if (scoreData) {
+      console.log(`  ✅ Merged score for ${hierarchyMember.userName}: ${scoreData.periodDiscipline?.percentage || 0}%`);
+      return { ...hierarchyMember, ...scoreData };
+    }
+    
+    console.log(`  ⚠️ No score data found for ${hierarchyMember.userName}`);
+    return hierarchyMember;
+  });
 
   // DIRECT TEAM: All members who report directly to the coach (Level 1)
   // This includes both coaches and regular members at Level 1
@@ -72,12 +131,21 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
   const allMembersUnderDirectTeam = [];
 
   directTeamMembers.forEach((directMember) => {
+    console.log(`🔎 Checking underMembers for ${directMember.userName} (userId: ${directMember.userId})`);
+    
     const underMembers = allTeamMembers.filter(
-      (m) =>
-        (m.coachId === directMember.userId ||
+      (m) => {
+        const matches = (m.coachId === directMember.userId ||
           m.parentCoachId === directMember.userId) &&
-        m.userId !== directMember.userId, // Don't count the direct member themselves
+        m.userId !== directMember.userId;
+        
+        console.log(`  - ${m.userName} (userId: ${m.userId}, coachId: ${m.coachId}, parentCoachId: ${m.parentCoachId}) → ${matches ? '✅ MATCH' : '❌ NO MATCH'}`);
+        
+        return matches;
+      }
     );
+    
+    console.log(`  → Found ${underMembers.length} under members for ${directMember.userName}`);
     membersByCoach[directMember.userId] = underMembers;
     allMembersUnderDirectTeam.push(...underMembers);
   });
@@ -212,154 +280,6 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
           />
         </div>
       </div>
-
-      {/* Expandable Details: Only show members who have sub-members */}
-      {directTeamMembers.some(
-        (tm) => (membersByCoach[tm.userId] || []).length > 0,
-      ) && (
-        <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">
-                DIRECT TEAM BREAKDOWN
-              </p>
-              <p className="text-[10px] text-gray-400">
-                Members and their sub-teams
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            {directTeamMembers
-              .filter((tm) => (membersByCoach[tm.userId] || []).length > 0)
-              .map((teamMember) => {
-                const underMembers = membersByCoach[teamMember.userId] || [];
-                const memberScore =
-                  teamMember.periodDiscipline?.percentage || 0;
-                const isExpanded = expandedCoaches[teamMember.userId];
-
-                return (
-                  <div
-                    key={teamMember.userId}
-                    className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors"
-                  >
-                    {/* Team Member Header */}
-                    <div
-                      onClick={() => toggleCoach(teamMember.userId)}
-                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-50 transition-colors bg-gray-50"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 shadow-sm ${getScoreColor(
-                            memberScore,
-                          )}`}
-                        >
-                          {teamMember.userName.charAt(0).toUpperCase()}
-                        </div>
-                        <div>
-                          <p className="text-sm font-bold text-gray-800">
-                            {teamMember.userName}
-                          </p>
-                          <p className="text-[10px] text-gray-500 font-medium">
-                            {underMembers.length} member
-                            {underMembers.length !== 1 ? "s" : ""} under{" "}
-                            {teamMember.userName.split(" ")[0]}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="text-right">
-                          <div
-                            className={`text-2xl font-black ${getScoreTextColor(
-                              memberScore,
-                            )}`}
-                          >
-                            {memberScore}%
-                          </div>
-                          <p className="text-[8px] text-gray-400 uppercase">
-                            {teamMember.role === "coach" || teamMember.isCoach
-                              ? "COACH"
-                              : "MEMBER"}
-                          </p>
-                        </div>
-                        {underMembers.length > 0 &&
-                          (isExpanded ? (
-                            <ChevronUp className="w-5 h-5 text-gray-600" />
-                          ) : (
-                            <ChevronDown className="w-5 h-5 text-gray-600" />
-                          ))}
-                      </div>
-                    </div>
-
-                    {/* Sub-Members List (Level 2+) */}
-                    <AnimatePresence>
-                      {isExpanded && underMembers.length > 0 && (
-                        <motion.div
-                          initial={{ height: 0, opacity: 0 }}
-                          animate={{ height: "auto", opacity: 1 }}
-                          exit={{ height: 0, opacity: 0 }}
-                          transition={{ duration: 0.2 }}
-                          className="border-t-2 border-gray-200 bg-gradient-to-b from-green-50/30 to-white"
-                        >
-                          <div className="p-3 space-y-2">
-                            {underMembers.map((subMember) => {
-                              const subMemberScore =
-                                subMember.periodDiscipline?.percentage || 0;
-                              return (
-                                <div
-                                  key={subMember.userId}
-                                  className="flex items-center justify-between bg-white rounded-lg p-3 border-2 border-gray-100 hover:border-green-200 hover:shadow-sm transition-all"
-                                >
-                                  <div className="flex items-center gap-3">
-                                    <div
-                                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 shadow-sm ${getScoreColor(
-                                        subMemberScore,
-                                      )}`}
-                                    >
-                                      {subMember.userName
-                                        .charAt(0)
-                                        .toUpperCase()}
-                                    </div>
-                                    <div>
-                                      <p className="text-sm font-semibold text-gray-800">
-                                        {subMember.userName}
-                                      </p>
-                                      <p className="text-[10px] text-gray-400">
-                                        {subMember.email}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div
-                                      className={`text-2xl font-black ${getScoreTextColor(
-                                        subMemberScore,
-                                      )}`}
-                                    >
-                                      {subMemberScore}%
-                                    </div>
-                                    <p className="text-[8px] text-gray-400 uppercase">
-                                      {subMemberScore >= 80
-                                        ? "⭐ GREAT"
-                                        : subMemberScore >= 60
-                                        ? "GOOD"
-                                        : "⚠️ RISK"}
-                                    </p>
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                );
-              })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

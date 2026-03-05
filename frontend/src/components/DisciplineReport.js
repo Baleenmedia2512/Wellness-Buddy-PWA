@@ -1394,6 +1394,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                           <HierarchicalScoreCard 
                             teamData={teamData}
                             coachPerformance={teamData.coachPerformance}
+                            hierarchyData={hierarchyData}
+                            allMembersData={allMembersData}
                           />
                         </div>
                       )}
@@ -1464,6 +1466,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 <HierarchicalScoreCard 
                   teamData={teamData}
                   coachPerformance={teamData.coachPerformance}
+                  hierarchyData={hierarchyData}
+                  allMembersData={allMembersData}
                 />
               )}
 
@@ -1518,6 +1522,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <HierarchicalScoreCard 
                 teamData={teamData}
                 coachPerformance={teamData.coachPerformance}
+                hierarchyData={hierarchyData}
+                allMembersData={allMembersData}
               />
             )}
             
