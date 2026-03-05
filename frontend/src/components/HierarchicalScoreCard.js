@@ -15,72 +15,88 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
   if (!teamData || !coachPerformance) return null;
 
   // Debug: Log the data to understand structure
-  console.log('🎯 HierarchicalScoreCard Data:', {
+  console.log("🎯 HierarchicalScoreCard Data:", {
     coachPerformance,
     teamMembers: teamData.teamMembers,
-    teamMembersCount: teamData.teamMembers?.length
+    teamMembersCount: teamData.teamMembers?.length,
   });
 
   // Get coach's own score
   const myScore = coachPerformance.periodDiscipline?.percentage || 0;
 
-  // Identify coaches in the team (direct sub-coaches)
-  const directCoaches = teamData.teamMembers?.filter(
-    (m) => m.role === "coach" || m.isCoach
-  ) || [];
-
-  console.log('🔍 Direct Coaches Found:', directCoaches.length, directCoaches);
-
-  // If no coaches found, try to get all team members who are coaches by checking their properties
+  // Get ALL direct team members (Level 1) - both coaches and regular members
   const allTeamMembers = teamData.teamMembers || [];
-  const regularMembers = allTeamMembers.filter(m => m.role !== "coach" && !m.isCoach);
-  
-  console.log('👥 All Team Members:', allTeamMembers.length);
-  console.log('👤 Regular Members:', regularMembers.length);
 
-  // Calculate direct coaches average
-  const directCoachesAvg =
-    directCoaches.length > 0
+  // DIRECT TEAM: All members who report directly to the coach (Level 1)
+  // This includes both coaches and regular members at Level 1
+  const directTeamMembers = allTeamMembers.filter(
+    (m) =>
+      m.coachId === coachPerformance.userId ||
+      m.parentCoachId === coachPerformance.userId,
+  );
+
+  console.log(
+    "🔍 Direct Team Members Found:",
+    directTeamMembers.length,
+    directTeamMembers,
+  );
+
+  // Separate direct coaches from direct regular members
+  const directCoaches = directTeamMembers.filter(
+    (m) => m.role === "coach" || m.isCoach,
+  );
+
+  const directRegularMembers = directTeamMembers.filter(
+    (m) => m.role !== "coach" && !m.isCoach,
+  );
+
+  console.log("👥 Direct Coaches:", directCoaches.length);
+  console.log("👤 Direct Regular Members:", directRegularMembers.length);
+
+  // Calculate DIRECT TEAM average (ALL Level 1 members)
+  const directTeamAvg =
+    directTeamMembers.length > 0
       ? Math.round(
-          directCoaches.reduce(
-            (sum, c) => sum + (c.periodDiscipline?.percentage || 0),
-            0
-          ) / directCoaches.length
+          directTeamMembers.reduce(
+            (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
+            0,
+          ) / directTeamMembers.length,
         )
       : 0;
 
-  // Group members by their coach and calculate members under team average
+  // UNDER TEAM: Members who report to the direct team members (Level 2+)
+  // These are members whose coachId/parentCoachId matches a direct team member's userId
   const membersByCoach = {};
-  const allMembersUnderCoaches = [];
-  
-  directCoaches.forEach((coach) => {
-    const coachMembers = teamData.teamMembers?.filter(
+  const allMembersUnderDirectTeam = [];
+
+  directTeamMembers.forEach((directMember) => {
+    const underMembers = allTeamMembers.filter(
       (m) =>
-        (m.coachId === coach.userId || m.parentCoachId === coach.userId) &&
-        !m.isCoach &&
-        m.role !== "coach"
-    ) || [];
-    membersByCoach[coach.userId] = coachMembers;
-    allMembersUnderCoaches.push(...coachMembers);
+        (m.coachId === directMember.userId ||
+          m.parentCoachId === directMember.userId) &&
+        m.userId !== directMember.userId, // Don't count the direct member themselves
+    );
+    membersByCoach[directMember.userId] = underMembers;
+    allMembersUnderDirectTeam.push(...underMembers);
   });
 
-  // Calculate average of members under direct team coaches
+  // Calculate average of members under direct team (Level 2+)
   const membersUnderTeamAvg =
-    allMembersUnderCoaches.length > 0
+    allMembersUnderDirectTeam.length > 0
       ? Math.round(
-          allMembersUnderCoaches.reduce(
+          allMembersUnderDirectTeam.reduce(
             (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
-            0
-          ) / allMembersUnderCoaches.length
+            0,
+          ) / allMembersUnderDirectTeam.length,
         )
       : 0;
 
-  console.log('📊 Calculated Scores:', {
+  console.log("📊 Calculated Scores:", {
     myScore,
-    directCoachesAvg,
+    directTeamAvg,
     membersUnderTeamAvg,
-    directCoachesCount: directCoaches.length,
-    membersUnderCoachesCount: allMembersUnderCoaches.length
+    directTeamCount: directTeamMembers.length,
+    membersUnderTeamCount: allMembersUnderDirectTeam.length,
   });
 
   // Get color based on score
@@ -115,7 +131,6 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
       {/* Three-Column Score Summary */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-4">
         <div className="grid grid-cols-3 divide-x divide-gray-200">
-          
           {/* Column 1: My Score (Yasheer J - 20%) */}
           <div className="p-3 sm:p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-purple-500 flex items-center justify-center mb-2 shadow-md">
@@ -124,7 +139,11 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
             <p className="text-[9px] sm:text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-1">
               MY SCORE
             </p>
-            <div className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(myScore)}`}>
+            <div
+              className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(
+                myScore,
+              )}`}
+            >
               {myScore}%
             </div>
             <p className="text-[8px] sm:text-[9px] text-gray-400 mt-1">
@@ -132,7 +151,7 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
             </p>
           </div>
 
-          {/* Column 2: Direct Team Coaches (Balaji K S - 40%) */}
+          {/* Column 2: Direct Team (All Level 1 members - coaches + regular members) */}
           <div className="p-3 sm:p-4 flex flex-col items-center justify-center text-center min-h-[120px] bg-blue-50/30">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-blue-500 flex items-center justify-center mb-2 shadow-md">
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -140,15 +159,20 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
             <p className="text-[9px] sm:text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-1 leading-tight">
               DIRECT TEAM
             </p>
-            <div className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(directCoachesAvg)}`}>
-              {directCoachesAvg}%
+            <div
+              className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(
+                directTeamAvg,
+              )}`}
+            >
+              {directTeamAvg}%
             </div>
             <p className="text-[8px] sm:text-[9px] text-gray-400 mt-1">
-              ({directCoaches.length} Coach{directCoaches.length !== 1 ? "es" : ""})
+              ({directTeamMembers.length} Member
+              {directTeamMembers.length !== 1 ? "s" : ""})
             </p>
           </div>
 
-          {/* Column 3: Members Under Team (Susmitha, Leenah, etc.) */}
+          {/* Column 3: Members Under Team (Level 2+) */}
           <div className="p-3 sm:p-4 flex flex-col items-center justify-center text-center min-h-[120px]">
             <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full bg-green-500 flex items-center justify-center mb-2 shadow-md">
               <Users className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
@@ -156,159 +180,181 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
             <p className="text-[9px] sm:text-[10px] text-green-600 font-bold uppercase tracking-wider mb-1 leading-tight">
               UNDER TEAM
             </p>
-            <div className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(membersUnderTeamAvg)}`}>
+            <div
+              className={`text-3xl sm:text-4xl font-black ${getScoreTextColor(
+                membersUnderTeamAvg,
+              )}`}
+            >
               {membersUnderTeamAvg}%
             </div>
             <p className="text-[8px] sm:text-[9px] text-gray-400 mt-1">
-              ({allMembersUnderCoaches.length} Member{allMembersUnderCoaches.length !== 1 ? "s" : ""})
+              ({allMembersUnderDirectTeam.length} Member
+              {allMembersUnderDirectTeam.length !== 1 ? "s" : ""})
             </p>
           </div>
-
         </div>
 
         {/* Progress indicator bar */}
         <div className="h-1.5 bg-gray-100 grid grid-cols-3">
-          <div 
+          <div
             className="bg-purple-500 transition-all duration-500"
             style={{ width: `${myScore}%` }}
           />
-          <div 
+          <div
             className="bg-blue-500 transition-all duration-500"
-            style={{ width: `${directCoachesAvg}%` }}
+            style={{ width: `${directTeamAvg}%` }}
           />
-          <div 
+          <div
             className="bg-green-500 transition-all duration-500"
             style={{ width: `${membersUnderTeamAvg}%` }}
           />
         </div>
       </div>
 
-      {/* Expandable Details: Members under each direct coach */}
-      {directCoaches.length > 0 && (
+      {/* Expandable Details: Only show members who have sub-members */}
+      {directTeamMembers.some(
+        (tm) => (membersByCoach[tm.userId] || []).length > 0,
+      ) && (
         <div className="bg-white rounded-xl p-4 shadow-sm border border-gray-200">
           <div className="flex items-center gap-2 mb-3">
-            <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-              <Users className="w-5 h-5 text-green-600" />
+            <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+              <Users className="w-5 h-5 text-blue-600" />
             </div>
             <div>
-              <p className="text-[10px] text-green-600 font-bold uppercase tracking-wider">
-                UNDER THE DIRECT TEAM
+              <p className="text-[10px] text-blue-600 font-bold uppercase tracking-wider">
+                DIRECT TEAM BREAKDOWN
               </p>
               <p className="text-[10px] text-gray-400">
-                Members grouped by coach
+                Members and their sub-teams
               </p>
             </div>
           </div>
           <div className="space-y-2">
-            {directCoaches.map((coach) => {
-              const members = membersByCoach[coach.userId] || [];
-              const coachScore = coach.periodDiscipline?.percentage || 0;
-              const isExpanded = expandedCoaches[coach.userId];
+            {directTeamMembers
+              .filter((tm) => (membersByCoach[tm.userId] || []).length > 0)
+              .map((teamMember) => {
+                const underMembers = membersByCoach[teamMember.userId] || [];
+                const memberScore =
+                  teamMember.periodDiscipline?.percentage || 0;
+                const isExpanded = expandedCoaches[teamMember.userId];
 
-              return (
-                <div
-                  key={coach.userId}
-                  className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors"
-                >
-                  {/* Coach Header */}
+                return (
                   <div
-                    onClick={() => toggleCoach(coach.userId)}
-                    className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-50 transition-colors bg-gray-50"
+                    key={teamMember.userId}
+                    className="border-2 border-gray-200 rounded-lg overflow-hidden hover:border-blue-300 transition-colors"
                   >
-                    <div className="flex items-center gap-2">
-                      <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 shadow-sm ${getScoreColor(
-                          coachScore
-                        )}`}
-                      >
-                        {coach.userName.charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-800">
-                          {coach.userName}
-                        </p>
-                        <p className="text-[10px] text-gray-500 font-medium">
-                          {members.length} member{members.length !== 1 ? "s" : ""} under this coach
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
+                    {/* Team Member Header */}
+                    <div
+                      onClick={() => toggleCoach(teamMember.userId)}
+                      className="flex items-center justify-between p-3 cursor-pointer hover:bg-blue-50 transition-colors bg-gray-50"
+                    >
+                      <div className="flex items-center gap-2">
                         <div
-                          className={`text-2xl font-black ${getScoreTextColor(
-                            coachScore
+                          className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold border-2 shadow-sm ${getScoreColor(
+                            memberScore,
                           )}`}
                         >
-                          {coachScore}%
+                          {teamMember.userName.charAt(0).toUpperCase()}
                         </div>
-                        <p className="text-[8px] text-gray-400 uppercase">COACH</p>
+                        <div>
+                          <p className="text-sm font-bold text-gray-800">
+                            {teamMember.userName}
+                          </p>
+                          <p className="text-[10px] text-gray-500 font-medium">
+                            {underMembers.length} member
+                            {underMembers.length !== 1 ? "s" : ""} under{" "}
+                            {teamMember.userName.split(" ")[0]}
+                          </p>
+                        </div>
                       </div>
-                      {isExpanded ? (
-                        <ChevronUp className="w-5 h-5 text-gray-600" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-gray-600" />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Members List */}
-                  <AnimatePresence>
-                    {isExpanded && members.length > 0 && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        className="border-t-2 border-gray-200 bg-gradient-to-b from-blue-50/30 to-white"
-                      >
-                        <div className="p-3 space-y-2">
-                          {members.map((member) => {
-                            const memberScore =
-                              member.periodDiscipline?.percentage || 0;
-                            return (
-                              <div
-                                key={member.userId}
-                                className="flex items-center justify-between bg-white rounded-lg p-3 border-2 border-gray-100 hover:border-blue-200 hover:shadow-sm transition-all"
-                              >
-                                <div className="flex items-center gap-3">
-                                  <div
-                                    className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 shadow-sm ${getScoreColor(
-                                      memberScore
-                                    )}`}
-                                  >
-                                    {member.userName.charAt(0).toUpperCase()}
-                                  </div>
-                                  <div>
-                                    <p className="text-sm font-semibold text-gray-800">
-                                      {member.userName}
-                                    </p>
-                                    <p className="text-[10px] text-gray-400">
-                                      {member.email}
-                                    </p>
-                                  </div>
-                                </div>
-                                <div className="text-right">
-                                  <div
-                                    className={`text-2xl font-black ${getScoreTextColor(
-                                      memberScore
-                                    )}`}
-                                  >
-                                    {memberScore}%
-                                  </div>
-                                  <p className="text-[8px] text-gray-400 uppercase">
-                                    {memberScore >= 80 ? "⭐ GREAT" : memberScore >= 60 ? "GOOD" : "⚠️ RISK"}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })}
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div
+                            className={`text-2xl font-black ${getScoreTextColor(
+                              memberScore,
+                            )}`}
+                          >
+                            {memberScore}%
+                          </div>
+                          <p className="text-[8px] text-gray-400 uppercase">
+                            {teamMember.role === "coach" || teamMember.isCoach
+                              ? "COACH"
+                              : "MEMBER"}
+                          </p>
                         </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </div>
-              );
-            })}
+                        {underMembers.length > 0 &&
+                          (isExpanded ? (
+                            <ChevronUp className="w-5 h-5 text-gray-600" />
+                          ) : (
+                            <ChevronDown className="w-5 h-5 text-gray-600" />
+                          ))}
+                      </div>
+                    </div>
+
+                    {/* Sub-Members List (Level 2+) */}
+                    <AnimatePresence>
+                      {isExpanded && underMembers.length > 0 && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="border-t-2 border-gray-200 bg-gradient-to-b from-green-50/30 to-white"
+                        >
+                          <div className="p-3 space-y-2">
+                            {underMembers.map((subMember) => {
+                              const subMemberScore =
+                                subMember.periodDiscipline?.percentage || 0;
+                              return (
+                                <div
+                                  key={subMember.userId}
+                                  className="flex items-center justify-between bg-white rounded-lg p-3 border-2 border-gray-100 hover:border-green-200 hover:shadow-sm transition-all"
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div
+                                      className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold border-2 shadow-sm ${getScoreColor(
+                                        subMemberScore,
+                                      )}`}
+                                    >
+                                      {subMember.userName
+                                        .charAt(0)
+                                        .toUpperCase()}
+                                    </div>
+                                    <div>
+                                      <p className="text-sm font-semibold text-gray-800">
+                                        {subMember.userName}
+                                      </p>
+                                      <p className="text-[10px] text-gray-400">
+                                        {subMember.email}
+                                      </p>
+                                    </div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div
+                                      className={`text-2xl font-black ${getScoreTextColor(
+                                        subMemberScore,
+                                      )}`}
+                                    >
+                                      {subMemberScore}%
+                                    </div>
+                                    <p className="text-[8px] text-gray-400 uppercase">
+                                      {subMemberScore >= 80
+                                        ? "⭐ GREAT"
+                                        : subMemberScore >= 60
+                                        ? "GOOD"
+                                        : "⚠️ RISK"}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                );
+              })}
           </div>
         </div>
       )}
