@@ -82,39 +82,39 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100">
-      {/* Background decorations - Herbalife theme */}
+    <div className="min-h-screen" style={{ backgroundColor: '#e8f5e9' }}>
+      {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-green-200/30 to-green-300/30 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-green-100/30 to-green-200/30 rounded-full blur-3xl"></div>
+        <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-orange-200/20 to-pink-200/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
       {/* Header with tabs */}
-      <div className="sticky top-0 z-30 bg-gradient-to-r from-green-500 to-green-600 border-b border-green-700 shadow-md">
+      <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {/* Top bar with back button and title */}
           <div className="flex items-center justify-between p-4 md:p-6 pb-3">
             <TouchFeedbackButton 
               onClick={onBack} 
-              className="p-2 md:p-3 hover:bg-green-700 rounded-xl transition-colors text-white"
+              className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
               ariaLabel="Go back"
             >
-              <ArrowLeft className="h-5 w-5 text-white" />
+              <ArrowLeft className="h-5 w-5 text-gray-700" />
             </TouchFeedbackButton>
 
             <div className="text-center">
-              <h1 className="text-lg md:text-xl font-semibold text-white">Dashboard</h1>
-              <p className="text-xs text-green-50">Track your wellness journey</p>
+              <h1 className="text-lg md:text-xl font-semibold text-gray-900">Dashboard</h1>
+              <p className="text-xs text-gray-500">Track your wellness journey</p>
             </div>
 
             {/* Calendar button - only show for nutrition tab */}
             {activeTab === 'nutrition' && (
               <TouchFeedbackButton 
                 onClick={() => setShowCalendar(!showCalendar)} 
-                className="p-2 md:p-3 hover:bg-green-700 rounded-xl transition-colors text-white"
+                className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
                 ariaLabel="Toggle calendar"
               >
-                <Calendar className="h-5 w-5 text-white" />
+                <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
             {/* Empty space for weight and education tabs to maintain layout */}
@@ -129,15 +129,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
               onClick={() => handleTabChange('nutrition')}
               className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'nutrition'
-                  ? 'border-white text-white bg-green-600'
-                  : 'border-transparent text-green-100 hover:text-white hover:border-green-300'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <AppleIcon 
                 className="h-4 w-4" 
                 strokeWidth={3}
                 style={{
-                  stroke: activeTab === 'nutrition' ? '#ffffff' : 'currentColor',
+                  stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
                   fill: 'none'
                 }}
               />
@@ -148,8 +148,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
               onClick={() => handleTabChange('weight')}
               className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'weight'
-                  ? 'border-white text-white bg-green-600'
-                  : 'border-transparent text-green-100 hover:text-white hover:border-green-300'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <WeighingScaleIcon className="h-4 w-4" />
@@ -160,8 +160,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
               onClick={() => handleTabChange('education')}
               className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'education'
-                  ? 'border-white text-white bg-green-600'
-                  : 'border-transparent text-green-100 hover:text-white hover:border-green-300'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <EducationIcon className="h-4 w-4" />

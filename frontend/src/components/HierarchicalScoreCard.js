@@ -190,9 +190,9 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
   };
 
   return (
-    <div className="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 shadow-sm border border-gray-100">
+    <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 mb-3 sm:mb-4 shadow-sm border border-gray-200">
       <div className="flex items-center gap-2 mb-3 sm:mb-4">
-        <Users className="w-4 h-4 sm:w-5 sm:h-5 text-purple-600" />
+        <Users className="w-4 h-4 sm:w-5 sm:h-5 text-gray-700" />
         <h3 className="text-xs sm:text-sm md:text-base font-bold text-gray-800">
           Team Hierarchy Performance
         </h3>
@@ -203,14 +203,14 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
         <div className="grid grid-cols-3 divide-x divide-gray-200">
           {/* Column 1: My Score (Yasheer J - 20%) */}
           <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[100px] sm:min-h-[120px]">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-purple-500 flex items-center justify-center mb-1.5 sm:mb-2 shadow-md">
-              <User className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-blue-100 flex items-center justify-center mb-1.5 sm:mb-2 shadow-sm">
+              <User className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-blue-600" />
             </div>
-            <p className="text-[8px] sm:text-[9px] md:text-[10px] text-purple-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
+            <p className="text-[8px] sm:text-[9px] md:text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
               MY SCORE
             </p>
             <div
-              className={`text-2xl sm:text-3xl md:text-4xl font-black ${getScoreTextColor(
+              className={`text-lg sm:text-xl md:text-2xl font-black ${getScoreTextColor(
                 myScore,
               )}`}
             >
@@ -223,14 +223,14 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
 
           {/* Column 2: Direct Team (All Level 1 members - coaches + regular members) */}
           <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[100px] sm:min-h-[120px] bg-blue-50/30">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-blue-500 flex items-center justify-center mb-1.5 sm:mb-2 shadow-md">
-              <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-green-100 flex items-center justify-center mb-1.5 sm:mb-2 shadow-sm">
+              <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" />
             </div>
-            <p className="text-[8px] sm:text-[9px] md:text-[10px] text-blue-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
+            <p className="text-[8px] sm:text-[9px] md:text-[10px] text-green-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
               DIRECT TEAM
             </p>
             <div
-              className={`text-2xl sm:text-3xl md:text-4xl font-black ${getScoreTextColor(
+              className={`text-lg sm:text-xl md:text-2xl font-black ${getScoreTextColor(
                 directTeamAvg,
               )}`}
             >
@@ -244,14 +244,14 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
 
           {/* Column 3: Members Under Team (Level 2+) */}
           <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[100px] sm:min-h-[120px]">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-green-500 flex items-center justify-center mb-1.5 sm:mb-2 shadow-md">
-              <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-white" />
+            <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-green-100 flex items-center justify-center mb-1.5 sm:mb-2 shadow-sm">
+              <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" />
             </div>
             <p className="text-[8px] sm:text-[9px] md:text-[10px] text-green-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
               UNDER TEAM
             </p>
             <div
-              className={`text-2xl sm:text-3xl md:text-4xl font-black ${getScoreTextColor(
+              className={`text-lg sm:text-xl md:text-2xl font-black ${getScoreTextColor(
                 membersUnderTeamAvg,
               )}`}
             >
@@ -267,7 +267,7 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
         {/* Progress indicator bar */}
         <div className="h-1 sm:h-1.5 bg-gray-100 grid grid-cols-3">
           <div
-            className="bg-purple-500 transition-all duration-500"
+            className="bg-blue-500 transition-all duration-500"
             style={{ width: `${myScore}%` }}
           />
           <div

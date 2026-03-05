@@ -1189,35 +1189,35 @@ const NutritionDashboard = ({
   /* ---------------- UI ---------------- */
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100">
+    <div className="min-h-screen bg-gray-50">
       {/* keyframes (once) */}
       <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
 
-      {/* Background - Herbalife theme */}
+      {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-green-200/30 to-green-300/30 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-green-100/30 to-green-200/30 rounded-full blur-3xl"></div>
+        <div className="absolute -top-20 -right-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-br from-orange-200/20 to-pink-200/20 rounded-full blur-3xl"></div>
+        <div className="absolute -bottom-20 -left-20 w-40 h-40 md:w-80 md:h-80 bg-gradient-to-tr from-blue-200/20 to-purple-200/20 rounded-full blur-3xl"></div>
       </div>
 
       {/* Header - Only show if not hidden */}
       {!hideHeader && (
         <>
-          <div className="sticky top-0 z-30 bg-gradient-to-r from-green-500 to-green-600 border-b border-green-700 shadow-md">
+          <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
             <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
               <div className="flex items-center justify-between p-4 md:p-6">
                 <TouchFeedbackButton
                   onClick={onBack}
-                  className="p-2 md:p-3 hover:bg-green-700 rounded-xl transition-colors text-white"
+                  className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
                   ariaLabel="Go back"
                 >
-                  <ArrowLeft className="h-5 w-5 text-white" />
+                  <ArrowLeft className="h-5 w-5 text-gray-700" />
                 </TouchFeedbackButton>
 
                 <div className="text-center">
-                  <h1 className="text-lg md:text-xl font-semibold text-white">
+                  <h1 className="text-lg md:text-xl font-semibold text-gray-900">
                     Nutrition
                   </h1>
-                  <p className="text-sm text-green-50">
+                  <p className="text-sm text-gray-600">
                     {formatDateHeader(selectedDate)}
                   </p>
                 </div>
@@ -1225,9 +1225,9 @@ const NutritionDashboard = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={() => setShowCalendar(!showCalendar)}
-                    className="p-2 md:p-3 hover:bg-green-700 rounded-xl transition-colors text-white"
+                    className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
                   >
-                    <Calendar className="h-5 w-5 text-white" />
+                    <Calendar className="h-5 w-5 text-gray-700" />
                   </button>
                 </div>
               </div>
@@ -1237,7 +1237,7 @@ const NutritionDashboard = ({
       )}
 
       {/* Date selector */}
-      <div className="bg-gradient-to-r from-green-400 to-green-500 border-b border-green-600 shadow-sm">
+      <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {isMobileDevice() ? (
             <div className="px-4 py-3">

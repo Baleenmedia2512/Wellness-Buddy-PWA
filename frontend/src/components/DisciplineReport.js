@@ -273,9 +273,9 @@ const TeamFilterPills = ({ filters, activeFilter, onChange }) => {
 
 const LoadingSkeleton = () => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-green-100 pb-20">
+    <div className="min-h-screen pb-20" style={{ backgroundColor: '#e8f5e9' }}>
       {/* Header Skeleton */}
-      <div className="sticky top-0 z-40 bg-gradient-to-r from-green-500 to-green-600 backdrop-blur-sm border-b border-green-700 shadow-md">
+      <div className="sticky top-0 z-40 backdrop-blur-sm shadow-md" style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}>
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
@@ -885,24 +885,25 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }
 
   return (
-    <div className="min-h-screen bg-white pb-20">
+    <div className="min-h-screen pb-20" style={{ backgroundColor: '#e8f5e9' }}>
       {/* Sticky Header */}
-      <div className="sticky top-0 z-40 bg-gradient-to-r from-green-500 to-green-600 backdrop-blur-sm border-b border-green-700 shadow-md">
+      <div className="sticky top-0 z-40 backdrop-blur-sm shadow-md" style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}>
         <div className="max-w-3xl mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <TouchFeedbackButton
                 onClick={onBack}
-                className="p-2 -ml-2 hover:bg-green-700 rounded-full transition-colors text-white"
+                className="p-2 -ml-2 rounded-full transition-colors"
+                style={{ color: '#1f2937' }}
                 ariaLabel="Go back"
               >
-                <ArrowLeft className="h-6 w-6 text-white" />
+                <ArrowLeft className="h-6 w-6" style={{ color: '#1f2937' }} />
               </TouchFeedbackButton>
               <div>
-                <h1 className="text-lg font-bold text-white leading-tight">
+                <h1 className="text-lg font-bold leading-tight" style={{ color: '#1f2937' }}>
                   Discipline Report
                 </h1>
-                <p className="text-xs text-green-50 font-medium">
+                <p className="text-xs font-medium" style={{ color: '#374151' }}>
                   {isUserACoach
                     ? `${
                         filteredAndSortedMembers.length || allMembers.length
@@ -923,7 +924,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               <TouchFeedbackButton
                 onClick={handleManualRefresh}
                 disabled={refreshing}
-                className="p-2 hover:bg-green-700 rounded-full transition-colors text-white disabled:opacity-50"
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600 disabled:opacity-50"
                 ariaLabel="Refresh"
               >
                 <RefreshCw
@@ -932,14 +933,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={handleExportCSV}
-                className="p-2 hover:bg-green-700 rounded-full transition-colors text-white"
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
                 ariaLabel="Export CSV"
               >
                 <Download className="h-5 w-5" />
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
-                className="p-2 hover:bg-green-700 rounded-full transition-colors text-white"
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
                 ariaLabel="Configure Time Windows"
               >
                 <Settings className="h-5 w-5" />
