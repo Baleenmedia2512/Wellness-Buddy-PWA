@@ -518,6 +518,76 @@ USDA values. JSON only.`;
   }
 
   /**
+   * Generate one concise AI nutrition tip for the currently analyzed meal
+   * @param {Object} params
+   * @param {Object} params.nutrition - Total nutrition object
+   * @param {Array} params.foods - Food items array
+   * @returns {Promise<string>} Tip text
+   */
+  async generateDailyNutritionTip({ nutrition = {}, foods = [] } = {}) {
+    const startTime = Date.now();
+
+    if (!this.model) {
+      throw new Error("Gemini API key is not configured");
+    }
+
+    try {
+      const safeFoods = Array.isArray(foods)
+        ? foods
+            .slice(0, 8)
+            .map((f) => (f?.name || "").trim())
+            .filter(Boolean)
+        : [];
+
+      const foodsText = safeFoods.length > 0 ? safeFoods.join(", ") : "Unknown meal";
+
+      const prompt = `You are a practical nutrition coach.
+Given this meal summary:
+- Foods: ${foodsText}
+- Calories: ${Math.round(nutrition.calories || 0)}
+- Protein (g): ${Math.round(nutrition.protein || 0)}
+- Carbs (g): ${Math.round(nutrition.carbs || 0)}
+- Fat (g): ${Math.round(nutrition.fat || 0)}
+- Fiber (g): ${Math.round(nutrition.fiber || 0)}
+
+Return ONLY valid JSON:
+{
+  "tip": "one specific and actionable nutrition tip in <= 22 words",
+  "focus": "protein|fiber|portion|hydration|balance"
+}
+
+Rules:
+1) Keep tip short, clear, and practical.
+2) No medical diagnosis or disease claims.
+3) Avoid generic motivational language.`;
+
+      const result = await Promise.race([
+        this.model.generateContent(prompt),
+        this.timeoutPromise(this.timeout, `API timeout after ${this.timeout}ms`),
+      ]);
+
+      const response = await result.response;
+      const text = response.text();
+      const parsed = this.parseJsonResponse(text);
+      const processingTime = Date.now() - startTime;
+
+      this.logTokenUsage(response, "daily_tip", processingTime);
+
+      const tip = parsed?.tip?.toString?.().trim();
+      if (!tip) {
+        throw new Error("Invalid tip response from AI");
+      }
+
+      return tip;
+    } catch (error) {
+      const processingTime = Date.now() - startTime;
+      this.logError(error, "daily_tip");
+      console.error(`❌ Daily tip generation failed after ${processingTime}ms:`, error);
+      throw new Error(`Tip generation failed: ${error.message}`);
+    }
+  }
+
+  /**
    * Get cached search results if available and not expired
    * @param {string} query - The search query
    * @returns {Object|null} Cached results or null
