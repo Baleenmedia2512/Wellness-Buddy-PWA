@@ -176,19 +176,18 @@ const NutritionCard = ({
       return;
     }
 
-    try {
-      const apiBaseUrl =
-        process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+    const apiBaseUrl =
+      process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
-      // Get userId - either from user object directly or via lookup
-      let userId = user?.id;
-      if (!userId) {
-        userId = await getUserId(user);
-      }
+    // Get userId - either from user object directly or via lookup
+    let userId = user?.id;
+    if (!userId) {
+      userId = await getUserId(user);
+    }
 
-      if (!userId) {
-        throw new Error("User not authenticated or not found in database");
-      }
+    if (!userId) {
+      throw new Error("User not authenticated or not found in database");
+    }
 
       // Prepare analysis data
       const analysisData = {
@@ -280,17 +279,160 @@ const NutritionCard = ({
         },
       );
 
-      const result = await response.json();
+    const result = await response.json();
 
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Failed to update meal");
-      }
+    if (!response.ok || !result.success) {
+      throw new Error(result.message || "Failed to update meal");
+    }
+  };
 
-      console.log("✅ [NutritionCard] Auto-save update successful");
+  // Handle food item update with auto-save
+  const handleFoodUpdate = async (index, updatedFood) => {
+    console.log("[NutritionCard] Updating food item at index:", index);
+    console.log("[NutritionCard] Received updatedFood:", {
+      name: updatedFood.name,
+      grams: updatedFood.grams,
+      serving_grams: updatedFood.serving?.grams,
+      unit: updatedFood.unit,
+      serving_unit: updatedFood.serving?.unit,
+    });
+
+    const newItems = [...localDetailedItems];
+    newItems[index] = {
+      ...newItems[index],
+      ...updatedFood,
+      // Preserve original fields if not in updatedFood
+      calories: updatedFood.nutrition?.calories || updatedFood.calories,
+      protein: updatedFood.nutrition?.protein || updatedFood.protein,
+      carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
+      fat: updatedFood.nutrition?.fat || updatedFood.fat,
+      fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
+    };
+
+    // Recalculate totals
+    const newTotals = recalculateTotals(newItems);
+    updateLocalAndParentState(newItems, newTotals);
+
+    console.log("[NutritionCard] Updated totals:", newTotals);
+
+    try {
+      await saveMealUpdate(newItems, newTotals);
     } catch (error) {
-      console.error("❌ [NutritionCard] Auto-save failed:", error);
+      console.error("[NutritionCard] Auto-save failed:", error);
       // Phase 5: Re-throw error so EditableFoodItem's retry logic can handle it
       throw error;
+    }
+  };
+
+  const handleAddMissingItem = async () => {
+    setAddItemError("");
+
+    const trimmedName = newItemName.trim();
+    if (!trimmedName) {
+      setAddItemError("Food name is required");
+      return;
+    }
+
+    const parsedQuantity = parseFloat(newItemQuantity);
+    const quantity =
+      Number.isFinite(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 100;
+    const isLiquid = newItemUnit === "ml";
+    setIsSaving(true);
+
+    let selectedFoodResult = selectedAddFood;
+    let nutritionValues = null;
+
+    if (!selectedFoodResult) {
+      try {
+        const searchRes = await geminiService.searchFood(trimmedName);
+        if (searchRes?.results?.length) {
+          const exactMatch = searchRes.results.find(
+            (r) => (r.name || "").trim().toLowerCase() === trimmedName.toLowerCase(),
+          );
+          selectedFoodResult = exactMatch || searchRes.results[0];
+        }
+      } catch (error) {
+        console.error("[NutritionCard] Nutrition lookup failed:", error);
+        setAddItemError("Unable to fetch nutrition. Please try again.");
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    nutritionValues = calculateNutritionFromSearchResult(
+      selectedFoodResult,
+      quantity,
+    );
+
+    if (!selectedFoodResult || !nutritionValues) {
+      setAddItemError("No nutrition data found for this item. Try a specific name.");
+      setIsSaving(false);
+      return;
+    }
+
+    const portionText =
+      newItemPortion.trim() ||
+      `${Math.round(quantity)}${newItemUnit} ${trimmedName}`.trim();
+
+    const newItem = {
+      name: trimmedName,
+      originalAiName: trimmedName,
+      wasAutoCorrected: false,
+      correctionSource: "manual_add",
+      correctionMetadata: null,
+      portionDescription: portionText,
+      estimatedWeight: quantity,
+      unit: newItemUnit,
+      isLiquid: isLiquid,
+      grams: quantity,
+      weight_g: isLiquid ? null : quantity,
+      volume_ml: isLiquid ? quantity : null,
+      serving: {
+        description: portionText,
+        grams: quantity,
+        unit: newItemUnit,
+        isLiquid: isLiquid,
+      },
+      per100g: selectedFoodResult.per100g || null,
+      defaultServing: selectedFoodResult.defaultServing || null,
+      ...nutritionValues,
+      nutrition: nutritionValues,
+    };
+
+    const newItems = [...localDetailedItems, newItem];
+    const newTotals = recalculateTotals(newItems);
+    updateLocalAndParentState(newItems, newTotals);
+
+    try {
+      await saveMealUpdate(newItems, newTotals);
+      resetAddItemForm();
+    } catch (error) {
+      console.error("[NutritionCard] Add missing item save failed:", error);
+      setAddItemError(error.message || "Failed to save item");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteItem = async (index) => {
+    if (index < 0 || index >= localDetailedItems.length) return;
+
+    const previousItems = localDetailedItems;
+    const previousTotals = localNutrition;
+
+    const updatedItems = localDetailedItems.filter((_, i) => i !== index);
+    const newTotals = recalculateTotals(updatedItems);
+    updateLocalAndParentState(updatedItems, newTotals);
+
+    setIsSaving(true);
+    try {
+      await saveMealUpdate(updatedItems, newTotals);
+    } catch (error) {
+      console.error("[NutritionCard] Delete item save failed:", error);
+      updateLocalAndParentState(previousItems, previousTotals);
+      alert("Failed to delete item. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -397,7 +539,6 @@ const NutritionCard = ({
     detailedItems,
     portionAnalysis,
   } = data;
-
   return (
     <>
       {/* Hidden container for sharing - includes image + card at high resolution */}
@@ -931,21 +1072,127 @@ const NutritionCard = ({
           </div>
 
           {/* Food Breakdown */}
-          {localDetailedItems && localDetailedItems.length > 0 && (
-            <div className="mt-8 pt-6 border-t border-gray-200">
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Food Breakdown
-                </h3>
+          <div className="mt-8 pt-6 border-t border-gray-200">
+            <div className="flex items-center justify-between mb-4 gap-3">
+              <h3 className="text-lg font-semibold text-gray-800">Food Breakdown</h3>
+              <div className="flex items-center gap-2">
                 {portionAnalysis &&
                   portionAnalysis.totalEstimatedWeight > 0 && (
                     <div className="text-sm text-gray-600 bg-gray-50 px-3 py-1 rounded-full">
-                      Total: ~{Math.round(portionAnalysis.totalEstimatedWeight)}
-                      g
+                      Total: ~{Math.round(portionAnalysis.totalEstimatedWeight)}g
                     </div>
                   )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isAddingItem) {
+                      resetAddItemForm();
+                      return;
+                    }
+                    setAddItemError("");
+                    setIsAddingItem(true);
+                  }}
+                  disabled={isSaving || editingIndex !== null}
+                  className="px-3 py-1.5 text-sm font-medium rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isAddingItem ? "Cancel" : "+ Add Missing Item"}
+                </button>
               </div>
+            </div>
 
+            {isAddingItem && (
+              <div className="mb-4 p-3 rounded-xl border border-gray-200 bg-gray-50">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="relative md:col-span-2">
+                    <input
+                      type="text"
+                      placeholder="Food name"
+                      value={newItemName}
+                      onChange={(e) => handleAddNameChange(e.target.value)}
+                      onKeyDown={handleAddNameKeyDown}
+                      onFocus={() => {
+                        if (newItemName.trim().length > 0) {
+                          setShowAddSuggestions(true);
+                        }
+                      }}
+                      className="w-full relative md:col-span-2 px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+                    />
+                    {isAddSearching && (
+                      <div className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                    )}
+                    {showAddSuggestions && addSearchResults.length > 0 && (
+                      <div className="relative z-20 mt-1 w-full max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {addSearchResults.map((food, idx) => (
+                          <button
+                            key={`${food.name}-${idx}`}
+                            type="button"
+                            onClick={() => handleSelectAddSuggestion(food)}
+                            className={`w-full text-left px-3 py-2 border-b last:border-b-0 ${
+                              idx === activeAddSuggestionIndex
+                                ? "bg-green-100"
+                                : "hover:bg-green-50"
+                            }`}
+                          >
+                            <div className="text-sm font-medium text-gray-900 ">
+                              {food.name}
+                            </div>
+
+                            {/* if we don't want food calories details */}
+
+                            <div className="text-xs text-gray-600 mt-0.5">
+                              {/* {food.defaultServing?.nutrition?.calories || 0} kcal
+                              {" · "}
+                              {food.defaultServing?.description || "1 serving"} */}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* <input
+                    type="text"
+                    placeholder="Portion (optional)"
+                    value={newItemPortion}
+                    onChange={(e) => setNewItemPortion(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+                  /> */}
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.1"
+                    placeholder="Quantity"
+                    value={newItemQuantity}
+                    onChange={(e) => setNewItemQuantity(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-green-300"
+                  />
+                  <select
+                    value={newItemUnit}
+                    onChange={(e) => setNewItemUnit(e.target.value)}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-green-300"
+                  >
+                    <option value="g">g</option>
+                    <option value="ml">ml</option>
+                  </select>
+                </div>
+
+                {addItemError && (
+                  <p className="mt-2 text-sm text-red-600">{addItemError}</p>
+                )}
+
+                <div className="mt-3 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAddMissingItem}
+                    disabled={isSaving}
+                    className="px-4 py-2 text-sm font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? "Saving..." : "Add Item"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {localDetailedItems.length > 0 ? (
               <div className="space-y-3">
                 {localDetailedItems.map((item, index) => (
                   <EditableFoodItem
@@ -953,14 +1200,17 @@ const NutritionCard = ({
                     foodItem={item}
                     index={index}
                     onUpdate={handleFoodUpdate}
+                    onDelete={handleDeleteItem}
                     onEditingChange={handleEditingChange}
                     disabled={editingIndex !== null && editingIndex !== index}
                     user={user}
                   />
                 ))}
               </div>
-            </div>
-          )}
+            ) : (
+              <div className="text-sm text-gray-500">No items yet. Add the first item manually.</div>
+            )}
+          </div>
 
           {/* Portion Analysis Section */}
 

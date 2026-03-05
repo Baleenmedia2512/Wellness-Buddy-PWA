@@ -26,6 +26,7 @@ import {
   Wheat,
   Droplet,
   Leaf,
+  Trash2,
 } from "lucide-react";
 
 /**
@@ -37,6 +38,7 @@ const EditableFoodItem = forwardRef(
     {
       foodItem,
       onUpdate,
+      onDelete,
       index,
       onEditingChange,
       disabled,
@@ -1564,6 +1566,15 @@ const EditableFoodItem = forwardRef(
       // Note: originalFoodRef.current is already set at the start of handleEdit
     };
 
+    const handleDelete = () => {
+      if (disabled || !onDelete) return;
+      const confirmed = window.confirm(
+        `Delete "${foodItem.name}" from this meal breakdown?`,
+      );
+      if (!confirmed) return;
+      onDelete(index);
+    };
+
     // Display mode
     if (!isEditing) {
       const displayGrams =
@@ -1621,19 +1632,35 @@ const EditableFoodItem = forwardRef(
               {foodItem.nutrition?.fat || foodItem.fat || 0}g
             </div>
           </div>
-          <TouchFeedbackButton
-            onClick={handleEdit}
-            disabled={disabled}
-            className={`shrink-0 px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
-              disabled
-                ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-            }`}
-            ariaLabel="Edit food item"
-          >
-            <Edit2 className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Edit</span>
-          </TouchFeedbackButton>
+          <div className="shrink-0 flex items-center gap-2">
+            <TouchFeedbackButton
+              onClick={handleDelete}
+              disabled={disabled}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
+                disabled
+                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                  : "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+              }`}
+              ariaLabel="Delete food item"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Delete</span>
+            </TouchFeedbackButton>
+
+            <TouchFeedbackButton
+              onClick={handleEdit}
+              disabled={disabled}
+              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
+                disabled
+                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                  : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+              }`}
+              ariaLabel="Edit food item"
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Edit</span>
+            </TouchFeedbackButton>
+          </div>
         </div>
       );
     }
