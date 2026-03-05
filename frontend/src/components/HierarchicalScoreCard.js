@@ -7,7 +7,9 @@ import { motion, AnimatePresence } from "framer-motion";
  * Hierarchical Score Card - Shows coach's hierarchy with scores
  * Level 0: Coach's own score
  * Level 1: Direct team coaches average
- * Level 2: Members under each direct coach
+ * Level 2: Members under each direct coach // This includes all members who report to the direct coaches, regardless of their role
+ *
+ * Data
  */
 const HierarchicalScoreCard = ({ teamData, coachPerformance }) => {
   const [expandedCoaches, setExpandedCoaches] = React.useState({});
