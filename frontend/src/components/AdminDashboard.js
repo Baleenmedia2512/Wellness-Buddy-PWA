@@ -26,7 +26,7 @@ import { clearPricingCache } from "../services/tokenCost/tokenCostConfig";
 import { App as CapacitorApp } from "@capacitor/app";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 
-// --- Dynamic Demo Data Generator ---
+// --- Dynamic Demo Data Generator --- //
 // COMMENTED OUT - Demo data disabled
 /*
 const generateDemoData = () => {

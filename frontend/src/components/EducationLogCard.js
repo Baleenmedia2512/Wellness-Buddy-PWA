@@ -30,7 +30,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
       // Capture and share the card with image + details
       await captureAndShare(shareRef.current, {
         title: `Education Session - ${educationData.topic}`,
-        text: `Topic: ${educationData.topic}\nPlatform: ${educationData.platform}`,
+        text: "",
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
       });
     } catch (error) {
