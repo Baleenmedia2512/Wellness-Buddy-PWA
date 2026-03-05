@@ -3,8 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
-import { geminiService } from "../services/geminiService";
-import { captureAndShare } from "../utils/shareUtils";
+import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
 
 const NutritionCard = ({
   data,
@@ -23,27 +22,34 @@ const NutritionCard = ({
   const [isSaving, setIsSaving] = useState(false);
   const [editingStates, setEditingStates] = useState({});
   const [isSharing, setIsSharing] = useState(false);
-  const [isAddingItem, setIsAddingItem] = useState(false);
-  const [newItemName, setNewItemName] = useState("");
-  const [newItemPortion, setNewItemPortion] = useState("");
-  const [newItemQuantity, setNewItemQuantity] = useState("100");
-  const [newItemUnit, setNewItemUnit] = useState("g");
-  const [addItemError, setAddItemError] = useState("");
-  const [addSearchResults, setAddSearchResults] = useState([]);
-  const [isAddSearching, setIsAddSearching] = useState(false);
-  const [showAddSuggestions, setShowAddSuggestions] = useState(false);
-  const [selectedAddFood, setSelectedAddFood] = useState(null);
-  const [activeAddSuggestionIndex, setActiveAddSuggestionIndex] = useState(-1);
+  const [highResImageUrl, setHighResImageUrl] = useState(null);
   const cardRef = useRef(null);
   const shareRef = useRef(null);
-  const addSearchTimeoutRef = useRef(null);
+
+  // Create high-resolution image URL from original file for sharing
+  useEffect(() => {
+    if (selectedImage && selectedImage instanceof File) {
+      // Create object URL from original file (no compression)
+      const url = URL.createObjectURL(selectedImage);
+      setHighResImageUrl(url);
+      console.log("📸 Created high-res image URL for sharing");
+
+      // Cleanup on unmount
+      return () => {
+        URL.revokeObjectURL(url);
+      };
+    } else if (imagePreview) {
+      // Fallback to preview if no file available
+      setHighResImageUrl(imagePreview);
+    }
+  }, [selectedImage, imagePreview]);
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
-    console.log('🔄 [NutritionCard] Data prop changed, syncing local state');
-    console.log('   New nutrition values:', data?.nutrition);
-    console.log('   New detailedItems count:', data?.detailedItems?.length);
-    
+    console.log("🔄 [NutritionCard] Data prop changed, syncing local state");
+    console.log("   New nutrition values:", data?.nutrition);
+    console.log("   New detailedItems count:", data?.detailedItems?.length);
+
     if (data?.nutrition) {
       setLocalNutrition(data.nutrition);
     }
@@ -85,8 +91,11 @@ const NutritionCard = ({
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
-    console.log('🧮 [NutritionCard] recalculateTotals - Processing items:', items.length);
-    
+    console.log(
+      "🧮 [NutritionCard] recalculateTotals - Processing items:",
+      items.length,
+    );
+
     const totals = items.reduce(
       (acc, item, index) => {
         const itemCalories = item.nutrition?.calories || item.calories || 0;
@@ -94,12 +103,18 @@ const NutritionCard = ({
         const itemCarbs = item.nutrition?.carbs || item.carbs || 0;
         const itemFat = item.nutrition?.fat || item.fat || 0;
         const itemFiber = item.nutrition?.fiber || item.fiber || 0;
-        
+
         console.log(`   📊 Item ${index + 1}: ${item.name}`);
-        console.log(`      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`);
-        console.log(`      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`);
-        console.log(`      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`);
-        
+        console.log(
+          `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
+        );
+        console.log(
+          `      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
+        );
+        console.log(
+          `      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`,
+        );
+
         return {
           calories: acc.calories + itemCalories,
           protein: acc.protein + itemProtein,
@@ -119,176 +134,42 @@ const NutritionCard = ({
       fat: Math.round(totals.fat * 10) / 10,
       fiber: Math.round(totals.fiber * 10) / 10,
     };
-    
-    console.log('   ✅ Final totals:', rounded);
+
+    console.log("   ✅ Final totals:", rounded);
     return rounded;
   };
 
-  const updateLocalAndParentState = (newItems, newTotals) => {
+  // Handle food item update with auto-save
+  const handleFoodUpdate = async (index, updatedFood) => {
+    console.log("🔄 [NutritionCard] Updating food item at index:", index);
+    console.log("🔍 [NutritionCard] Received updatedFood:", {
+      name: updatedFood.name,
+      grams: updatedFood.grams,
+      serving_grams: updatedFood.serving?.grams,
+      unit: updatedFood.unit,
+      serving_unit: updatedFood.serving?.unit,
+    });
+
+    const newItems = [...localDetailedItems];
+    newItems[index] = {
+      ...newItems[index],
+      ...updatedFood,
+      // Preserve original fields if not in updatedFood
+      calories: updatedFood.nutrition?.calories || updatedFood.calories,
+      protein: updatedFood.nutrition?.protein || updatedFood.protein,
+      carbs: updatedFood.nutrition?.carbs || updatedFood.carbs,
+      fat: updatedFood.nutrition?.fat || updatedFood.fat,
+      fiber: updatedFood.nutrition?.fiber || updatedFood.fiber,
+    };
+
     setLocalDetailedItems(newItems);
+
+    // Recalculate totals
+    const newTotals = recalculateTotals(newItems);
     setLocalNutrition(newTotals);
 
-    if (typeof onDataUpdate === "function") {
-      onDataUpdate({
-        ...data,
-        nutrition: newTotals,
-        detailedItems: newItems,
-        itemCount: newItems.length,
-      });
-    }
-  };
+    console.log("✅ [NutritionCard] Updated totals:", newTotals);
 
-  const resetAddItemForm = () => {
-    setIsAddingItem(false);
-    setNewItemName("");
-    setNewItemPortion("");
-    setNewItemQuantity("100");
-    setNewItemUnit("g");
-    setAddItemError("");
-    setAddSearchResults([]);
-    setIsAddSearching(false);
-    setShowAddSuggestions(false);
-    setSelectedAddFood(null);
-    setActiveAddSuggestionIndex(-1);
-    if (addSearchTimeoutRef.current) {
-      clearTimeout(addSearchTimeoutRef.current);
-      addSearchTimeoutRef.current = null;
-    }
-  };
-
-  const handleAddNameChange = (value) => {
-    setNewItemName(value);
-    setAddItemError("");
-    setSelectedAddFood(null);
-    setShowAddSuggestions(true);
-    setActiveAddSuggestionIndex(-1);
-  };
-
-  const handleSelectAddSuggestion = (food) => {
-    setSelectedAddFood(food);
-    setNewItemName(food.name || "");
-
-    const defaultGrams = Number(food?.defaultServing?.grams || 100);
-    const isLiquid = food?.isLiquid || food?.unit === "ml";
-    setNewItemQuantity(String(Math.round(defaultGrams)));
-    setNewItemUnit(isLiquid ? "ml" : "g");
-    // setNewItemPortion(food?.defaultServing?.description || "");
-
-    setShowAddSuggestions(false);
-    setActiveAddSuggestionIndex(-1);
-  };
-
-  useEffect(() => {
-    if (!isAddingItem) return;
-
-    const query = newItemName.trim();
-    if (addSearchTimeoutRef.current) {
-      clearTimeout(addSearchTimeoutRef.current);
-      addSearchTimeoutRef.current = null;
-    }
-
-    if (query.length < 1) {
-      setAddSearchResults([]);
-      setIsAddSearching(false);
-      return;
-    }
-
-    const cached = geminiService.getCachedSearch(query);
-    if (cached?.results?.length) {
-      setAddSearchResults(cached.results);
-    }
-
-    setIsAddSearching(true);
-    addSearchTimeoutRef.current = setTimeout(async () => {
-      try {
-        const searchRes = await geminiService.searchFood(query);
-        setAddSearchResults(searchRes?.results || []);
-      } catch (error) {
-        console.error("[NutritionCard] Add-item suggestion search failed:", error);
-      } finally {
-        setIsAddSearching(false);
-      }
-    }, 250);
-
-    return () => {
-      if (addSearchTimeoutRef.current) {
-        clearTimeout(addSearchTimeoutRef.current);
-        addSearchTimeoutRef.current = null;
-      }
-    };
-  }, [newItemName, isAddingItem]);
-
-  const handleAddNameKeyDown = (e) => {
-    if (!showAddSuggestions || addSearchResults.length === 0) return;
-
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setActiveAddSuggestionIndex((prev) =>
-        prev < addSearchResults.length - 1 ? prev + 1 : 0,
-      );
-      return;
-    }
-
-    if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setActiveAddSuggestionIndex((prev) =>
-        prev > 0 ? prev - 1 : addSearchResults.length - 1,
-      );
-      return;
-    }
-
-    if (e.key === "Enter" && activeAddSuggestionIndex >= 0) {
-      e.preventDefault();
-      const selected = addSearchResults[activeAddSuggestionIndex];
-      if (selected) {
-        handleSelectAddSuggestion(selected);
-      }
-      return;
-    }
-
-    if (e.key === "Escape") {
-      setShowAddSuggestions(false);
-      setActiveAddSuggestionIndex(-1);
-    }
-  };
-
-  const calculateNutritionFromSearchResult = (foodResult, quantity) => {
-    if (!foodResult) return null;
-
-    const qty = Number(quantity) || 0;
-    if (qty <= 0) return null;
-
-    if (foodResult.per100g) {
-      const multiplier = qty / 100;
-      return {
-        calories: Math.round((foodResult.per100g.calories || 0) * multiplier),
-        protein: Math.ceil((foodResult.per100g.protein || 0) * multiplier),
-        carbs: Math.ceil((foodResult.per100g.carbs || 0) * multiplier),
-        fat: Math.ceil((foodResult.per100g.fat || 0) * multiplier),
-        fiber: Math.ceil((foodResult.per100g.fiber || 0) * multiplier),
-      };
-    }
-
-    const defaultServing = foodResult.defaultServing;
-    if (
-      defaultServing?.nutrition &&
-      defaultServing?.grams &&
-      Number(defaultServing.grams) > 0
-    ) {
-      const multiplier = qty / Number(defaultServing.grams);
-      return {
-        calories: Math.round((defaultServing.nutrition.calories || 0) * multiplier),
-        protein: Math.ceil((defaultServing.nutrition.protein || 0) * multiplier),
-        carbs: Math.ceil((defaultServing.nutrition.carbs || 0) * multiplier),
-        fat: Math.ceil((defaultServing.nutrition.fat || 0) * multiplier),
-        fiber: Math.ceil((defaultServing.nutrition.fiber || 0) * multiplier),
-      };
-    }
-
-    return null;
-  };
-
-  const saveMealUpdate = async (items, totals) => {
     // Phase 5: Auto-save update to backend
     if (!savedMealId) {
       console.warn("⚠️ [NutritionCard] No saved meal ID - skipping auto-save");
@@ -308,66 +189,95 @@ const NutritionCard = ({
       throw new Error("User not authenticated or not found in database");
     }
 
-    const analysisData = {
-      foods: items.map((item) => {
-        const actualGrams =
-          item.serving?.grams ||
-          item.grams ||
-          item.weight_g ||
-          item.volume_ml ||
-          100;
-        const isLiquid = item.isLiquid || false;
-        const unit = item.unit || (isLiquid ? "ml" : "g");
+      // Prepare analysis data
+      const analysisData = {
+        foods: newItems.map((item) => {
+          // 🔍 Get the actual grams value from the serving or item
+          const actualGrams =
+            item.serving?.grams ||
+            item.grams ||
+            item.weight_g ||
+            item.volume_ml ||
+            100;
+          const isLiquid = item.isLiquid || false;
+          const unit = item.unit || (isLiquid ? "ml" : "g");
 
-        return {
-          name: item.name,
-          originalAiName: item.originalAiName || item.name,
-          wasAutoCorrected: item.wasAutoCorrected || false,
-          correctionSource: item.correctionSource || null,
-          correctionMetadata: item.correctionMetadata || null,
-          portion:
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "1 serving",
-          weight_g: isLiquid ? null : actualGrams,
-          volume_ml: isLiquid ? actualGrams : null,
-          grams: actualGrams,
-          unit: unit,
-          isLiquid: isLiquid,
-          nutrition: {
-            calories: Math.round(item.nutrition?.calories || item.calories || 0),
-            protein: Math.round(item.nutrition?.protein || item.protein || 0),
-            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
-            fat: Math.round(item.nutrition?.fat || item.fat || 0),
-            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
-          },
-        };
-      }),
-      total: {
-        calories: Math.round(totals.calories || 0),
-        protein: Math.round(totals.protein || 0),
-        carbs: Math.round(totals.carbs || 0),
-        fat: Math.round(totals.fat || 0),
-        fiber: Math.round(totals.fiber || 0),
-      },
-      confidence: "high",
-    };
+          return {
+            name: item.name,
+            // 🔴 CRITICAL: Preserve correction metadata for database persistence
+            originalAiName: item.originalAiName || item.name,
+            wasAutoCorrected: item.wasAutoCorrected || false,
+            correctionSource: item.correctionSource || null,
+            correctionMetadata: item.correctionMetadata || null,
+            portion:
+              item.serving?.description ||
+              item.portionDescription ||
+              item.portion ||
+              "1 serving",
+            // ✅ Save to correct field based on liquid/solid
+            weight_g: isLiquid ? null : actualGrams,
+            volume_ml: isLiquid ? actualGrams : null,
+            grams: actualGrams, // Also save to grams field for backwards compatibility
+            unit: unit,
+            isLiquid: isLiquid,
+            nutrition: {
+              calories: Math.round(
+                item.nutrition?.calories || item.calories || 0,
+              ),
+              protein: Math.round(item.nutrition?.protein || item.protein || 0),
+              carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
+              fat: Math.round(item.nutrition?.fat || item.fat || 0),
+              fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
+            },
+          };
+        }),
+        total: {
+          calories: Math.round(newTotals.calories || 0),
+          protein: Math.round(newTotals.protein || 0),
+          carbs: Math.round(newTotals.carbs || 0),
+          fat: Math.round(newTotals.fat || 0),
+          fiber: Math.round(newTotals.fiber || 0),
+        },
+        confidence: "high",
+      };
 
-    const response = await fetch(`${apiBaseUrl}/api/update-nutrition-analysis`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: savedMealId,
-        userId: userId,
-        analysisData: analysisData,
-        totalCalories: Math.round(totals.calories || 0),
-        totalProtein: Math.round(totals.protein || 0),
-        totalCarbs: Math.round(totals.carbs || 0),
-        totalFat: Math.round(totals.fat || 0),
-        totalFiber: Math.round(totals.fiber || 0),
-      }),
-    });
+      // 🔍 DEBUG: Log what we're sending to the API
+      console.log(
+        "🔍 [NutritionCard] Sending to API - Foods with weights:",
+        analysisData.foods.map((f) => ({
+          name: f.name,
+          weight_g: f.weight_g,
+          volume_ml: f.volume_ml,
+          grams: f.grams,
+          unit: f.unit,
+          isLiquid: f.isLiquid,
+          portion: f.portion,
+        })),
+      );
+
+      // Update existing meal
+      console.log(
+        "📝 [NutritionCard] Auto-saving update to meal ID:",
+        savedMealId,
+      );
+
+      const response = await fetch(
+        `${apiBaseUrl}/api/update-nutrition-analysis`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: savedMealId,
+            userId: userId,
+            analysisData: analysisData,
+            totalCalories: Math.round(newTotals.calories || 0),
+            totalProtein: Math.round(newTotals.protein || 0),
+            totalCarbs: Math.round(newTotals.carbs || 0),
+            totalFat: Math.round(newTotals.fat || 0),
+            totalFiber: Math.round(newTotals.fiber || 0),
+          }),
+        },
+      );
 
     const result = await response.json();
 
@@ -598,21 +508,20 @@ const NutritionCard = ({
         breakdownText += `\n`;
       }
 
-      breakdownText += `Tracked with Wellness Valley 💚`;
-
+      // Capture and share the complete nutrition card (food image + all nutrition details)
       await captureAndShare(shareRef.current, {
         title: `${mealName} - Wellness Valley`,
-        text: breakdownText,
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,
-        // whatsappOnly: true, // Explicitly enable WhatsApp sharing
       });
     } catch (error) {
       console.error("❌ Failed to share:", error);
       // Show error to user if it's not a cancellation
-      if (!error?.message?.toLowerCase().includes('cancel')) {
-        alert('Unable to share. Please check your device settings and permissions.');
+      if (!error?.message?.toLowerCase().includes("cancel")) {
+        alert(
+          "Unable to share. Please check your device settings and permissions.",
+        );
       }
     } finally {
       setIsSharing(false);
@@ -632,87 +541,200 @@ const NutritionCard = ({
   } = data;
   return (
     <>
-      {/* Hidden container for sharing - includes image + card */}
+      {/* Hidden container for sharing - includes image + card at high resolution */}
       <div
         ref={shareRef}
-        className="fixed -left-[9999px] top-0 w-[400px]"
-        style={{ position: "fixed", left: "-9999px" }}
+        className="fixed -left-[9999px] top-0"
+        style={{
+          position: "fixed",
+          left: "-9999px",
+          top: "0",
+          width: "1200px",
+          maxHeight: "none",
+          height: "auto",
+        }}
       >
-        <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-hidden">
-          {/* Food Image for sharing */}
-          {(imagePreview || selectedImage) && (
-            <div className="relative">
+        <div
+          className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-visible"
+          style={{ height: "auto" }}
+        >
+          {/* Food Image for sharing - ULTRA HIGH QUALITY (No Compression) */}
+          {highResImageUrl && (
+            <div
+              className="relative"
+              style={{ height: "1200px", overflow: "hidden" }}
+            >
               <img
-                src={imagePreview || selectedImage}
+                src={highResImageUrl}
                 alt="Food"
-                className="w-full h-64 object-cover"
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "cover",
+                  imageRendering: "crisp-edges",
+                  WebkitImageRendering: "crisp-edges",
+                  msInterpolationMode: "nearest-neighbor",
+                }}
+                className="high-quality-image"
                 crossOrigin="anonymous"
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
 
-          {/* Duplicate card content for sharing */}
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-4">
+          {/* Duplicate card content for sharing - Scaled up for high resolution */}
+          <div
+            className="bg-gradient-to-r from-green-500 to-green-600 text-white"
+            style={{ padding: "32px" }}
+          >
             <div className="text-center">
-              <h2 className="text-xl font-bold">{generateMealName()}</h2>
+              <h2 style={{ fontSize: "48px", fontWeight: "bold" }}>
+                {generateMealName()}
+              </h2>
               {localDetailedItems.length > 1 && (
-                <p className="text-green-100 text-sm mt-1">
+                <p
+                  className="text-green-100"
+                  style={{ fontSize: "32px", marginTop: "8px" }}
+                >
                   {localDetailedItems.length} food items analyzed
                 </p>
               )}
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="grid grid-cols-2 gap-3 mb-4">
-              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-red-600">
+          <div style={{ padding: "48px" }}>
+            <div
+              className="grid grid-cols-2 gap-3 mb-4"
+              style={{ gap: "24px", marginBottom: "32px" }}
+            >
+              <div
+                className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-red-600"
+                >
                   {localNutrition.calories}
                 </div>
-                <div className="text-sm font-medium text-red-700 mt-1">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-red-700"
+                >
                   Calories
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-yellow-600">
+              <div
+                className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-yellow-600"
+                >
                   {localNutrition.carbs}g
                 </div>
-                <div className="text-sm font-medium text-yellow-700 mt-1">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-yellow-700"
+                >
                   Carbs
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-blue-600">
+              <div
+                className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-blue-600"
+                >
                   {localNutrition.protein}g
                 </div>
-                <div className="text-sm font-medium text-blue-700 mt-1">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-blue-700"
+                >
                   Protein
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl p-4 text-center">
-                <div className="text-3xl font-bold text-purple-600">
+              <div
+                className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-purple-600"
+                >
                   {localNutrition.fat}g
                 </div>
-                <div className="text-sm font-medium text-purple-700 mt-1">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-purple-700"
+                >
                   Fat
                 </div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl p-4 text-center mb-4">
-              <div className="text-3xl font-bold text-green-600">
+            <div
+              className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center"
+              style={{
+                padding: "32px",
+                borderRadius: "24px",
+                marginBottom: "32px",
+              }}
+            >
+              <div
+                style={{ fontSize: "72px", fontWeight: "bold" }}
+                className="text-green-600"
+              >
                 {localNutrition.fiber}g
               </div>
-              <div className="text-sm font-medium text-green-700 mt-1">
+              <div
+                style={{
+                  fontSize: "32px",
+                  fontWeight: "500",
+                  marginTop: "8px",
+                }}
+                className="text-green-700"
+              >
                 Fiber
               </div>
             </div>
 
             {/* Macronutrient Bar */}
-            <div className="mt-4">
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">
+            <div style={{ marginTop: "32px" }}>
+              <h3
+                style={{
+                  fontSize: "28px",
+                  fontWeight: "600",
+                  marginBottom: "16px",
+                }}
+                className="text-gray-700"
+              >
                 Macronutrient Distribution
               </h3>
-              <div className="flex rounded-lg overflow-hidden h-4 bg-gray-200">
+              <div
+                className="flex rounded-lg overflow-hidden bg-gray-200"
+                style={{ height: "32px", borderRadius: "16px" }}
+              >
                 {(() => {
                   const totalCals =
                     nutrition.carbs * 4 +
@@ -748,13 +770,29 @@ const NutritionCard = ({
               </div>
             </div>
 
-            {/* Food Breakdown for sharing */}
+            {/* Food Breakdown for sharing - Scaled up */}
             {localDetailedItems && localDetailedItems.length > 0 && (
-              <div className="mt-6 pt-4 border-t border-gray-200">
-                <h3 className="text-lg font-semibold text-gray-800 mb-3">
+              <div
+                style={{ marginTop: "48px", paddingTop: "32px" }}
+                className="border-t border-gray-200"
+              >
+                <h3
+                  style={{
+                    fontSize: "42px",
+                    fontWeight: "600",
+                    marginBottom: "24px",
+                  }}
+                  className="text-gray-800"
+                >
                   Food Breakdown
                 </h3>
-                <div className="space-y-3">
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "24px",
+                  }}
+                >
                   {localDetailedItems.map((item, index) => {
                     const itemCals = Math.round(
                       item.nutrition?.calories || item.calories || 0,
@@ -770,41 +808,73 @@ const NutritionCard = ({
                     return (
                       <div
                         key={index}
-                        className="pb-3 border-b border-gray-100 last:border-0"
+                        style={{ paddingBottom: "24px" }}
+                        className="border-b border-gray-100 last:border-0"
                       >
-                        <div className="flex justify-between items-start mb-1">
+                        <div
+                          className="flex justify-between items-start"
+                          style={{ marginBottom: "12px" }}
+                        >
                           <div className="flex-1 min-w-0">
-                            <div className="font-medium text-gray-900">
+                            <div
+                              style={{ fontSize: "32px", fontWeight: "500" }}
+                              className="text-gray-900"
+                            >
                               {item.name}
                             </div>
-                            <div className="text-xs text-gray-500 mt-0.5">
+                            <div
+                              style={{ fontSize: "24px", marginTop: "8px" }}
+                              className="text-gray-500"
+                            >
                               {portion} {weight ? `(${weight}g)` : ""}
                             </div>
                           </div>
-                          
+
                           {/* Calories */}
-                          <div className="text-base font-bold text-red-600 flex-shrink-0 ml-2">
+                          <div
+                            style={{
+                              fontSize: "36px",
+                              fontWeight: "bold",
+                              marginLeft: "16px",
+                            }}
+                            className="text-red-600 flex-shrink-0"
+                          >
                             {itemCals} kcal
                           </div>
                         </div>
-                        
+
                         {/* Nutrient breakdown */}
-                        <div className="text-[11px] font-medium flex flex-wrap gap-2">
+                        <div
+                          style={{
+                            fontSize: "24px",
+                            fontWeight: "500",
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "16px",
+                          }}
+                        >
                           <span className="text-blue-600">
                             Protein{" "}
                             {Math.round(
                               item.nutrition?.protein || item.protein || 0,
-                            )}g
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-yellow-600">
                             Carbs{" "}
-                            {Math.round(item.nutrition?.carbs || item.carbs || 0)}g
+                            {Math.round(
+                              item.nutrition?.carbs || item.carbs || 0,
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-green-600">
                             Fiber{" "}
-                            {Math.round(item.nutrition?.fiber || item.fiber || 0)}g
+                            {Math.round(
+                              item.nutrition?.fiber || item.fiber || 0,
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-purple-600">
@@ -1166,8 +1236,11 @@ const NutritionCard = ({
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:shadow-lg active:scale-[0.98]"
               }`}
-              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
-          
+              style={{
+                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
               {isSharing ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

@@ -16,6 +16,7 @@ import android.graphics.Bitmap;
 import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
+import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
 public class MainActivity extends BridgeActivity {
@@ -31,6 +32,9 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
+        
+        // ✅ Register WhatsAppSharePlugin for high-quality image sharing
+        registerPlugin(WhatsAppSharePlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(

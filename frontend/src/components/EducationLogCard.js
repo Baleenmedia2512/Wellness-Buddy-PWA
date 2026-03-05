@@ -27,11 +27,11 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
 
     setIsSharing(true);
     try {
+      // Capture and share the card with image + details
       await captureAndShare(shareRef.current, {
         title: `Education Session - ${educationData.topic}`,
-        text: `${educationData.topic} on ${educationData.platform}`,
+        text: "",
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
-        // whatsappOnly: true,
       });
     } catch (error) {
       console.error("Failed to share:", error);

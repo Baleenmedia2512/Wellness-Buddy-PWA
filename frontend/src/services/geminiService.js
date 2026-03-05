@@ -159,16 +159,20 @@ class GeminiService {
     });
   }
 
-  // Optimized image preprocessing
+  // ⚡ OPTIMIZED: Skip preprocessing - image already compressed by App.js
   async preprocessImage(imageFile) {
-    const maxSize = 512 * 1024; // 512KB max (faster upload)
-    const maxDimension = 800; // Max width/height (reduced for speed)
+    // Images are now pre-compressed in App.js to 800px @ 60-70% quality
+    // Skip duplicate compression to save 2-3 seconds
+    const maxSize = 1024 * 1024; // 1MB threshold (very generous)
 
-    // If image is already small enough, return as-is
+    // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
+      console.log('⚡ Skipping preprocessing (already compressed)');
       return imageFile;
     }
 
+    // Fallback compression for oversized images
+    const maxDimension = 800;
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");

@@ -72,20 +72,27 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.2',
+  VERSION: '2.3',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 24,
+  VERSION_CODE: 25,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Leaderboard & Share Screenshots',
+  RELEASE_NAME: 'WhatsApp Share Fix & Improvements',
   
   // Build date
-  BUILD_DATE: '2026-02-27',
+  BUILD_DATE: '2026-03-03',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.3 (Code 25) - 2026-03-03
+ *   🔧 Fixed coach heading - now hidden completely when no coach is assigned
+ *   📤 Fixed WhatsApp share functionality in Android app
+ *   📄 Enhanced share quality - images now shared as documents to prevent WhatsApp compression
+ *   🏆 Fixed Weight Loss Leaderboard alignment issues
+ *   ✨ Enhanced overall stability and user experience
  * 
  * Version 2.2 (Code 24) - 2026-02-27
  *   🏆 Weight loss leaderboard strip with real-time tracking

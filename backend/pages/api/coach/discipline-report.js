@@ -89,19 +89,27 @@ export default async function handler(req, res) {
       return;
     }
     
-    // Step 2: Get all active team members recursively using iterative approach
-    // (Supabase REST API doesn't support recursive CTEs, so we do it in JS)
+    // Step 2: Get all active team members recursively using dual coaching model
+    // Support both CoachId and CoCoachId - members can report to 2 coaches
     const allMembers = [];
-    const seenUserIds = new Set();
+    const memberEntries = []; // Track each coach-member relationship (duplicates allowed)
+    const processedUserIds = new Map(); // Track userId -> member data
     
     // Add coach as level 0
-    allMembers.push({
+    const coachEntry = {
       ...coach,
       HierarchyLevel: 0,
       IsLoggedInCoach: true,
-      UplineCoachName: null
-    });
-    seenUserIds.add(coach.UserId);
+      CoachId: coach.CoachId || null,
+      CoCoachId: coach.CoCoachId || null,
+      CoachName: null,
+      CoCoachName: null,
+      ParentCoachId: null, // Which coach this entry reports through
+      ParentCoachName: null
+    };
+    allMembers.push(coachEntry);
+    memberEntries.push(coachEntry);
+    processedUserIds.set(coach.UserId, coach);
     
     // Iteratively fetch team members level by level
     let currentLevelCoachIds = [coachIdInt];
@@ -109,10 +117,11 @@ export default async function handler(req, res) {
     const maxLevel = 10;
     
     while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+      // Fetch members where coach_id OR co_coach_id matches current level coaches
       const { data: levelMembers, error: levelError } = await supabase
         .from('team_table')
         .select('*')
-        .in('UplineCoachId', currentLevelCoachIds)
+        .or(`CoachId.in.(${currentLevelCoachIds.join(',')}),CoCoachId.in.(${currentLevelCoachIds.join(',')})`)
         .eq('Status', 'Active');
       
       if (levelError) {
@@ -125,29 +134,93 @@ export default async function handler(req, res) {
       const nextLevelCoachIds = [];
       
       for (const member of levelMembers) {
-        if (!seenUserIds.has(member.UserId)) {
-          seenUserIds.add(member.UserId);
-          
-          // Find upline coach name
-          const uplineCoach = allMembers.find(m => m.UserId === member.UplineCoachId);
-          
-          allMembers.push({
-            ...member,
+        // Store base member data
+        if (!processedUserIds.has(member.UserId)) {
+          processedUserIds.set(member.UserId, member);
+        }
+        
+        const baseMember = processedUserIds.get(member.UserId);
+        
+        // Create entries for BOTH coach and co-coach relationships (duplicates allowed)
+        const relationships = [];
+        
+        if (currentLevelCoachIds.includes(member.CoachId)) {
+          const parentCoach = allMembers.find(m => m.UserId === member.CoachId);
+          relationships.push({
+            ...baseMember,
             HierarchyLevel: currentLevel,
             IsLoggedInCoach: false,
-            UplineCoachName: uplineCoach?.UserName || null
+            CoachId: member.CoachId,
+            CoCoachId: member.CoCoachId,
+            ParentCoachId: member.CoachId,
+            ParentCoachName: parentCoach?.UserName || null,
+            IsCoachRelationship: true
           });
-          
-          // If this member is a coach, add to next level search
-          if (member.Role === 'coach') {
-            nextLevelCoachIds.push(member.UserId);
-          }
         }
+        
+        if (currentLevelCoachIds.includes(member.CoCoachId)) {
+          const parentCoCoach = allMembers.find(m => m.UserId === member.CoCoachId);
+          relationships.push({
+            ...baseMember,
+            HierarchyLevel: currentLevel,
+            IsLoggedInCoach: false,
+            CoachId: member.CoachId,
+            CoCoachId: member.CoCoachId,
+            ParentCoachId: member.CoCoachId,
+            ParentCoachName: parentCoCoach?.UserName || null,
+            IsCoachRelationship: false
+          });
+        }
+        
+        // Add all relationship entries
+        relationships.forEach(entry => {
+          memberEntries.push(entry);
+          
+          // Add to nextLevel if they are a coach (avoid duplicates)
+          if (entry.Role === 'coach' && !nextLevelCoachIds.includes(entry.UserId)) {
+            nextLevelCoachIds.push(entry.UserId);
+          }
+        });
       }
       
       currentLevelCoachIds = nextLevelCoachIds;
       currentLevel++;
     }
+    
+    // Get coach names for all CoachId and CoCoachId
+    const allCoachIds = new Set();
+    Array.from(processedUserIds.values()).forEach(m => {
+      if (m.CoachId) allCoachIds.add(m.CoachId);
+      if (m.CoCoachId) allCoachIds.add(m.CoCoachId);
+    });
+    
+    const coachNameMap = {};
+    if (allCoachIds.size > 0) {
+      const { data: coaches } = await supabase
+        .from('team_table')
+        .select('UserId, UserName')
+        .in('UserId', Array.from(allCoachIds));
+      
+      if (coaches) {
+        coaches.forEach(c => {
+          coachNameMap[c.UserId] = c.UserName;
+        });
+      }
+    }
+    
+    // Add coach names to all entries
+    memberEntries.forEach(entry => {
+      if (entry.CoachId) {
+        entry.CoachName = coachNameMap[entry.CoachId] || null;
+      }
+      if (entry.CoCoachId) {
+        entry.CoCoachName = coachNameMap[entry.CoCoachId] || null;
+      }
+    });
+    
+    // Use memberEntries for processing (includes duplicates for dual reporting)
+    allMembers.length = 0;
+    allMembers.push(...memberEntries);
     
     // Step 3: Get time windows
     const { data: timeWindows, error: twError } = await supabase
@@ -178,7 +251,8 @@ export default async function handler(req, res) {
     // Step 4: Calculate discipline for all members
     const startDateStr = formatDateForMySQL(dates.start);
     const endDateStr = formatDateForMySQL(dates.end);
-    const allUserIds = allMembers.map(m => m.UserId);
+    // Get unique user IDs for data fetching (no duplicates in queries)
+    const allUserIds = Array.from(processedUserIds.keys());
     
     // Fetch all required data in bulk for efficiency
     const [weightData, educationData, foodData] = await Promise.all([
@@ -316,7 +390,7 @@ export default async function handler(req, res) {
       };
     });
     
-    // Step 5: Separate coach from team members
+    // Step 5: Separate coach from team members (use unique members from processedUserIds)
     const loggedInCoach = allMembers.find(m => m.IsLoggedInCoach);
     const teamMembers = allMembers.filter(m => !m.IsLoggedInCoach);
     
@@ -331,7 +405,6 @@ export default async function handler(req, res) {
         endDate: dates.end.toISOString().split('T')[0],
         coachPerformance: null,
         teamMembers: [],
-        coachFilters: [],
         teamSummary: {
           totalMembers: 0,
           totalTeamMembers: 0,
@@ -344,42 +417,6 @@ export default async function handler(req, res) {
       return;
     }
     
-    // Helper function to build coach filter options
-    const buildCoachFilters = (allMembers, loggedInCoachId) => {
-      const filters = [];
-      
-      // Add "My Team" filter (logged-in coach's direct members)
-      const myTeamCount = allMembers.filter(m => 
-        m.UplineCoachId === loggedInCoachId && !m.IsLoggedInCoach
-      ).length;
-      
-      if (myTeamCount > 0) {
-        filters.push({
-          coachId: loggedInCoachId,
-          coachName: 'My Team',
-          memberCount: myTeamCount,
-          isMyTeam: true
-        });
-      }
-      
-      // Add other sub-coaches' teams
-      allMembers.forEach(member => {
-        if (member.Role === 'coach' && !member.IsLoggedInCoach) {
-          const teamCount = allMembers.filter(m => m.UplineCoachId === member.UserId).length;
-          if (teamCount > 0) {
-            filters.push({
-              coachId: member.UserId,
-              coachName: `${member.UserName}'s Team`,
-              memberCount: teamCount,
-              isMyTeam: false
-            });
-          }
-        }
-      });
-      
-      return filters;
-    };
-    
     // Helper function to format time for display (HH:MM:SS -> h:MM AM/PM)
     const formatTimeForDisplay = (timeStr) => {
       if (!timeStr) return '';
@@ -390,10 +427,7 @@ export default async function handler(req, res) {
       return `${displayHour}:${minutes} ${ampm}`;
     };
     
-    // Step 6: Build coach filters
-    const coachFilters = buildCoachFilters(allMembers, coachIdInt);
-    
-    // Step 7: Format logged-in coach's performance data
+    // Step 6: Format logged-in coach's performance data
     let coachPerformanceData = null;
     if (loggedInCoach) {
       const coachDiscipline = disciplineData.find(d => d.userId === loggedInCoach.UserId);
@@ -415,8 +449,10 @@ export default async function handler(req, res) {
           role: loggedInCoach.Role,
           joinedDate: loggedInCoach.EntryDateTime,
           isLoggedInCoach: true,
-          uplineCoachId: loggedInCoach.UplineCoachId,
-          uplineCoachName: loggedInCoach.UplineCoachName || 'None',
+          coachId: loggedInCoach.CoachId,
+          coCoachId: loggedInCoach.CoCoachId,
+          coachName: loggedInCoach.CoachName || null,
+          coCoachName: loggedInCoach.CoCoachName || null,
           hierarchyLevel: loggedInCoach.HierarchyLevel,
           periodDiscipline: {
             percentage: calculateDisciplinePercentage(
@@ -496,7 +532,7 @@ export default async function handler(req, res) {
       }
     }
     
-    // Step 8: Format response data (team members only, exclude coach)
+    // Step 7: Format response data (team members - includes duplicates for dual reporting)
     const formattedTeamMembers = teamMembers.map(member => {
       const discipline = disciplineData.find(d => d.userId === member.UserId);
       
@@ -505,8 +541,11 @@ export default async function handler(req, res) {
       }
       
       const isCoach = member.Role === 'coach';
+      // Count sub-team based on CoachId or CoCoachId
       const subTeamCount = isCoach 
-        ? allMembers.filter(m => m.UplineCoachId === member.UserId).length 
+        ? Array.from(processedUserIds.values()).filter(m => 
+            m.CoachId === member.UserId || m.CoCoachId === member.UserId
+          ).length 
         : 0;
       
       const activities = {
@@ -588,8 +627,12 @@ export default async function handler(req, res) {
         isCoach: isCoach,
         isLoggedInCoach: false,
         subTeamCount: subTeamCount,
-        uplineCoachId: member.UplineCoachId,
-        uplineCoachName: member.UplineCoachName,
+        coachId: member.CoachId,
+        coCoachId: member.CoCoachId,
+        coachName: member.CoachName,
+        coCoachName: member.CoCoachName,
+        parentCoachId: member.ParentCoachId, // Which coach this entry reports through
+        parentCoachName: member.ParentCoachName,
         hierarchyLevel: member.HierarchyLevel,
         profileImage: null,
         joinedDate: member.EntryDateTime,
@@ -603,12 +646,21 @@ export default async function handler(req, res) {
       };
     }).filter(m => m !== null);
     
-    // Step 9: Calculate team summary
+    // Step 8: Calculate team summary (use unique members for stats)
+    const uniqueMembers = Array.from(processedUserIds.values());
     const allMembersForStats = [];
     if (coachPerformanceData) {
       allMembersForStats.push(coachPerformanceData);
     }
-    allMembersForStats.push(...formattedTeamMembers);
+    // Add unique members only (avoid counting duplicates in stats)
+    uniqueMembers.forEach(um => {
+      if (um.UserId !== coachIdInt) {
+        const formattedMember = formattedTeamMembers.find(fm => fm.userId === um.UserId);
+        if (formattedMember) {
+          allMembersForStats.push(formattedMember);
+        }
+      }
+    });
     
     const avgPeriodDiscipline = allMembersForStats.length > 0
       ? allMembersForStats.reduce((sum, m) => sum + m.periodDiscipline.percentage, 0) / allMembersForStats.length
@@ -622,7 +674,7 @@ export default async function handler(req, res) {
     
     const needsAttention = allMembersForStats.filter(m => m.periodDiscipline.percentage < 60);
     
-    // Step 10: Return response
+    // Step 9: Return response
     res.status(200).json({
       success: true,
       source: 'realtime',
@@ -632,12 +684,11 @@ export default async function handler(req, res) {
       startDate: dates.start.toISOString().split('T')[0],
       endDate: dates.end.toISOString().split('T')[0],
       coachPerformance: coachPerformanceData,
-      teamMembers: formattedTeamMembers,
-      coachFilters: coachFilters,
+      teamMembers: formattedTeamMembers, // Includes duplicates for dual reporting
       teamSummary: {
-        totalMembers: allMembers.length,
-        totalTeamMembers: formattedTeamMembers.length,
-        totalCoaches: coachFilters.length,
+        totalMembers: uniqueMembers.length, // Unique count
+        totalTeamMembers: formattedTeamMembers.length, // Total entries (with duplicates)
+        totalCoaches: uniqueMembers.filter(m => m.Role === 'coach' || m.Role === 'admin').length,
         averagePeriodDiscipline: Math.round(avgPeriodDiscipline * 10) / 10,
         topPerformer: topPerformer ? {
           userId: topPerformer.userId,
