@@ -29,6 +29,8 @@ import {
   Trash2,
 } from "lucide-react";
 
+const DELETE_UNDO_SECONDS = 5;
+
 /**
  * Editable food item component for nutrition breakdown
  * Allows users to search and replace food items with accurate serving sizes
@@ -96,6 +98,13 @@ const EditableFoodItem = forwardRef(
 
     // Phase 7: AbortController to cancel pending saves
     const abortControllerRef = useRef(null);
+
+    // Delete undo state (delayed delete with 5s undo window)
+    const [isDeletePending, setIsDeletePending] = useState(false);
+    const [deleteCountdown, setDeleteCountdown] = useState(DELETE_UNDO_SECONDS);
+    const [deleteAnimKey, setDeleteAnimKey] = useState(0);
+    const deleteTimeoutRef = useRef(null);
+    const deleteIntervalRef = useRef(null);
     
     // Define handleDone as forward reference (implementation below)
     const handleDoneRef = useRef();
@@ -256,8 +265,33 @@ const EditableFoodItem = forwardRef(
         if (retryTimeoutRef.current) {
           clearTimeout(retryTimeoutRef.current);
         }
+
+        if (deleteTimeoutRef.current) {
+          clearTimeout(deleteTimeoutRef.current);
+        }
+        if (deleteIntervalRef.current) {
+          clearInterval(deleteIntervalRef.current);
+        }
       };
     }, []);
+
+    const clearDeleteTimers = useCallback(() => {
+      if (deleteTimeoutRef.current) {
+        clearTimeout(deleteTimeoutRef.current);
+        deleteTimeoutRef.current = null;
+      }
+      if (deleteIntervalRef.current) {
+        clearInterval(deleteIntervalRef.current);
+        deleteIntervalRef.current = null;
+      }
+    }, []);
+
+    const resetPendingDelete = useCallback(() => {
+      clearDeleteTimers();
+      setIsDeletePending(false);
+      setDeleteCountdown(DELETE_UNDO_SECONDS);
+      setDeleteAnimKey(0);
+    }, [clearDeleteTimers]);
 
     // Convert text numbers to digits
     const textToNumber = (text) => {
@@ -1567,8 +1601,37 @@ const EditableFoodItem = forwardRef(
     };
 
     const handleDelete = () => {
-      if (disabled || !onDelete) return;
-      onDelete(index);
+      if (disabled || !onDelete || isDeletePending) return;
+
+      setIsDeletePending(true);
+      setDeleteCountdown(DELETE_UNDO_SECONDS);
+      setDeleteAnimKey((prev) => prev + 1);
+
+      deleteIntervalRef.current = setInterval(() => {
+        setDeleteCountdown((prev) => {
+          if (prev <= 1) {
+            if (deleteIntervalRef.current) {
+              clearInterval(deleteIntervalRef.current);
+              deleteIntervalRef.current = null;
+            }
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+
+      deleteTimeoutRef.current = setTimeout(() => {
+        clearDeleteTimers();
+        setIsDeletePending(false);
+        setDeleteCountdown(DELETE_UNDO_SECONDS);
+        setDeleteAnimKey(0);
+        onDelete(index);
+      }, DELETE_UNDO_SECONDS * 1000); 
+    };
+
+    const handleUndoDelete = () => {
+      if (!isDeletePending) return;
+      resetPendingDelete();
     };
 
     // Display mode
@@ -1629,34 +1692,66 @@ const EditableFoodItem = forwardRef(
             </div>
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            <TouchFeedbackButton
-              onClick={handleDelete}
-              disabled={disabled}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
-                disabled
-                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                  : "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
-              }`}
-              ariaLabel="Delete food item"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Delete</span>
-            </TouchFeedbackButton>
+            {isDeletePending ? (
+              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5">
+                <div className="flex items-center gap-1.5">
+                  <div className="min-w-[86px]">
+                    <span className="text-xs text-amber-700 font-medium block leading-none">
+                      Deleting in {deleteCountdown}s
+                    </span>
+                    <span className="mt-1 block h-0.5 w-full rounded-full bg-amber-200 overflow-hidden">
+                      <span
+                        key={deleteAnimKey}
+                        className="block h-full bg-amber-600"
+                        style={{
+                          transformOrigin: "left",
+                          animation: `countdown-shrink ${DELETE_UNDO_SECONDS}s linear forwards`,
+                        }}
+                      />
+                    </span>
+                  </div>
+                </div>
+                <TouchFeedbackButton
+                  onClick={handleUndoDelete}
+                  className="px-2 py-1 text-xs font-medium rounded-md transition-colors border text-amber-700 hover:text-amber-800 hover:bg-amber-100 border-amber-300"
+                  ariaLabel="Undo delete"
+                >
+                  <span>Undo</span>
+                </TouchFeedbackButton>
+              </div>
+            ) : (
+              <>
+                <TouchFeedbackButton
+                  onClick={handleDelete}
+                  disabled={disabled}
+                  className={`px-2.5 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
+                    disabled
+                      ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                      : "text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  }`}
+                  ariaLabel="Delete food item"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Delete</span>
+                </TouchFeedbackButton>
 
-            <TouchFeedbackButton
-              onClick={handleEdit}
-              disabled={disabled}
-              className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
-                disabled
-                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
-                  : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
-              }`}
-              ariaLabel="Edit food item"
-            >
-              <Edit2 className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Edit</span>
-            </TouchFeedbackButton>
+                <TouchFeedbackButton
+                  onClick={handleEdit}
+                  disabled={disabled}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors flex items-center gap-1.5 border ${
+                    disabled
+                      ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                      : "text-blue-600 hover:text-blue-700 hover:bg-blue-50 border-blue-200"
+                  }`}
+                  ariaLabel="Edit food item"
+                >
+                  <Edit2 className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Edit</span>
+                </TouchFeedbackButton>
+              </>
+            )}
           </div>
+          <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
         </div>
       );
     }
