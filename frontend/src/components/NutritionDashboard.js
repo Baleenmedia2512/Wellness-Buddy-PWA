@@ -503,7 +503,7 @@ const NutritionDashboard = ({
   /* ---------------- Helpers ---------------- */
 
   const getMealCategory = (timeString) => {
-    const hour = new Date(timeString).getHours();
+    const hour = istToLocalDate(timeString).getHours();
     if (hour >= 5 && hour < 10) return "breakfast";
     if (hour >= 10 && hour < 12) return "morning-snack";
     if (hour >= 12 && hour < 16) return "lunch";
@@ -1815,7 +1815,7 @@ const NutritionDashboard = ({
                                 const foodData = parseAnalysisData(
                                   meal.AnalysisData,
                                 );
-                                const mealTime = new Date(
+                                const mealTime = istToLocalDate(
                                   meal.CreatedAt,
                                 ).toLocaleTimeString("en-US", {
                                   hour: "2-digit",
@@ -1963,7 +1963,7 @@ const NutritionDashboard = ({
                 selectedMeal.AnalysisData,
                 "text-white",
               );
-              const mealTime = new Date(
+              const mealTime = istToLocalDate(
                 selectedMeal.CreatedAt,
               ).toLocaleTimeString("en-US", {
                 hour: "2-digit",

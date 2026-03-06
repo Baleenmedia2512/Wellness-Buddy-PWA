@@ -1,4 +1,5 @@
 // src/services/duplicateDetectionService.js
+import { istToLocalDate } from '../utils/timezoneUtils';
 
 /**
  * Get the meal category based on current time
@@ -283,7 +284,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
       }
 
       try {
-        const mealTime = new Date(meal.CreatedAt);
+        const mealTime = istToLocalDate(meal.CreatedAt);
 
         // Edge case: Invalid date
         if (isNaN(mealTime.getTime())) {
@@ -496,7 +497,7 @@ export async function checkForDuplicateWeight({
       }
 
       try {
-        const entryDate = new Date(entry.CreatedAt);
+        const entryDate = istToLocalDate(entry.CreatedAt);
 
         // Edge case: Invalid date
         if (isNaN(entryDate.getTime())) {
@@ -548,7 +549,7 @@ export async function checkForDuplicateWeight({
       if (weightDiff <= tolerance) {
         // Found a duplicate or very similar weight
         try {
-          const entryTime = new Date(entry.CreatedAt);
+          const entryTime = istToLocalDate(entry.CreatedAt);
           const timeDiffMs = currentTime - entryTime;
           const timeDiffHours = Math.floor(timeDiffMs / (1000 * 60 * 60));
           const timeDiffMinutes = Math.floor(
