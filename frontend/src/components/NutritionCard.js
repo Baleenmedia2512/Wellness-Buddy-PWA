@@ -336,7 +336,7 @@ const NutritionCard = ({
     }
 
     const apiBaseUrl =
-      process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+      process.env.REACT_APP_API_BASE_URL;
 
     // Get userId - either from user object directly or via lookup
     let userId = user?.id;
