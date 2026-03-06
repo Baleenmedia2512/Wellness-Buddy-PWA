@@ -15,6 +15,7 @@ import {
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import { istToLocalDate } from '../utils/timezoneUtils';
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -1786,8 +1787,11 @@ const NutritionDashboard = ({
                             {meals
                               .slice()
                               .sort(
-                                (a, b) =>
-                                  new Date(a.CreatedAt) - new Date(b.CreatedAt),
+                                (a, b) => {
+                                  const dateA = istToLocalDate(a.CreatedAt);
+                                  const dateB = istToLocalDate(b.CreatedAt);
+                                  return dateA - dateB;
+                                },
                               )
                               .map((meal) => {
                                 // Show undo row if this is a placeholder
