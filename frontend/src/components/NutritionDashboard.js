@@ -15,8 +15,6 @@ import {
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
-import { geminiService } from "../services/geminiService";
-import { captureAndShare } from "../utils/shareUtils";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -48,10 +46,6 @@ const NutritionDashboard = ({
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
   const [isClosingModal, setIsClosingModal] = useState(false);
-  const [aiDashboardTip, setAiDashboardTip] = useState("");
-  const [isAiTipLoading, setIsAiTipLoading] = useState(false);
-  const [aiTipError, setAiTipError] = useState("");
-  const [isAiTipSharing, setIsAiTipSharing] = useState(false);
 
   // Editable food items state
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
@@ -63,7 +57,6 @@ const NutritionDashboard = ({
   const [editingIndex, setEditingIndex] = useState(null);
   const [resetKey, setResetKey] = useState(0);
   const itemRefs = useRef({});
-  const tipShareRef = useRef(null);
 
   // delete button state
   const [deletingId, setDeletingId] = useState(null);
@@ -780,11 +773,6 @@ const NutritionDashboard = ({
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
 
-  useEffect(() => {
-    setAiDashboardTip("");
-    setAiTipError("");
-  }, [selectedDate]);
-
   // Fetch user's BMR from profile for calorie target
   useEffect(() => {
     const fetchUserBmr = async () => {
@@ -1042,86 +1030,6 @@ const NutritionDashboard = ({
       return { name: "Error parsing data", nutrition: {}, detailedItems: [] };
     }
   };
-
-  const getTodayFoodNames = useCallback(() => {
-    const names = [];
-
-    analyses.forEach((analysis) => {
-      if (analysis?.isUndoPlaceholder) return;
-      const parsed = parseAnalysisData(analysis.AnalysisData);
-      (parsed?.detailedItems || []).forEach((item) => {
-        const name = (item?.name || "").trim();
-        if (name) names.push(name);
-      });
-    });
-
-    return [...new Set(names)].slice(0, 12);
-  }, [analyses]);
-
-  const handleGenerateDashboardTip = useCallback(async () => {
-    setAiTipError("");
-
-    if (!dailyStats.mealCount) {
-      setAiTipError("Log at least one meal for today's AI tip.");
-      return;
-    }
-
-    setIsAiTipLoading(true);
-    try {
-      const foods = getTodayFoodNames().map((name) => ({ name }));
-      const tip = await geminiService.generateDailyNutritionTip({
-        nutrition: {
-          calories: dailyStats.totalCalories,
-          protein: dailyStats.totalProtein,
-          carbs: dailyStats.totalCarbs,
-          fat: dailyStats.totalFat,
-          fiber: dailyStats.totalFiber,
-        },
-        foods,
-      });
-      setAiDashboardTip(tip);
-    } catch (error) {
-      setAiTipError(error.message || "Unable to generate AI tip right now.");
-    } finally {
-      setIsAiTipLoading(false);
-    }
-  }, [dailyStats, getTodayFoodNames]);
-
-  const handleShareDashboardTip = useCallback(async () => {
-    setAiTipError("");
-
-    if (!aiDashboardTip.trim()) {
-      setAiTipError("Generate an AI tip first, then share it.");
-      return;
-    }
-
-    if (!tipShareRef.current) {
-      setAiTipError("Share content is not ready. Please try again.");
-      return;
-    }
-
-    setIsAiTipSharing(true);
-    try {
-      const shareText =
-        `Today's AI Nutrition Tip:\n${aiDashboardTip}\n\n` +
-        `Calories: ${Math.round(dailyStats.totalCalories || 0)} kcal\n` +
-        `Protein: ${Math.round(dailyStats.totalProtein || 0)}g\n` +
-        `Carbs: ${Math.round(dailyStats.totalCarbs || 0)}g\n` +
-        `Fat: ${Math.round(dailyStats.totalFat || 0)}g\n` +
-        `Fiber: ${Math.round(dailyStats.totalFiber || 0)}g\n\n` +
-        `Tracked with Wellness Valley`;
-
-      await captureAndShare(tipShareRef.current, {
-        title: "Daily AI Tip - Wellness Valley",
-        text: shareText,
-        fileName: `wellness-valley-ai-tip-${Date.now()}.png`,
-      });
-    } catch (error) {
-      setAiTipError(error.message || "Unable to share tip right now.");
-    } finally {
-      setIsAiTipSharing(false);
-    }
-  }, [aiDashboardTip, dailyStats]);
 
   const applyDailyDelta = ({
     calories = 0,
@@ -1824,47 +1732,6 @@ const NutritionDashboard = ({
                 </div>
               </div>
             </div>
-
-            {/* Dashboard AI Tip */}
-            <div className="px-3 md:px-4 mb-4">
-              <div
-                ref={tipShareRef}
-                className="w-full max-w-md mx-auto bg-amber-50/90 backdrop-blur-xl rounded-2xl shadow-md border border-amber-200 p-4 md:p-5"
-              >
-                <div className="flex items-center justify-between gap-3 mb-2">
-                  <h3 className="text-sm md:text-base font-semibold text-amber-900">
-                    AI Nutrition Tip
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleGenerateDashboardTip}
-                      disabled={isAiTipLoading || isAiTipSharing}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-200 text-amber-900 hover:bg-amber-300 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {isAiTipLoading ? "Generating..." : "Get AI Tip"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleShareDashboardTip}
-                      disabled={isAiTipSharing || isAiTipLoading}
-                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500 text-white hover:bg-emerald-600 disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {isAiTipSharing ? "Sharing..." : "Share Tip"}
-                    </button>
-                  </div>
-                </div>
-
-                <p className="text-sm text-amber-900 leading-relaxed min-h-[40px]">
-                  {aiDashboardTip || "Tap 'Get AI Tip' for a personalized tip from today's meals."}
-                </p>
-
-                {aiTipError && (
-                  <p className="mt-2 text-xs text-red-600">{aiTipError}</p>
-                )}
-              </div>
-            </div>
-
             {/* Meals */}
             <div className="px-4 md:px-6 space-y-4">
               {(() => {
