@@ -48,6 +48,7 @@ const EditableFoodItem = forwardRef(
       onCancel,
       hideButtons,
       user,
+      onRestore,
     },
     ref,
   ) => {
@@ -1600,8 +1601,16 @@ const EditableFoodItem = forwardRef(
       // Note: originalFoodRef.current is already set at the start of handleEdit
     };
 
-    const handleDelete = () => {
+    const handleDelete = async () => {
       if (disabled || !onDelete || isDeletePending) return;
+
+      try {
+        await onDelete(index, { phase: "immediate", itemSnapshot: foodItem });
+      } catch (error) {
+        console.error("[EditableFoodItem] Immediate delete failed:", error);
+        alert("Failed to delete item. Please try again.");
+        return;
+      }
 
       setIsDeletePending(true);
       setDeleteCountdown(DELETE_UNDO_SECONDS);
@@ -1625,12 +1634,23 @@ const EditableFoodItem = forwardRef(
         setIsDeletePending(false);
         setDeleteCountdown(DELETE_UNDO_SECONDS);
         setDeleteAnimKey(0);
-        onDelete(index);
+        onDelete(index, { phase: "finalize", itemSnapshot: foodItem });
       }, DELETE_UNDO_SECONDS * 1000); 
     };
 
-    const handleUndoDelete = () => {
+    const handleUndoDelete = async () => {
       if (!isDeletePending) return;
+
+      if (onRestore) {
+        try {
+          await onRestore(index, foodItem);
+        } catch (error) {
+          console.error("[EditableFoodItem] Undo restore failed:", error);
+          alert("Failed to restore item. Please try again.");
+          return;
+        }
+      }
+
       resetPendingDelete();
     };
 

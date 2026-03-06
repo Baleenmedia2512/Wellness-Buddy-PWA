@@ -373,8 +373,13 @@ const NutritionDashboard = ({
   };
 
   // Handle food item update and save to database
-  const persistMealItems = async (newItems, newTotals) => {
+  const persistMealItems = async (newItems, newTotals, options = {}) => {
     if (!selectedMeal?.ID) return;
+
+    const {
+      syncSelectedMeal = true,
+      refreshStats = true,
+    } = options;
 
     setIsSaving(true);
     try {
@@ -463,20 +468,24 @@ const NutritionDashboard = ({
         ),
       );
 
-      isAutoSaveUpdateRef.current = true;
-      setSelectedMeal((prev) => ({
-        ...prev,
-        AnalysisData: JSON.stringify(updatedAnalysisData),
-        TotalCalories: Math.round(newTotals.calories || 0),
-        TotalProtein: Math.round(newTotals.protein || 0),
-        TotalCarbs: Math.round(newTotals.carbs || 0),
-        TotalFat: Math.round(newTotals.fat || 0),
-        TotalFiber: Math.round(newTotals.fiber || 0),
-      }));
+      if (syncSelectedMeal) {
+        isAutoSaveUpdateRef.current = true;
+        setSelectedMeal((prev) => ({
+          ...prev,
+          AnalysisData: JSON.stringify(updatedAnalysisData),
+          TotalCalories: Math.round(newTotals.calories || 0),
+          TotalProtein: Math.round(newTotals.protein || 0),
+          TotalCarbs: Math.round(newTotals.carbs || 0),
+          TotalFat: Math.round(newTotals.fat || 0),
+          TotalFiber: Math.round(newTotals.fiber || 0),
+        }));
+      }
 
-      fetchDayAnalyses(selectedDate).catch((err) =>
-        console.error("? Error reloading stats:", err),
-      );
+      if (refreshStats) {
+        fetchDayAnalyses(selectedDate).catch((err) =>
+          console.error("? Error reloading stats:", err),
+        );
+      }
     } catch (error) {
       console.error("[NutritionDashboard] Failed to persist meal items:", error);
       throw error;
@@ -501,24 +510,97 @@ const NutritionDashboard = ({
     }
   };
 
-  const handleDeleteFoodItem = async (index) => {
-    if (index < 0 || index >= localDetailedItems.length) return;
+  const getFoodSignature = (item) => {
+    const name = (item?.name || "").trim().toLowerCase();
+    const grams =
+      item?.serving?.grams ?? item?.grams ?? item?.estimatedWeight ?? "";
+    const unit =
+      (item?.serving?.unit || item?.unit || "").trim().toLowerCase();
+    return `${name}::${grams}::${unit}`;
+  };
+
+  const resolveFoodItemIndex = (items, fallbackIndex, snapshot) => {
+    if (snapshot) {
+      const snapSig = getFoodSignature(snapshot);
+      const bySignature = items.findIndex(
+        (item) => getFoodSignature(item) === snapSig,
+      );
+      if (bySignature !== -1) return bySignature;
+    }
+
+    if (fallbackIndex >= 0 && fallbackIndex < items.length) {
+      return fallbackIndex;
+    }
+
+    return -1;
+  };
+
+  const handleDeleteFoodItem = async (index, options = {}) => {
+    const phase = options?.phase || "finalize";
+    const snapshot = options?.itemSnapshot || null;
+
+    if (!Array.isArray(localDetailedItems) || localDetailedItems.length === 0)
+      return;
+
+    const targetIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
+    if (targetIndex === -1) return;
 
     const previousItems = localDetailedItems;
     const previousTotals = localNutrition;
 
-    const newItems = localDetailedItems.filter((_, i) => i !== index);
+    const newItems = localDetailedItems.filter((_, i) => i !== targetIndex);
     const newTotals = recalculateTotals(newItems);
+
+    if (phase === "immediate") {
+      // Persist deletion immediately in backend, keep row visible for undo UI.
+      setLocalNutrition(newTotals);
+
+      try {
+        await persistMealItems(newItems, newTotals, {
+          syncSelectedMeal: false,
+          refreshStats: false,
+        });
+      } catch (error) {
+        console.error("? Error deleting food item:", error);
+        setLocalNutrition(previousTotals);
+        throw error;
+      }
+      return;
+    }
+
+    // Finalize phase: remove row from local UI after undo timer ends.
     setLocalDetailedItems(newItems);
     setLocalNutrition(newTotals);
+  };
+
+  const handleRestoreFoodItem = async (index, snapshot) => {
+    const previousItems = localDetailedItems;
+    const previousTotals = localNutrition;
+
+    let restoreItems = localDetailedItems;
+    const existingIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
+
+    // If row was already removed in UI, reinsert before persisting restore.
+    if (existingIndex === -1 && snapshot) {
+      const insertAt = Math.max(0, Math.min(index, localDetailedItems.length));
+      restoreItems = [
+        ...localDetailedItems.slice(0, insertAt),
+        snapshot,
+        ...localDetailedItems.slice(insertAt),
+      ];
+      setLocalDetailedItems(restoreItems);
+    }
+
+    const restoreTotals = recalculateTotals(restoreItems);
+    setLocalNutrition(restoreTotals);
 
     try {
-      await persistMealItems(newItems, newTotals);
+      await persistMealItems(restoreItems, restoreTotals);
     } catch (error) {
-      console.error("? Error deleting food item:", error);
+      console.error("? Error restoring food item:", error);
       setLocalDetailedItems(previousItems);
       setLocalNutrition(previousTotals);
-      alert("Failed to delete item. Please try again.");
+      throw error;
     }
   };
 
@@ -2234,6 +2316,7 @@ const NutritionDashboard = ({
                                 index={originalIndex}
                                 onUpdate={handleFoodUpdate}
                                 onDelete={handleDeleteFoodItem}
+                                onRestore={handleRestoreFoodItem}
                                 onEditingChange={handleEditingChange}
                                 disabled={
                                   isEditing && !editingStates[originalIndex]

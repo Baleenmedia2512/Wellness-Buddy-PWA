@@ -558,14 +558,73 @@ const NutritionCard = ({
     }
   };
 
-  const handleDeleteItem = async (index) => {
-    if (index < 0 || index >= localDetailedItems.length) return;
+  const getFoodSignature = (item) => {
+    const name = (item?.name || "").trim().toLowerCase();
+    const grams =
+      item?.serving?.grams ?? item?.grams ?? item?.estimatedWeight ?? "";
+    const unit = (item?.serving?.unit || item?.unit || "").trim().toLowerCase();
+    return `${name}::${grams}::${unit}`;
+  };
+
+  const resolveFoodItemIndex = (items, fallbackIndex, snapshot) => {
+    if (snapshot) {
+      const snapSig = getFoodSignature(snapshot);
+      const bySignature = items.findIndex(
+        (item) => getFoodSignature(item) === snapSig,
+      );
+      if (bySignature !== -1) return bySignature;
+    }
+
+    if (fallbackIndex >= 0 && fallbackIndex < items.length) {
+      return fallbackIndex;
+    }
+
+    return -1;
+  };
+
+  const handleDeleteItem = async (index, options = {}) => {
+    const phase = options?.phase || "finalize";
+    const snapshot = options?.itemSnapshot || null;
+
+    const targetIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
+    if (targetIndex === -1) return;
 
     const previousItems = localDetailedItems;
     const previousTotals = localNutrition;
 
-    const updatedItems = localDetailedItems.filter((_, i) => i !== index);
+    const updatedItems = localDetailedItems.filter((_, i) => i !== targetIndex);
     const newTotals = recalculateTotals(updatedItems);
+
+    if (phase === "immediate") {
+      // Keep row visible for undo in UI, but persist deletion immediately.
+      setLocalNutrition(newTotals);
+      if (typeof onDataUpdate === "function") {
+        onDataUpdate({
+          ...data,
+          nutrition: newTotals,
+        });
+      }
+
+      setIsSaving(true);
+      try {
+        await saveMealUpdate(updatedItems, newTotals);
+      } catch (error) {
+        console.error("[NutritionCard] Delete item save failed:", error);
+        setLocalNutrition(previousTotals);
+        if (typeof onDataUpdate === "function") {
+          onDataUpdate({
+            ...data,
+            nutrition: previousTotals,
+          });
+        }
+        throw error;
+      } finally {
+        setIsSaving(false);
+      }
+      return;
+    }
+
+    // Finalize: now remove row locally after undo timeout.
     updateLocalAndParentState(updatedItems, newTotals);
 
     setIsSaving(true);
@@ -575,6 +634,37 @@ const NutritionCard = ({
       console.error("[NutritionCard] Delete item save failed:", error);
       updateLocalAndParentState(previousItems, previousTotals);
       alert("Failed to delete item. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleRestoreItem = async (index, snapshot) => {
+    const previousItems = localDetailedItems;
+    const previousTotals = localNutrition;
+
+    let restoredItems = localDetailedItems;
+    const existingIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
+
+    if (existingIndex === -1 && snapshot) {
+      const insertAt = Math.max(0, Math.min(index, localDetailedItems.length));
+      restoredItems = [
+        ...localDetailedItems.slice(0, insertAt),
+        snapshot,
+        ...localDetailedItems.slice(insertAt),
+      ];
+    }
+
+    const restoredTotals = recalculateTotals(restoredItems);
+    updateLocalAndParentState(restoredItems, restoredTotals);
+
+    setIsSaving(true);
+    try {
+      await saveMealUpdate(restoredItems, restoredTotals);
+    } catch (error) {
+      console.error("[NutritionCard] Restore item save failed:", error);
+      updateLocalAndParentState(previousItems, previousTotals);
+      throw error;
     } finally {
       setIsSaving(false);
     }
@@ -1340,11 +1430,12 @@ const NutritionCard = ({
               <div className="space-y-3">
                 {localDetailedItems.map((item, index) => (
                   <EditableFoodItem
-                    key={index}
+                    key={`${item.name || "item"}-${item.serving?.description || item.portionDescription || "portion"}-${item.serving?.grams || item.grams || item.weight_g || ""}-${index}`}
                     foodItem={item}
                     index={index}
                     onUpdate={handleFoodUpdate}
                     onDelete={handleDeleteItem}
+                    onRestore={handleRestoreItem}
                     onEditingChange={handleEditingChange}
                     disabled={editingIndex !== null && editingIndex !== index}
                     user={user}
