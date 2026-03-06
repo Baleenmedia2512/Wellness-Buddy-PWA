@@ -5,7 +5,6 @@ import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
 import { geminiService } from "../services/geminiService";
 import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
-import { geminiService } from "../services/geminiService";
 
 const NutritionCard = ({
   data,
