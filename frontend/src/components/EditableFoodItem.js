@@ -1568,17 +1568,13 @@ const EditableFoodItem = forwardRef(
 
     const handleDelete = () => {
       if (disabled || !onDelete) return;
-      const confirmed = window.confirm(
-        `Delete "${foodItem.name}" from this meal breakdown?`,
-      );
-      if (!confirmed) return;
       onDelete(index);
     };
 
     // Display mode
     if (!isEditing) {
       const displayGrams =
-        foodItem.serving?.grams ||
+        foodItem.serving?.grams ||  
         foodItem.grams ||
         foodItem.estimatedWeight ||
         "";

@@ -18,7 +18,7 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
 import { geminiService } from "../services/geminiService";
 import { captureAndShare } from "../utils/shareUtils";
 
-const UNDO_SECONDS = 10; // cooldown duration
+const UNDO_SECONDS = 5; // cooldown duration
 
 const NutritionDashboard = ({
   user,
