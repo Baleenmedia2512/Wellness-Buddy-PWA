@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, MapPin, TrendingUp, Building2 } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -244,6 +244,60 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
                         <p className="text-xs text-gray-500">Team performance insights</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Attendance Report - shown for coach/admin/developer roles only */}
+                  {onShowAttendanceReport && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowAttendanceReport();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-indigo-50 text-left transition-colors"
+                      ariaLabel="View Attendance Report"
+                    >
+                      <TrendingUp className="h-5 w-5 text-indigo-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Attendance Report</p>
+                        <p className="text-xs text-gray-500">Club vs remote attendance</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Nutrition Centers Map - shown for all users */}
+                  {onShowNutritionCentersMap && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowNutritionCentersMap();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
+                      ariaLabel="View Nutrition Centers Map"
+                    >
+                      <MapPin className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Nutrition Centers Map</p>
+                        <p className="text-xs text-gray-500">View club locations</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Register Nutrition Center - shown for coach/admin/developer roles only */}
+                  {onShowRegisterCenter && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowRegisterCenter();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="Register Nutrition Center"
+                    >
+                      <Building2 className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Register Center</p>
+                        <p className="text-xs text-gray-500">Add a new club location</p>
                       </div>
                     </TouchFeedbackButton>
                   )}

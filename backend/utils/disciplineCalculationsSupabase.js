@@ -342,3 +342,55 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
   
   return results;
 }
+
+/**
+ * Calculate attendance metrics for a member
+ * @param {number} userId - User ID
+ * @param {Date} startDate - Start date
+ * @param {Date} endDate - End date
+ * @returns {Object} Attendance metrics
+ */
+export async function calculateAttendanceMetrics(userId, startDate, endDate) {
+  const supabase = getSupabaseClient();
+  const startDateStr = formatDateForMySQL(startDate);
+  const endDateStr = formatDateForMySQL(endDate);
+  const daysInPeriod = getDaysBetween(startDate, endDate);
+  
+  // Get club attendance count
+  const { data: clubLogs, error: clubError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'club')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const clubCount = clubError ? 0 : (clubLogs || 0);
+  
+  // Get remote attendance count
+  const { data: remoteLogs, error: remoteError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'remote')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const remoteCount = remoteError ? 0 : (remoteLogs || 0);
+  
+  // Calculate attendance percentage (club sessions / days in period)
+  const attendancePercentage = daysInPeriod > 0 
+    ? Math.round((clubCount / daysInPeriod) * 100) 
+    : 0;
+  
+  return {
+    clubAttendance: clubCount,
+    remoteAttendance: remoteCount,
+    totalEducation: clubCount + remoteCount,
+    attendancePercentage,
+    daysInPeriod,
+  };
+}
+

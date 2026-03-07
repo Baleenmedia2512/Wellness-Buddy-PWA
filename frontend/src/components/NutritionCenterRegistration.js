@@ -1,0 +1,491 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2 } from 'lucide-react';
+import TouchFeedbackButton from './TouchFeedbackButton';
+import LoadingSpinner from './LoadingSpinner';
+
+const NutritionCenterRegistration = ({ user, onBack }) => {
+  const [centerName, setCenterName] = useState('');
+  const [latitude, setLatitude] = useState('');
+  const [longitude, setLongitude] = useState('');
+  const [educationHour, setEducationHour] = useState('09:00');
+  const [ownerPhone, setOwnerPhone] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
+  const [myCenters, setMyCenters] = useState([]);
+  const [loadingCenters, setLoadingCenters] = useState(true);
+  
+  const mapRef = useRef(null);
+  const googleMapRef = useRef(null);
+  const markerRef = useRef(null);
+
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
+
+  // Load Google Maps script
+  useEffect(() => {
+    if (!GOOGLE_MAPS_API_KEY) {
+      setError('Google Maps API key is missing. Please configure REACT_APP_GOOGLE_MAPS_API_KEY in your environment.');
+      return;
+    }
+
+    if (!window.google || !window.google.maps) {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => {
+        if (window.google && window.google.maps) {
+          setMapLoaded(true);
+        } else {
+          setError('Google Maps failed to initialize properly');
+        }
+      };
+      script.onerror = () => {
+        setError('Failed to load Google Maps. Please check your internet connection and API key.');
+      };
+      document.head.appendChild(script);
+    } else {
+      setMapLoaded(true);
+    }
+
+    return () => {
+      if (markerRef.current && markerRef.current.setMap) {
+        markerRef.current.setMap(null);
+      }
+    };
+  }, [GOOGLE_MAPS_API_KEY]);
+
+  // Initialize map
+  useEffect(() => {
+    if (mapLoaded && mapRef.current && !googleMapRef.current) {
+      // Try to get user's current location
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const userLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            initializeMap(userLocation);
+          },
+          () => {
+            // Default to a generic location if geolocation fails
+            initializeMap({ lat: 0, lng: 0 });
+          }
+        );
+      } else {
+        initializeMap({ lat: 0, lng: 0 });
+      }
+    }
+  }, [mapLoaded]);
+
+  const initializeMap = (center) => {
+    if (!window.google || !window.google.maps || !window.google.maps.Map) {
+      setError('Google Maps API is not available. Please refresh the page.');
+      return;
+    }
+
+    try {
+      const map = new window.google.maps.Map(mapRef.current, {
+        center,
+        zoom: center.lat === 0 ? 2 : 14,
+        mapTypeControl: true,
+        streetViewControl: true,
+        fullscreenControl: true,
+      });
+
+      googleMapRef.current = map;
+
+      // Add click listener to place marker
+      map.addListener('click', (event) => {
+        placeMarker(event.latLng);
+      });
+
+      // Enable location controls
+      if (navigator.geolocation && center.lat !== 0) {
+        map.setCenter(center);
+      }
+    } catch (err) {
+      console.error('Error initializing map:', err);
+      setError('Failed to initialize map: ' + err.message);
+    }
+  };
+
+  const placeMarker = (location) => {
+    if (!window.google || !window.google.maps) return;
+
+    // Remove existing marker
+    if (markerRef.current && markerRef.current.setMap) {
+      markerRef.current.setMap(null);
+    }
+
+    // Create new marker
+    const marker = new window.google.maps.Marker({
+      position: location,
+      map: googleMapRef.current,
+      draggable: true,
+      animation: window.google.maps.Animation.DROP,
+    });
+
+    markerRef.current = marker;
+
+    // Update coordinates
+    setLatitude(location.lat().toFixed(8));
+    setLongitude(location.lng().toFixed(8));
+
+    // Add drag listener
+    marker.addListener('dragend', (event) => {
+      setLatitude(event.latLng.lat().toFixed(8));
+      setLongitude(event.latLng.lng().toFixed(8));
+    });
+  };
+
+  // Get user ID helper
+  const getUserId = async (email) => {
+    const response = await fetch(
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
+    );
+    const data = await response.json();
+    if (!data.success) throw new Error('User not found');
+    return data.userId;
+  };
+
+  // Fetch user's centers
+  const fetchMyCenters = async () => {
+    if (!user) return;
+
+    setLoadingCenters(true);
+    try {
+      const userId = await getUserId(user.email);
+      const response = await fetch(
+        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=direct`,
+        {
+          cache: 'no-store',
+          headers: {
+            'Cache-Control': 'no-cache',
+          },
+        }
+      );
+
+      const result = await response.json();
+      if (result.success) {
+        // Filter to show only centers owned by current user
+        const ownedCenters = (result.data || []).filter(
+          (c) => c.owner_user_id === userId
+        );
+        setMyCenters(ownedCenters);
+      }
+    } catch (err) {
+      console.error('Error fetching centers:', err);
+    } finally {
+      setLoadingCenters(false);
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      fetchMyCenters();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  // Handle form submission
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+
+    try {
+      if (!centerName || !latitude || !longitude) {
+        throw new Error('Please fill in all required fields and select a location on the map');
+      }
+
+      const userId = await getUserId(user.email);
+
+      const response = await fetch(`${apiBaseUrl}/api/register-nutrition-center`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          centerName,
+          latitude: parseFloat(latitude),
+          longitude: parseFloat(longitude),
+          educationHour: educationHour || null,
+          ownerUserId: userId,
+          ownerPhone: ownerPhone || null,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to register center');
+      }
+
+      setSuccess('Nutrition center registered successfully!');
+      
+      // Reset form
+      setCenterName('');
+      setLatitude('');
+      setLongitude('');
+      setEducationHour('09:00');
+      setOwnerPhone('');
+      
+      if (markerRef.current) {
+        markerRef.current.setMap(null);
+        markerRef.current = null;
+      }
+
+      // Refresh centers list
+      fetchMyCenters();
+
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error registering center:', err);
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle unregister
+  const handleUnregister = async (centerId) => {
+    if (!window.confirm('Are you sure you want to unregister this nutrition center?')) {
+      return;
+    }
+
+    try {
+      const userId = await getUserId(user.email);
+
+      const response = await fetch(`${apiBaseUrl}/api/unregister-nutrition-center`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          centerId,
+          userId,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || 'Failed to unregister center');
+      }
+
+      setSuccess('Center unregistered successfully');
+      fetchMyCenters();
+
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      console.error('Error unregistering center:', err);
+      setError(err.message);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
+      {/* Header */}
+      <div className="sticky top-0 z-10 bg-white shadow-md">
+        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <TouchFeedbackButton
+              onClick={onBack}
+              className="p-2 hover:bg-gray-100 rounded-full"
+              ariaLabel="Go back"
+            >
+              <ArrowLeft className="h-5 w-5 text-gray-600" />
+            </TouchFeedbackButton>
+            <div>
+              <h1 className="text-xl font-bold text-gray-800">Register Nutrition Center</h1>
+              <p className="text-xs text-gray-500">Add a new club location</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="max-w-4xl mx-auto p-4 space-y-6">
+        {/* Messages */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p className="text-red-600 text-sm">{error}</p>
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <p className="text-green-600 text-sm">{success}</p>
+          </div>
+        )}
+
+        {/* Registration Form */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">New Center Details</h2>
+          <form onSubmit={handleRegister} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Center Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={centerName}
+                onChange={(e) => setCenterName(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                placeholder="e.g., Downtown Wellness Hub"
+                required
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Education Hour
+                </label>
+                <input
+                  type="time"
+                  value={educationHour}
+                  onChange={(e) => setEducationHour(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Phone Number
+                </label>
+                <input
+                  type="tel"
+                  value={ownerPhone}
+                  onChange={(e) => setOwnerPhone(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                  placeholder="+1-234-567-8900"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Latitude <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={latitude}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="Click map to select"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Longitude <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={longitude}
+                  readOnly
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
+                  placeholder="Click map to select"
+                />
+              </div>
+            </div>
+
+            {/* Map */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Location <span className="text-red-500">*</span>
+                <span className="text-xs text-gray-500 ml-2">(Click on the map to set location)</span>
+              </label>
+              {mapLoaded ? (
+                <div
+                  ref={mapRef}
+                  className="w-full h-80 rounded-lg border border-gray-300"
+                />
+              ) : (
+                <div className="w-full h-80 rounded-lg border border-gray-300 flex items-center justify-center bg-gray-50">
+                  <LoadingSpinner />
+                </div>
+              )}
+            </div>
+
+            <TouchFeedbackButton
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                <>
+                  <div className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+                  Registering...
+                </>
+              ) : (
+                <>
+                  <Save className="h-5 w-5" />
+                  Register Center
+                </>
+              )}
+            </TouchFeedbackButton>
+          </form>
+        </div>
+
+        {/* My Centers */}
+        <div className="bg-white rounded-lg shadow-md p-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-4">My Registered Centers</h2>
+          {loadingCenters ? (
+            <div className="flex justify-center py-8">
+              <LoadingSpinner />
+            </div>
+          ) : myCenters.length === 0 ? (
+            <p className="text-gray-500 text-center py-8">No centers registered yet</p>
+          ) : (
+            <div className="space-y-3">
+              {myCenters.map((center) => (
+                <div
+                  key={center.id}
+                  className="flex items-start justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50"
+                >
+                  <div className="flex-1">
+                    <h3 className="font-bold text-gray-800">{center.center_name}</h3>
+                    <div className="mt-2 space-y-1 text-sm text-gray-600">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        <span>{center.latitude}, {center.longitude}</span>
+                      </div>
+                      {center.education_hour && (
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4" />
+                          <span>{center.education_hour}</span>
+                        </div>
+                      )}
+                      {center.owner_phone && (
+                        <div className="flex items-center gap-2">
+                          <Phone className="h-4 w-4" />
+                          <span>{center.owner_phone}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <TouchFeedbackButton
+                    onClick={() => handleUnregister(center.id)}
+                    className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                    ariaLabel="Unregister center"
+                  >
+                    <Trash2 className="h-5 w-5" />
+                  </TouchFeedbackButton>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default NutritionCenterRegistration;

@@ -43,6 +43,7 @@ import { educationDetectionService } from "./services/educationDetectionService"
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
+import { locationAttendanceService } from "./services/locationAttendanceService";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
@@ -67,6 +68,9 @@ import TouchFeedbackButton from "./components/TouchFeedbackButton";
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
+const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
@@ -132,6 +136,15 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
+
+  // Attendance report state (for coaches)
+  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
+
+  // Nutrition centers map state (for all users)
+  const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
+
+  // Register nutrition center state (for coaches)
+  const [showRegisterCenter, setShowRegisterCenter] = useState(false);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1163,6 +1176,14 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
+      // Determine attendance type based on GPS location
+      console.log("📍 Determining attendance type...");
+      const attendance = await locationAttendanceService.determineAttendance(
+        apiBaseUrl,
+        userId
+      );
+      console.log("✅ Attendance determined:", attendance);
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1173,6 +1194,10 @@ function WellnessValleyApp() {
           topic: educationData.topic,
           confidence: educationData.confidence,
           deviceInfo: window.navigator.userAgent,
+          latitude: attendance.latitude,
+          longitude: attendance.longitude,
+          attendanceType: attendance.attendanceType,
+          nutritionCenterId: attendance.nutritionCenterId,
         }),
       });
 
@@ -1183,6 +1208,7 @@ function WellnessValleyApp() {
       }
 
       console.log("✅ Education log auto-saved successfully:", data.id);
+      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -2578,10 +2604,25 @@ function WellnessValleyApp() {
             ? () => setShowAdminDashboard(true)
             : null
         }
-        onShowDisciplineReport={() => {
-          setShowDisciplineReport(true);
-          localStorage.setItem("currentPage", "discipline-report");
-        }}
+        onShowDisciplineReport={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => {
+                setShowDisciplineReport(true);
+                localStorage.setItem("currentPage", "discipline-report");
+              }
+            : null
+        }
+        onShowAttendanceReport={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => setShowAttendanceReport(true)
+            : null
+        }
+        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
+        onShowRegisterCenter={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => setShowRegisterCenter(true)
+            : null
+        }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
@@ -2914,6 +2955,42 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Attendance Report */}
+      {showAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading attendance report..." />}
+        >
+          <AttendanceReport
+            user={user}
+            onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Nutrition Centers Map */}
+      {showNutritionCentersMap && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading nutrition centers map..." />}
+        >
+          <NutritionCentersMap
+            user={user}
+            onBack={() => setShowNutritionCentersMap(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Register Nutrition Center */}
+      {showRegisterCenter && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading registration form..." />}
+        >
+          <NutritionCenterRegistration
+            user={user}
+            onBack={() => setShowRegisterCenter(false)}
           />
         </Suspense>
       )}

@@ -23,13 +23,16 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
     topic, 
     confidence,
-    hasImageBase64: !!imageBase64 
+    hasImageBase64: !!imageBase64,
+    attendanceType,
+    hasLocation: !!(latitude && longitude),
+    nutritionCenterId
   });
 
   // Validation
@@ -62,6 +65,10 @@ export default async function handler(req, res) {
         Confidence: confidence || null,
         DeviceInfo: deviceInfo || null,
         ImageBase64: imageBase64ToSave,
+        latitude: latitude || null,
+        longitude: longitude || null,
+        attendance_type: attendanceType || null,
+        nutrition_center_id: nutritionCenterId || null,
         CreatedAt: currentTime,
         UpdatedAt: currentTime
       })
