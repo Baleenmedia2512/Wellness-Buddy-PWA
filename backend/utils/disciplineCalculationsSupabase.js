@@ -394,3 +394,137 @@ export async function calculateAttendanceMetrics(userId, startDate, endDate) {
   };
 }
 
+/**
+ * Get team hierarchy using DUAL COACHING MODEL (CoachId + CoCoachId)
+ * This function properly tracks the hierarchy path to ensure correct parent-child relationships
+ * when members can report to two coaches simultaneously.
+ * 
+ * @param {number} userId - User ID (coach, admin, or any member)
+ * @param {boolean} enableLogging - Enable detailed console logging for debugging (default: false)
+ * @returns {Promise<Array>} Array of team members with hierarchy info including:
+ *   - All fields from team_table
+ *   - HierarchyLevel: number (0 = logged in user, 1 = direct, 2+ = nested)
+ *   - IsLoggedInCoach: boolean (true only for the querying user)
+ *   - HierarchyParent: UserId of parent in THIS specific hierarchy path
+ */
+export async function getDualCoachingTeamHierarchy(userId, enableLogging = false) {
+  const supabase = getSupabaseClient();
+  const userIdNum = parseInt(userId);
+
+  // Step 1: Get the logged-in user
+  const { data: user, error: userError } = await supabase
+    .from('team_table')
+    .select('*')
+    .eq('UserId', userIdNum)
+    .eq('Status', 'Active')
+    .maybeSingle();
+
+  if (userError) {
+    console.error('❌ [getDualCoachingTeamHierarchy] Error fetching user:', userError);
+    throw userError;
+  }
+
+  if (!user) {
+    if (enableLogging) {
+      console.log('⚠️ [getDualCoachingTeamHierarchy] User not found:', userIdNum);
+    }
+    return [];
+  }
+
+  // Step 2: Fetch all team members recursively using DUAL COACHING MODEL
+  // Support both CoachId and CoCoachId - members can report to 2 coaches
+  const allMembers = [];
+  const processedUserIds = new Map(); // Track unique users
+
+  // Add user as level 0
+  const userEntry = {
+    ...user,
+    HierarchyLevel: 0,
+    IsLoggedInCoach: true,
+    HierarchyParent: null,
+  };
+  allMembers.push(userEntry);
+  processedUserIds.set(user.UserId, user);
+
+  // Iteratively fetch team members level by level
+  let currentLevelCoachIds = [userIdNum];
+  let currentLevel = 1;
+  const maxLevel = 10;
+
+  while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+    // Fetch members where CoachId OR CoCoachId matches current level coaches
+    const { data: levelMembers, error: levelError } = await supabase
+      .from('team_table')
+      .select('*')
+      .or(`CoachId.in.(${currentLevelCoachIds.join(',')}),CoCoachId.in.(${currentLevelCoachIds.join(',')})`)
+      .eq('Status', 'Active');
+
+    if (enableLogging) {
+      console.log(`📊 [getDualCoachingTeamHierarchy] Level ${currentLevel} query:`, {
+        searchingUnder: currentLevelCoachIds,
+        foundMembers: levelMembers?.length || 0,
+        memberNames: levelMembers?.map(m => m.UserName) || []
+      });
+    }
+
+    if (levelError) {
+      console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
+      break;
+    }
+
+    if (!levelMembers || levelMembers.length === 0) break;
+
+    const nextLevelCoachIds = [];
+
+    for (const member of levelMembers) {
+      // Store unique member
+      if (!processedUserIds.has(member.UserId)) {
+        // Determine which coach this member reports to in THIS hierarchy path
+        // Check if CoachId is in current level, use that; otherwise use CoCoachId
+        let hierarchyParent = null;
+        if (member.CoachId && currentLevelCoachIds.includes(member.CoachId)) {
+          hierarchyParent = member.CoachId;
+        } else if (member.CoCoachId && currentLevelCoachIds.includes(member.CoCoachId)) {
+          hierarchyParent = member.CoCoachId;
+        }
+        
+        if (enableLogging) {
+          console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}, CoCoachId:${member.CoCoachId}]`);
+        }
+        
+        processedUserIds.set(member.UserId, member);
+        allMembers.push({
+          ...member,
+          HierarchyLevel: currentLevel,
+          IsLoggedInCoach: false,
+          HierarchyParent: hierarchyParent, // Track actual parent in THIS hierarchy
+        });
+
+        // Add ALL members to next level check (not just coaches)
+        // This ensures we fetch team members even if the parent's Role isn't 'coach'
+        nextLevelCoachIds.push(member.UserId);
+      }
+    }
+
+    currentLevelCoachIds = nextLevelCoachIds;
+    currentLevel++;
+  }
+
+  if (enableLogging) {
+    console.log('🔍 [getDualCoachingTeamHierarchy] Team members found (dual-coaching model):', {
+      count: allMembers?.length || 0,
+      members: allMembers?.map(m => ({
+        id: m.UserId,
+        name: m.UserName,
+        level: m.HierarchyLevel,
+        parent: m.HierarchyParent,
+        role: m.Role,
+        coachId: m.CoachId,
+        coCoachId: m.CoCoachId,
+      })) || []
+    });
+  }
+
+  return allMembers;
+}
+

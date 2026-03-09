@@ -116,13 +116,19 @@ const AttendanceReport = ({ user, onBack }) => {
         allMembers: result.data?.members?.map(m => ({ 
           userId: m.userId, 
           name: m.userName, 
-          uplineCoachId: m.uplineCoachId 
+          uplineCoachId: m.uplineCoachId,
+          clubAttendance: m.clubAttendance,
+          remoteAttendance: m.remoteAttendance,
+          attendancePercentage: m.attendancePercentage,
+          disciplinePercentage: m.disciplinePercentage
         })) || []
       });
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch attendance report');
       }
+
+      console.log('🎯 [AttendanceReport] Full Sample Member Data:', result.data?.members?.[0]);
 
       setReportData(result.data);
       
@@ -155,6 +161,15 @@ const AttendanceReport = ({ user, onBack }) => {
       return [];
     }
     
+    console.log('🔨 [buildHierarchy] All members with uplineCoachId:', 
+      members.map(m => ({ 
+        userId: m.userId, 
+        name: m.userName, 
+        uplineCoachId: m.uplineCoachId,
+        isLoggedInCoach: m.isLoggedInCoach 
+      }))
+    );
+    
     const memberMap = {};
     members.forEach(m => {
       memberMap[m.userId] = { ...m, teamMembers: [] };
@@ -163,8 +178,10 @@ const AttendanceReport = ({ user, onBack }) => {
     const rootNodes = [];
     members.forEach(m => {
       if (m.uplineCoachId && memberMap[m.uplineCoachId]) {
+        console.log(`  ↳ ${m.userName} (${m.userId}) → under ${memberMap[m.uplineCoachId].userName} (${m.uplineCoachId})`);
         memberMap[m.uplineCoachId].teamMembers.push(memberMap[m.userId]);
       } else {
+        console.log(`  ↳ ${m.userName} (${m.userId}) → ROOT (uplineCoachId: ${m.uplineCoachId})`);
         rootNodes.push(memberMap[m.userId]);
       }
     });
@@ -174,7 +191,11 @@ const AttendanceReport = ({ user, onBack }) => {
       roots: rootNodes.map(r => ({ 
         userId: r.userId, 
         name: r.userName, 
-        childrenCount: r.teamMembers?.length || 0 
+        childrenCount: r.teamMembers?.length || 0,
+        children: r.teamMembers?.map(c => ({ 
+          name: c.userName, 
+          childCount: c.teamMembers?.length || 0 
+        }))
       }))
     });
 
@@ -261,6 +282,14 @@ const AttendanceReport = ({ user, onBack }) => {
                     </span>
                   )}
                 </div>
+                <p className="text-xs text-gray-500 mt-0.5 truncate">{node.email}</p>
+                {hasChildren && (
+                  <p className="text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-1">
+                    <Users className="w-3 h-3" />
+                    {node.teamMembers?.length || 0} team member
+                    {node.teamMembers?.length !== 1 ? "s" : ""}
+                  </p>
+                )}
 
                 {/* Attendance Stats */}
                 <div className="mt-1 flex gap-3 text-xs text-gray-600 flex-wrap">
@@ -271,32 +300,32 @@ const AttendanceReport = ({ user, onBack }) => {
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
+                    <Calendar className="h-3 w-3 text-green-600" />
+                    <span className="font-bold text-green-700">
+                      {node.attendancePercentage}% Attendance
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     <span className="font-medium">{node.clubAttendance} club</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Home className="h-3 w-3" />
-                    <span>{node.remoteAttendance} remote</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>{node.attendancePercentage}% attendance</span>
+                    <span className="font-medium">{node.remoteAttendance} remote</span>
                   </div>
                 </div>
 
                 {/* Team Counts */}
-                {(node.directTeamCount > 0 || node.fullTeamCount > 0) && (
-                  <div className="mt-1 flex gap-3 text-xs text-purple-600 font-medium">
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      <span>Direct: {node.directTeamCount}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Users className="h-3 w-3" />
-                      <span>Full Team: {node.fullTeamCount}</span>
-                    </div>
+                <div className="mt-1 flex gap-3 text-xs text-purple-600 font-medium">
+                  <div className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    <span className="font-bold">Direct: {node.directTeamCount}</span>
                   </div>
-                )}
+                  <div className="flex items-center gap-1">
+                    <Users className="h-3 w-3" />
+                    <span className="font-bold">Full Team: {node.fullTeamCount}</span>
+                  </div>
+                </div>
               </div>
 
               {/* Expand/Collapse Button */}

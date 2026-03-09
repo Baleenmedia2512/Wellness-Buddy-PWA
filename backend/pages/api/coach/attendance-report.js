@@ -1,5 +1,8 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { getTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { 
+  getTeamHierarchy,
+  getDualCoachingTeamHierarchy 
+} from '../../../utils/disciplineCalculationsSupabase.js';
 import { 
   formatDateForMySQL,
   getDaysBetween,
@@ -43,13 +46,9 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const userIdNum = parseInt(userId);
 
-    // Get team hierarchy
-    const teamMembers = await getTeamHierarchy(userIdNum);
-    
-    console.log('🔍 [attendance-report] Team members returned from getTeamHierarchy:', {
-      count: teamMembers?.length || 0,
-      members: teamMembers?.map(m => ({ id: m.UserId, name: m.UserName, role: m.Role, upline: m.UplineCoachId })) || []
-    });
+    // Get all active team members recursively using DUAL COACHING MODEL
+    // This reusable utility properly tracks hierarchy paths for CoachId + CoCoachId
+    const teamMembers = await getDualCoachingTeamHierarchy(userIdNum, true);
     
     if (!teamMembers || teamMembers.length === 0) {
       console.log('⚠️ [attendance-report] No team members found for user:', userIdNum);
@@ -204,9 +203,9 @@ export default async function handler(req, res) {
       }
     };
 
-    // Helper: Calculate full team count recursively
+    // Helper: Calculate full team count recursively (dual-coaching model)
     const calculateFullTeamCount = (userId, members) => {
-      const directTeam = members.filter(m => m.UplineCoachId === userId);
+      const directTeam = members.filter(m => m.CoachId === userId || m.CoCoachId === userId);
       let fullCount = directTeam.length;
       
       directTeam.forEach(member => {
@@ -219,65 +218,62 @@ export default async function handler(req, res) {
     // Build hierarchical attendance data
     const attendanceData = await Promise.all(
       teamMembers.map(async (member) => {
-  // Get club attendance count
-        const { data: clubLogs, error: clubError, count: clubCountValue } = await supabase
+        // Get ALL education logs for this member in date range
+        const { data: allEducationLogs, error: allLogsError } = await supabase
           .from('education_logs_table')
-          .select('id', { count: 'exact', head: true })
-          .eq('"UserId"', member.UserId)
-          .eq('attendance_type', 'club')
-          .eq('"IsDeleted"', false)
-          .gte('"LogDate"', start + ' 00:00:00')
-          .lte('"LogDate"', end + ' 23:59:59');
-
-        if (clubError) {
-          console.error('⚠️ [attendance-report] Club logs error for user', member.UserId, ':', clubError);
-        }
-        const clubCount = clubCountValue || 0;
-
-        // Get remote attendance count
-        const { data: remoteLogs, error: remoteError, count: remoteCountValue } = await supabase
-          .from('education_logs_table')
-          .select('id', { count: 'exact', head: true })
-          .eq('"UserId"', member.UserId)
-          .eq('attendance_type', 'remote')
-          .eq('"IsDeleted"', false)
-          .gte('"LogDate"', start + ' 00:00:00')
-          .lte('"LogDate"', end + ' 23:59:59');
-
-        if (remoteError) {
-          console.error('⚠️ [attendance-report] Remote logs error for user', member.UserId, ':', remoteError);
-        }
-        const remoteCount = remoteCountValue || 0;
-
-        // Get total education logs (for backward compatibility)
-        const { data: totalLogs, error: totalError, count: totalCountValue } = await supabase
-          .from('education_logs_table')
-          .select('id', { count: 'exact', head: true })
+          .select('id, attendance_type')
           .eq('"UserId"', member.UserId)
           .eq('"IsDeleted"', false)
-          .gte('"LogDate"', start + ' 00:00:00')
-          .lte('"LogDate"', end + ' 23:59:59');
+          .gte('"CreatedAt"', start + ' 00:00:00')
+          .lte('"CreatedAt"', end + ' 23:59:59');
 
-        if (totalError) {
-          console.error('⚠️ [attendance-report] Total logs error for user', member.UserId, ':', totalError);
+        if (allLogsError) {
+          console.error('⚠️ [attendance-report] Error fetching education logs for user', member.UserId, ':', allLogsError);
         }
-        const totalEducation = totalCountValue || 0;
+
+        // Count by attendance type (treat NULL as remote for backward compatibility)
+        let clubCount = 0;
+        let remoteCount = 0;
+        
+        if (allEducationLogs && allEducationLogs.length > 0) {
+          allEducationLogs.forEach(log => {
+            if (log.attendance_type === 'club') {
+              clubCount++;
+            } else {
+              // 'remote' or NULL = remote
+              remoteCount++;
+            }
+          });
+        }
+
+        const totalEducation = allEducationLogs?.length || 0;
+
+        console.log(`📊 [attendance-report] User ${member.UserName} (${member.UserId}):`, {
+          totalEducationLogs: totalEducation,
+          clubCount,
+          remoteCount,
+          sampleLog: allEducationLogs?.[0] || null
+        });
 
         // Calculate days in range
         const startDateObj = new Date(start);
         const endDateObj = new Date(end);
         const daysInRange = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24)) + 1;
 
-        // Calculate attendance percentage (club sessions / days in range)
+        // Calculate attendance percentage (total education sessions / days in range)
+        // This includes both club and remote attendance
+        const totalAttendance = clubCount + remoteCount;
         const attendancePercentage = daysInRange > 0 
-          ? Math.round((clubCount / daysInRange) * 100) 
+          ? Math.round((totalAttendance / daysInRange) * 100) 
           : 0;
 
         // Calculate discipline metrics
         const discipline = calculateMemberDiscipline(member.UserId);
 
-        // Calculate team counts
-        const directTeamCount = teamMembers.filter(m => m.UplineCoachId === member.UserId).length;
+        // Calculate team counts (dual-coaching model)
+        const directTeamCount = teamMembers.filter(m => 
+          m.CoachId === member.UserId || m.CoCoachId === member.UserId
+        ).length;
         const fullTeamCount = calculateFullTeamCount(member.UserId, teamMembers);
 
         return {
@@ -286,7 +282,7 @@ export default async function handler(req, res) {
           email: member.Email,
           role: member.Role,
           hierarchyLevel: member.HierarchyLevel,
-          uplineCoachId: member.UplineCoachId,
+          uplineCoachId: member.HierarchyParent || null, // Use the tracked parent from hierarchy
           isLoggedInCoach: member.IsLoggedInCoach,
           
           // Attendance metrics
@@ -315,10 +311,14 @@ export default async function handler(req, res) {
       })
     );
 
-    // Calculate coach-level summaries
+    // Calculate coach-level summaries (dual-coaching model)
     const coaches = attendanceData.filter(m => m.role === 'coach' || m.role === 'admin' || m.role === 'developer');
     const coachSummaries = coaches.map(coach => {
-      const directTeam = attendanceData.filter(m => m.uplineCoachId === coach.userId);
+      // Find members where this coach is CoachId OR CoCoachId
+      const directTeam = attendanceData.filter(m => {
+        const member = teamMembers.find(tm => tm.UserId === m.userId);
+        return member && (member.CoachId === coach.userId || member.CoCoachId === coach.userId);
+      });
       const directTeamSize = directTeam.length;
       
       const avgAttendance = directTeamSize > 0
@@ -338,15 +338,19 @@ export default async function handler(req, res) {
     console.log('📤 [attendance-report] Returning response with:', {
       memberCount: attendanceData.length,
       coachCount: coachSummaries.length,
+      teamSize: teamMembers.length,
       sampleMember: attendanceData[0] ? {
         userId: attendanceData[0].userId,
         name: attendanceData[0].userName,
         uplineCoachId: attendanceData[0].uplineCoachId,
         discipline: attendanceData[0].disciplinePercentage,
         attendance: attendanceData[0].attendancePercentage,
+        clubAttendance: attendanceData[0].clubAttendance,
+        remoteAttendance: attendanceData[0].remoteAttendance,
         directTeam: attendanceData[0].directTeamCount,
         fullTeam: attendanceData[0].fullTeamCount
-      } : null
+      } : null,
+      allMemberNames: attendanceData.map(m => m.userName)
     });
 
     res.status(200).json({

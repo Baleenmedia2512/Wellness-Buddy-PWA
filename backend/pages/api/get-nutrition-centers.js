@@ -115,8 +115,8 @@ export default async function handler(req, res) {
           .select('"UserId"')
           .eq('nutrition_center_id', center.id)
           .eq('"IsDeleted"', false)
-          .gte('"LogDate"', today + ' 00:00:00')
-          .lte('"LogDate"', today + ' 23:59:59');
+          .gte('"CreatedAt"', today + ' 00:00:00')
+          .lte('"CreatedAt"', today + ' 23:59:59');
 
         const todayUniqueUsers = new Set((todayLogs || []).map(log => log.UserId));
         const todayAttendance = todayUniqueUsers.size;
