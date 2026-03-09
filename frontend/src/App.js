@@ -2543,6 +2543,7 @@ function WellnessValleyApp() {
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
           initialTab={dashboardInitialTab}
+          userRole={userRole}
         />
       </Suspense>
     );

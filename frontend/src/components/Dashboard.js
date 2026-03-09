@@ -2,6 +2,7 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
+import TeamMemberSearch from './TeamMemberSearch';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
@@ -57,8 +58,9 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
  * Unified Dashboard with tabs for Nutrition and Weight tracking
  * Replaces the separate Nutrition Dashboard and Weight Tracking pages
  * @param {string} initialTab - Optional tab to open initially ('nutrition' or 'weight')
+ * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user' }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
@@ -68,12 +70,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
     return localStorage.getItem('dashboard_activeTab') || 'nutrition';
   });
 
+  // Team member selection state (for coaches)
+  const [selectedMember, setSelectedMember] = useState(null);
+  
   // Unified date state shared between both tabs
   const [selectedDate, setSelectedDate] = useState(new Date());
   
   // Calendar visibility and month navigation
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  
+  // Determine which user's data to display (selected member or coach)
+  const displayUser = selectedMember || user;
 
   // Save active tab to localStorage when it changes
   const handleTabChange = (tab) => {
@@ -91,6 +99,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
 
       {/* Header with tabs */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
+        {/* Team Member Search - Only visible for coaches */}
+        <TeamMemberSearch
+          user={user}
+          userRole={userRole}
+          selectedMember={selectedMember}
+          onMemberSelect={setSelectedMember}
+        />
+        
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {/* Top bar with back button and title */}
           <div className="flex items-center justify-between p-4 md:p-6 pb-3">
@@ -103,8 +119,15 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
             </TouchFeedbackButton>
 
             <div className="text-center">
-              <h1 className="text-lg md:text-xl font-semibold text-gray-900">Dashboard</h1>
-              <p className="text-xs text-gray-500">Track your wellness journey</p>
+              <h1 className="text-lg md:text-xl font-semibold text-gray-900">
+                Dashboard{selectedMember && !selectedMember.isSelf ? ` - ${selectedMember.userName}` : ''}
+              </h1>
+              <p className="text-xs text-gray-500">
+                {selectedMember && !selectedMember.isSelf 
+                  ? `Viewing ${selectedMember.userName}'s data`
+                  : 'Track your wellness journey'
+                }
+              </p>
             </div>
 
             {/* Calendar button - only show for nutrition tab */}
@@ -342,7 +365,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
         }>
           {activeTab === 'nutrition' && (
             <NutritionDashboard
-              user={user}
+              user={displayUser}
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               onMealDelete={onMealDelete}
@@ -354,7 +377,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
 
           {activeTab === 'weight' && (
             <WeightDashboard
-              user={user}
+              user={displayUser}
               onBack={onBack}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
@@ -363,7 +386,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
 
           {activeTab === 'education' && (
             <EducationDashboard
-              user={user}
+              user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
             />
