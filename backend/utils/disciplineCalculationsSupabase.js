@@ -21,7 +21,7 @@ export async function getTeamHierarchy(coachId) {
     .from('team_table')
     .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
     .eq('"UserId"', coachId)
-    .eq('"Status"', 'active')
+    .eq('"Status"', 'Active')
     .maybeSingle();
   
   if (coachError) {
@@ -51,7 +51,7 @@ export async function getTeamHierarchy(coachId) {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
       .in('"UplineCoachId"', parentIds)
-      .eq('"Status"', 'active');
+      .eq('"Status"', 'Active');
     
     if (error) {
       console.error(`❌ Error fetching level ${level} members:`, error);
@@ -71,7 +71,7 @@ export async function getTeamHierarchy(coachId) {
     
     // Get next level (coaches' teams)
     const coachIds = members
-      .filter(m => m.Role === 'coach')
+      .filter(m => m.Role === 'coach' || m.Role === 'admin' || m.Role === 'developer')
       .map(m => m.UserId);
     
     const nextLevelMembers = await getTeamAtLevel(coachIds, level + 1, maxLevel);

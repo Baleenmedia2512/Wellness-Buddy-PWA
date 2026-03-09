@@ -15,10 +15,15 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   const [success, setSuccess] = useState(null);
   const [myCenters, setMyCenters] = useState([]);
   const [loadingCenters, setLoadingCenters] = useState(true);
+  const [currentLocation, setCurrentLocation] = useState(null);
+  const [searchAddress, setSearchAddress] = useState('');
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
   const markerRef = useRef(null);
+  const currentLocationMarkerRef = useRef(null);
+  const searchBoxRef = useRef(null);
+  const autocompleteRef = useRef(null);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
@@ -53,6 +58,9 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     return () => {
       if (markerRef.current && markerRef.current.setMap) {
         markerRef.current.setMap(null);
+      }
+      if (currentLocationMarkerRef.current && currentLocationMarkerRef.current.setMap) {
+        currentLocationMarkerRef.current.setMap(null);
       }
     };
   }, [GOOGLE_MAPS_API_KEY]);
@@ -90,13 +98,148 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     try {
       const map = new window.google.maps.Map(mapRef.current, {
         center,
-        zoom: center.lat === 0 ? 2 : 14,
+        zoom: center.lat === 0 ? 2 : 15,
         mapTypeControl: true,
         streetViewControl: true,
         fullscreenControl: true,
       });
 
       googleMapRef.current = map;
+
+      // Save current location
+      if (center.lat !== 0) {
+        setCurrentLocation(center);
+        
+        // Add blue marker for current location
+        const currentMarker = new window.google.maps.Marker({
+          position: center,
+          map: map,
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 8,
+            fillColor: '#4285F4',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 2,
+          },
+          title: 'Your Current Location',
+          zIndex: 1,
+        });
+        currentLocationMarkerRef.current = currentMarker;
+      }
+
+      // Add custom "My Location" button
+      const locationButton = document.createElement('button');
+      locationButton.className = 'custom-map-control-button';
+      locationButton.innerHTML = `
+        <svg width=\"20\" height=\"20\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">
+          <circle cx=\"12\" cy=\"12\" r=\"10\"></circle>
+          <circle cx=\"12\" cy=\"12\" r=\"3\"></circle>
+          <line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"4\"></line>
+          <line x1=\"12\" y1=\"20\" x2=\"12\" y2=\"22\"></line>
+          <line x1=\"2\" y1=\"12\" x2=\"4\" y2=\"12\"></line>
+          <line x1=\"20\" y1=\"12\" x2=\"22\" y2=\"12\"></line>
+        </svg>
+      `;
+      locationButton.title = 'Go to my location';
+      locationButton.style.cssText = `
+        background: white;
+        border: none;
+        border-radius: 2px;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        cursor: pointer;
+        margin: 10px;
+        padding: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background 0.2s;
+      `;
+      
+      locationButton.addEventListener('mouseenter', () => {
+        locationButton.style.background = '#f5f5f5';
+      });
+      
+      locationButton.addEventListener('mouseleave', () => {
+        locationButton.style.background = 'white';
+      });
+      
+      locationButton.addEventListener('click', () => {
+        if (currentLocation) {
+          map.setCenter(currentLocation);
+          map.setZoom(15);
+        } else {
+          // Try to get current location again
+          if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+              (position) => {
+                const newLocation = {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude,
+                };
+                setCurrentLocation(newLocation);
+                map.setCenter(newLocation);
+                map.setZoom(15);
+                
+                // Add/update current location marker
+                if (currentLocationMarkerRef.current) {
+                  currentLocationMarkerRef.current.setPosition(newLocation);
+                } else {
+                  const marker = new window.google.maps.Marker({
+                    position: newLocation,
+                    map: map,
+                    icon: {
+                      path: window.google.maps.SymbolPath.CIRCLE,
+                      scale: 8,
+                      fillColor: '#4285F4',
+                      fillOpacity: 1,
+                      strokeColor: '#ffffff',
+                      strokeWeight: 2,
+                    },
+                    title: 'Your Current Location',
+                    zIndex: 1,
+                  });
+                  currentLocationMarkerRef.current = marker;
+                }
+              },
+              (error) => {
+                alert('Unable to get your location: ' + error.message);
+              }
+            );
+          }
+        }
+      });
+
+      map.controls[window.google.maps.ControlPosition.RIGHT_BOTTOM].push(locationButton);
+
+      // Setup Places Autocomplete
+      if (searchBoxRef.current && window.google.maps.places) {
+        const autocomplete = new window.google.maps.places.Autocomplete(searchBoxRef.current, {
+          fields: ['geometry', 'formatted_address', 'name'],
+        });
+        
+        autocomplete.bindTo('bounds', map);
+        autocompleteRef.current = autocomplete;
+
+        autocomplete.addListener('place_changed', () => {
+          const place = autocomplete.getPlace();
+          
+          if (!place.geometry || !place.geometry.location) {
+            setError('No location found for: ' + place.name);
+            return;
+          }
+
+          // Center map on selected place
+          map.setCenter(place.geometry.location);
+          map.setZoom(15);
+
+          // Place marker at selected location
+          placeMarker(place.geometry.location);
+
+          // Update search box text
+          setSearchAddress(place.formatted_address || place.name || '');
+        });
+      }
 
       // Add click listener to place marker
       map.addListener('click', (event) => {
@@ -121,12 +264,17 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       markerRef.current.setMap(null);
     }
 
-    // Create new marker
+    // Create new red marker for selected location
     const marker = new window.google.maps.Marker({
       position: location,
       map: googleMapRef.current,
       draggable: true,
       animation: window.google.maps.Animation.DROP,
+      icon: {
+        url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
+      },
+      title: 'Selected Center Location',
+      zIndex: 2,
     });
 
     markerRef.current = marker;
@@ -396,11 +544,28 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               </div>
             </div>
 
+            {/* Address Search */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Search Address
+              </label>
+              <input
+                ref={searchBoxRef}
+                type="text"
+                value={searchAddress}
+                onChange={(e) => setSearchAddress(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                placeholder="Type address to search..."
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Type to search or click on the map to select location
+              </p>
+            </div>
+
             {/* Map */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Location <span className="text-red-500">*</span>
-                <span className="text-xs text-gray-500 ml-2">(Click on the map to set location)</span>
               </label>
               {mapLoaded ? (
                 <div
@@ -412,6 +577,10 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                   <LoadingSpinner />
                 </div>
               )}
+              <div className="mt-2 text-xs text-gray-500 space-y-1">
+                <p>Blue dot = Your current location</p>
+                <p>Red marker = Selected center location (click map or search to place)</p>
+              </div>
             </div>
 
             <TouchFeedbackButton

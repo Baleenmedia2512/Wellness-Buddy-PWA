@@ -108,6 +108,18 @@ const AttendanceReport = ({ user, onBack }) => {
 
       const result = await response.json();
 
+      console.log('📥 [AttendanceReport] API Response:', {
+        success: result.success,
+        memberCount: result.data?.members?.length || 0,
+        teamSize: result.data?.teamSize || 0,
+        sampleMember: result.data?.members?.[0] || null,
+        allMembers: result.data?.members?.map(m => ({ 
+          userId: m.userId, 
+          name: m.userName, 
+          uplineCoachId: m.uplineCoachId 
+        })) || []
+      });
+
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch attendance report');
       }
@@ -136,6 +148,13 @@ const AttendanceReport = ({ user, onBack }) => {
 
   // Build hierarchical structure
   const buildHierarchy = (members) => {
+    console.log('🔨 [buildHierarchy] Building hierarchy for', members?.length || 0, 'members');
+    
+    if (!members || members.length === 0) {
+      console.log('⚠️ [buildHierarchy] No members to build hierarchy');
+      return [];
+    }
+    
     const memberMap = {};
     members.forEach(m => {
       memberMap[m.userId] = { ...m, teamMembers: [] };
@@ -148,6 +167,15 @@ const AttendanceReport = ({ user, onBack }) => {
       } else {
         rootNodes.push(memberMap[m.userId]);
       }
+    });
+
+    console.log('🌳 [buildHierarchy] Built hierarchy:', {
+      rootCount: rootNodes.length,
+      roots: rootNodes.map(r => ({ 
+        userId: r.userId, 
+        name: r.userName, 
+        childrenCount: r.teamMembers?.length || 0 
+      }))
     });
 
     return rootNodes;
@@ -210,7 +238,7 @@ const AttendanceReport = ({ user, onBack }) => {
               {/* Avatar */}
               <div
                 className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 shadow-sm flex-shrink-0 ${getScoreColor(
-                  node.attendancePercentage
+                  node.disciplinePercentage || 0
                 )}`}
               >
                 {node.userName.charAt(0).toUpperCase()}
@@ -235,7 +263,13 @@ const AttendanceReport = ({ user, onBack }) => {
                 </div>
 
                 {/* Attendance Stats */}
-                <div className="mt-1 flex gap-3 text-xs text-gray-600">
+                <div className="mt-1 flex gap-3 text-xs text-gray-600 flex-wrap">
+                  <div className="flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3 text-blue-600" />
+                    <span className="font-bold text-blue-700">
+                      {node.disciplinePercentage || 0}% Discipline
+                    </span>
+                  </div>
                   <div className="flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
                     <span className="font-medium">{node.clubAttendance} club</span>
@@ -245,10 +279,24 @@ const AttendanceReport = ({ user, onBack }) => {
                     <span>{node.remoteAttendance} remote</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3" />
-                    <span className="font-bold">{node.attendancePercentage}%</span>
+                    <Calendar className="h-3 w-3" />
+                    <span>{node.attendancePercentage}% attendance</span>
                   </div>
                 </div>
+
+                {/* Team Counts */}
+                {(node.directTeamCount > 0 || node.fullTeamCount > 0) && (
+                  <div className="mt-1 flex gap-3 text-xs text-purple-600 font-medium">
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      <span>Direct: {node.directTeamCount}</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Users className="h-3 w-3" />
+                      <span>Full Team: {node.fullTeamCount}</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Expand/Collapse Button */}
@@ -265,18 +313,6 @@ const AttendanceReport = ({ user, onBack }) => {
                 </TouchFeedbackButton>
               )}
             </div>
-
-            {/* Team Summary (for coaches) */}
-            {hasChildren && (
-              <div className="px-3 pb-3 border-t border-gray-100">
-                <div className="flex items-center gap-2 text-xs text-gray-600 mt-2">
-                  <Users className="h-4 w-4" />
-                  <span className="font-medium">
-                    Direct Team: {node.teamMembers.length} members
-                  </span>
-                </div>
-              </div>
-            )}
           </motion.div>
 
           {/* Children */}
@@ -387,10 +423,20 @@ const AttendanceReport = ({ user, onBack }) => {
                     : `${reportData.dateRange.start} to ${reportData.dateRange.end}`}
                 </h2>
               </div>
-              <div className="grid grid-cols-2 gap-4 text-center">
+              <div className="grid grid-cols-3 gap-3 text-center">
                 <div className="bg-blue-50 rounded-lg p-3">
                   <p className="text-2xl font-bold text-blue-600">{reportData.teamSize}</p>
                   <p className="text-xs text-gray-600">Team Members</p>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3">
+                  <p className="text-2xl font-bold text-purple-600">
+                    {Math.round(
+                      reportData.members.reduce((sum, m) => sum + (m.disciplinePercentage || 0), 0) /
+                        reportData.members.length
+                    )}
+                    %
+                  </p>
+                  <p className="text-xs text-gray-600">Avg Discipline</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <p className="text-2xl font-bold text-green-600">
