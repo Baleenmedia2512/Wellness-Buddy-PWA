@@ -1,6 +1,7 @@
 // src/components/WeightCardModal.js
 import React from 'react';
 import { X, Scale } from 'lucide-react';
+import { formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 /**
  * WeightCardModal Component
@@ -11,10 +12,10 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
 
   /**
    * Format date (without time)
+   * Converts IST to user's local timezone
    */
   const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    return formatISTToLocalDate(dateString, {
       weekday: 'long',
       year: 'numeric',
       month: 'short',
@@ -60,7 +61,7 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
                   {data.Weight} kg
                 </h2>
                 <div className="text-xs text-white/70 mt-0.5">
-                  <p>Logged at {new Date(data.CreatedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</p>
+                  <p>Logged at {formatISTToLocalTime(data.CreatedAt)}</p>
                   <p className="text-xs text-gray-400">{formatDate(data.CreatedAt)}</p>
                 </div>
               </div>

@@ -3,6 +3,7 @@ import { getUserCorrections } from '../services/foodCorrectionService';
 import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../services/userContextService';
 import { geminiService } from '../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
+import { istToLocalDate } from '../utils/timezoneUtils';
 
 /**
  * Debug panel to view user's food corrections
@@ -206,7 +207,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                         </span>
                       </div>
                       <div className="text-[10px] md:text-xs text-gray-500">
-                        {new Date(correction.last_corrected).toLocaleString('en-US', {
+                        {istToLocalDate(correction.last_corrected).toLocaleString('en-US', {
                           month: 'short',
                           day: 'numeric',
                           hour: '2-digit',
@@ -305,7 +306,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                       <div className="text-xs text-green-800">
                         <p className="font-semibold mb-1">Last Sent to Gemini:</p>
                         <p className="text-green-700">
-                          {new Date(lastPrompt.timestamp).toLocaleString('en-US', {
+                          {istToLocalDate(lastPrompt.timestamp).toLocaleString('en-US', {
                             month: 'short',
                             day: 'numeric',
                             hour: '2-digit',

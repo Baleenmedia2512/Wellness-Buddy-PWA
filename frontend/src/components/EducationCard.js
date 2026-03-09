@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
+import { istToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -32,13 +33,13 @@ const getPlatformColor = (platform) => {
 
 /**
  * Format date with day and time (matching WeightCard style)
+ * Converts IST timestamps to user's local timezone
  */
 const formatDate = (dateString) => {
   if (!dateString) return '';
   
-  const date = new Date(dateString);
-  
-  if (isNaN(date.getTime())) return '';
+  const date = istToLocalDate(dateString);
+  if (!date || isNaN(date.getTime())) return '';
   
   const today = new Date();
   const yesterday = new Date(today);
@@ -46,12 +47,12 @@ const formatDate = (dateString) => {
   
   // Check if it's today
   if (date.toDateString() === today.toDateString()) {
-    return `Today ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Today ${formatISTToLocalTime(dateString)}`;
   }
   
   // Check if it's yesterday
   if (date.toDateString() === yesterday.toDateString()) {
-    return `Yesterday ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+    return `Yesterday ${formatISTToLocalTime(dateString)}`;
   }
   
   // For other dates, show the date

@@ -5,7 +5,7 @@ import WellnessValleyApp from './App';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 
-// ✅ CRITICAL FIX: Explicitly hide splash screen to prevent text selection overlay issue
+// ✅ CRITICAL FIX: Explicitly hide splash screen to prevent text selection overlay issue //
 if (Capacitor.isNativePlatform()) {
   // Hide splash screen immediately to remove window layer
   SplashScreen.hide().catch(err => {
