@@ -13,7 +13,7 @@ import {
  * 
  * Logic:
  * - Only includes active users (Status = 'Active')
- * - Calculates discipline based on last 7 days activity
+ * - Calculates discipline based on last 10 days activity
  * - Considers: Weight logs, Education logs, Meal logs (Breakfast, Lunch, Dinner)
  * - Returns: rank, userName, coachName, profileImage, disciplinePercentage
  */
@@ -42,8 +42,8 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
-    // Get topN parameter (default to 5, max 10)
-    const topN = Math.min(parseInt(req.query.topN) || 5, 10);
+    // Get topN parameter (default to 10, max 10)
+    const topN = Math.min(parseInt(req.query.topN) || 10, 10);
     
     console.log(`🏆 [DISCIPLINE-LEADERBOARD] Calculating discipline leaderboard (Top ${topN})...`);
 
@@ -67,8 +67,8 @@ export default async function handler(req, res) {
 
     console.log(`✅ [DISCIPLINE-LEADERBOARD] Found ${activeUsers.length} active users`);
 
-    // Step 2: Calculate date range (last 7 days)
-    const dates = parseDateRange('last7days');
+    // Step 2: Calculate date range (last 10 days)
+    const dates = parseDateRange('last10days');
     const startDateStr = formatDateForMySQL(dates.start);
     const endDateStr = formatDateForMySQL(dates.end);
     const daysInPeriod = getDaysBetween(dates.start, dates.end);

@@ -49,6 +49,7 @@ import UserProfileModal from "./components/UserProfileModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import CoachScoreSummary from "./components/CoachScoreSummary";
+import PersonalDisciplineScore from "./components/PersonalDisciplineScore";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -148,6 +149,7 @@ function WellnessValleyApp() {
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
   const disciplineLeaderboardRef = useRef(null);
+  const personalDisciplineRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -395,6 +397,9 @@ function WellnessValleyApp() {
     }
     if (disciplineLeaderboardRef.current) {
       disciplineLeaderboardRef.current.refresh();
+    }
+    if (personalDisciplineRef.current) {
+      personalDisciplineRef.current.refresh();
     }
   }, []);
 
@@ -1204,6 +1209,10 @@ function WellnessValleyApp() {
       }
 
       console.log("✅ Education log auto-saved successfully:", data.id);
+      
+      // Refresh discipline scores and leaderboards after education save
+      handleLeaderboardRefresh();
+      
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -1238,6 +1247,9 @@ function WellnessValleyApp() {
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
       console.log("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
+
+      // Refresh discipline scores and leaderboards after meal save
+      handleLeaderboardRefresh();
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -2667,8 +2679,8 @@ function WellnessValleyApp() {
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
-      {/* Coach Score Summary - MY SCORE, DIRECT TEAM, FULL TEAM */}
-      {user && <CoachScoreSummary apiBaseUrl={apiBaseUrl} userId={user.id} />}
+      {/* Personal Discipline Score - Shows individual category breakdown (WEI, EDU, BRE, LUN, DIN) */}
+      {user && <PersonalDisciplineScore ref={personalDisciplineRef} apiBaseUrl={apiBaseUrl} userId={user.id} />}
 
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
       <WeightLossLeaderboard
@@ -2677,11 +2689,11 @@ function WellnessValleyApp() {
         topN={LEADERBOARD_CONFIG.TOP_N}
       />
 
-      {/* Discipline Leaderboard Strip - Top 5 Discipline Champions */}
+      {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
       <DisciplineLeaderboard
         ref={disciplineLeaderboardRef}
         apiBaseUrl={apiBaseUrl}
-        topN={5}
+        topN={10}
       />
 
       <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">

@@ -43,6 +43,11 @@ export function parseDateRange(range, customStart, customEnd) {
       last7.setUTCDate(last7.getUTCDate() - 6);
       return { start: last7, end: today };
       
+    case 'last10days':
+      const last10 = new Date(today);
+      last10.setUTCDate(last10.getUTCDate() - 9);
+      return { start: last10, end: today };
+      
     case 'last30days':
       const last30 = new Date(today);
       last30.setUTCDate(last30.getUTCDate() - 29);
