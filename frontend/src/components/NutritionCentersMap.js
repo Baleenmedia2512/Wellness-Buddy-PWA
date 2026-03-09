@@ -9,11 +9,11 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('direct'); // 'direct' | 'full'
   const [mapLoaded, setMapLoaded] = useState(false);
-  const [selectedCenter, setSelectedCenter] = useState(null);
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
   const markersRef = useRef([]);
+  const markersMapRef = useRef({}); // Map center.id to marker
   const infoWindowRef = useRef(null);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -138,6 +138,31 @@ const NutritionCentersMap = ({ user, onBack }) => {
     return data.userId;
   };
 
+  // View center on map - Simple function to zoom and show details
+  const viewCenterOnMap = (center) => {
+    if (!googleMapRef.current || !window.google || !window.google.maps) return;
+
+    const position = {
+      lat: parseFloat(center.latitude),
+      lng: parseFloat(center.longitude),
+    };
+
+    // Center and zoom to the selected center
+    googleMapRef.current.setCenter(position);
+    googleMapRef.current.setZoom(16);
+
+    // Find and trigger the marker's click event to show info window
+    const marker = markersMapRef.current[center.id];
+    if (marker) {
+      window.google.maps.event.trigger(marker, 'click');
+    }
+
+    // Scroll map into view
+    if (mapRef.current) {
+      mapRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
   // Render markers on map
   const renderMarkers = (centersData) => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
@@ -149,6 +174,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
       }
     });
     markersRef.current = [];
+    markersMapRef.current = {};
 
     if (centersData.length === 0) {
       // Default view if no centers
@@ -207,10 +233,10 @@ const NutritionCentersMap = ({ user, onBack }) => {
       marker.addListener('click', () => {
         infoWindowRef.current.setContent(infoContent);
         infoWindowRef.current.open(googleMapRef.current, marker);
-        setSelectedCenter(center);
       });
 
       markersRef.current.push(marker);
+      markersMapRef.current[center.id] = marker;
       bounds.extend(position);
     });
 
@@ -322,22 +348,30 @@ const NutritionCentersMap = ({ user, onBack }) => {
                 centers.map((center) => (
                   <div
                     key={center.id}
-                    className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md transition-shadow"
+                    onClick={() => viewCenterOnMap(center)}
+                    className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-800">{center.center_name}</h3>
                         <p className="text-sm text-gray-600 mt-1">Owner: {center.ownerName}</p>
+                        {center.education_hour && (
+                          <p className="text-xs text-gray-500 mt-1">🕐 Education Hour: {center.education_hour}</p>
+                        )}
                         <div className="flex gap-4 mt-2 text-xs text-gray-500">
                           <span>👥 {center.totalParticipants} participants</span>
-                          <span>✅ {center.todayAttendance} today ({center.attendancePercentage}%)</span>
+                          <span className={center.attendancePercentage >= 50 ? 'text-green-600 font-medium' : 'text-orange-600'}>
+                            ✅ {center.todayAttendance} today ({center.attendancePercentage}%)
+                          </span>
                         </div>
                       </div>
+
                       {center.owner_phone && (
                         <div className="flex gap-2 ml-4">
                           <a
                             href={`tel:${center.owner_phone}`}
-                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
                             title="Call"
                           >
                             <Phone className="h-4 w-4" />
@@ -346,7 +380,8 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
                             title="WhatsApp"
                           >
                             <MessageCircle className="h-4 w-4" />
