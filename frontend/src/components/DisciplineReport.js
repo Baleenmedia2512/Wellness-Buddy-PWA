@@ -661,13 +661,22 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }, [teamData, allMembersData, hierarchyData, adminView, user]);
   // Sort hierarchy by discipline scores and apply filters
   const sortedHierarchy = React.useMemo(() => {
-    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers)
+    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers) {
+      console.log("⚠️ No hierarchy or member data available");
       return hierarchyData?.hierarchy;
+    }
 
-    const sortHierarchyRecursive = (node) => {
+    console.log("🔄 Sorting hierarchy with order:", sortOrder);
+
+    const sortHierarchyRecursive = (node, depth = 0) => {
       if (!node) return node;
 
-      const newNode = { ...node };
+      // Create a completely new object to ensure React detects changes
+      const newNode = { 
+        ...node,
+        // Add a sort key to force re-render
+        _sortKey: `${node.userId}_${sortOrder}_${Date.now()}`
+      };
 
       // Sort and filter team members if they exist
       if (
@@ -675,8 +684,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         Array.isArray(newNode.teamMembers) &&
         newNode.teamMembers.length > 0
       ) {
+        console.log(`  📦 Sorting ${newNode.teamMembers.length} members under ${newNode.userName}`);
+        
         newNode.teamMembers = [...newNode.teamMembers]
-          .map((child) => sortHierarchyRecursive(child))
+          .map((child) => sortHierarchyRecursive(child, depth + 1))
           .filter((child) => {
             // Add null check to prevent "Cannot read properties of null" errors
             if (!child || !child.userId) return false;
@@ -720,14 +731,20 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             const scoreA = memberA?.periodDiscipline?.percentage || 0;
             const scoreB = memberB?.periodDiscipline?.percentage || 0;
 
-            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+            const sortResult = sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+            console.log(`    ${sortOrder === "desc" ? "⬇️" : "⬆️"} ${a.userName} (${scoreA}%) vs ${b.userName} (${scoreB}%) = ${sortResult > 0 ? "swap" : "keep"}`);
+            return sortResult;
           });
+        
+        console.log(`    ✅ Sorted order: ${newNode.teamMembers.map(m => `${m.userName}(${allMembersData.allMembers.find(x => x.userId === m.userId)?.periodDiscipline?.percentage || 0}%)`).join(", ")}`);
       }
 
       return newNode;
     };
 
-    return sortHierarchyRecursive(hierarchyData.hierarchy);
+    const sorted = sortHierarchyRecursive(hierarchyData.hierarchy);
+    console.log("✅ Final sorted hierarchy created with sort order:", sortOrder);
+    return sorted;
   }, [hierarchyData, allMembersData, sortOrder, searchQuery, disciplineFilter]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
@@ -1290,9 +1307,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             {/* Sort Button - Only show for coaches */}
             {isUserACoach && (
               <TouchFeedbackButton
-                onClick={() =>
-                  setSortOrder(sortOrder === "desc" ? "asc" : "desc")
-                }
+                onClick={() => {
+                  const newOrder = sortOrder === "desc" ? "asc" : "desc";
+                  console.log("🔀 Sort button clicked! Changing from", sortOrder, "to", newOrder);
+                  setSortOrder(newOrder);
+                }}
                 className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
                 ariaLabel={
                   sortOrder === "desc" ? "Highest First" : "Lowest First"
@@ -1503,6 +1522,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
               {/* Hierarchical Team View */}
               <HierarchicalTeamView
+                key={`hierarchy-${sortOrder}-${disciplineFilter}-${searchQuery}`}
                 hierarchy={sortedHierarchy || hierarchyData.hierarchy}
                 onNodeClick={(node) => {
                   console.log("Node clicked:", node);

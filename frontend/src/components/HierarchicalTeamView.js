@@ -224,15 +224,15 @@ const TeamNode = ({
             </div>
 
             {/* Score and Chevron */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
               {showDisciplineScores && (
                 <>
-                  {/* All nodes: Show three metrics (N/A if no team) */}
-                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 text-right">
+                  {/* All nodes: Show three metrics horizontally */}
+                  <div className="flex flex-row gap-1.5 sm:gap-2 md:gap-3 text-center">
                     {/* My Score */}
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
                       <div
-                        className={`text-base sm:text-lg font-bold ${
+                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
                           score !== undefined && score >= 80
                             ? "text-blue-700"
                             : score !== undefined && score >= 60
@@ -244,15 +244,15 @@ const TeamNode = ({
                       >
                         {score !== undefined ? `${Math.round(score)}%` : "N/A"}
                       </div>
-                      <div className="text-[8px] sm:text-[9px] text-blue-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-blue-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
                         My Score
                       </div>
                     </div>
                     
                     {/* Direct Team */}
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
                       <div
-                        className={`text-base sm:text-lg font-bold ${
+                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
                           directTeamScore !== null && directTeamScore >= 80
                             ? "text-green-700"
                             : directTeamScore !== null && directTeamScore >= 60
@@ -264,15 +264,15 @@ const TeamNode = ({
                       >
                         {directTeamScore !== null ? `${directTeamScore}%` : "N/A"}
                       </div>
-                      <div className="text-[8px] sm:text-[9px] text-green-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-green-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
                         Direct Team
                       </div>
                     </div>
                     
                     {/* Under Team */}
-                    <div className="flex flex-col items-end">
+                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
                       <div
-                        className={`text-base sm:text-lg font-bold ${
+                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
                           underTeamScore !== null && underTeamScore >= 80
                             ? "text-green-700"
                             : underTeamScore !== null && underTeamScore >= 60
@@ -284,7 +284,7 @@ const TeamNode = ({
                       >
                         {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
                       </div>
-                      <div className="text-[8px] sm:text-[9px] text-green-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-green-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
                         Under Team
                       </div>
                     </div>
