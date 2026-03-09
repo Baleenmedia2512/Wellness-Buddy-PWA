@@ -29,6 +29,7 @@ const TeamNode = ({
   disciplineScores = {},
   memberActivities = {},
   isLastChild = false,
+  allTeamMembers = [], // All team members for calculating team scores
 }) => {
   const [showActivities, setShowActivities] = useState(false);
   const isExpanded = expandedNodes.has(node.userId);
@@ -57,6 +58,60 @@ const TeamNode = ({
 
   const score = disciplineScores[node.userId];
   const activities = memberActivities[node.userId];
+
+  // Calculate team scores for any node with team members
+  let directTeamScore = null;
+  let underTeamScore = null;
+  
+  // Get direct reports (children of current node)
+  const directReports = node.teamMembers || [];
+  
+  if (directReports.length > 0) {
+    // Calculate direct team average
+    const directScores = directReports
+      .map(member => disciplineScores[member.userId])
+      .filter(s => s !== undefined && s !== null);
+    
+    if (directScores.length > 0) {
+      directTeamScore = Math.round(
+        directScores.reduce((sum, s) => sum + s, 0) / directScores.length
+      );
+    }
+    
+    // Calculate under team average (all descendants except direct reports)
+    // Flatten all descendants of this node
+    const flattenDescendants = (parentNode) => {
+      const descendants = [];
+      const flatten = (n) => {
+        if (n.teamMembers && n.teamMembers.length > 0) {
+          n.teamMembers.forEach(child => {
+            descendants.push(child);
+            flatten(child);
+          });
+        }
+      };
+      flatten(parentNode);
+      return descendants;
+    };
+    
+    const allDescendants = flattenDescendants(node);
+    const directReportIds = new Set(directReports.map(m => m.userId));
+    const underTeamMembers = allDescendants.filter(
+      m => !directReportIds.has(m.userId)
+    );
+    
+    if (underTeamMembers.length > 0) {
+      const underScores = underTeamMembers
+        .map(member => disciplineScores[member.userId])
+        .filter(s => s !== undefined && s !== null);
+      
+      if (underScores.length > 0) {
+        underTeamScore = Math.round(
+          underScores.reduce((sum, s) => sum + s, 0) / underScores.length
+        );
+      }
+    }
+  }
 
   // Activity icons matching DisciplineReport.js
   const activityIcons = {
@@ -171,24 +226,70 @@ const TeamNode = ({
             {/* Score and Chevron */}
             <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               {showDisciplineScores && (
-                <div className="text-right">
-                  <div
-                    className={`text-xl sm:text-2xl font-bold ${
-                      score !== undefined && score >= 80
-                        ? "text-green-700"
-                        : score !== undefined && score >= 60
-                        ? "text-yellow-700"
-                        : score !== undefined
-                        ? "text-red-700"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                <>
+                  {/* All nodes: Show three metrics (N/A if no team) */}
+                  <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 text-right">
+                    {/* My Score */}
+                    <div className="flex flex-col items-end">
+                      <div
+                        className={`text-base sm:text-lg font-bold ${
+                          score !== undefined && score >= 80
+                            ? "text-blue-700"
+                            : score !== undefined && score >= 60
+                            ? "text-blue-600"
+                            : score !== undefined
+                            ? "text-blue-500"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                      </div>
+                      <div className="text-[8px] sm:text-[9px] text-blue-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                        My Score
+                      </div>
+                    </div>
+                    
+                    {/* Direct Team */}
+                    <div className="flex flex-col items-end">
+                      <div
+                        className={`text-base sm:text-lg font-bold ${
+                          directTeamScore !== null && directTeamScore >= 80
+                            ? "text-green-700"
+                            : directTeamScore !== null && directTeamScore >= 60
+                            ? "text-yellow-700"
+                            : directTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {directTeamScore !== null ? `${directTeamScore}%` : "N/A"}
+                      </div>
+                      <div className="text-[8px] sm:text-[9px] text-green-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                        Direct Team
+                      </div>
+                    </div>
+                    
+                    {/* Under Team */}
+                    <div className="flex flex-col items-end">
+                      <div
+                        className={`text-base sm:text-lg font-bold ${
+                          underTeamScore !== null && underTeamScore >= 80
+                            ? "text-green-700"
+                            : underTeamScore !== null && underTeamScore >= 60
+                            ? "text-yellow-700"
+                            : underTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
+                      </div>
+                      <div className="text-[8px] sm:text-[9px] text-green-600 font-bold uppercase tracking-wider whitespace-nowrap">
+                        Under Team
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Score
-                  </div>
-                </div>
+                </>
               )}
               {showActivities ? (
                 <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -284,6 +385,7 @@ const TeamNode = ({
                   disciplineScores={disciplineScores}
                   memberActivities={memberActivities}
                   isLastChild={index === node.teamMembers.length - 1}
+                  allTeamMembers={allTeamMembers}
                 />
               ))}
             </motion.div>
@@ -350,6 +452,23 @@ const HierarchicalTeamView = ({
     );
   }
 
+  // Flatten the hierarchy to get all team members for score calculations
+  const flattenHierarchy = (node) => {
+    const members = [];
+    const flatten = (n) => {
+      if (n.teamMembers && n.teamMembers.length > 0) {
+        n.teamMembers.forEach(child => {
+          members.push(child);
+          flatten(child);
+        });
+      }
+    };
+    flatten(node);
+    return members;
+  };
+
+  const allTeamMembers = flattenHierarchy(hierarchy);
+
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Hierarchy Tree */}
@@ -364,6 +483,7 @@ const HierarchicalTeamView = ({
           disciplineScores={disciplineScores}
           memberActivities={memberActivities}
           isLastChild={true}
+          allTeamMembers={allTeamMembers}
         />
       </div>
     </div>
