@@ -431,6 +431,20 @@ function WellnessValleyApp() {
     setShowDashboard(false);
     setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
+    
+    // Clear weight result, education result, and images when going back to main page
+    if (weightResult) setWeightResult(null);
+    if (educationResult) setEducationResult(null);
+    if (nutritionData) setNutritionData(null);
+    if (imagePreview) setImagePreview(null);
+    if (selectedImage) setSelectedImage(null);
+    if (imageType) setImageType(null);
+    
+    // Reset file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
+    
     localStorage.setItem("currentPage", "main");
   };
 

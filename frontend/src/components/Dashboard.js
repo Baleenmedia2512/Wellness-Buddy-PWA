@@ -164,7 +164,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   fill: 'none'
                 }}
               />
-              <span>Nutrition</span>
+              <span>Food</span>
             </TouchFeedbackButton>
 
             <TouchFeedbackButton
