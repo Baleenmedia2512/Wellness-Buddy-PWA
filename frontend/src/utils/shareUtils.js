@@ -6,6 +6,14 @@ import { isPlatform } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 
 /**
+ * Reliably check if running on native platform (not web browser)
+ * Uses Capacitor.isNativePlatform() which is more accurate than isPlatform()
+ */
+const isNativePlatform = () => {
+  return Capacitor.isNativePlatform();
+};
+
+/**
  * Share an actual image directly (original quality, no screenshot)
  * @param {string} imageUrl - The image URL (data URL or blob URL)
  * @param {Object} options - Share options
@@ -24,13 +32,12 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 
   try {
     console.log("📸 Starting direct image share...");
+    const isNative = isNativePlatform();
     console.log(
-      "📱 Platform check - Capacitor:",
-      isPlatform("capacitor"),
-      "Android:",
-      isPlatform("android"),
-      "iOS:",
-      isPlatform("ios"),
+      "📱 Platform check - Native:",
+      isNative,
+      "| Capacitor.platform:",
+      Capacitor.getPlatform(),
     );
 
     // Convert image URL to blob
@@ -51,25 +58,14 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
 
     console.log("✅ Image blob created:", blob.size, "bytes", blob.type);
 
-    // Check if we're on a native platform (Android/iOS) or mobile browser
-    const isNativePlatform =
-      isPlatform("capacitor") || isPlatform("android") || isPlatform("ios");
-
-    const isMobileBrowser =
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent,
-      );
-
-    if (isNativePlatform) {
+    if (isNative) {
       // Native mobile sharing (Capacitor)
+      console.log("📱 Using native share (Android/iOS app)");
       await shareNativeImage(blob, { title, text, fileName, shareAsDocument });
-    } else if (isMobileBrowser && navigator.share) {
-      // Mobile browser with Web Share API
-      console.log("📱 Mobile browser detected, using Web Share API");
-      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     } else {
-      // Desktop or browser without share support
-      await shareWeb(blob, { title, text, fileName, shareAsDocument });
+      // Web browser - try share with fallback to download
+      console.log("💻 Web browser detected, attempting share with fallback...");
+      await shareWithRetryAndFallback(blob, { title, text, fileName, shareAsDocument });
     }
 
     console.log("✅ Direct image share completed successfully");
@@ -108,13 +104,12 @@ export const captureAndShare = async (element, options = {}) => {
 
   try {
     console.log("📸 Starting capture and share process...");
+    const isNative = isNativePlatform();
     console.log(
-      "📱 Platform check - Capacitor:",
-      isPlatform("capacitor"),
-      "Android:",
-      isPlatform("android"),
-      "iOS:",
-      isPlatform("ios"),
+      "📱 Platform check - Native:",
+      isNative,
+      "| Capacitor.platform:",
+      Capacitor.getPlatform(),
     );
 
     // Ensure all images in the element are fully loaded before capture
@@ -230,25 +225,15 @@ export const captureAndShare = async (element, options = {}) => {
     );
     console.log("   Resolution:", canvas.width, "x", canvas.height, "pixels");
 
-    // Step 3: Check if we're on a native platform (Android/iOS) or mobile browser
-    const isNativePlatform =
-      isPlatform("capacitor") || isPlatform("android") || isPlatform("ios");
-
-    const isMobileBrowser =
-      /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-        navigator.userAgent,
-      );
-
-    if (isNativePlatform) {
+    // Step 3: Share based on platform (native or web browser)
+    if (isNative) {
       // Native mobile sharing (Capacitor)
+      console.log("📱 Using native share (Android/iOS app)");
       await shareNative(blob, { title, text, fileName, shareAsDocument });
-    } else if (isMobileBrowser && navigator.share) {
-      // Mobile browser with Web Share API
-      console.log("📱 Mobile browser detected, using Web Share API");
-      await shareWeb(blob, { title, text, fileName, shareAsDocument });
     } else {
-      // Desktop or browser without share support
-      await shareWeb(blob, { title, text, fileName, shareAsDocument });
+      // Web browser - try Web Share API with fallback to download
+      console.log("💻 Web browser detected, attempting share with fallback...");
+      await shareWithRetryAndFallback(blob, { title, text, fileName, shareAsDocument });
     }
 
     console.log("✅ Share completed successfully");
@@ -283,7 +268,7 @@ const shareNative = async (
     );
 
     // For Android, use custom WhatsAppSharePlugin for better quality
-    if (isPlatform("android")) {
+    if (Capacitor.getPlatform() === "android") {
       console.log(
         "📱 Android detected - using custom WhatsAppSharePlugin for high-quality sharing",
       );
@@ -338,7 +323,8 @@ const shareNative = async (
 
     // iOS or Android fallback - use standard Capacitor share
     // For Android, use external storage for better sharing compatibility
-    if (isPlatform("android") || isPlatform("ios")) {
+    const platform = Capacitor.getPlatform();
+    if (platform === "android" || platform === "ios") {
       console.log("📱 Using standard Capacitor share method");
 
       try {
@@ -467,6 +453,121 @@ const shareNative = async (
     }
 
     throw error;
+  }
+};
+
+/**
+ * Download image as a file
+ * @param {Blob} blob - Image blob to download
+ * @param {string} fileName - Name for the downloaded file
+ */
+const downloadImage = async (blob, fileName) => {
+  console.log("💾 Downloading image...");
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  console.log("✅ Image downloaded successfully");
+  
+  // Show helpful message
+  alert(
+    "Image downloaded successfully! You can now share it from your downloads folder.",
+  );
+};
+
+/**
+ * Try Web Share API with retry and fallback to download
+ * Handles edge cases like Windows share dialog errors
+ * @param {Blob} blob - Image blob to share
+ * @param {Object} options - Share options
+ */
+const shareWithRetryAndFallback = async (blob, options) => {
+  const { title, text, fileName, shareAsDocument } = options;
+  const maxRetries = 2;
+  let lastError = null;
+
+  // Check if Web Share API is available
+  if (!navigator.share) {
+    console.log("❌ Web Share API not available, falling back to download");
+    await downloadImage(blob, fileName);
+    return;
+  }
+
+  // Attempt Web Share with retries
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      console.log(`📤 Share attempt ${attempt}/${maxRetries}...`);
+      
+      const file = new File([blob], fileName, { type: "image/png" });
+      
+      // Check if we can share files
+      const canShareFiles = navigator.canShare && navigator.canShare({ files: [file] });
+      
+      if (!canShareFiles) {
+        console.log("⚠️ Browser cannot share files, falling back to download");
+        break; // Exit loop and fallback to download
+      }
+      
+      const shareOptions = {
+        files: [file],
+        title: title,
+      };
+      
+      // Include text for document mode (prevents compression on WhatsApp)
+      if (shareAsDocument && text) {
+        shareOptions.text = text;
+      }
+      
+      console.log("🚀 Calling navigator.share()...", shareOptions);
+      await navigator.share(shareOptions);
+      console.log("✅ Share completed successfully!");
+      return; // Success - exit function
+      
+    } catch (error) {
+      console.warn(`⚠️ Share attempt ${attempt} failed:`, error.name, error.message);
+      lastError = error;
+      
+      // Check if user canceled - stop immediately, no fallback
+      if (error.name === "AbortError" || 
+          error.message?.toLowerCase().includes("cancel")) {
+        console.log("ℹ️ User cancelled share - no fallback");
+        return;
+      }
+      
+      // Check for recoverable errors that warrant retry
+      const isRecoverableError = 
+        error.name === "NotAllowedError" ||
+        error.name === "DataError" ||
+        error.message?.includes("couldn't show") ||
+        error.message?.includes("ways you could share");
+      
+      if (isRecoverableError && attempt < maxRetries) {
+        console.log(`🔄 Retrying share in 800ms...`);
+        await new Promise(resolve => setTimeout(resolve, 800));
+        continue; // Retry
+      }
+      
+      // If we've exhausted retries, fall back to download
+      if (attempt === maxRetries) {
+        console.log(`❌ After ${maxRetries} attempts, share failed:`, error.message);
+        console.log("💡 Falling back to download...");
+        break;
+      }
+    }
+  }
+  
+  // Fallback: Download the image
+  try {
+    await downloadImage(blob, fileName);
+  } catch (downloadError) {
+    console.error("❌ Download also failed:", downloadError);
+    alert("Unable to share or download. Please try again or check your browser settings.");
+    throw downloadError;
   }
 };
 
