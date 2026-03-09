@@ -1,5 +1,5 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
-import { getTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
+import { getTeamHierarchy, getDualCoachingTeamHierarchy } from '../../utils/disciplineCalculationsSupabase.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching
@@ -38,18 +38,22 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const userIdNum = parseInt(userId);
 
-    // Get team hierarchy
+    console.log('🔄 [get-nutrition-centers] Using DUAL COACHING MODEL for team filtering');
+
+    // Get team hierarchy using DUAL COACHING MODEL
     let teamMembers = [];
     if (teamFilter === 'full') {
-      // Get full team hierarchy
-      teamMembers = await getTeamHierarchy(userIdNum);
+      // Get full team hierarchy with dual-coaching support
+      console.log('📊 [get-nutrition-centers] Fetching FULL team hierarchy...');
+      teamMembers = await getDualCoachingTeamHierarchy(userIdNum, false);
     } else {
-      // Get direct team only
+      // Get direct team only (dual-coaching model: CoachId OR CoCoachId)
+      console.log('📊 [get-nutrition-centers] Fetching DIRECT team...');
       const { data: directTeam } = await supabase
         .from('team_table')
-        .select('"UserId"')
-        .eq('"UplineCoachId"', userIdNum)
-        .eq('"Status"', 'active');
+        .select('*')
+        .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+        .eq('Status', 'Active');
       
       teamMembers = directTeam || [];
     }
@@ -57,7 +61,7 @@ export default async function handler(req, res) {
     // Include the logged-in user
     const teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
 
-    console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length);
+    console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length, 'members');
 
     // Fetch all active nutrition centers owned by team members
     const { data: centers, error: centersError } = await supabase
@@ -87,8 +91,8 @@ export default async function handler(req, res) {
     const ownerIds = centers.map(c => c.owner_user_id);
     const { data: owners } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName"')
-      .in('"UserId"', ownerIds);
+      .select('UserId, UserName')
+      .in('UserId', ownerIds);
 
     const ownerMap = {};
     (owners || []).forEach(o => {
@@ -102,9 +106,9 @@ export default async function handler(req, res) {
         // Count total participants at this center (ever)
         const { data: totalLogs } = await supabase
           .from('education_logs_table')
-          .select('"UserId"', { count: 'exact', head: false })
+          .select('UserId', { count: 'exact', head: false })
           .eq('nutrition_center_id', center.id)
-          .eq('"IsDeleted"', false);
+          .eq('IsDeleted', 0);
 
         const uniqueUserIds = new Set((totalLogs || []).map(log => log.UserId));
         const totalParticipants = uniqueUserIds.size;
@@ -112,11 +116,11 @@ export default async function handler(req, res) {
         // Get today's attendance
         const { data: todayLogs } = await supabase
           .from('education_logs_table')
-          .select('"UserId"')
+          .select('UserId')
           .eq('nutrition_center_id', center.id)
-          .eq('"IsDeleted"', false)
-          .gte('"CreatedAt"', today + ' 00:00:00')
-          .lte('"CreatedAt"', today + ' 23:59:59');
+          .eq('IsDeleted', 0)
+          .gte('CreatedAt', today)
+          .lte('CreatedAt', today + 'T23:59:59');
 
         const todayUniqueUsers = new Set((todayLogs || []).map(log => log.UserId));
         const todayAttendance = todayUniqueUsers.size;
@@ -136,7 +140,13 @@ export default async function handler(req, res) {
       })
     );
 
-    console.log('✅ [get-nutrition-centers] Found:', centersWithMetrics.length);
+    console.log('✅ [get-nutrition-centers] Found', centersWithMetrics.length, 'centers with metrics');
+    console.log('📍 [get-nutrition-centers] Centers:', centersWithMetrics.map(c => ({ 
+      name: c.center_name, 
+      owner: c.ownerName, 
+      participants: c.totalParticipants,
+      today: c.todayAttendance 
+    })));
 
     res.status(200).json({
       success: true,
