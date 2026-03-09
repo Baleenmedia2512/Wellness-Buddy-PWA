@@ -81,29 +81,29 @@ export default async function handler(req, res) {
       // Weight records
       supabase
         .from('weight_records_table')
-        .select('"UserId", "CreatedAt"')
-        .in('"UserId"', allUserIds)
-        .gte('"CreatedAt"', start + 'T00:00:00')
-        .lte('"CreatedAt"', end + 'T23:59:59')
-        .eq('"IsDeleted"', false),
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', start)
+        .lte('CreatedAt', end + 'T23:59:59')
+        .eq('IsDeleted', 0),
       
       // Education records
       supabase
         .from('education_logs_table')
-        .select('"UserId", "CreatedAt"')
-        .in('"UserId"', allUserIds)
-        .gte('"CreatedAt"', start + 'T00:00:00')
-        .lte('"CreatedAt"', end + 'T23:59:59')
-        .eq('"IsDeleted"', false),
+        .select('UserId, CreatedAt')
+        .in('UserId', allUserIds)
+        .gte('CreatedAt', start)
+        .lte('CreatedAt', end + 'T23:59:59')
+        .eq('IsDeleted', 0),
       
       // Food/nutrition records
       supabase
         .from('food_nutrition_data_table')
-        .select('"UserID", "CreatedAt"')
-        .in('"UserID"', allUserIds.map(String))
-        .gte('"CreatedAt"', start + 'T00:00:00')
-        .lte('"CreatedAt"', end + 'T23:59:59')
-        .eq('"IsDeleted"', false)
+        .select('UserID, CreatedAt')
+        .in('UserID', allUserIds.map(String))
+        .gte('CreatedAt', start)
+        .lte('CreatedAt', end + 'T23:59:59')
+        .eq('IsDeleted', 0)
     ]);
 
     console.log('📊 [attendance-report] Discipline data fetched:', {
@@ -222,10 +222,10 @@ export default async function handler(req, res) {
         const { data: allEducationLogs, error: allLogsError } = await supabase
           .from('education_logs_table')
           .select('id, attendance_type')
-          .eq('"UserId"', member.UserId)
-          .eq('"IsDeleted"', false)
-          .gte('"CreatedAt"', start + ' 00:00:00')
-          .lte('"CreatedAt"', end + ' 23:59:59');
+          .eq('UserId', member.UserId)
+          .eq('IsDeleted', 0)
+          .gte('CreatedAt', start)
+          .lte('CreatedAt', end + 'T23:59:59');
 
         if (allLogsError) {
           console.error('⚠️ [attendance-report] Error fetching education logs for user', member.UserId, ':', allLogsError);

@@ -120,7 +120,9 @@ const AttendanceReport = ({ user, onBack }) => {
           clubAttendance: m.clubAttendance,
           remoteAttendance: m.remoteAttendance,
           attendancePercentage: m.attendancePercentage,
-          disciplinePercentage: m.disciplinePercentage
+          disciplinePercentage: m.disciplinePercentage,
+          directTeamCount: m.directTeamCount,
+          fullTeamCount: m.fullTeamCount
         })) || []
       });
 
@@ -129,6 +131,18 @@ const AttendanceReport = ({ user, onBack }) => {
       }
 
       console.log('🎯 [AttendanceReport] Full Sample Member Data:', result.data?.members?.[0]);
+      console.log('👥 [AttendanceReport] Team counts check:', {
+        member1: result.data?.members?.[0] ? {
+          name: result.data.members[0].userName,
+          directTeam: result.data.members[0].directTeamCount,
+          fullTeam: result.data.members[0].fullTeamCount
+        } : null,
+        member2: result.data?.members?.[1] ? {
+          name: result.data.members[1].userName,
+          directTeam: result.data.members[1].directTeamCount,
+          fullTeam: result.data.members[1].fullTeamCount
+        } : null
+      });
 
       setReportData(result.data);
       
@@ -192,9 +206,15 @@ const AttendanceReport = ({ user, onBack }) => {
         userId: r.userId, 
         name: r.userName, 
         childrenCount: r.teamMembers?.length || 0,
+        directTeam: r.directTeamCount,
+        fullTeam: r.fullTeamCount,
+        discipline: r.disciplinePercentage,
         children: r.teamMembers?.map(c => ({ 
           name: c.userName, 
-          childCount: c.teamMembers?.length || 0 
+          childCount: c.teamMembers?.length || 0,
+          directTeam: c.directTeamCount,
+          fullTeam: c.fullTeamCount,
+          discipline: c.disciplinePercentage
         }))
       }))
     });
@@ -296,34 +316,34 @@ const AttendanceReport = ({ user, onBack }) => {
                   <div className="flex items-center gap-1">
                     <TrendingUp className="h-3 w-3 text-blue-600" />
                     <span className="font-bold text-blue-700">
-                      {node.disciplinePercentage || 0}% Discipline
+                      {Math.round(node.disciplinePercentage || 0)}% Discipline
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3 text-green-600" />
                     <span className="font-bold text-green-700">
-                      {node.attendancePercentage}% Attendance
+                      {Math.round(node.attendancePercentage || 0)}% Attendance
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
                     <MapPin className="h-3 w-3" />
-                    <span className="font-medium">{node.clubAttendance} club</span>
+                    <span className="font-medium">{node.clubAttendance || 0} club</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Home className="h-3 w-3" />
-                    <span className="font-medium">{node.remoteAttendance} remote</span>
+                    <span className="font-medium">{node.remoteAttendance || 0} remote</span>
                   </div>
                 </div>
 
-                {/* Team Counts */}
+                {/* Team Counts - Always visible */}
                 <div className="mt-1 flex gap-3 text-xs text-purple-600 font-medium">
                   <div className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
-                    <span className="font-bold">Direct: {node.directTeamCount}</span>
+                    <span className="font-bold">Direct: {node.directTeamCount || 0}</span>
                   </div>
                   <div className="flex items-center gap-1">
                     <Users className="h-3 w-3" />
-                    <span className="font-bold">Full Team: {node.fullTeamCount}</span>
+                    <span className="font-bold">Full Team: {node.fullTeamCount || 0}</span>
                   </div>
                 </div>
               </div>
