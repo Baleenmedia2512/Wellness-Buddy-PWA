@@ -91,9 +91,21 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
+          // Get user's timezone offset in minutes
+          const userTimezoneOffset = new Date().getTimezoneOffset();
+          
+          // 🔍 DEBUG: Log timezone info
+          console.log('🌍 Frontend Timezone Info (All Members):', {
+            userTimezoneOffset,
+            currentTime: new Date().toString(),
+            dateRange,
+            userId
+          });
+          
           const params = {
             userId,
             dateRange,
+            userTimezoneOffset, // Send timezone for proper discipline calculation
           };
 
           if (dateRange === "custom" && customRange) {

@@ -59,6 +59,18 @@ const TeamNode = ({
   const score = disciplineScores[node.userId];
   const activities = memberActivities[node.userId];
 
+  // Debug logging for scores
+  console.log("TeamNode score check:", {
+    name: node.userName,
+    userId: node.userId,
+    userIdType: typeof node.userId,
+    score,
+    scoreType: typeof score,
+    hasDisciplineScores: Object.keys(disciplineScores).length > 0,
+    disciplineScoresKeys: Object.keys(disciplineScores).slice(0, 5),
+    disciplineScoresSample: Object.entries(disciplineScores).slice(0, 3)
+  });
+
   // Calculate team scores for any node with team members
   let directTeamScore = null;
   let underTeamScore = null;

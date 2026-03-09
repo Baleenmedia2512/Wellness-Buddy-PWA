@@ -1545,35 +1545,88 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 showDisciplineScores={true}
                 disciplineScores={
                   (() => {
-                    const scores = allMembersData?.allMembers
-                      ? Object.fromEntries(
-                          allMembersData.allMembers.map((m) => [
-                            m.userId,
-                            m.periodDiscipline?.percentage || 0,
-                          ]),
-                        )
-                      : {};
-                    console.log("📊 [DisciplineReport] Passing discipline scores to HierarchicalTeamView:", {
-                      totalMembers: allMembersData?.allMembers?.length || 0,
-                      scoresCount: Object.keys(scores).length,
-                      sampleScores: Object.entries(scores).slice(0, 5).map(([userId, score]) => ({
+                    const scores = {};
+                    
+                    // Add scores from allMembersData (admin view)
+                    if (allMembersData?.allMembers) {
+                      allMembersData.allMembers.forEach((m) => {
+                        // Store with both string and number keys to handle any mismatch
+                        const percentage = m.periodDiscipline?.percentage ?? 0;
+                        scores[m.userId] = percentage;
+                        scores[String(m.userId)] = percentage;
+                      });
+                    }
+                    
+                    // Also add scores from teamData (coach's own score + direct team)
+                    if (teamData) {
+                      // Add coach's own score
+                      if (teamData.coachPerformance) {
+                        const percentage = teamData.coachPerformance.periodDiscipline?.percentage ?? 0;
+                        scores[teamData.coachPerformance.userId] = percentage;
+                        scores[String(teamData.coachPerformance.userId)] = percentage;
+                      }
+                      
+                      // Add team members' scores  
+                      if (teamData.teamMembers) {
+                        teamData.teamMembers.forEach((m) => {
+                          const percentage = m.periodDiscipline?.percentage ?? 0;
+                          scores[m.userId] = percentage;
+                          scores[String(m.userId)] = percentage;
+                        });
+                      }
+                    }
+                    
+                    console.log("📊 [DisciplineReport] Discipline scores for hierarchy:", {
+                      totalScores: Object.keys(scores).length,
+                      hasAllMembersData: !!allMembersData?.allMembers,
+                      hasTeamData: !!teamData,
+                      allMembersCount: allMembersData?.allMembers?.length || 0,
+                      teamDataCoach: teamData?.coachPerformance?.userName,
+                      teamDataMembers: teamData?.teamMembers?.length || 0,
+                      sampleScores: Object.entries(scores).slice(0, 10).map(([userId, score]) => ({
                         userId,
+                        userIdType: typeof userId,
                         score,
-                        memberName: allMembersData.allMembers.find(m => m.userId === parseInt(userId))?.userName
                       }))
                     });
+                    
                     return scores;
                   })()
                 }
                 memberActivities={
-                  allMembersData?.allMembers
-                    ? Object.fromEntries(
-                        allMembersData.allMembers.map((m) => [
-                          m.userId,
-                          m.periodActivities || m.activities || {},
-                        ]),
-                      )
-                    : {}
+                  (() => {
+                    const activities = {};
+                    
+                    // Add activities from allMembersData
+                    if (allMembersData?.allMembers) {
+                      allMembersData.allMembers.forEach((m) => {
+                        const memberActivities = m.periodActivities || m.activities || {};
+                        // Store with both string and number keys to handle any mismatch
+                        activities[m.userId] = memberActivities;
+                        activities[String(m.userId)] = memberActivities;
+                      });
+                    }
+                    
+                    // Also add activities from teamData
+                    if (teamData) {
+                      if (teamData.coachPerformance) {
+                        const coachActivities = teamData.coachPerformance.periodActivities || 
+                          teamData.coachPerformance.activities || {};
+                        activities[teamData.coachPerformance.userId] = coachActivities;
+                        activities[String(teamData.coachPerformance.userId)] = coachActivities;
+                      }
+                      
+                      if (teamData.teamMembers) {
+                        teamData.teamMembers.forEach((m) => {
+                          const memberActivities = m.periodActivities || m.activities || {};
+                          activities[m.userId] = memberActivities;
+                          activities[String(m.userId)] = memberActivities;
+                        });
+                      }
+                    }
+                    
+                    return activities;
+                  })()
                 }
                 emptyMessage="No team structure found"
               />
