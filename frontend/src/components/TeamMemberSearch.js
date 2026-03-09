@@ -140,6 +140,17 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
   // Show displayName only if user hasn't manually cleared it
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
 
+  // Console logs for debugging
+  console.log('TeamMemberSearch Debug:', {
+    selectedMember: selectedMember,
+    displayName: displayName,
+    inputValue: inputValue,
+    hasCleared: hasCleared,
+    searchQuery: searchQuery,
+    userName: user?.name,
+    userEmail: user?.email
+  });
+
   return (
     <div className="relative w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-4 py-3 bg-white border-b border-gray-200">
       {/* Search Input with User Display */}
