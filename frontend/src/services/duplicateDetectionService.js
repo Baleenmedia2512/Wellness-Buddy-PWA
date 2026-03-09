@@ -1,5 +1,5 @@
 // src/services/duplicateDetectionService.js
-import { istToLocalDate } from '../utils/timezoneUtils';
+import { istToLocalDate } from "../utils/timezoneUtils";
 
 /**
  * Get the meal category based on current time
@@ -215,7 +215,13 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     // console.log('🔍 Checking for duplicates:', { newFoodNames, mealCategory, mealCategoryName });
 
     // Fetch today's nutrition data for the user
-    const dateString = currentTime.toISOString().split("T")[0];
+    // Use local date formatting to prevent timezone-based date shifting
+    const dateString =
+      currentTime.getFullYear() +
+      "-" +
+      String(currentTime.getMonth() + 1).padStart(2, "0") +
+      "-" +
+      String(currentTime.getDate()).padStart(2, "0");
     const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
     // Edge case: API base URL not configured

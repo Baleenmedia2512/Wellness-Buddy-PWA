@@ -1,42 +1,46 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  X, 
-  Clock, 
-  Save, 
-  AlertCircle, 
-  Scale, 
-  BookOpen, 
-  Coffee, 
-  Utensils, 
+import React, { useState, useEffect, useRef } from "react";
+import {
+  X,
+  Clock,
+  Save,
+  AlertCircle,
+  Scale,
+  BookOpen,
+  Coffee,
+  Utensils,
   Moon,
   Calendar,
   Edit2,
   ChevronRight,
   ChevronLeft,
-  Check
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import axios from 'axios';
-import { 
-  format, 
-  addMonths, 
-  subMonths, 
-  startOfMonth, 
-  endOfMonth, 
-  eachDayOfInterval, 
-  isSameMonth, 
-  isSameDay, 
-  isToday, 
-  startOfWeek, 
-  endOfWeek
-} from 'date-fns';
+  Check,
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import axios from "axios";
+import {
+  format,
+  addMonths,
+  subMonths,
+  startOfMonth,
+  endOfMonth,
+  eachDayOfInterval,
+  isSameMonth,
+  isSameDay,
+  isToday,
+  startOfWeek,
+  endOfWeek,
+} from "date-fns";
 
 /**
  * Inline Date Picker
  */
 const InlineDatePicker = ({ value, onChange }) => {
-  const [currentMonth, setCurrentMonth] = useState(value ? new Date(value) : new Date());
-  const [selectedDate, setSelectedDate] = useState(value ? new Date(value) : new Date());
+  const [currentMonth, setCurrentMonth] = useState(
+    value ? new Date(value) : new Date(),
+  );
+  const [selectedDate, setSelectedDate] = useState(
+    value ? new Date(value) : new Date(),
+  );
 
   useEffect(() => {
     if (value) {
@@ -48,16 +52,16 @@ const InlineDatePicker = ({ value, onChange }) => {
 
   const days = eachDayOfInterval({
     start: startOfWeek(startOfMonth(currentMonth)),
-    end: endOfWeek(endOfMonth(currentMonth))
+    end: endOfWeek(endOfMonth(currentMonth)),
   });
 
   const handleDateSelect = (day) => {
     setSelectedDate(day);
-    onChange(format(day, 'yyyy-MM-dd'));
+    onChange(format(day, "yyyy-MM-dd"));
   };
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
@@ -66,17 +70,23 @@ const InlineDatePicker = ({ value, onChange }) => {
     >
       <div className="p-3">
         <div className="mb-2 flex items-center justify-between">
-          <button 
-            onClick={(e) => { e.stopPropagation(); setCurrentMonth(subMonths(currentMonth, 1)); }}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentMonth(subMonths(currentMonth, 1));
+            }}
             className="p-1 hover:bg-gray-100 rounded-full"
           >
             <ChevronLeft className="h-4 w-4 text-gray-600" />
           </button>
           <h4 className="font-bold text-sm text-gray-900">
-            {format(currentMonth, 'MMMM yyyy')}
+            {format(currentMonth, "MMMM yyyy")}
           </h4>
-          <button 
-            onClick={(e) => { e.stopPropagation(); setCurrentMonth(addMonths(currentMonth, 1)); }}
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setCurrentMonth(addMonths(currentMonth, 1));
+            }}
             className="p-1 hover:bg-gray-100 rounded-full"
           >
             <ChevronRight className="h-4 w-4 text-gray-600" />
@@ -84,8 +94,11 @@ const InlineDatePicker = ({ value, onChange }) => {
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
-          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map(day => (
-            <div key={day} className="text-center text-[10px] font-bold text-gray-400 py-1">
+          {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+            <div
+              key={day}
+              className="text-center text-[10px] font-bold text-gray-400 py-1"
+            >
               {day}
             </div>
           ))}
@@ -100,19 +113,27 @@ const InlineDatePicker = ({ value, onChange }) => {
             return (
               <button
                 key={idx}
-                onClick={(e) => { e.stopPropagation(); handleDateSelect(day); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDateSelect(day);
+                }}
                 className={`
                   aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all
-                  ${isSelected 
-                    ? 'bg-green-600 text-white shadow-sm shadow-green-200' 
-                    : isCurrentMonth 
-                      ? 'text-gray-900 hover:bg-gray-50' 
-                      : 'text-gray-300'
+                  ${
+                    isSelected
+                      ? "bg-green-600 text-white shadow-sm shadow-green-200"
+                      : isCurrentMonth
+                      ? "text-gray-900 hover:bg-gray-50"
+                      : "text-gray-300"
                   }
-                  ${isTodayDate && !isSelected ? 'border border-green-200 text-green-600' : ''}
+                  ${
+                    isTodayDate && !isSelected
+                      ? "border border-green-200 text-green-600"
+                      : ""
+                  }
                 `}
               >
-                {format(day, 'd')}
+                {format(day, "d")}
               </button>
             );
           })}
@@ -132,7 +153,7 @@ const InlineTimePicker = ({ value, onChange }) => {
   // Parse initial value "HH:MM"
   const parseTime = (timeStr) => {
     if (!timeStr) return { hours: 12, minutes: 0 };
-    const [h, m] = timeStr.split(':').map(Number);
+    const [h, m] = timeStr.split(":").map(Number);
     return { hours: h, minutes: m };
   };
 
@@ -145,15 +166,22 @@ const InlineTimePicker = ({ value, onChange }) => {
   // Scroll selected time into view on mount
   useEffect(() => {
     if (hoursRef.current) {
-      const selectedHourBtn = hoursRef.current.querySelector(`[data-hour="${selectedTime.hours}"]`);
+      const selectedHourBtn = hoursRef.current.querySelector(
+        `[data-hour="${selectedTime.hours}"]`,
+      );
       if (selectedHourBtn) {
-        selectedHourBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        selectedHourBtn.scrollIntoView({ block: "center", behavior: "smooth" });
       }
     }
     if (minutesRef.current) {
-      const selectedMinuteBtn = minutesRef.current.querySelector(`[data-minute="${selectedTime.minutes}"]`);
+      const selectedMinuteBtn = minutesRef.current.querySelector(
+        `[data-minute="${selectedTime.minutes}"]`,
+      );
       if (selectedMinuteBtn) {
-        selectedMinuteBtn.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        selectedMinuteBtn.scrollIntoView({
+          block: "center",
+          behavior: "smooth",
+        });
       }
     }
   }, []);
@@ -161,8 +189,8 @@ const InlineTimePicker = ({ value, onChange }) => {
   const handleTimeChange = (type, val) => {
     const newTime = { ...selectedTime, [type]: val };
     setSelectedTime(newTime);
-    const h = newTime.hours.toString().padStart(2, '0');
-    const m = newTime.minutes.toString().padStart(2, '0');
+    const h = newTime.hours.toString().padStart(2, "0");
+    const m = newTime.minutes.toString().padStart(2, "0");
     onChange(`${h}:${m}`);
   };
 
@@ -170,7 +198,7 @@ const InlineTimePicker = ({ value, onChange }) => {
   const minutes = Array.from({ length: 12 }, (_, i) => i * 5); // 5 minute steps
 
   return (
-    <motion.div 
+    <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
@@ -180,46 +208,64 @@ const InlineTimePicker = ({ value, onChange }) => {
       <div className="p-3">
         <div className="flex gap-2 h-40">
           {/* Hours Column */}
-          <div ref={hoursRef} className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar">
-            <div className="text-[10px] font-bold text-gray-400 text-center sticky top-0 bg-white py-1 z-10">HOURS</div>
-            {hours.map(hour => (
+          <div
+            ref={hoursRef}
+            className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar"
+          >
+            <div className="text-[10px] font-bold text-gray-400 text-center sticky top-0 bg-white py-1 z-10">
+              HOURS
+            </div>
+            {hours.map((hour) => (
               <button
                 key={hour}
                 data-hour={hour}
-                onClick={(e) => { e.stopPropagation(); handleTimeChange('hours', hour); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTimeChange("hours", hour);
+                }}
                 className={`
                   py-2 rounded-lg text-sm font-medium transition-all shrink-0
-                  ${selectedTime.hours === hour 
-                    ? 'bg-green-600 text-white shadow-sm' 
-                    : 'text-gray-700 hover:bg-gray-50'
+                  ${
+                    selectedTime.hours === hour
+                      ? "bg-green-600 text-white shadow-sm"
+                      : "text-gray-700 hover:bg-gray-50"
                   }
                 `}
               >
-                {hour.toString().padStart(2, '0')}
+                {hour.toString().padStart(2, "0")}
               </button>
             ))}
           </div>
-          
+
           {/* Separator */}
           <div className="w-px bg-gray-100 my-2"></div>
 
           {/* Minutes Column */}
-          <div ref={minutesRef} className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar">
-            <div className="text-[10px] font-bold text-gray-400 text-center sticky top-0 bg-white py-1 z-10">MINS</div>
-            {minutes.map(minute => (
+          <div
+            ref={minutesRef}
+            className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar"
+          >
+            <div className="text-[10px] font-bold text-gray-400 text-center sticky top-0 bg-white py-1 z-10">
+              MINS
+            </div>
+            {minutes.map((minute) => (
               <button
                 key={minute}
                 data-minute={minute}
-                onClick={(e) => { e.stopPropagation(); handleTimeChange('minutes', minute); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleTimeChange("minutes", minute);
+                }}
                 className={`
                   py-2 rounded-lg text-sm font-medium transition-all shrink-0
-                  ${selectedTime.minutes === minute 
-                    ? 'bg-green-600 text-white shadow-sm' 
-                    : 'text-gray-700 hover:bg-gray-50'
+                  ${
+                    selectedTime.minutes === minute
+                      ? "bg-green-600 text-white shadow-sm"
+                      : "text-gray-700 hover:bg-gray-50"
                   }
                 `}
               >
-                {minute.toString().padStart(2, '0')}
+                {minute.toString().padStart(2, "0")}
               </button>
             ))}
           </div>
@@ -243,14 +289,14 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
   const [successMessage, setSuccessMessage] = useState(null);
   const [lastUpdatedActivity, setLastUpdatedActivity] = useState(null);
   const [validationError, setValidationError] = useState(null);
-  
+
   // Picker State
   const [activePicker, setActivePicker] = useState(null); // 'startTime', 'endTime', 'effectiveDate'
 
   const [formData, setFormData] = useState({
-    windowStartTime: '',
-    windowEndTime: '',
-    changeReason: ''
+    windowStartTime: "",
+    windowEndTime: "",
+    changeReason: "",
   });
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -258,13 +304,51 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
   // Activity display configuration
   const getActivityConfig = (type) => {
     const configs = {
-      weight: { name: 'Weight', icon: Scale, color: 'text-purple-600', bg: 'bg-purple-50', border: 'border-purple-100' },
-      education: { name: 'Education', icon: BookOpen, color: 'text-blue-600', bg: 'bg-blue-50', border: 'border-blue-100' },
-      breakfast: { name: 'Breakfast', icon: Coffee, color: 'text-amber-600', bg: 'bg-amber-50', border: 'border-amber-100' },
-      lunch: { name: 'Lunch', icon: Utensils, color: 'text-orange-600', bg: 'bg-orange-50', border: 'border-orange-100' },
-      dinner: { name: 'Dinner', icon: Moon, color: 'text-indigo-600', bg: 'bg-indigo-50', border: 'border-indigo-100' }
+      weight: {
+        name: "Weight",
+        icon: Scale,
+        color: "text-purple-600",
+        bg: "bg-purple-50",
+        border: "border-purple-100",
+      },
+      education: {
+        name: "Education",
+        icon: BookOpen,
+        color: "text-blue-600",
+        bg: "bg-blue-50",
+        border: "border-blue-100",
+      },
+      breakfast: {
+        name: "Breakfast",
+        icon: Coffee,
+        color: "text-amber-600",
+        bg: "bg-amber-50",
+        border: "border-amber-100",
+      },
+      lunch: {
+        name: "Lunch",
+        icon: Utensils,
+        color: "text-orange-600",
+        bg: "bg-orange-50",
+        border: "border-orange-100",
+      },
+      dinner: {
+        name: "Dinner",
+        icon: Moon,
+        color: "text-indigo-600",
+        bg: "bg-indigo-50",
+        border: "border-indigo-100",
+      },
     };
-    return configs[type] || { name: type, icon: Clock, color: 'text-gray-600', bg: 'bg-gray-50', border: 'border-gray-100' };
+    return (
+      configs[type] || {
+        name: type,
+        icon: Clock,
+        color: "text-gray-600",
+        bg: "bg-gray-50",
+        border: "border-gray-100",
+      }
+    );
   };
 
   // Load time windows when modal opens
@@ -282,8 +366,8 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
       const response = await axios.get(`${apiBaseUrl}/api/admin/time-windows`);
       setTimeWindows(response.data.timeWindows);
     } catch (err) {
-      console.error('Error loading time windows:', err);
-      setError('Failed to load time windows');
+      console.error("Error loading time windows:", err);
+      setError("Failed to load time windows");
     } finally {
       if (!isBackground) setLoading(false);
     }
@@ -295,7 +379,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
     setFormData({
       windowStartTime: window.WindowStartTime.slice(0, 5), // HH:MM format
       windowEndTime: window.WindowEndTime.slice(0, 5),
-      changeReason: ''
+      changeReason: "",
     });
   }
 
@@ -304,9 +388,9 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
     setActivePicker(null);
     setValidationError(null); // Clear errors when canceling
     setFormData({
-      windowStartTime: '',
-      windowEndTime: '',
-      changeReason: ''
+      windowStartTime: "",
+      windowEndTime: "",
+      changeReason: "",
     });
   }
 
@@ -318,12 +402,12 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
 
     // Validation
     if (!formData.windowStartTime || !formData.windowEndTime) {
-      setValidationError('Please enter both start and end times');
+      setValidationError("Please enter both start and end times");
       return;
     }
 
     if (formData.windowStartTime >= formData.windowEndTime) {
-      setValidationError('Start time must be before end time');
+      setValidationError("Start time must be before end time");
       return;
     }
 
@@ -335,14 +419,24 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
         activityType: selectedActivity,
         windowStartTime: formData.windowStartTime,
         windowEndTime: formData.windowEndTime,
-        effectiveFromDate: new Date().toISOString().split('T')[0], // Use current date
-        changedBy: userEmail || 'admin',
-        changeReason: formData.changeReason
+        // Use local date to prevent timezone shifting
+        effectiveFromDate: (() => {
+          const today = new Date();
+          return (
+            today.getFullYear() +
+            "-" +
+            String(today.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(today.getDate()).padStart(2, "0")
+          );
+        })(),
+        changedBy: userEmail || "admin",
+        changeReason: formData.changeReason,
       });
 
       // Reload time windows
       await loadTimeWindows(true);
-      
+
       // Reset form
       handleCancelEdit();
 
@@ -351,22 +445,26 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
         onUpdate(true);
       }
 
-      setSuccessMessage('Time window updated successfully!');
+      setSuccessMessage("Time window updated successfully!");
       setLastUpdatedActivity(selectedActivity);
-      
+
       setTimeout(() => {
         setSuccessMessage(null);
         setLastUpdatedActivity(null);
       }, 4000);
-
     } catch (err) {
-      console.error('Error saving time window:', err);
-      const errorMessage = err.response?.data?.error || err.response?.data?.message || err.message;
+      console.error("Error saving time window:", err);
+      const errorMessage =
+        err.response?.data?.error || err.response?.data?.message || err.message;
       const errorDetails = err.response?.data?.details;
-      
-      if (errorDetails && typeof errorDetails === 'object') {
+
+      if (errorDetails && typeof errorDetails === "object") {
         // Handle structured error (e.g., overlap error)
-        setValidationError(`${errorMessage}: ${errorDetails.conflictsWith || ''} ${errorDetails.existingWindow || ''}`);
+        setValidationError(
+          `${errorMessage}: ${errorDetails.conflictsWith || ""} ${
+            errorDetails.existingWindow || ""
+          }`,
+        );
       } else {
         setValidationError(`Failed to update: ${errorMessage}`);
       }
@@ -376,11 +474,11 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
   }
 
   function formatTime(timeString) {
-    if (!timeString) return '';
+    if (!timeString) return "";
     const time = timeString.slice(0, 5); // HH:MM
-    const [hours, minutes] = time.split(':');
+    const [hours, minutes] = time.split(":");
     const hour = parseInt(hours);
-    const ampm = hour >= 12 ? 'PM' : 'AM';
+    const ampm = hour >= 12 ? "PM" : "AM";
     const displayHour = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
     return `${displayHour}:${minutes} ${ampm}`;
   }
@@ -397,7 +495,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
             className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
             onClick={onClose}
           />
-          
+
           {/* Modal Container - Bottom Sheet on Mobile, Centered on Desktop */}
           <motion.div
             initial={{ y: "100%" }}
@@ -406,7 +504,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             className="fixed bottom-0 left-0 right-0 sm:inset-0 sm:flex sm:items-center sm:justify-center z-50 pointer-events-none"
           >
-            <div 
+            <div
               className="bg-white w-full sm:w-[500px] sm:rounded-2xl rounded-t-3xl shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] pointer-events-auto overflow-hidden"
               onClick={(e) => {
                 e.stopPropagation();
@@ -416,8 +514,12 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
               {/* Header */}
               <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-white sticky top-0 z-10">
                 <div>
-                  <h2 className="text-lg font-bold text-gray-900">Time Windows</h2>
-                  <p className="text-xs text-gray-500">Configure activity schedules</p>
+                  <h2 className="text-lg font-bold text-gray-900">
+                    Time Windows
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Configure activity schedules
+                  </p>
                 </div>
                 <button
                   onClick={onClose}
@@ -453,7 +555,8 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                     >
                       <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
                       <p className="text-xs text-amber-700 leading-relaxed">
-                        Changes apply to future calculations only. Historical data remains unchanged.
+                        Changes apply to future calculations only. Historical
+                        data remains unchanged.
                       </p>
                     </motion.div>
                   )}
@@ -469,7 +572,10 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                 ) : error ? (
                   <div className="text-center py-8">
                     <p className="text-red-500 text-sm mb-3">{error}</p>
-                    <button onClick={loadTimeWindows} className="text-green-600 text-sm font-medium hover:underline">
+                    <button
+                      onClick={loadTimeWindows}
+                      className="text-green-600 text-sm font-medium hover:underline"
+                    >
                       Try Again
                     </button>
                   </div>
@@ -477,40 +583,53 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                   <div className="space-y-3">
                     {timeWindows.map((window) => {
                       const config = getActivityConfig(window.ActivityType);
-                      const isEditing = selectedActivity === window.ActivityType;
-                      const isJustUpdated = lastUpdatedActivity === window.ActivityType;
+                      const isEditing =
+                        selectedActivity === window.ActivityType;
+                      const isJustUpdated =
+                        lastUpdatedActivity === window.ActivityType;
                       const Icon = config.icon;
 
                       return (
                         <motion.div
                           key={window.ActivityType}
                           className={`rounded-2xl border transition-all ${
-                            isEditing && activePicker ? 'overflow-visible z-20' : 'overflow-hidden'
+                            isEditing && activePicker
+                              ? "overflow-visible z-20"
+                              : "overflow-hidden"
                           } ${
-                            isEditing 
-                              ? 'bg-white border-green-200 shadow-lg ring-1 ring-green-100' 
+                            isEditing
+                              ? "bg-white border-green-200 shadow-lg ring-1 ring-green-100"
                               : isJustUpdated
-                                ? 'bg-green-50 border-green-200 shadow-sm'
-                                : 'bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm'
+                              ? "bg-green-50 border-green-200 shadow-sm"
+                              : "bg-white border-gray-100 hover:border-gray-200 hover:shadow-sm"
                           }`}
                         >
                           {/* Card Header / Summary */}
                           <div className="p-4 flex items-center gap-4">
-                            <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}>
+                            <div
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center ${config.bg} ${config.color}`}
+                            >
                               <Icon className="h-5 w-5" />
                             </div>
-                            
+
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center justify-between pr-1">
-                                <h3 className="font-bold text-gray-900 text-sm">{config.name}</h3>
+                                <h3 className="font-bold text-gray-900 text-sm">
+                                  {config.name}
+                                </h3>
                                 <span className="text-[10px] text-gray-400 font-medium">
-                                  {isEditing ? 'Last updated: ' : ''}{format(new Date(window.LastUpdated), 'dd/MM/yyyy')}
+                                  {isEditing ? "Last updated: " : ""}
+                                  {format(
+                                    new Date(window.LastUpdated),
+                                    "dd/MM/yyyy",
+                                  )}
                                 </span>
                               </div>
                               {!isEditing && (
                                 <div className="flex items-center gap-2 mt-1">
                                   <span className="text-xs font-medium text-gray-600 bg-gray-50 px-2 py-0.5 rounded-md border border-gray-100">
-                                    {formatTime(window.WindowStartTime)} - {formatTime(window.WindowEndTime)}
+                                    {formatTime(window.WindowStartTime)} -{" "}
+                                    {formatTime(window.WindowEndTime)}
                                   </span>
                                 </div>
                               )}
@@ -531,42 +650,95 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                             {isEditing && (
                               <motion.div
                                 initial={{ height: 0, opacity: 0 }}
-                                animate={{ height: 'auto', opacity: 1 }}
+                                animate={{ height: "auto", opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
-                                transition={{ duration: 0.2, ease: "easeInOut" }}
-                                className={`border-t border-gray-50 bg-gray-50/30 px-4 pb-4 pt-2 rounded-b-2xl ${activePicker ? 'overflow-visible' : 'overflow-hidden'}`}
+                                transition={{
+                                  duration: 0.2,
+                                  ease: "easeInOut",
+                                }}
+                                className={`border-t border-gray-50 bg-gray-50/30 px-4 pb-4 pt-2 rounded-b-2xl ${
+                                  activePicker
+                                    ? "overflow-visible"
+                                    : "overflow-hidden"
+                                }`}
                               >
                                 <div className="space-y-4 mt-2">
                                   <div className="grid grid-cols-2 gap-3">
                                     <div className="space-y-1.5">
-                                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Start Time</label>
-                                      <div className="relative group" onClick={(e) => { e.stopPropagation(); setActivePicker(activePicker === 'startTime' ? null : 'startTime'); }}>
+                                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                        Start Time
+                                      </label>
+                                      <div
+                                        className="relative group"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActivePicker(
+                                            activePicker === "startTime"
+                                              ? null
+                                              : "startTime",
+                                          );
+                                        }}
+                                      >
                                         <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-hover:text-green-500 transition-colors pointer-events-none" />
-                                        <div className={`w-full pl-10 pr-3 py-3 bg-white border ${activePicker === 'startTime' ? 'border-green-500 ring-1 ring-green-200' : 'border-gray-200'} rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}>
-                                          {formData.windowStartTime || 'Select'}
+                                        <div
+                                          className={`w-full pl-10 pr-3 py-3 bg-white border ${
+                                            activePicker === "startTime"
+                                              ? "border-green-500 ring-1 ring-green-200"
+                                              : "border-gray-200"
+                                          } rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}
+                                        >
+                                          {formData.windowStartTime || "Select"}
                                         </div>
                                         <AnimatePresence>
-                                          {activePicker === 'startTime' && (
-                                            <InlineTimePicker 
-                                              value={formData.windowStartTime} 
-                                              onChange={(val) => setFormData(prev => ({ ...prev, windowStartTime: val }))} 
+                                          {activePicker === "startTime" && (
+                                            <InlineTimePicker
+                                              value={formData.windowStartTime}
+                                              onChange={(val) =>
+                                                setFormData((prev) => ({
+                                                  ...prev,
+                                                  windowStartTime: val,
+                                                }))
+                                              }
                                             />
                                           )}
                                         </AnimatePresence>
                                       </div>
                                     </div>
                                     <div className="space-y-1.5">
-                                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">End Time</label>
-                                      <div className="relative group" onClick={(e) => { e.stopPropagation(); setActivePicker(activePicker === 'endTime' ? null : 'endTime'); }}>
+                                      <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                        End Time
+                                      </label>
+                                      <div
+                                        className="relative group"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setActivePicker(
+                                            activePicker === "endTime"
+                                              ? null
+                                              : "endTime",
+                                          );
+                                        }}
+                                      >
                                         <Clock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 group-hover:text-green-500 transition-colors pointer-events-none" />
-                                        <div className={`w-full pl-10 pr-3 py-3 bg-white border ${activePicker === 'endTime' ? 'border-green-500 ring-1 ring-green-200' : 'border-gray-200'} rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}>
-                                          {formData.windowEndTime || 'Select'}
+                                        <div
+                                          className={`w-full pl-10 pr-3 py-3 bg-white border ${
+                                            activePicker === "endTime"
+                                              ? "border-green-500 ring-1 ring-green-200"
+                                              : "border-gray-200"
+                                          } rounded-xl text-sm font-medium text-gray-900 hover:border-green-500 hover:ring-1 hover:ring-green-200 transition-all cursor-pointer flex items-center h-[46px]`}
+                                        >
+                                          {formData.windowEndTime || "Select"}
                                         </div>
                                         <AnimatePresence>
-                                          {activePicker === 'endTime' && (
-                                            <InlineTimePicker 
-                                              value={formData.windowEndTime} 
-                                              onChange={(val) => setFormData(prev => ({ ...prev, windowEndTime: val }))} 
+                                          {activePicker === "endTime" && (
+                                            <InlineTimePicker
+                                              value={formData.windowEndTime}
+                                              onChange={(val) =>
+                                                setFormData((prev) => ({
+                                                  ...prev,
+                                                  windowEndTime: val,
+                                                }))
+                                              }
                                             />
                                           )}
                                         </AnimatePresence>
@@ -575,10 +747,17 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                                   </div>
 
                                   <div className="space-y-1.5">
-                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Reason for Change</label>
+                                    <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                                      Reason for Change
+                                    </label>
                                     <textarea
                                       value={formData.changeReason}
-                                      onChange={(e) => setFormData({ ...formData, changeReason: e.target.value })}
+                                      onChange={(e) =>
+                                        setFormData({
+                                          ...formData,
+                                          changeReason: e.target.value,
+                                        })
+                                      }
                                       placeholder="Optional note..."
                                       rows={2}
                                       className="w-full px-3 py-2 bg-white border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-all resize-none"
