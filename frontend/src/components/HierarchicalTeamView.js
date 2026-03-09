@@ -224,15 +224,15 @@ const TeamNode = ({
             </div>
 
             {/* Score and Chevron */}
-            <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
               {showDisciplineScores && (
                 <>
                   {/* All nodes: Show three metrics horizontally */}
-                  <div className="flex flex-row gap-1.5 sm:gap-2 md:gap-3 text-center">
+                  <div className="flex flex-row gap-0.5 sm:gap-2 md:gap-3">
                     {/* My Score */}
-                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
                       <div
-                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
                           score !== undefined && score >= 80
                             ? "text-blue-700"
                             : score !== undefined && score >= 60
@@ -244,15 +244,15 @@ const TeamNode = ({
                       >
                         {score !== undefined ? `${Math.round(score)}%` : "N/A"}
                       </div>
-                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-blue-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
-                        My Score
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-blue-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        MY SCORE
                       </div>
                     </div>
                     
                     {/* Direct Team */}
-                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
                       <div
-                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
                           directTeamScore !== null && directTeamScore >= 80
                             ? "text-green-700"
                             : directTeamScore !== null && directTeamScore >= 60
@@ -264,15 +264,15 @@ const TeamNode = ({
                       >
                         {directTeamScore !== null ? `${directTeamScore}%` : "N/A"}
                       </div>
-                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-green-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
-                        Direct Team
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        DIRECT TEAM
                       </div>
                     </div>
                     
                     {/* Under Team */}
-                    <div className="flex flex-col items-center min-w-[40px] sm:min-w-[50px]">
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
                       <div
-                        className={`text-xs sm:text-sm md:text-base font-bold leading-none ${
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
                           underTeamScore !== null && underTeamScore >= 80
                             ? "text-green-700"
                             : underTeamScore !== null && underTeamScore >= 60
@@ -284,8 +284,8 @@ const TeamNode = ({
                       >
                         {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
                       </div>
-                      <div className="text-[6px] sm:text-[7px] md:text-[8px] text-green-600 font-bold uppercase tracking-tight whitespace-nowrap leading-none mt-0.5 sm:mt-1">
-                        Under Team
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        UNDER TEAM
                       </div>
                     </div>
                   </div>
