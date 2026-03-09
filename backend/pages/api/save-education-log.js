@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, deviceInfo, clientTimestamp, clientTimezoneOffset } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
@@ -55,15 +55,19 @@ export default async function handler(req, res) {
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
     
-    // 🔍 DEBUG: Log education upload details
+    // 🔍 DEBUG: Log education upload details with client time comparison
+    const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
     console.log('📚 Education Upload:', {
       userId,
       platform,
       topic,
-      confidence,
+      clientUploaded: clientTimestamp || 'Not provided',
+      clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { hour12: true }) : 'N/A',
+      clientTimezoneOffset,
       serverUTC: new Date().toISOString(),
       storedIST: currentTime,
-      note: 'Stored in IST timezone'
+      timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
+      note: 'Compare client upload time vs stored IST'
     });
     
     const { data, error } = await supabase

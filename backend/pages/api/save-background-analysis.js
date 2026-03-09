@@ -53,6 +53,8 @@ export default async function handler(req, res) {
     deviceInfo,
     ImageBase64,
     userEmail,
+    clientTimestamp, // User's actual upload time from their device  
+    clientTimezoneOffset // User's timezone offset in minutes
   } = req.body;
 
   // Extract food names from analysis for logging
@@ -422,14 +424,19 @@ export default async function handler(req, res) {
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
     
-    // 🔍 DEBUG: Log food analysis upload details
+    // 🔍 DEBUG: Log food analysis upload details with client time comparison
+    const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
     console.log('🍽️ Food Analysis Upload:', {
       userId,
       totalCalories,
       processedBy,
+      clientUploaded: clientTimestamp || 'Not provided',
+      clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { hour12: true }) : 'N/A',
+      clientTimezoneOffset,
       serverUTC: new Date().toISOString(),
       storedIST: currentTime,
-      note: 'Stored in IST timezone'
+      timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
+      note: 'Compare client upload time vs stored IST - this affects meal categorization!'
     });
     
     const { data, error } = await supabase

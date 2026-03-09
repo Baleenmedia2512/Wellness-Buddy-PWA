@@ -40,13 +40,21 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         );
         const disciplineResult = await disciplineResponse.json();
 
+        console.log("📊 [CoachScoreSummary] API Response:", {
+          success: disciplineResult.success,
+          hasCoachPerformance: !!disciplineResult.coachPerformance,
+          teamMembersCount: disciplineResult.teamMembers?.length || 0,
+          coachScore: disciplineResult.coachPerformance?.periodDiscipline?.percentage
+        });
+
         if (!disciplineResult.success) {
-          console.log("📊 [CoachScoreSummary] No discipline data");
+          console.log("📊 [CoachScoreSummary] API returned success=false");
+          setScores(null);
           setLoading(false);
           return;
         }
 
-        // Get coach's own score
+        // Get coach's own score - ALWAYS show this even if no team members
         const myScore =
           disciplineResult.coachPerformance?.periodDiscipline?.percentage || 0;
 
@@ -64,8 +72,16 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
           })),
         });
 
+        // Even if no team members, we should still show the coach's score
         if (allMembers.length === 0) {
-          console.log("📊 [CoachScoreSummary] No team members found");
+          console.log("📊 [CoachScoreSummary] No team members - showing coach score only");
+          setScores({
+            myScore,
+            directTeamAvg: 0,
+            directTeamCount: 0,
+            fullTeamAvg: 0,
+            fullTeamCount: 0,
+          });
           setLoading(false);
           return;
         }
@@ -139,6 +155,8 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         });
       } catch (error) {
         console.error("📊 [CoachScoreSummary] Error fetching scores:", error);
+        // Still try to set scores even if there's an error
+        setScores(null);
       } finally {
         setLoading(false);
       }
@@ -154,14 +172,56 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
     return "text-red-600";
   };
 
-  // Don't render if loading or no scores
-  if (loading || !scores) {
+  // Don't render if loading
+  if (loading) {
     return null;
   }
 
-  // Don't show if user has no team
-  if (scores.directTeamCount === 0) {
+  // Don't show if no scores at all (error case)
+  if (!scores) {
+    console.log("📊 [CoachScoreSummary] Not rendering - no scores available");
     return null;
+  }
+
+  console.log("📊 [CoachScoreSummary] Rendering with scores:", scores);
+
+  // Always show coach's score, even if they have no team
+  // This fixes the issue where dashboard doesn't show scores
+
+  // If user has no team, show simplified view with just their score
+  if (scores.directTeamCount === 0) {
+    return (
+      <div className="w-full bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
+          <div className="bg-white rounded-lg sm:rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="p-3 sm:p-4 md:p-5 flex flex-col items-center justify-center text-center">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 rounded-full bg-blue-100 flex items-center justify-center mb-2 shadow-sm">
+                <User className="w-5 h-5 sm:w-6 sm:h-6 md:w-7 md:h-7 text-blue-600" />
+              </div>
+              <p className="text-xs sm:text-sm text-blue-600 font-bold uppercase tracking-wider mb-1">
+                MY SCORE
+              </p>
+              <div
+                className={`text-2xl sm:text-3xl md:text-4xl font-black ${getScoreTextColor(
+                  scores.myScore,
+                )}`}
+              >
+                {scores.myScore}%
+              </div>
+              <p className="text-xs text-gray-400 mt-2">
+                Today's Discipline Score
+              </p>
+            </div>
+            <div className="h-1.5 bg-gray-100">
+              <div
+                className="h-full bg-blue-500 transition-all duration-500"
+                style={{ width: `${scores.myScore}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

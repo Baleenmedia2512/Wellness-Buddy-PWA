@@ -1037,6 +1037,8 @@ function WellnessValleyApp() {
         muscleMass: weightData.muscleMass,
         bmr: weightData.bmr,
         imageBase64ToSave: imageBase64,
+        clientTimestamp: new Date().toISOString(), // User's actual upload time
+        clientTimezoneOffset: new Date().getTimezoneOffset() // User's timezone offset
       };
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
@@ -1190,6 +1192,8 @@ function WellnessValleyApp() {
           topic: educationData.topic,
           confidence: educationData.confidence,
           deviceInfo: window.navigator.userAgent,
+          clientTimestamp: new Date().toISOString(),
+          clientTimezoneOffset: new Date().getTimezoneOffset()
         }),
       });
 

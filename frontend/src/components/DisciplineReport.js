@@ -448,6 +448,21 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           ),
         ]);
 
+        console.log("📊 [DisciplineReport] Data loaded:", {
+          teamDataResponse: {
+            success: teamDataResponse?.success,
+            hasCoachPerformance: !!teamDataResponse?.coachPerformance,
+            coachScore: teamDataResponse?.coachPerformance?.periodDiscipline?.percentage,
+            teamMembersCount: teamDataResponse?.teamMembers?.length || 0,
+            teamMembersWithScores: teamDataResponse?.teamMembers?.filter(m => m.periodDiscipline?.percentage >= 0).length || 0,
+          },
+          allMembersResponse: {
+            success: allMembersResponse?.success,
+            allMembersCount: allMembersResponse?.allMembers?.length || 0,
+            allMembersWithScores: allMembersResponse?.allMembers?.filter(m => m.periodDiscipline?.percentage >= 0).length || 0,
+          }
+        });
+
         setTeamData(teamDataResponse);
         setAllMembersData(allMembersResponse);
       } catch (err) {
@@ -1529,14 +1544,26 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 }}
                 showDisciplineScores={true}
                 disciplineScores={
-                  allMembersData?.allMembers
-                    ? Object.fromEntries(
-                        allMembersData.allMembers.map((m) => [
-                          m.userId,
-                          m.periodDiscipline?.percentage || 0,
-                        ]),
-                      )
-                    : {}
+                  (() => {
+                    const scores = allMembersData?.allMembers
+                      ? Object.fromEntries(
+                          allMembersData.allMembers.map((m) => [
+                            m.userId,
+                            m.periodDiscipline?.percentage || 0,
+                          ]),
+                        )
+                      : {};
+                    console.log("📊 [DisciplineReport] Passing discipline scores to HierarchicalTeamView:", {
+                      totalMembers: allMembersData?.allMembers?.length || 0,
+                      scoresCount: Object.keys(scores).length,
+                      sampleScores: Object.entries(scores).slice(0, 5).map(([userId, score]) => ({
+                        userId,
+                        score,
+                        memberName: allMembersData.allMembers.find(m => m.userId === parseInt(userId))?.userName
+                      }))
+                    });
+                    return scores;
+                  })()
                 }
                 memberActivities={
                   allMembersData?.allMembers
@@ -1570,6 +1597,21 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           <div className="space-y-3">
             {/* Hierarchical Score Card - Show at top for coaches */}
             {/* Removed HierarchicalScoreCard */}
+
+            {/* Debug logging for team member scores */}
+            {(() => {
+              console.log("📊 [DisciplineReport] My Direct Team members:", {
+                totalMembers: filteredDirectTeamMembers.length,
+                membersWithScores: filteredDirectTeamMembers.filter(m => m.periodDiscipline?.percentage >= 0).length,
+                sampleMembers: filteredDirectTeamMembers.slice(0, 3).map(m => ({
+                  userName: m.userName,
+                  score: m.periodDiscipline?.percentage,
+                  hasPercentage: 'percentage' in (m.periodDiscipline || {}),
+                  periodDiscipline: m.periodDiscipline
+                }))
+              });
+              return null;
+            })()}
 
             <AnimatePresence>
               {filteredDirectTeamMembers.map((member, index) => {

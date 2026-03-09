@@ -272,6 +272,17 @@ export default async function handler(req, res) {
     const endDateStr = formatDateForMySQL(dates.end);
     // Get unique user IDs for data fetching (no duplicates in queries)
     const allUserIds = Array.from(processedUserIds.keys());
+    
+    // 🔍 DEBUG: Log query parameters
+    console.log('🔎 Discipline Query Parameters:', {
+      startDate: startDateStr,
+      endDate: endDateStr,
+      endDateTime: endDateStr + "T23:59:59",
+      userIds: allUserIds,
+      userCount: allUserIds.length,
+      dateRange: dateRange,
+      tzOffset: userTimezoneOffset
+    });
 
     // Fetch all required data in bulk for efficiency
     const [weightData, educationData, foodData] = await Promise.all([
@@ -303,14 +314,22 @@ export default async function handler(req, res) {
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
     
-    // 🔍 DEBUG: Log fetched data counts
-    console.log('📊 Fetched Data:', {
+    // 🔍 DEBUG: Log fetched data counts and sample records
+    console.log('📊 Fetched Data Summary:', {
       weightRecords: weightData.data?.length || 0,
       educationRecords: educationData.data?.length || 0,
       foodRecords: foodData.data?.length || 0,
       dateRange: `${startDateStr} to ${endDateStr}`,
-      userIds: allUserIds
+      userIds: allUserIds,
+      sampleWeightRecord: weightData.data?.[0],
+      sampleEducationRecord: educationData.data?.[0],
+      sampleFoodRecord: foodData.data?.[0]
     });
+    
+    // 🔍 DEBUG: Check for query errors
+    if (weightData.error) console.error('❌ Weight query error:', weightData.error);
+    if (educationData.error) console.error('❌ Education query error:', educationData.error);
+    if (foodData.error) console.error('❌ Food query error:', foodData.error);
 
     // Process discipline data for each member
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
@@ -397,9 +416,27 @@ export default async function handler(req, res) {
       // Weight
       const weightDates = getUniqueDates(weightData.data || [], userId);
       const weightWindow = timeWindowMap.weight || {
-        start: "05:00:00",
-        end: "09:00:00",
+        start: "03:00:00",
+        end: "06:30:00",
       };
+      
+      // 🔍 DEBUG: Log weight conversion for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        (weightData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+            const inWindow = isTimeInWindow(r.CreatedAt, weightWindow.start, weightWindow.end);
+            console.log(`⚖️ Weight Check:`, {
+              userId,
+              createdAtIST: r.CreatedAt,
+              convertedTime,
+              weightWindow: `${weightWindow.start} - ${weightWindow.end}`,
+              inWindow
+            });
+          }
+        });
+      }
+      
       const weightOnTimeDates = getUniqueOnTimeDates(
         weightData.data || [],
         userId,
@@ -407,9 +444,9 @@ export default async function handler(req, res) {
         weightWindow.end,
       );
       
-      // 🔍 DEBUG: Log weight data for each member
+      // 🔍 DEBUG: Log weight data summary
       if ((weightData.data || []).filter(r => r.UserId == userId).length > 0) {
-        console.log(`👤 User ${userId} Weight Data:`, {
+        console.log(`👤 User ${userId} Weight Summary:`, {
           totalRecords: (weightData.data || []).filter(r => r.UserId == userId).length,
           weightDates: Array.from(weightDates),
           weightOnTimeDates: Array.from(weightOnTimeDates),
@@ -423,6 +460,24 @@ export default async function handler(req, res) {
         start: "05:00:00",
         end: "23:00:00",
       };
+      
+      // 🔍 DEBUG: Log education conversion for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        (educationData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+            const inWindow = isTimeInWindow(r.CreatedAt, educationWindow.start, educationWindow.end);
+            console.log(`📚 Education Check:`, {
+              userId,
+              createdAtIST: r.CreatedAt,
+              convertedTime,
+              educationWindow: `${educationWindow.start} - ${educationWindow.end}`,
+              inWindow
+            });
+          }
+        });
+      }
+      
       const educationOnTimeDates = getUniqueOnTimeDates(
         educationData.data || [],
         userId,
@@ -430,9 +485,9 @@ export default async function handler(req, res) {
         educationWindow.end,
       );
       
-      // 🔍 DEBUG: Log education data for each member
+      // 🔍 DEBUG: Log education data summary
       if ((educationData.data || []).filter(r => r.UserId == userId).length > 0) {
-        console.log(`📚 User ${userId} Education Data:`, {
+        console.log(`📚 User ${userId} Education Summary:`, {
           totalRecords: (educationData.data || []).filter(r => r.UserId == userId).length,
           educationDates: Array.from(educationDates),
           educationOnTimeDates: Array.from(educationOnTimeDates),
@@ -713,6 +768,13 @@ export default async function handler(req, res) {
         );
 
         if (!discipline) {
+          // 🔍 DEBUG: Log missing discipline data
+          console.log('⚠️ No discipline data found for member:', {
+            userId: member.UserId,
+            userName: member.UserName,
+            email: member.Email,
+            availableDisciplineUserIds: disciplineData.map(d => d.userId)
+          });
           return null;
         }
 
@@ -798,6 +860,18 @@ export default async function handler(req, res) {
           totalOnTimePosts,
           totalExpectedPosts,
         );
+        
+        // 🔍 DEBUG: Log member score calculation
+        console.log(`📊 Member ${member.UserName} (${member.UserId}):`, {
+          totalOnTimePosts,
+          totalExpectedPosts,
+          periodDisciplinePercentage,
+          weight: discipline.weight,
+          education: discipline.education,
+          breakfast: discipline.breakfast,
+          lunch: discipline.lunch,
+          dinner: discipline.dinner
+        });
 
         return {
           userId: member.UserId,
@@ -826,6 +900,17 @@ export default async function handler(req, res) {
         };
       })
       .filter((m) => m !== null);
+    
+    // 🔍 DEBUG: Log formatted team members summary
+    console.log('👥 Formatted Team Members Summary:', {
+      totalFormatted: formattedTeamMembers.length,
+      members: formattedTeamMembers.map(m => ({
+        userId: m.userId,
+        userName: m.userName,
+        periodDiscipline: m.periodDiscipline,
+        hierarchyLevel: m.hierarchyLevel
+      }))
+    });
 
     // Step 8: Calculate team summary (use unique members for stats)
     const uniqueMembers = Array.from(processedUserIds.values());

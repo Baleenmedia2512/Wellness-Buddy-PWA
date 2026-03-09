@@ -349,8 +349,8 @@ export default async function handler(req, res) {
 
       // Weight
       const weightWindow = timeWindowMap.weight || {
-        start: "05:00:00",
-        end: "09:00:00",
+        start: "03:00:00",
+        end: "06:30:00",
       };
       disciplineData[userId].weight.dates = getUniqueDates(
         weightData.data || [],
