@@ -29,6 +29,7 @@ const TeamNode = ({
   disciplineScores = {},
   memberActivities = {},
   isLastChild = false,
+  allTeamMembers = [], // All team members for calculating team scores
 }) => {
   const [showActivities, setShowActivities] = useState(false);
   const isExpanded = expandedNodes.has(node.userId);
@@ -57,6 +58,68 @@ const TeamNode = ({
 
   const score = disciplineScores[node.userId];
   const activities = memberActivities[node.userId];
+
+  // Debug logging for scores
+  console.log("TeamNode score check:", {
+    name: node.userName,
+    userId: node.userId,
+    userIdType: typeof node.userId,
+    score,
+    scoreType: typeof score,
+    hasDisciplineScores: Object.keys(disciplineScores).length > 0,
+    disciplineScoresKeys: Object.keys(disciplineScores).slice(0, 5),
+    disciplineScoresSample: Object.entries(disciplineScores).slice(0, 3)
+  });
+
+  // Calculate team scores for any node with team members
+  let directTeamScore = null;
+  let underTeamScore = null;
+
+  // Get direct reports (children of current node)
+  const directReports = node.teamMembers || [];
+
+  if (directReports.length > 0) {
+    // Calculate direct team average
+    const directScores = directReports
+      .map((member) => disciplineScores[member.userId])
+      .filter((s) => s !== undefined && s !== null);
+
+    if (directScores.length > 0) {
+      directTeamScore = Math.round(
+        directScores.reduce((sum, s) => sum + s, 0) / directScores.length,
+      );
+    }
+
+    // Calculate full team average (direct reports + all descendants)
+    // This includes all team members under this node
+    const flattenDescendants = (parentNode) => {
+      const descendants = [];
+      const flatten = (n) => {
+        if (n.teamMembers && n.teamMembers.length > 0) {
+          n.teamMembers.forEach((child) => {
+            descendants.push(child);
+            flatten(child);
+          });
+        }
+      };
+      flatten(parentNode);
+      return descendants;
+    };
+
+    const allDescendants = flattenDescendants(node);
+
+    if (allDescendants.length > 0) {
+      const allScores = allDescendants
+        .map((member) => disciplineScores[member.userId])
+        .filter((s) => s !== undefined && s !== null);
+
+      if (allScores.length > 0) {
+        underTeamScore = Math.round(
+          allScores.reduce((sum, s) => sum + s, 0) / allScores.length,
+        );
+      }
+    }
+  }
 
   // Activity icons matching DisciplineReport.js
   const activityIcons = {
@@ -148,7 +211,9 @@ const TeamNode = ({
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">{node.email}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
+                {node.email}
+              </p>
               {(node.coachName || node.coCoachName) && (
                 <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
                   Reports to:{" "}
@@ -169,26 +234,74 @@ const TeamNode = ({
             </div>
 
             {/* Score and Chevron */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
               {showDisciplineScores && (
-                <div className="text-right">
-                  <div
-                    className={`text-xl sm:text-2xl font-bold ${
-                      score !== undefined && score >= 80
-                        ? "text-green-700"
-                        : score !== undefined && score >= 60
-                        ? "text-yellow-700"
-                        : score !== undefined
-                        ? "text-red-700"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                <>
+                  {/* All nodes: Show three metrics horizontally */}
+                  <div className="flex flex-row gap-0.5 sm:gap-2 md:gap-3">
+                    {/* My Score */}
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                      <div
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                          score !== undefined && score >= 80
+                            ? "text-blue-700"
+                            : score !== undefined && score >= 60
+                            ? "text-blue-600"
+                            : score !== undefined
+                            ? "text-blue-500"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                      </div>
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-blue-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        MY SCORE
+                      </div>
+                    </div>
+
+                    {/* Direct Team */}
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                      <div
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                          directTeamScore !== null && directTeamScore >= 80
+                            ? "text-green-700"
+                            : directTeamScore !== null && directTeamScore >= 60
+                            ? "text-yellow-700"
+                            : directTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {directTeamScore !== null
+                          ? `${directTeamScore}%`
+                          : "N/A"}
+                      </div>
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        DIRECT TEAM
+                      </div>
+                    </div>
+
+                    {/* Full Team */}
+                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                      <div
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                          underTeamScore !== null && underTeamScore >= 80
+                            ? "text-green-700"
+                            : underTeamScore !== null && underTeamScore >= 60
+                            ? "text-yellow-700"
+                            : underTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
+                      </div>
+                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                        FULL TEAM
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Score
-                  </div>
-                </div>
+                </>
               )}
               {showActivities ? (
                 <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
@@ -284,6 +397,7 @@ const TeamNode = ({
                   disciplineScores={disciplineScores}
                   memberActivities={memberActivities}
                   isLastChild={index === node.teamMembers.length - 1}
+                  allTeamMembers={allTeamMembers}
                 />
               ))}
             </motion.div>
@@ -313,10 +427,10 @@ const HierarchicalTeamView = ({
     if (hierarchy) {
       console.log("Auto-expanding first level:", hierarchy);
       const firstLevelIds = new Set();
-      
+
       // Expand root node
       firstLevelIds.add(hierarchy.userId);
-      
+
       // Optionally expand direct reports (Level 1 - Co-Coaches)
       if (hierarchy.teamMembers && hierarchy.teamMembers.length > 0) {
         hierarchy.teamMembers.forEach((child) => {
@@ -350,6 +464,23 @@ const HierarchicalTeamView = ({
     );
   }
 
+  // Flatten the hierarchy to get all team members for score calculations
+  const flattenHierarchy = (node) => {
+    const members = [];
+    const flatten = (n) => {
+      if (n.teamMembers && n.teamMembers.length > 0) {
+        n.teamMembers.forEach((child) => {
+          members.push(child);
+          flatten(child);
+        });
+      }
+    };
+    flatten(node);
+    return members;
+  };
+
+  const allTeamMembers = flattenHierarchy(hierarchy);
+
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Hierarchy Tree */}
@@ -364,6 +495,7 @@ const HierarchicalTeamView = ({
           disciplineScores={disciplineScores}
           memberActivities={memberActivities}
           isLastChild={true}
+          allTeamMembers={allTeamMembers}
         />
       </div>
     </div>

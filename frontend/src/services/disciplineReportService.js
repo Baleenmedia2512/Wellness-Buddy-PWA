@@ -37,9 +37,22 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
+          // Get user's timezone offset in minutes
+          // getTimezoneOffset() returns positive for west of UTC, negative for east
+          const userTimezoneOffset = new Date().getTimezoneOffset();
+          
+          // 🔍 DEBUG: Log timezone info
+          console.log('🌍 Frontend Timezone Info:', {
+            userTimezoneOffset,
+            currentTime: new Date().toString(),
+            dateRange,
+            coachId
+          });
+          
           const params = {
             coachId,
             dateRange,
+            userTimezoneOffset, // Send timezone for proper discipline calculation
           };
 
           if (dateRange === "custom" && customRange) {
@@ -78,9 +91,21 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
+          // Get user's timezone offset in minutes
+          const userTimezoneOffset = new Date().getTimezoneOffset();
+          
+          // 🔍 DEBUG: Log timezone info
+          console.log('🌍 Frontend Timezone Info (All Members):', {
+            userTimezoneOffset,
+            currentTime: new Date().toString(),
+            dateRange,
+            userId
+          });
+          
           const params = {
             userId,
             dateRange,
+            userTimezoneOffset, // Send timezone for proper discipline calculation
           };
 
           if (dateRange === "custom" && customRange) {

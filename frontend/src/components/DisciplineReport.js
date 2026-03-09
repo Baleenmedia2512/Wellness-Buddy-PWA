@@ -1,4 +1,4 @@
-// src/components/DisciplineReport.js
+// src/components/DisciplineReport.js //
 import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
@@ -32,7 +32,6 @@ import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import HierarchicalTeamView from "./HierarchicalTeamView";
-import HierarchicalScoreCard from "./HierarchicalScoreCard";
 // Removed LoadingSpinner import as we are using custom skeleton
 
 // --- DateRangePicker Component (Exact Copy from AI Token Monitor) ---
@@ -449,6 +448,21 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           ),
         ]);
 
+        console.log("📊 [DisciplineReport] Data loaded:", {
+          teamDataResponse: {
+            success: teamDataResponse?.success,
+            hasCoachPerformance: !!teamDataResponse?.coachPerformance,
+            coachScore: teamDataResponse?.coachPerformance?.periodDiscipline?.percentage,
+            teamMembersCount: teamDataResponse?.teamMembers?.length || 0,
+            teamMembersWithScores: teamDataResponse?.teamMembers?.filter(m => m.periodDiscipline?.percentage >= 0).length || 0,
+          },
+          allMembersResponse: {
+            success: allMembersResponse?.success,
+            allMembersCount: allMembersResponse?.allMembers?.length || 0,
+            allMembersWithScores: allMembersResponse?.allMembers?.filter(m => m.periodDiscipline?.percentage >= 0).length || 0,
+          }
+        });
+
         setTeamData(teamDataResponse);
         setAllMembersData(allMembersResponse);
       } catch (err) {
@@ -662,13 +676,22 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   }, [teamData, allMembersData, hierarchyData, adminView, user]);
   // Sort hierarchy by discipline scores and apply filters
   const sortedHierarchy = React.useMemo(() => {
-    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers)
+    if (!hierarchyData?.hierarchy || !allMembersData?.allMembers) {
+      console.log("⚠️ No hierarchy or member data available");
       return hierarchyData?.hierarchy;
+    }
 
-    const sortHierarchyRecursive = (node) => {
+    console.log("🔄 Sorting hierarchy with order:", sortOrder);
+
+    const sortHierarchyRecursive = (node, depth = 0) => {
       if (!node) return node;
 
-      const newNode = { ...node };
+      // Create a completely new object to ensure React detects changes
+      const newNode = { 
+        ...node,
+        // Add a sort key to force re-render
+        _sortKey: `${node.userId}_${sortOrder}_${Date.now()}`
+      };
 
       // Sort and filter team members if they exist
       if (
@@ -676,8 +699,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         Array.isArray(newNode.teamMembers) &&
         newNode.teamMembers.length > 0
       ) {
+        console.log(`  📦 Sorting ${newNode.teamMembers.length} members under ${newNode.userName}`);
+        
         newNode.teamMembers = [...newNode.teamMembers]
-          .map((child) => sortHierarchyRecursive(child))
+          .map((child) => sortHierarchyRecursive(child, depth + 1))
           .filter((child) => {
             // Add null check to prevent "Cannot read properties of null" errors
             if (!child || !child.userId) return false;
@@ -721,14 +746,20 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             const scoreA = memberA?.periodDiscipline?.percentage || 0;
             const scoreB = memberB?.periodDiscipline?.percentage || 0;
 
-            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+            const sortResult = sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+            console.log(`    ${sortOrder === "desc" ? "⬇️" : "⬆️"} ${a.userName} (${scoreA}%) vs ${b.userName} (${scoreB}%) = ${sortResult > 0 ? "swap" : "keep"}`);
+            return sortResult;
           });
+        
+        console.log(`    ✅ Sorted order: ${newNode.teamMembers.map(m => `${m.userName}(${allMembersData.allMembers.find(x => x.userId === m.userId)?.periodDiscipline?.percentage || 0}%)`).join(", ")}`);
       }
 
       return newNode;
     };
 
-    return sortHierarchyRecursive(hierarchyData.hierarchy);
+    const sorted = sortHierarchyRecursive(hierarchyData.hierarchy);
+    console.log("✅ Final sorted hierarchy created with sort order:", sortOrder);
+    return sorted;
   }, [hierarchyData, allMembersData, sortOrder, searchQuery, disciplineFilter]);
 
   const filteredAndSortedMembers = React.useMemo(() => {
@@ -1291,9 +1322,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             {/* Sort Button - Only show for coaches */}
             {isUserACoach && (
               <TouchFeedbackButton
-                onClick={() =>
-                  setSortOrder(sortOrder === "desc" ? "asc" : "desc")
-                }
+                onClick={() => {
+                  const newOrder = sortOrder === "desc" ? "asc" : "desc";
+                  console.log("🔀 Sort button clicked! Changing from", sortOrder, "to", newOrder);
+                  setSortOrder(newOrder);
+                }}
                 className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
                 ariaLabel={
                   sortOrder === "desc" ? "Highest First" : "Lowest First"
@@ -1428,17 +1461,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                       </div>
 
                       {/* Hierarchical Score Card inside coach's expanded card */}
-                      {teamData.teamMembers &&
-                        teamData.teamMembers.length > 0 && (
-                          <div className="px-4 pb-4">
-                            <HierarchicalScoreCard
-                              teamData={teamData}
-                              coachPerformance={teamData.coachPerformance}
-                              hierarchyData={hierarchyData}
-                              allMembersData={allMembersData}
-                            />
-                          </div>
-                        )}
+                      {/* Removed HierarchicalScoreCard */}
 
                       <div className="px-4 pb-4 pt-0 text-center">
                         <p className="text-xs text-gray-400 font-medium">
@@ -1510,41 +1533,100 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               </div>
 
               {/* Hierarchical Score Card - Show in All Members view */}
-              {teamData && teamData.coachPerformance && (
-                <HierarchicalScoreCard
-                  teamData={teamData}
-                  coachPerformance={teamData.coachPerformance}
-                  hierarchyData={hierarchyData}
-                  allMembersData={allMembersData}
-                />
-              )}
+              {/* Removed HierarchicalScoreCard */}
 
               {/* Hierarchical Team View */}
               <HierarchicalTeamView
+                key={`hierarchy-${sortOrder}-${disciplineFilter}-${searchQuery}`}
                 hierarchy={sortedHierarchy || hierarchyData.hierarchy}
                 onNodeClick={(node) => {
                   console.log("Node clicked:", node);
                 }}
                 showDisciplineScores={true}
                 disciplineScores={
-                  allMembersData?.allMembers
-                    ? Object.fromEntries(
-                        allMembersData.allMembers.map((m) => [
-                          m.userId,
-                          m.periodDiscipline?.percentage || 0,
-                        ]),
-                      )
-                    : {}
+                  (() => {
+                    const scores = {};
+                    
+                    // Add scores from allMembersData (admin view)
+                    if (allMembersData?.allMembers) {
+                      allMembersData.allMembers.forEach((m) => {
+                        // Store with both string and number keys to handle any mismatch
+                        const percentage = m.periodDiscipline?.percentage ?? 0;
+                        scores[m.userId] = percentage;
+                        scores[String(m.userId)] = percentage;
+                      });
+                    }
+                    
+                    // Also add scores from teamData (coach's own score + direct team)
+                    if (teamData) {
+                      // Add coach's own score
+                      if (teamData.coachPerformance) {
+                        const percentage = teamData.coachPerformance.periodDiscipline?.percentage ?? 0;
+                        scores[teamData.coachPerformance.userId] = percentage;
+                        scores[String(teamData.coachPerformance.userId)] = percentage;
+                      }
+                      
+                      // Add team members' scores  
+                      if (teamData.teamMembers) {
+                        teamData.teamMembers.forEach((m) => {
+                          const percentage = m.periodDiscipline?.percentage ?? 0;
+                          scores[m.userId] = percentage;
+                          scores[String(m.userId)] = percentage;
+                        });
+                      }
+                    }
+                    
+                    console.log("📊 [DisciplineReport] Discipline scores for hierarchy:", {
+                      totalScores: Object.keys(scores).length,
+                      hasAllMembersData: !!allMembersData?.allMembers,
+                      hasTeamData: !!teamData,
+                      allMembersCount: allMembersData?.allMembers?.length || 0,
+                      teamDataCoach: teamData?.coachPerformance?.userName,
+                      teamDataMembers: teamData?.teamMembers?.length || 0,
+                      sampleScores: Object.entries(scores).slice(0, 10).map(([userId, score]) => ({
+                        userId,
+                        userIdType: typeof userId,
+                        score,
+                      }))
+                    });
+                    
+                    return scores;
+                  })()
                 }
                 memberActivities={
-                  allMembersData?.allMembers
-                    ? Object.fromEntries(
-                        allMembersData.allMembers.map((m) => [
-                          m.userId,
-                          m.periodActivities || m.activities || {},
-                        ]),
-                      )
-                    : {}
+                  (() => {
+                    const activities = {};
+                    
+                    // Add activities from allMembersData
+                    if (allMembersData?.allMembers) {
+                      allMembersData.allMembers.forEach((m) => {
+                        const memberActivities = m.periodActivities || m.activities || {};
+                        // Store with both string and number keys to handle any mismatch
+                        activities[m.userId] = memberActivities;
+                        activities[String(m.userId)] = memberActivities;
+                      });
+                    }
+                    
+                    // Also add activities from teamData
+                    if (teamData) {
+                      if (teamData.coachPerformance) {
+                        const coachActivities = teamData.coachPerformance.periodActivities || 
+                          teamData.coachPerformance.activities || {};
+                        activities[teamData.coachPerformance.userId] = coachActivities;
+                        activities[String(teamData.coachPerformance.userId)] = coachActivities;
+                      }
+                      
+                      if (teamData.teamMembers) {
+                        teamData.teamMembers.forEach((m) => {
+                          const memberActivities = m.periodActivities || m.activities || {};
+                          activities[m.userId] = memberActivities;
+                          activities[String(m.userId)] = memberActivities;
+                        });
+                      }
+                    }
+                    
+                    return activities;
+                  })()
                 }
                 emptyMessage="No team structure found"
               />
@@ -1567,17 +1649,22 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           /* Flat Member List for My Direct Team */
           <div className="space-y-3">
             {/* Hierarchical Score Card - Show at top for coaches */}
-            {teamData &&
-              teamData.coachPerformance &&
-              teamData.teamMembers &&
-              teamData.teamMembers.length > 0 && (
-                <HierarchicalScoreCard
-                  teamData={teamData}
-                  coachPerformance={teamData.coachPerformance}
-                  hierarchyData={hierarchyData}
-                  allMembersData={allMembersData}
-                />
-              )}
+            {/* Removed HierarchicalScoreCard */}
+
+            {/* Debug logging for team member scores */}
+            {(() => {
+              console.log("📊 [DisciplineReport] My Direct Team members:", {
+                totalMembers: filteredDirectTeamMembers.length,
+                membersWithScores: filteredDirectTeamMembers.filter(m => m.periodDiscipline?.percentage >= 0).length,
+                sampleMembers: filteredDirectTeamMembers.slice(0, 3).map(m => ({
+                  userName: m.userName,
+                  score: m.periodDiscipline?.percentage,
+                  hasPercentage: 'percentage' in (m.periodDiscipline || {}),
+                  periodDiscipline: m.periodDiscipline
+                }))
+              });
+              return null;
+            })()}
 
             <AnimatePresence>
               {filteredDirectTeamMembers.map((member, index) => {

@@ -250,12 +250,14 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   ]);
 
   /**
-   * Fetch education logs on mount
+   * Fetch education logs and summary on mount and when user changes
    */
   useEffect(() => {
+    // Clear cached userId when user changes
+    userIdRef.current = null;
     fetchEducationLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id, user?.email]);
 
   /**
    * Fetch summary data independently

@@ -11,7 +11,12 @@ import { motion, AnimatePresence } from "framer-motion";
  *
  * Data
  */
-const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allMembersData }) => {
+const HierarchicalScoreCard = ({
+  teamData,
+  coachPerformance,
+  hierarchyData,
+  allMembersData,
+}) => {
   const [expandedCoaches, setExpandedCoaches] = React.useState({});
 
   if (!teamData || !coachPerformance) return null;
@@ -29,12 +34,19 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
   const myScore = coachPerformance.periodDiscipline?.percentage || 0;
 
   // Use hierarchyData if available (has nested structure), otherwise use teamData
-  const sourceTeamMembers = hierarchyData?.hierarchy?.teamMembers || teamData.teamMembers || [];
-  
-  console.log("📦 Using teamMembers from:", hierarchyData?.hierarchy?.teamMembers ? "hierarchyData" : "teamData");
+  const sourceTeamMembers =
+    hierarchyData?.hierarchy?.teamMembers || teamData.teamMembers || [];
+
+  console.log(
+    "📦 Using teamMembers from:",
+    hierarchyData?.hierarchy?.teamMembers ? "hierarchyData" : "teamData",
+  );
   console.log("📦 Source teamMembers structure:", sourceTeamMembers);
   if (sourceTeamMembers && sourceTeamMembers[0]) {
-    console.log("📦 First member has teamMembers?", sourceTeamMembers[0].teamMembers);
+    console.log(
+      "📦 First member has teamMembers?",
+      sourceTeamMembers[0].teamMembers,
+    );
   }
 
   // Flatten the hierarchy to get ALL team members at all levels
@@ -42,48 +54,79 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
     const flat = [];
     const flatten = (member) => {
       flat.push(member);
-      console.log(`  Flattening ${member.userName}, has teamMembers: ${member.teamMembers ? member.teamMembers.length : 0}`);
+      console.log(
+        `  Flattening ${member.userName}, has teamMembers: ${
+          member.teamMembers ? member.teamMembers.length : 0
+        }`,
+      );
       if (member.teamMembers && member.teamMembers.length > 0) {
-        member.teamMembers.forEach(child => flatten(child));
+        member.teamMembers.forEach((child) => flatten(child));
       }
     };
-    members.forEach(member => flatten(member));
+    members.forEach((member) => flatten(member));
     return flat;
   };
 
   // Get ALL team members (all levels flattened)
   const allTeamMembersFromHierarchy = flattenHierarchy(sourceTeamMembers);
 
-  console.log("🔄 Flattened all team members:", allTeamMembersFromHierarchy.length, allTeamMembersFromHierarchy.map(m => m.userName));
-  console.log("🔄 First hierarchy member data:", allTeamMembersFromHierarchy[0]);
-  console.log("🔄 Second hierarchy member data:", allTeamMembersFromHierarchy[1]);
+  console.log(
+    "🔄 Flattened all team members:",
+    allTeamMembersFromHierarchy.length,
+    allTeamMembersFromHierarchy.map((m) => m.userName),
+  );
+  console.log(
+    "🔄 First hierarchy member data:",
+    allTeamMembersFromHierarchy[0],
+  );
+  console.log(
+    "🔄 Second hierarchy member data:",
+    allTeamMembersFromHierarchy[1],
+  );
 
   // Check if hierarchy members already have periodDiscipline scores
-  const hierarchyHasScores = allTeamMembersFromHierarchy.some(m => m.periodDiscipline);
+  const hierarchyHasScores = allTeamMembersFromHierarchy.some(
+    (m) => m.periodDiscipline,
+  );
   console.log("📊 Hierarchy already has scores?", hierarchyHasScores);
 
   // Merge scores: Use allMembersData if available (has ALL members), otherwise teamData.teamMembers
-  const scoreDataSource = allMembersData?.allMembers || teamData.teamMembers || [];
-  console.log("📊 Score data source count:", scoreDataSource.length, "Members:", scoreDataSource.map(m => m.userName));
-  
-  const allTeamMembers = allTeamMembersFromHierarchy.map(hierarchyMember => {
+  const scoreDataSource =
+    allMembersData?.allMembers || teamData.teamMembers || [];
+  console.log(
+    "📊 Score data source count:",
+    scoreDataSource.length,
+    "Members:",
+    scoreDataSource.map((m) => m.userName),
+  );
+
+  const allTeamMembers = allTeamMembersFromHierarchy.map((hierarchyMember) => {
     // First check if hierarchy member already has score
     if (hierarchyMember.periodDiscipline) {
-      console.log(`  ✅ Hierarchy member ${hierarchyMember.userName} already has score: ${hierarchyMember.periodDiscipline?.percentage || 0}%`);
+      console.log(
+        `  ✅ Hierarchy member ${hierarchyMember.userName} already has score: ${
+          hierarchyMember.periodDiscipline?.percentage || 0
+        }%`,
+      );
       return hierarchyMember;
     }
-    
+
     // Otherwise try to merge from score data source
-    const scoreData = scoreDataSource.find(td => 
-      td.userId === hierarchyMember.userId || 
-      td.email === hierarchyMember.email
+    const scoreData = scoreDataSource.find(
+      (td) =>
+        td.userId === hierarchyMember.userId ||
+        td.email === hierarchyMember.email,
     );
-    
+
     if (scoreData) {
-      console.log(`  ✅ Merged score for ${hierarchyMember.userName}: ${scoreData.periodDiscipline?.percentage || 0}%`);
+      console.log(
+        `  ✅ Merged score for ${hierarchyMember.userName}: ${
+          scoreData.periodDiscipline?.percentage || 0
+        }%`,
+      );
       return { ...hierarchyMember, ...scoreData };
     }
-    
+
     console.log(`  ⚠️ No score data found for ${hierarchyMember.userName}`);
     return hierarchyMember;
   });
@@ -125,39 +168,52 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
         )
       : 0;
 
-  // UNDER TEAM: Members who report to the direct team members (Level 2+)
-  // These are members whose coachId/parentCoachId matches a direct team member's userId
+  // FULL TEAM: Collect all Level 2+ members who report to the direct team members
+  // These members will be combined with direct team members for the full team calculation
   const membersByCoach = {};
   const allMembersUnderDirectTeam = [];
 
   directTeamMembers.forEach((directMember) => {
-    console.log(`🔎 Checking underMembers for ${directMember.userName} (userId: ${directMember.userId})`);
-    
-    const underMembers = allTeamMembers.filter(
-      (m) => {
-        const matches = (m.coachId === directMember.userId ||
+    console.log(
+      `🔎 Checking underMembers for ${directMember.userName} (userId: ${directMember.userId})`,
+    );
+
+    const underMembers = allTeamMembers.filter((m) => {
+      const matches =
+        (m.coachId === directMember.userId ||
           m.parentCoachId === directMember.userId) &&
         m.userId !== directMember.userId;
-        
-        console.log(`  - ${m.userName} (userId: ${m.userId}, coachId: ${m.coachId}, parentCoachId: ${m.parentCoachId}) → ${matches ? '✅ MATCH' : '❌ NO MATCH'}`);
-        
-        return matches;
-      }
+
+      console.log(
+        `  - ${m.userName} (userId: ${m.userId}, coachId: ${
+          m.coachId
+        }, parentCoachId: ${m.parentCoachId}) → ${
+          matches ? "✅ MATCH" : "❌ NO MATCH"
+        }`,
+      );
+
+      return matches;
+    });
+
+    console.log(
+      `  → Found ${underMembers.length} under members for ${directMember.userName}`,
     );
-    
-    console.log(`  → Found ${underMembers.length} under members for ${directMember.userName}`);
     membersByCoach[directMember.userId] = underMembers;
     allMembersUnderDirectTeam.push(...underMembers);
   });
 
-  // Calculate average of members under direct team (Level 2+)
+  // Calculate FULL TEAM average: Direct team + all members under them (Level 1 + Level 2+)
+  const allFullTeamMembers = [
+    ...directTeamMembers,
+    ...allMembersUnderDirectTeam,
+  ];
   const membersUnderTeamAvg =
-    allMembersUnderDirectTeam.length > 0
+    allFullTeamMembers.length > 0
       ? Math.round(
-          allMembersUnderDirectTeam.reduce(
+          allFullTeamMembers.reduce(
             (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
             0,
-          ) / allMembersUnderDirectTeam.length,
+          ) / allFullTeamMembers.length,
         )
       : 0;
 
@@ -166,7 +222,7 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
     directTeamAvg,
     membersUnderTeamAvg,
     directTeamCount: directTeamMembers.length,
-    membersUnderTeamCount: allMembersUnderDirectTeam.length,
+    fullTeamCount: allFullTeamMembers.length,
   });
 
   // Get color based on score
@@ -242,13 +298,13 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
             </p>
           </div>
 
-          {/* Column 3: Members Under Team (Level 2+) */}
+          {/* Column 3: Full Team (Level 1 + Level 2+) */}
           <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[100px] sm:min-h-[120px]">
             <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full bg-green-100 flex items-center justify-center mb-1.5 sm:mb-2 shadow-sm">
               <Users className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-600" />
             </div>
             <p className="text-[8px] sm:text-[9px] md:text-[10px] text-green-600 font-bold uppercase tracking-wider mb-0.5 sm:mb-1 leading-tight">
-              UNDER TEAM
+              FULL TEAM
             </p>
             <div
               className={`text-lg sm:text-xl md:text-2xl font-black ${getScoreTextColor(
@@ -258,8 +314,8 @@ const HierarchicalScoreCard = ({ teamData, coachPerformance, hierarchyData, allM
               {membersUnderTeamAvg}%
             </div>
             <p className="text-[7px] sm:text-[8px] md:text-[9px] text-gray-400 mt-0.5 sm:mt-1">
-              ({allMembersUnderDirectTeam.length} Member
-              {allMembersUnderDirectTeam.length !== 1 ? "s" : ""})
+              ({allFullTeamMembers.length} Member
+              {allFullTeamMembers.length !== 1 ? "s" : ""})
             </p>
           </div>
         </div>

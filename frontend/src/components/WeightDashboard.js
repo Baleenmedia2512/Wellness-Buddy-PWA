@@ -349,12 +349,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, [activeWeightPanel, weightTrendSeries, weightTrendRangeDays, globalStats, weightHistory]);
 
   /**
-   * Fetch ALL weight history on mount
+   * Fetch ALL weight history on mount and when user changes
    */
   useEffect(() => {
+    // Clear cached userId when user changes
+    userIdRef.current = null;
     fetchWeightHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id, user?.email]);
 
   /**
    * Fetch ALL weight history (no pagination)

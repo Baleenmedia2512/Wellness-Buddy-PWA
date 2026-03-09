@@ -21,9 +21,9 @@ import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
  * - Exposes refresh method via ref for manual updates
  *
  * @param {string} apiBaseUrl - API base URL
- * @param {number} topN - Number of top users to show (default: 5)
+ * @param {number} topN - Number of top users to show (default: 10)
  */
-const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 5 }, ref) => {
+const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -213,7 +213,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 5 }, ref) => {
         {/* Title */}
         <div className="text-center mb-1.5">
           <span className="text-xs sm:text-sm font-semibold text-purple-700">
-            🌟 Discipline Champions (Last 7 Days)
+            🌟 Discipline Champions (Last 10 Days)
           </span>
         </div>
         

@@ -23,13 +23,13 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, deviceInfo, clientTimestamp, clientTimezoneOffset } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
     topic, 
     confidence,
-    hasImageBase64: !!imageBase64 
+    hasImageBase64: !!imageBase64
   });
 
   // Validation
@@ -52,7 +52,24 @@ export default async function handler(req, res) {
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
     // Insert into education_logs_table using Supabase
+    // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
+    
+    // 🔍 DEBUG: Log education upload details with client time comparison
+    const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
+    console.log('📚 Education Upload:', {
+      userId,
+      platform,
+      topic,
+      clientUploaded: clientTimestamp || 'Not provided',
+      clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { hour12: true }) : 'N/A',
+      clientTimezoneOffset,
+      serverUTC: new Date().toISOString(),
+      storedIST: currentTime,
+      timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
+      note: 'Compare client upload time vs stored IST'
+    });
+    
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({

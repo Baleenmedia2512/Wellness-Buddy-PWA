@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import {
   parseDateRange,
   calculateExpectedPosts,
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { coachId, dateRange, startDate, endDate } = req.query;
+    const { coachId, dateRange, startDate, endDate, userTimezoneOffset } = req.query;
 
     // Validation
     if (!coachId) {
@@ -271,6 +272,17 @@ export default async function handler(req, res) {
     const endDateStr = formatDateForMySQL(dates.end);
     // Get unique user IDs for data fetching (no duplicates in queries)
     const allUserIds = Array.from(processedUserIds.keys());
+    
+    // 🔍 DEBUG: Log query parameters
+    console.log('🔎 Discipline Query Parameters:', {
+      startDate: startDateStr,
+      endDate: endDateStr,
+      endDateTime: endDateStr + "T23:59:59",
+      userIds: allUserIds,
+      userCount: allUserIds.length,
+      dateRange: dateRange,
+      tzOffset: userTimezoneOffset
+    });
 
     // Fetch all required data in bulk for efficiency
     const [weightData, educationData, foodData] = await Promise.all([
@@ -281,7 +293,7 @@ export default async function handler(req, res) {
         .in("UserId", allUserIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Education records
       supabase
@@ -290,7 +302,7 @@ export default async function handler(req, res) {
         .in("UserId", allUserIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Food/nutrition records
       supabase
@@ -299,23 +311,54 @@ export default async function handler(req, res) {
         .in("UserID", allUserIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
+    
+    // 🔍 DEBUG: Log fetched data counts and sample records
+    console.log('📊 Fetched Data Summary:', {
+      weightRecords: weightData.data?.length || 0,
+      educationRecords: educationData.data?.length || 0,
+      foodRecords: foodData.data?.length || 0,
+      dateRange: `${startDateStr} to ${endDateStr}`,
+      userIds: allUserIds,
+      sampleWeightRecord: weightData.data?.[0],
+      sampleEducationRecord: educationData.data?.[0],
+      sampleFoodRecord: foodData.data?.[0]
+    });
+    
+    // 🔍 DEBUG: Check for query errors
+    if (weightData.error) console.error('❌ Weight query error:', weightData.error);
+    if (educationData.error) console.error('❌ Education query error:', educationData.error);
+    if (foodData.error) console.error('❌ Food query error:', foodData.error);
 
     // Process discipline data for each member
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
     const expectedPostsPerActivity = daysInPeriod;
 
-    // ⚠️ TIMEZONE NOTE: Database stores timestamps in IST without timezone info.
-    // When we parse these with new Date(), they're interpreted in server timezone (UTC on Vercel).
-    // Since both timestamps AND time windows are in IST, and both are offset by the same amount,
-    // the time comparisons still work correctly. However, we must use local date formatting
-    // to avoid timezone-based date shifting.
+    // ⚠️ TIMEZONE NOTE: Database stores timestamps in IST.
+    // ✅ FIX: Convert IST to user's local time before checking time windows
+    // This ensures discipline tracking works correctly for users in any timezone
+
+    // Parse timezone offset (sent from frontend as minutes)
+    const tzOffset = userTimezoneOffset ? parseInt(userTimezoneOffset) : null;
 
     // Helper to check if time is within window
+    // ✅ TIMEZONE FIX: Convert IST timestamp to user's local time before checking
     const isTimeInWindow = (dateStr, windowStart, windowEnd) => {
-      const date = new Date(dateStr);
-      const time = date.toTimeString().slice(0, 8); // HH:MM:SS
+      if (!dateStr) return false;
+      
+      let time;
+      if (tzOffset !== null) {
+        // Convert IST to user's local time
+        time = convertISTToUserLocalTime(dateStr, tzOffset);
+      } else {
+        // Fallback: Extract time directly from timestamp string
+        const timeMatch = String(dateStr).match(/(\d{2}:\d{2}:\d{2})/);
+        if (!timeMatch) return false;
+        time = timeMatch[1];
+      }
+      
+      if (!time) return false;
       return time >= windowStart && time <= windowEnd;
     };
 
@@ -373,15 +416,43 @@ export default async function handler(req, res) {
       // Weight
       const weightDates = getUniqueDates(weightData.data || [], userId);
       const weightWindow = timeWindowMap.weight || {
-        start: "05:00:00",
-        end: "09:00:00",
+        start: "03:00:00",
+        end: "06:30:00",
       };
+      
+      // 🔍 DEBUG: Log weight conversion for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        (weightData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+            const inWindow = isTimeInWindow(r.CreatedAt, weightWindow.start, weightWindow.end);
+            console.log(`⚖️ Weight Check:`, {
+              userId,
+              createdAtIST: r.CreatedAt,
+              convertedTime,
+              weightWindow: `${weightWindow.start} - ${weightWindow.end}`,
+              inWindow
+            });
+          }
+        });
+      }
+      
       const weightOnTimeDates = getUniqueOnTimeDates(
         weightData.data || [],
         userId,
         weightWindow.start,
         weightWindow.end,
       );
+      
+      // 🔍 DEBUG: Log weight data summary
+      if ((weightData.data || []).filter(r => r.UserId == userId).length > 0) {
+        console.log(`👤 User ${userId} Weight Summary:`, {
+          totalRecords: (weightData.data || []).filter(r => r.UserId == userId).length,
+          weightDates: Array.from(weightDates),
+          weightOnTimeDates: Array.from(weightOnTimeDates),
+          weightWindow
+        });
+      }
 
       // Education
       const educationDates = getUniqueDates(educationData.data || [], userId);
@@ -389,34 +460,76 @@ export default async function handler(req, res) {
         start: "05:00:00",
         end: "23:00:00",
       };
+      
+      // 🔍 DEBUG: Log education conversion for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        (educationData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+            const inWindow = isTimeInWindow(r.CreatedAt, educationWindow.start, educationWindow.end);
+            console.log(`📚 Education Check:`, {
+              userId,
+              createdAtIST: r.CreatedAt,
+              convertedTime,
+              educationWindow: `${educationWindow.start} - ${educationWindow.end}`,
+              inWindow
+            });
+          }
+        });
+      }
+      
       const educationOnTimeDates = getUniqueOnTimeDates(
         educationData.data || [],
         userId,
         educationWindow.start,
         educationWindow.end,
       );
+      
+      // 🔍 DEBUG: Log education data summary
+      if ((educationData.data || []).filter(r => r.UserId == userId).length > 0) {
+        console.log(`📚 User ${userId} Education Summary:`, {
+          totalRecords: (educationData.data || []).filter(r => r.UserId == userId).length,
+          educationDates: Array.from(educationDates),
+          educationOnTimeDates: Array.from(educationOnTimeDates),
+          educationWindow
+        });
+      }
 
-      // Meals - need to filter by time to determine meal type
-      const getMealData = (mealWindow) => {
+      // Helper function to get meal data with time windows
+      const getMealData = (mealWindow, mealType) => {
         const dates = new Set();
         const onTimeDates = new Set();
 
         (foodData.data || []).forEach((r) => {
           if (r.UserID == userId) {
+            // ✅ Use local date formatting to prevent timezone shifting
             const date = new Date(r.CreatedAt);
-            const time = date.toTimeString().slice(0, 8);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            dates.add(dateStr);
 
-            // Check if this record falls within the meal window
-            if (time >= mealWindow.start && time <= mealWindow.end) {
-              // ✅ Use local date formatting to prevent timezone shifting
-              const dateStr =
-                date.getFullYear() +
-                "-" +
-                String(date.getMonth() + 1).padStart(2, "0") +
-                "-" +
-                String(date.getDate()).padStart(2, "0");
-              dates.add(dateStr);
-              onTimeDates.add(dateStr); // If in window, it's on-time
+            // ✅ TIMEZONE FIX: Use isTimeInWindow for timezone conversion
+            const inWindow = isTimeInWindow(r.CreatedAt, mealWindow.start, mealWindow.end);
+            
+            // 🔍 DEBUG: Log meal categorization for USA timezone (offset 300)
+            if (tzOffset === 300 || tzOffset >= 240) {
+              const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+              console.log(`🍽️ Meal Check [${mealType}]:`, {
+                userId,
+                createdAtIST: r.CreatedAt,
+                convertedTime,
+                mealWindow: `${mealWindow.start} - ${mealWindow.end}`,
+                inWindow,
+                dateStr
+              });
+            }
+            
+            if (inWindow) {
+              onTimeDates.add(dateStr);
             }
           }
         });
@@ -424,9 +537,38 @@ export default async function handler(req, res) {
         return { dates, onTimeDates };
       };
 
-      const breakfastData = getMealData(mealWindows.breakfast);
-      const lunchData = getMealData(mealWindows.lunch);
-      const dinnerData = getMealData(mealWindows.dinner);
+      const breakfastData = getMealData(mealWindows.breakfast, 'BREAKFAST');
+      const lunchData = getMealData(mealWindows.lunch, 'LUNCH');
+      const dinnerData = getMealData(mealWindows.dinner, 'DINNER');
+
+      // 🔍 DEBUG: Log meal data summary for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        console.log(`🍽️ User ${userId} Meal Summary:`, {
+          userId,
+          tzOffset,
+          breakfastWindow: mealWindows.breakfast,
+          lunchWindow: mealWindows.lunch,
+          dinnerWindow: mealWindows.dinner,
+          breakfast: {
+            totalDates: breakfastData.dates.size,
+            onTimeDates: breakfastData.onTimeDates.size,
+            dates: Array.from(breakfastData.dates),
+            onTime: Array.from(breakfastData.onTimeDates)
+          },
+          lunch: {
+            totalDates: lunchData.dates.size,
+            onTimeDates: lunchData.onTimeDates.size,
+            dates: Array.from(lunchData.dates),
+            onTime: Array.from(lunchData.onTimeDates)
+          },
+          dinner: {
+            totalDates: dinnerData.dates.size,
+            onTimeDates: dinnerData.onTimeDates.size,
+            dates: Array.from(dinnerData.dates),
+            onTime: Array.from(dinnerData.onTimeDates)
+          }
+        });
+      }
 
       return {
         userId,
@@ -457,6 +599,18 @@ export default async function handler(req, res) {
         },
       };
     });
+    
+    // 🔍 DEBUG: Log discipline calculation for first member
+    if (disciplineData.length > 0) {
+      console.log('📊 Sample Discipline Data (First Member):', {
+        userId: disciplineData[0].userId,
+        weight: disciplineData[0].weight,
+        education: disciplineData[0].education,
+        breakfast: disciplineData[0].breakfast,
+        lunch: disciplineData[0].lunch,
+        dinner: disciplineData[0].dinner
+      });
+    }
 
     // Step 5: Separate coach from team members (use unique members from processedUserIds)
     const loggedInCoach = allMembers.find((m) => m.IsLoggedInCoach);
@@ -614,6 +768,13 @@ export default async function handler(req, res) {
         );
 
         if (!discipline) {
+          // 🔍 DEBUG: Log missing discipline data
+          console.log('⚠️ No discipline data found for member:', {
+            userId: member.UserId,
+            userName: member.UserName,
+            email: member.Email,
+            availableDisciplineUserIds: disciplineData.map(d => d.userId)
+          });
           return null;
         }
 
@@ -699,6 +860,18 @@ export default async function handler(req, res) {
           totalOnTimePosts,
           totalExpectedPosts,
         );
+        
+        // 🔍 DEBUG: Log member score calculation
+        console.log(`📊 Member ${member.UserName} (${member.UserId}):`, {
+          totalOnTimePosts,
+          totalExpectedPosts,
+          periodDisciplinePercentage,
+          weight: discipline.weight,
+          education: discipline.education,
+          breakfast: discipline.breakfast,
+          lunch: discipline.lunch,
+          dinner: discipline.dinner
+        });
 
         return {
           userId: member.UserId,
@@ -727,6 +900,17 @@ export default async function handler(req, res) {
         };
       })
       .filter((m) => m !== null);
+    
+    // 🔍 DEBUG: Log formatted team members summary
+    console.log('👥 Formatted Team Members Summary:', {
+      totalFormatted: formattedTeamMembers.length,
+      members: formattedTeamMembers.map(m => ({
+        userId: m.userId,
+        userName: m.userName,
+        periodDiscipline: m.periodDiscipline,
+        hierarchyLevel: m.hierarchyLevel
+      }))
+    });
 
     // Step 8: Calculate team summary (use unique members for stats)
     const uniqueMembers = Array.from(processedUserIds.values());

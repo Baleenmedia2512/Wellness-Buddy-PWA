@@ -6,6 +6,7 @@
 import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
+import { convertISTToUserLocalTime } from './timezoneConverter.js';
 
 /**
  * Get team hierarchy using Supabase REST API
@@ -166,9 +167,10 @@ export async function getTimeWindows() {
  * @param {Date} startDate - Start date
  * @param {Date} endDate - End date
  * @param {Object} timeWindows - Pre-fetched time windows
+ * @param {number} userTimezoneOffset - User's timezone offset in minutes (optional)
  * @returns {Object} Discipline data
  */
-export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows) {
+export async function calculateMemberDisciplineSupabase(userId, startDate, endDate, timeWindows, userTimezoneOffset = null) {
   const supabase = getSupabaseClient();
   const startDateStr = formatDateForMySQL(startDate);
   const endDateStr = formatDateForMySQL(endDate);
@@ -201,10 +203,24 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
   
-  // Helper to check if time is within window
+  // Helper to check Database stores in IST, but check against user's local time
+  // Converts IST timestamp to user's local timezone before checking
   const isWithinWindow = (createdAt, window) => {
     if (!window || !createdAt) return false;
-    const time = new Date(createdAt).toTimeString().substring(0, 8);
+    
+    let time;
+    if (userTimezoneOffset !== null) {
+      // Convert IST to user's local time
+      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
+    } else {
+      // Fallback: Extract time directly from timestamp string
+      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
+      if (!timeMatch) return false;
+      time = timeMatch[1];
+    }
+    
+    if (!time) return falselse;
+    const time = timeMatch[1];
     return time >= window.start && time <= window.end;
   };
   
@@ -224,16 +240,29 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
     
-    return {
-      totalDays: uniqueDates.size,
-      onTimeDays: onTimeDates.size
-    };
-  };
-  
-  // Helper to categorize meal by time
+    return {Convert IST to user's local time before categorizing
   const getMealType = (createdAt) => {
     if (!createdAt) return null;
-    const time = new Date(createdAt).toTimeString().substring(0, 8);
+    
+    let time;
+    if (userTimezoneOffset !== null) {
+      // Convert IST to user's local time
+      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
+    } else {
+      // Fallback: Extract time directly from timestamp string
+      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
+      if (!timeMatch) return null;
+      time = timeMatch[1];
+    }
+    
+    if (!time) return nulll by time
+  // ✅ TIMEZONE FIX: Extract time directly from timestamp string
+  const getMealType = (createdAt) => {
+    if (!createdAt) return null;
+    // Extract time portion directly from timestamp string (HH:MM:SS)
+    const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
+    if (!timeMatch) return null;
+    const time = timeMatch[1];
     
     const breakfast = timeWindows.breakfast || { start: '05:30:00', end: '08:30:00' };
     const lunch = timeWindows.lunch || { start: '12:00:00', end: '16:00:00' };
