@@ -62,29 +62,29 @@ const TeamNode = ({
   // Calculate team scores for any node with team members
   let directTeamScore = null;
   let underTeamScore = null;
-  
+
   // Get direct reports (children of current node)
   const directReports = node.teamMembers || [];
-  
+
   if (directReports.length > 0) {
     // Calculate direct team average
     const directScores = directReports
-      .map(member => disciplineScores[member.userId])
-      .filter(s => s !== undefined && s !== null);
-    
+      .map((member) => disciplineScores[member.userId])
+      .filter((s) => s !== undefined && s !== null);
+
     if (directScores.length > 0) {
       directTeamScore = Math.round(
-        directScores.reduce((sum, s) => sum + s, 0) / directScores.length
+        directScores.reduce((sum, s) => sum + s, 0) / directScores.length,
       );
     }
-    
-    // Calculate under team average (all descendants except direct reports)
-    // Flatten all descendants of this node
+
+    // Calculate full team average (direct reports + all descendants)
+    // This includes all team members under this node
     const flattenDescendants = (parentNode) => {
       const descendants = [];
       const flatten = (n) => {
         if (n.teamMembers && n.teamMembers.length > 0) {
-          n.teamMembers.forEach(child => {
+          n.teamMembers.forEach((child) => {
             descendants.push(child);
             flatten(child);
           });
@@ -93,21 +93,17 @@ const TeamNode = ({
       flatten(parentNode);
       return descendants;
     };
-    
+
     const allDescendants = flattenDescendants(node);
-    const directReportIds = new Set(directReports.map(m => m.userId));
-    const underTeamMembers = allDescendants.filter(
-      m => !directReportIds.has(m.userId)
-    );
-    
-    if (underTeamMembers.length > 0) {
-      const underScores = underTeamMembers
-        .map(member => disciplineScores[member.userId])
-        .filter(s => s !== undefined && s !== null);
-      
-      if (underScores.length > 0) {
+
+    if (allDescendants.length > 0) {
+      const allScores = allDescendants
+        .map((member) => disciplineScores[member.userId])
+        .filter((s) => s !== undefined && s !== null);
+
+      if (allScores.length > 0) {
         underTeamScore = Math.round(
-          underScores.reduce((sum, s) => sum + s, 0) / underScores.length
+          allScores.reduce((sum, s) => sum + s, 0) / allScores.length,
         );
       }
     }
@@ -203,7 +199,9 @@ const TeamNode = ({
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">{node.email}</p>
+              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
+                {node.email}
+              </p>
               {(node.coachName || node.coCoachName) && (
                 <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
                   Reports to:{" "}
@@ -248,7 +246,7 @@ const TeamNode = ({
                         MY SCORE
                       </div>
                     </div>
-                    
+
                     {/* Direct Team */}
                     <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
                       <div
@@ -262,14 +260,16 @@ const TeamNode = ({
                             : "text-gray-400"
                         }`}
                       >
-                        {directTeamScore !== null ? `${directTeamScore}%` : "N/A"}
+                        {directTeamScore !== null
+                          ? `${directTeamScore}%`
+                          : "N/A"}
                       </div>
                       <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
                         DIRECT TEAM
                       </div>
                     </div>
-                    
-                    {/* Under Team */}
+
+                    {/* Full Team */}
                     <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
                       <div
                         className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
@@ -285,7 +285,7 @@ const TeamNode = ({
                         {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
                       </div>
                       <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
-                        UNDER TEAM
+                        FULL TEAM
                       </div>
                     </div>
                   </div>
@@ -415,10 +415,10 @@ const HierarchicalTeamView = ({
     if (hierarchy) {
       console.log("Auto-expanding first level:", hierarchy);
       const firstLevelIds = new Set();
-      
+
       // Expand root node
       firstLevelIds.add(hierarchy.userId);
-      
+
       // Optionally expand direct reports (Level 1 - Co-Coaches)
       if (hierarchy.teamMembers && hierarchy.teamMembers.length > 0) {
         hierarchy.teamMembers.forEach((child) => {
@@ -457,7 +457,7 @@ const HierarchicalTeamView = ({
     const members = [];
     const flatten = (n) => {
       if (n.teamMembers && n.teamMembers.length > 0) {
-        n.teamMembers.forEach(child => {
+        n.teamMembers.forEach((child) => {
           members.push(child);
           flatten(child);
         });
