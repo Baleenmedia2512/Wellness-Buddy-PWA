@@ -907,6 +907,21 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 })()
                               );
                               const sampledIndices = Array.from(sampledMarkerIndices).sort((a, b) => a - b);
+                              const pickEvenlySpaced = (indices, targetCount) => {
+                                if (indices.length <= targetCount) return indices;
+                                if (targetCount <= 1) return [indices[indices.length - 1]];
+                                const picked = [];
+                                for (let i = 0; i < targetCount; i++) {
+                                  const position = Math.round((i * (indices.length - 1)) / (targetCount - 1));
+                                  picked.push(indices[position]);
+                                }
+                                return Array.from(new Set(picked));
+                              };
+                              const dateLabelTargetCount =
+                                educationTrendRangeDays >= 14 && chartWidth < 310 ? 5 : sampledIndices.length;
+                              const dateLabelIndices = new Set(
+                                pickEvenlySpaced(sampledIndices, dateLabelTargetCount)
+                              );
 
                               const displayValueByIndex = new Map(
                                 sampledIndices.map((sampledIndex, position) => {
@@ -932,6 +947,9 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 }
                                 return -1;
                               })();
+                              const firstDateLabelIndex = sampledIndices.find((index) => dateLabelIndices.has(index)) ?? -1;
+                              const lastDateLabelIndex =
+                                [...sampledIndices].reverse().find((index) => dateLabelIndices.has(index)) ?? -1;
 
                               const linePath = points
                                 .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`)
@@ -1010,9 +1028,9 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                     }}
                                   >
                                     {points.map((point, index) => {
-                                      if (!sampledMarkerIndices.has(index)) return null;
-                                      const isFirst = index === 0;
-                                      const isLast = index === points.length - 1;
+                                      if (!dateLabelIndices.has(index)) return null;
+                                      const isFirst = index === firstDateLabelIndex;
+                                      const isLast = index === lastDateLabelIndex;
 
                                       return (
                                         <span

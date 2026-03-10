@@ -1005,8 +1005,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                               >
                                 {points.map((point, index) => {
                                   if (!sampledMarkerIndices.has(index)) return null;
-                                  const isFirst = index === 0;
-                                  const isLast = index === points.length - 1;
+                                  const isFirst = index === firstVisibleIndex;
+                                  const isLast = index === lastVisibleIndex;
 
                                   return (
                                     <span
