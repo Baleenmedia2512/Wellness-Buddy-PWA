@@ -26,8 +26,11 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         // Fetch discipline report (includes coach's score + team members)
         // Use "today" to match the Discipline Report default view
         // Add timestamp to prevent caching
+        // Get user's timezone offset for proper discipline calculation
+        const userTimezoneOffset = new Date().getTimezoneOffset();
+        
         const disciplineResponse = await fetch(
-          `${apiBaseUrl}/api/coach/discipline-report?coachId=${userId}&dateRange=today&t=${Date.now()}`,
+          `${apiBaseUrl}/api/coach/discipline-report?coachId=${userId}&dateRange=today&userTimezoneOffset=${userTimezoneOffset}&t=${Date.now()}`,
           {
             headers: {
               "Cache-Control": "no-cache, no-store, must-revalidate",

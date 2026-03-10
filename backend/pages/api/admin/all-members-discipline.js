@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import {
   parseDateRange,
   calculateExpectedPosts,
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, dateRange, startDate, endDate } = req.query;
+    const { userId, dateRange, startDate, endDate, userTimezoneOffset } = req.query;
 
     // Validation
     if (!userId) {
@@ -239,10 +240,26 @@ export default async function handler(req, res) {
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
     const expectedPostsPerActivity = daysInPeriod;
 
+    // Parse timezone offset (sent from frontend as minutes)
+    const tzOffset = userTimezoneOffset ? parseInt(userTimezoneOffset) : null;
+
     // Helper functions
+    // ✅ TIMEZONE FIX: Convert IST to user's local time before checking
     const isTimeInWindow = (dateStr, windowStart, windowEnd) => {
-      const date = new Date(dateStr);
-      const time = date.toTimeString().slice(0, 8); // HH:MM:SS
+      if (!dateStr) return false;
+      
+      let time;
+      if (tzOffset !== null) {
+        // Convert IST to user's local time
+        time = convertISTToUserLocalTime(dateStr, tzOffset);
+      } else {
+        // Fallback: Extract time directly from timestamp string
+        const timeMatch = String(dateStr).match(/(\d{2}:\d{2}:\d{2})/);
+        if (!timeMatch) return false;
+        time = timeMatch[1];
+      }
+      
+      if (!time) return false;
       return time >= windowStart && time <= windowEnd;
     };
 
@@ -378,11 +395,21 @@ export default async function handler(req, res) {
         if (foodData.data && Array.isArray(foodData.data)) {
           foodData.data.forEach((r) => {
             if (r.UserID == userId) {
-              const date = new Date(r.CreatedAt);
-              const time = date.toTimeString().slice(0, 8);
+              // ✅ TIMEZONE FIX: Convert IST to user's local time
+              let time;
+              if (tzOffset !== null) {
+                time = convertISTToUserLocalTime(r.CreatedAt, tzOffset);
+              } else {
+                const timeMatch = String(r.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
+                if (!timeMatch) return;
+                time = timeMatch[1];
+              }
+              
+              if (!time) return;
 
               if (time >= mealWindow.start && time <= mealWindow.end) {
                 // ✅ Use local date formatting to prevent timezone shifting
+                const date = new Date(r.CreatedAt);
                 const dateStr =
                   date.getFullYear() +
                   "-" +

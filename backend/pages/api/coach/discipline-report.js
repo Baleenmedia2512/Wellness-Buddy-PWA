@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import {
   parseDateRange,
   calculateExpectedPosts,
@@ -40,7 +41,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { coachId, dateRange, startDate, endDate } = req.query;
+    const { coachId, dateRange, startDate, endDate, userTimezoneOffset } = req.query;
 
     // Validation
     if (!coachId) {
@@ -306,16 +307,30 @@ export default async function handler(req, res) {
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
     const expectedPostsPerActivity = daysInPeriod;
 
-    // ⚠️ TIMEZONE NOTE: Database stores timestamps in IST without timezone info.
-    // When we parse these with new Date(), they're interpreted in server timezone (UTC on Vercel).
-    // Since both timestamps AND time windows are in IST, and both are offset by the same amount,
-    // the time comparisons still work correctly. However, we must use local date formatting
-    // to avoid timezone-based date shifting.
+    // ⚠️ TIMEZONE NOTE: Database stores timestamps in IST.
+    // ✅ FIX: Convert IST to user's local time before checking time windows
+    // This ensures discipline tracking works correctly for users in any timezone
+
+    // Parse timezone offset (sent from frontend as minutes)
+    const tzOffset = userTimezoneOffset ? parseInt(userTimezoneOffset) : null;
 
     // Helper to check if time is within window
+    // ✅ TIMEZONE FIX: Convert IST timestamp to user's local time before checking
     const isTimeInWindow = (dateStr, windowStart, windowEnd) => {
-      const date = new Date(dateStr);
-      const time = date.toTimeString().slice(0, 8); // HH:MM:SS
+      if (!dateStr) return false;
+      
+      let time;
+      if (tzOffset !== null) {
+        // Convert IST to user's local time
+        time = convertISTToUserLocalTime(dateStr, tzOffset);
+      } else {
+        // Fallback: Extract time directly from timestamp string
+        const timeMatch = String(dateStr).match(/(\d{2}:\d{2}:\d{2})/);
+        if (!timeMatch) return false;
+        time = timeMatch[1];
+      }
+      
+      if (!time) return false;
       return time >= windowStart && time <= windowEnd;
     };
 
@@ -394,21 +409,31 @@ export default async function handler(req, res) {
         userId,
         educationWindow.start,
         educationWindow.end,
-      );
-
-      // Meals - need to filter by time to determine meal type
-      const getMealData = (mealWindow) => {
+      );Convert IST to user's local time
+            let time;
+            if (tzOffset !== null) {
+              time = convertISTToUserLocalTime(r.CreatedAt, tzOffset);
+            } else {
+              const timeMatch = String(r.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
+              if (!timeMatch) return;
+              time = timeMatch[1];
+            }
+            
+            if (!time) return) => {
         const dates = new Set();
         const onTimeDates = new Set();
 
         (foodData.data || []).forEach((r) => {
           if (r.UserID == userId) {
-            const date = new Date(r.CreatedAt);
-            const time = date.toTimeString().slice(0, 8);
+            // ✅ TIMEZONE FIX: Extract time directly from timestamp string
+            const timeMatch = String(r.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
+            if (!timeMatch) return;
+            const time = timeMatch[1];
 
             // Check if this record falls within the meal window
             if (time >= mealWindow.start && time <= mealWindow.end) {
               // ✅ Use local date formatting to prevent timezone shifting
+              const date = new Date(r.CreatedAt);
               const dateStr =
                 date.getFullYear() +
                 "-" +

@@ -419,6 +419,7 @@ export default async function handler(req, res) {
     );
 
     // Insert using Supabase - use PascalCase column names as they exist in Supabase
+    // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from("food_nutrition_data_table")

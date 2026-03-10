@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     platform, 
     topic, 
     confidence,
-    hasImageBase64: !!imageBase64 
+    hasImageBase64: !!imageBase64
   });
 
   // Validation
@@ -52,6 +52,7 @@ export default async function handler(req, res) {
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
     // Insert into education_logs_table using Supabase
+    // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
     const { data, error } = await supabase
       .from('education_logs_table')

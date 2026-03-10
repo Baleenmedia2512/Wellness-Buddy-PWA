@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { convertISTToUserLocalTime } from '../../../utils/timezoneConverter.js';
 import { 
   parseDateRange,
   calculateDisciplinePercentage,
@@ -132,9 +133,14 @@ export default async function handler(req, res) {
     ]);
 
     // Helper to check if time is within window
+    // ✅ TIMEZONE FIX: Database stores in IST, but check against user's local time
+    // Note: Leaderboard doesn't know user's timezone, so fallback to direct time extraction
     const isTimeInWindow = (dateStr, windowStart, windowEnd) => {
-      const date = new Date(dateStr);
-      const time = date.toTimeString().slice(0, 8);
+      if (!dateStr) return false;
+      // Extract time portion directly from timestamp string (HH:MM:SS)
+      const timeMatch = String(dateStr).match(/(\d{2}:\d{2}:\d{2})/);
+      if (!timeMatch) return false;
+      const time = timeMatch[1];
       return time >= windowStart && time <= windowEnd;
     };
 

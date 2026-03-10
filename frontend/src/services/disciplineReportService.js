@@ -37,9 +37,14 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
+          // Get user's timezone offset in minutes
+          // getTimezoneOffset() returns positive for west of UTC, negative for east
+          const userTimezoneOffset = new Date().getTimezoneOffset();
+          
           const params = {
             coachId,
             dateRange,
+            userTimezoneOffset, // Send timezone for proper discipline calculation
           };
 
           if (dateRange === "custom" && customRange) {
