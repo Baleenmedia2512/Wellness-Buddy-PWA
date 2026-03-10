@@ -102,8 +102,10 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
     try {
       const userId = await getUserId(user.email);
+      // Use scope=all for 'all' filter to fetch all system centers globally
+      const scope = teamFilter === 'all' ? 'all' : 'team';
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=${teamFilter}`,
+        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}`,
         {
           cache: 'no-store',
           headers: {
@@ -306,6 +308,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
             }`}
           >
             My Full Team
+          </TouchFeedbackButton>
+          <TouchFeedbackButton
+            onClick={() => setTeamFilter('all')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+              teamFilter === 'all'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            All System
           </TouchFeedbackButton>
         </div>
       </div>
