@@ -1636,7 +1636,7 @@ const NutritionDashboard = ({
                 className="overflow-x-auto"
                 style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
               >
-                <style jsx>{`
+                <style>{`
                   div::-webkit-scrollbar {
                     display: none;
                   }
@@ -2110,8 +2110,8 @@ const NutritionDashboard = ({
                         />
                       </div>
 
-                      <div className="flex justify-between items-center gap-2">
-                        <div className="flex-1 p-2 rounded-lg bg-blue-50 flex flex-col items-center">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <div className="p-2 rounded-lg bg-blue-50 flex flex-col items-center">
                           <Beef className="w-4 h-4 text-blue-600 mb-0.5" />
                           <p className="text-[10px] font-semibold text-blue-600">Protein</p>
                           <p className="text-sm font-bold text-gray-900">
@@ -2119,7 +2119,7 @@ const NutritionDashboard = ({
                           </p>
                           <p className="text-[10px] text-gray-500">of 131g</p>
                         </div>
-                        <div className="flex-1 p-2 rounded-lg bg-orange-50 flex flex-col items-center">
+                        <div className="p-2 rounded-lg bg-orange-50 flex flex-col items-center">
                           <Wheat className="w-4 h-4 text-orange-600 mb-0.5" />
                           <p className="text-[10px] font-semibold text-orange-600">Carbs</p>
                           <p className="text-sm font-bold text-gray-900">
@@ -2127,7 +2127,7 @@ const NutritionDashboard = ({
                           </p>
                           <p className="text-[10px] text-gray-500">of 263g</p>
                         </div>
-                        <div className="flex-1 p-2 rounded-lg bg-yellow-50 flex flex-col items-center">
+                        <div className="p-2 rounded-lg bg-yellow-50 flex flex-col items-center">
                           <Droplet className="w-4 h-4 text-yellow-600 mb-0.5" />
                           <p className="text-[10px] font-semibold text-yellow-600">Fat</p>
                           <p className="text-sm font-bold text-gray-900">
@@ -2135,7 +2135,7 @@ const NutritionDashboard = ({
                           </p>
                           <p className="text-[10px] text-gray-500">of 70g</p>
                         </div>
-                        <div className="flex-1 p-2 rounded-lg bg-green-50 flex flex-col items-center">
+                        <div className="p-2 rounded-lg bg-green-50 flex flex-col items-center">
                           <Leaf className="w-4 h-4 text-green-600 mb-0.5" />
                           <p className="text-[10px] font-semibold text-green-600">Fiber</p>
                           <p className="text-sm font-bold text-gray-900">
@@ -2172,7 +2172,7 @@ const NutritionDashboard = ({
                         </div>
                       </div>
 
-                      <div className="grid grid-cols-3 gap-2 mb-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 mb-3">
                         <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
                           <p className="text-[10px] text-emerald-700">Average</p>
                           <p className="text-xs md:text-sm font-semibold text-emerald-900">
@@ -2187,7 +2187,7 @@ const NutritionDashboard = ({
                               : "-"}
                           </p>
                         </div>
-                        <div className="rounded-lg bg-rose-50 px-2 py-1.5">
+                        <div className="rounded-lg bg-rose-50 px-2 py-1.5 col-span-2 sm:col-span-1">
                           <p className="text-[10px] text-rose-700">Above Target</p>
                           <p className="text-xs md:text-sm font-semibold text-rose-900">
                             {trendAboveTargetDays}/{calorieTrendData.length || trendRangeDays} days
@@ -2257,6 +2257,7 @@ const NutritionDashboard = ({
                                     const isAbove = (payload.calories || 0) > calorieTarget;
                                     return (
                                       <circle
+                                        key={`calorie-dot-${payload.key || index}`}
                                         cx={cx}
                                         cy={cy}
                                         r={4}

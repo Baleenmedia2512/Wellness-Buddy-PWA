@@ -98,10 +98,12 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [educationTrendRangeDays, setEducationTrendRangeDays] = useState(7);
   const [activeEducationPanel, setActiveEducationPanel] = useState('summary');
   const [educationPanelHeight, setEducationPanelHeight] = useState(null);
+  const [educationTrendChartWidth, setEducationTrendChartWidth] = useState(300);
   const userIdRef = useRef(null);
   const educationSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
   const educationSummaryRef = useRef(null);
   const educationTrendRef = useRef(null);
+  const educationTrendChartRef = useRef(null);
 
   const toDateKey = (value) => {
     const d = new Date(value);
@@ -247,6 +249,27 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     educationTrendSeries,
     educationTrendRangeDays,
   ]);
+
+  useEffect(() => {
+    const container = educationTrendChartRef.current;
+    if (!container) return;
+
+    const updateChartWidth = () => {
+      const nextWidth = Math.max(240, Math.floor(container.clientWidth || 0));
+      setEducationTrendChartWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+    };
+
+    updateChartWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateChartWidth);
+      observer.observe(container);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', updateChartWidth);
+    return () => window.removeEventListener('resize', updateChartWidth);
+  }, [activeEducationPanel, educationTrendRangeDays, educationTrendSeries.length]);
 
   /**
    * Fetch education logs on mount
@@ -781,7 +804,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   </div>
                 </div>
 
-                <div ref={educationTrendRef} className="w-1/2 shrink-0 px-4 sm:px-5 pb-4 sm:pb-5">
+                <div ref={educationTrendRef} className="w-1/2 shrink-0 px-3 sm:px-5 pb-4 sm:pb-5">
                   {(() => {
                     const totalSessions = educationTrendSeries.reduce(
                       (sum, point) => sum + (point.value || 0),
@@ -822,7 +845,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                           <div className="rounded-lg bg-amber-50 px-2 py-1.5">
                             <p className="text-[10px] text-amber-700">Total Sessions</p>
                             <p className="text-xs sm:text-sm font-semibold text-amber-900">{totalSessions}/{educationTrendSeries.length || educationTrendRangeDays}</p>
@@ -848,16 +871,18 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         ) : (
                           <>
                             {(() => {
-                              const chartWidth = 380;
+                              const chartWidth = educationTrendChartWidth;
                               const chartHeight = 120;
                               const maxValue = Math.max(...educationTrendSeries.map((point) => point.value), 1);
+                              const plotLeft = 10;
+                              const plotRight = 14;
                               const stepX =
                                 educationTrendSeries.length > 1
-                                  ? chartWidth / (educationTrendSeries.length - 1)
+                                  ? (chartWidth - plotLeft - plotRight) / (educationTrendSeries.length - 1)
                                   : 0;
 
                               const points = educationTrendSeries.map((point, index) => {
-                                const x = index * stepX;
+                                const x = plotLeft + index * stepX;
                                 const y = chartHeight - ((point.value || 0) / maxValue) * chartHeight;
                                 return { ...point, x, y };
                               });
@@ -914,14 +939,15 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                               const areaPath = `${linePath} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
 
                               return (
-                                <div className="w-full overflow-x-auto">
+                                <div ref={educationTrendChartRef} className="w-full">
                                   <svg
                                     viewBox={`0 -14 ${chartWidth} ${chartHeight + 38}`}
                                     className="block"
                                     style={{
                                       width: `${chartWidth}px`,
                                       height: `${chartHeight + 38}px`,
-                                      minWidth: `${chartWidth}px`
+                                      minWidth: `${chartWidth}px`,
+                                      overflow: 'visible'
                                     }}
                                     preserveAspectRatio="none"
                                   >
@@ -964,7 +990,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                         <text
                                           key={`${point.key}-value`}
                                           x={labelX}
-                                          y={Math.max(point.y - 6, -4)}
+                                          y={Math.max(point.y - 6, -10)}
                                           textAnchor={textAnchor}
                                           fontSize="8"
                                           fontWeight="500"
