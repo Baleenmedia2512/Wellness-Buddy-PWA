@@ -409,7 +409,7 @@ export default async function handler(req, res) {
         userId,
         educationWindow.start,
         educationWindow.end,
-      );Convert IST to user's local time
+      ); // Convert IST to user's local time
             let time;
             if (tzOffset !== null) {
               time = convertISTToUserLocalTime(r.CreatedAt, tzOffset);
