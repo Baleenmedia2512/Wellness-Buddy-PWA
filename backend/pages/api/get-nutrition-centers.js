@@ -22,9 +22,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, teamFilter = 'direct' } = req.query;
+  const { userId, teamFilter = 'direct', scope = 'team' } = req.query;
 
-  console.log('🗺️ [get-nutrition-centers] Request:', { userId, teamFilter });
+  console.log('🗺️ [get-nutrition-centers] Request:', { userId, teamFilter, scope });
 
   if (!userId) {
     res.status(400).json({
@@ -63,8 +63,8 @@ export default async function handler(req, res) {
 
     console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length, 'members');
 
-    // Fetch all active nutrition centers owned by team members
-    const { data: centers, error: centersError } = await supabase
+    // Build query for nutrition centers
+    let centersQuery = supabase
       .from('nutrition_centers_table')
       .select(`
         id,
@@ -77,9 +77,19 @@ export default async function handler(req, res) {
         registered_at,
         status
       `)
-      .in('owner_user_id', teamUserIds)
       .eq('status', 'active')
-      .eq('is_deleted', false)
+      .eq('is_deleted', false);
+
+    // Apply team filter only if scope is 'team' (default)
+    // For GPS-based attendance (scope='all'), fetch ALL clubs globally
+    if (scope === 'team') {
+      console.log('🔒 [get-nutrition-centers] Filtering by team ownership');
+      centersQuery = centersQuery.in('owner_user_id', teamUserIds);
+    } else {
+      console.log('🌍 [get-nutrition-centers] Fetching ALL clubs globally (for attendance detection)');
+    }
+
+    const { data: centers, error: centersError } = await centersQuery
       .order('registered_at', { ascending: false });
 
     if (centersError) {

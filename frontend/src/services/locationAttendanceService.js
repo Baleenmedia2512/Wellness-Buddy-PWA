@@ -74,19 +74,18 @@ class LocationAttendanceService {
   }
 
   /**
-   * Find the nearest nutrition center within proximity radius
+   * Find ALL nutrition centers within proximity radius
    * @param {number} userLat - User's latitude
    * @param {number} userLon - User's longitude
    * @param {Array} centers - Array of nutrition centers
-   * @returns {{center: Object, distance: number} | null}
+   * @returns {Array<{center: Object, distance: number}>} - Array of nearby centers sorted by distance
    */
-  findNearestCenter(userLat, userLon, centers) {
+  findNearbyCenters(userLat, userLon, centers) {
     if (!centers || centers.length === 0) {
-      return null;
+      return [];
     }
 
-    let nearestCenter = null;
-    let minDistance = Infinity;
+    const nearbyCenters = [];
 
     for (const center of centers) {
       const distance = this.calculateDistance(
@@ -96,19 +95,24 @@ class LocationAttendanceService {
         parseFloat(center.longitude)
       );
 
-      if (distance <= this.PROXIMITY_RADIUS_METERS && distance < minDistance) {
-        nearestCenter = center;
-        minDistance = distance;
+      if (distance <= this.PROXIMITY_RADIUS_METERS) {
+        nearbyCenters.push({ center, distance });
       }
     }
 
-    if (nearestCenter) {
-      console.log(`✅ Found nearby center: ${nearestCenter.center_name} (${Math.round(minDistance)}m away)`);
-      return { center: nearestCenter, distance: minDistance };
+    // Sort by distance (closest first)
+    nearbyCenters.sort((a, b) => a.distance - b.distance);
+
+    if (nearbyCenters.length > 0) {
+      console.log(`✅ Found ${nearbyCenters.length} center(s) within ${this.PROXIMITY_RADIUS_METERS}m:`);
+      nearbyCenters.forEach((nc, idx) => {
+        console.log(`  ${idx + 1}. ${nc.center.center_name} (${Math.round(nc.distance)}m away)`);
+      });
+    } else {
+      console.log(`⚠️ No centers within ${this.PROXIMITY_RADIUS_METERS}m radius`);
     }
 
-    console.log(`⚠️ No centers within ${this.PROXIMITY_RADIUS_METERS}m radius`);
-    return null;
+    return nearbyCenters;
   }
 
   /**
@@ -119,8 +123,10 @@ class LocationAttendanceService {
    */
   async fetchNutritionCenters(apiBaseUrl, userId) {
     try {
+      // Use scope=all to fetch ALL clubs globally for GPS-based attendance detection
+      // This allows users to check in at ANY club, not just their team's clubs
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=full`,
+        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=full&scope=all`,
         {
           cache: 'no-store',
           headers: {
@@ -143,10 +149,10 @@ class LocationAttendanceService {
   }
 
   /**
-   * Determine attendance type and nutrition center based on GPS location
+   * Determine attendance type and nutrition center(s) based on GPS location
    * @param {string} apiBaseUrl - API base URL
    * @param {number} userId - User ID
-   * @returns {Promise<{attendanceType: string, latitude: number|null, longitude: number|null, nutritionCenterId: number|null}>}
+   * @returns {Promise<{attendanceType: string, latitude: number|null, longitude: number|null, nutritionCenterId: number|null, nearbyCenters: Array}>}
    */
   async determineAttendance(apiBaseUrl, userId) {
     try {
@@ -160,6 +166,7 @@ class LocationAttendanceService {
           latitude: null,
           longitude: null,
           nutritionCenterId: null,
+          nearbyCenters: [],
         };
       }
 
@@ -173,23 +180,28 @@ class LocationAttendanceService {
           latitude: location.latitude,
           longitude: location.longitude,
           nutritionCenterId: null,
+          nearbyCenters: [],
         };
       }
 
-      // Check proximity to centers
-      const nearest = this.findNearestCenter(
+      // Check proximity to centers - get ALL nearby centers
+      const nearbyCenters = this.findNearbyCenters(
         location.latitude,
         location.longitude,
         centers
       );
 
-      if (nearest) {
-        // Within 100m of a center -> club
+      if (nearbyCenters.length > 0) {
+        // Within 100m of center(s) -> club
+        // If multiple centers, return them all for user to choose
+        // If only one, auto-select it
         return {
           attendanceType: 'club',
           latitude: location.latitude,
           longitude: location.longitude,
-          nutritionCenterId: nearest.center.id,
+          nutritionCenterId: nearbyCenters.length === 1 ? nearbyCenters[0].center.id : null,
+          nearbyCenters: nearbyCenters, // Return all nearby centers
+          centerName: nearbyCenters.length === 1 ? nearbyCenters[0].center.center_name : null,
         };
       } else {
         // Not near any center -> remote with GPS coords
@@ -198,6 +210,7 @@ class LocationAttendanceService {
           latitude: location.latitude,
           longitude: location.longitude,
           nutritionCenterId: null,
+          nearbyCenters: [],
         };
       }
     } catch (err) {
@@ -208,6 +221,7 @@ class LocationAttendanceService {
         latitude: null,
         longitude: null,
         nutritionCenterId: null,
+        nearbyCenters: [],
       };
     }
   }

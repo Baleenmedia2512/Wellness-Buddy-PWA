@@ -23,16 +23,18 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
     topic, 
     confidence,
+    participantCount,
     hasImageBase64: !!imageBase64,
     attendanceType,
     hasLocation: !!(latitude && longitude),
-    nutritionCenterId
+    nutritionCenterId,
+    centerName
   });
 
   // Validation
@@ -69,6 +71,8 @@ export default async function handler(req, res) {
         longitude: longitude || null,
         attendance_type: attendanceType || null,
         nutrition_center_id: nutritionCenterId || null,
+        participant_count: participantCount || null,
+        center_name: centerName || null,
         CreatedAt: currentTime,
         UpdatedAt: currentTime
       })

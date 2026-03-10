@@ -47,6 +47,7 @@ import { locationAttendanceService } from "./services/locationAttendanceService"
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
+import ClubSelectionModal from "./components/ClubSelectionModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -118,6 +119,11 @@ function WellnessValleyApp() {
     useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
+
+  // Club selection state
+  const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
+  const [nearbyCenters, setNearbyCenters] = useState([]);
+  const [pendingEducationData, setPendingEducationData] = useState(null);
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
@@ -1162,7 +1168,7 @@ function WellnessValleyApp() {
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
    */
-  const saveEducationLog = async (educationData, imageBase64) => {
+  const saveEducationLog = async (educationData, imageBase64, selectedClub = null) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
 
@@ -1184,20 +1190,38 @@ function WellnessValleyApp() {
       );
       console.log("✅ Attendance determined:", attendance);
 
+      // If multiple clubs detected and no club selected yet, show selection modal
+      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+        console.log("🏢 Multiple clubs detected, showing selection modal");
+        setNearbyCenters(attendance.nearbyCenters);
+        setPendingEducationData({ educationData, imageBase64, attendance });
+        setShowClubSelectionModal(true);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        return; // Wait for user to select club
+      }
+
+      // Determine final values
+      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      const finalCenterName = selectedClub?.center_name || attendance.centerName;
+      const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
           imageBase64: imageBase64,
-          platform: educationData.platform,
+          platform: finalPlatform,
           topic: educationData.topic,
           confidence: educationData.confidence,
+          participantCount: educationData.participantCount || null,
           deviceInfo: window.navigator.userAgent,
           latitude: attendance.latitude,
           longitude: attendance.longitude,
           attendanceType: attendance.attendanceType,
-          nutritionCenterId: attendance.nutritionCenterId,
+          nutritionCenterId: finalCenterId,
+          centerName: finalCenterName,
         }),
       });
 
@@ -1209,6 +1233,12 @@ function WellnessValleyApp() {
 
       console.log("✅ Education log auto-saved successfully:", data.id);
       console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      if (finalCenterName) {
+        console.log(`   🏢 Club: ${finalCenterName}`);
+      }
+      if (educationData.participantCount) {
+        console.log(`   👥 Participants: ${educationData.participantCount}`);
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -1218,6 +1248,23 @@ function WellnessValleyApp() {
       );
       setSaveLoading(false);
       setLoadingState("idle");
+    }
+  };
+
+  // Handle club selection from modal
+  const handleClubSelection = async (selectedCenter) => {
+    console.log("🏢 Club selected:", selectedCenter);
+    setShowClubSelectionModal(false);
+    
+    if (pendingEducationData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      await saveEducationLog(
+        pendingEducationData.educationData,
+        pendingEducationData.imageBase64,
+        selectedCenter
+      );
+      setPendingEducationData(null);
     }
   };
 
@@ -2936,6 +2983,19 @@ function WellnessValleyApp() {
           onCancel={handleDuplicateWeightCancel}
         />
       )}
+
+      {/* Club Selection Modal */}
+      <ClubSelectionModal
+        isOpen={showClubSelectionModal}
+        onClose={() => {
+          setShowClubSelectionModal(false);
+          setPendingEducationData(null);
+          setSaveLoading(false);
+          setLoadingState("idle");
+        }}
+        nearbyCenters={nearbyCenters}
+        onSelectClub={handleClubSelection}
+      />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal

@@ -74,6 +74,24 @@ BEGIN
     ALTER TABLE education_logs_table 
       ADD COLUMN nutrition_center_id INTEGER REFERENCES nutrition_centers_table(id);
   END IF;
+
+  -- Add participant_count column
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name='education_logs_table' AND column_name='participant_count'
+  ) THEN
+    ALTER TABLE education_logs_table 
+      ADD COLUMN participant_count INTEGER;
+  END IF;
+
+  -- Add center_name column (denormalized for easier querying)
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name='education_logs_table' AND column_name='center_name'
+  ) THEN
+    ALTER TABLE education_logs_table 
+      ADD COLUMN center_name VARCHAR(255);
+  END IF;
 END $$;
 
 -- Create index on nutrition_center_id for attendance queries
