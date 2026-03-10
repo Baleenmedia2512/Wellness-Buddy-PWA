@@ -148,7 +148,9 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
         ImageBase64: imageBase64, 
         analysisResult: transformedAnalysisResult, 
         deviceInfo,
-        userEmail: actualUserEmail // Include email for backend logging
+        userEmail: actualUserEmail, // Include email for backend logging
+        clientTimestamp: new Date().toISOString(), // User's actual upload time
+        clientTimezoneOffset: new Date().getTimezoneOffset() // User's timezone offset
       })
     });
     

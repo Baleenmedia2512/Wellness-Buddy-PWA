@@ -15,6 +15,7 @@ import {
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import { istToLocalDate } from "../utils/timezoneUtils";
 
 const UNDO_SECONDS = 10; // cooldown duration
 
@@ -75,20 +76,20 @@ const NutritionDashboard = ({
   useEffect(() => {
     if (selectedMeal) {
       const foodData = parseAnalysisData(selectedMeal.AnalysisData);
-      
+
       // 🔍 DEBUG: Log what we're loading from database
       console.log("🔍 [NutritionDashboard] Loading from database:", {
-        foods: foodData.detailedItems?.map(item => ({
+        foods: foodData.detailedItems?.map((item) => ({
           name: item.name,
           weight_g: item.weight_g,
           volume_ml: item.volume_ml,
           grams: item.grams,
           unit: item.unit,
           isLiquid: item.isLiquid,
-          portion: item.portion
-        }))
+          portion: item.portion,
+        })),
       });
-      
+
       // Transform database format to EditableFoodItem expected format
       const transformedItems = (foodData.detailedItems || []).map((item) => {
         // Auto-detect liquids from name if not explicitly set (for backwards compatibility)
@@ -120,15 +121,15 @@ const NutritionDashboard = ({
 
         // Determine if this is a liquid food - check both explicit flag and volume_ml presence
         const isLiquid =
-          item.isLiquid === true || 
-          (item.volume_ml !== null && item.volume_ml !== undefined) || 
+          item.isLiquid === true ||
+          (item.volume_ml !== null && item.volume_ml !== undefined) ||
           isLiquidByName;
-        
+
         // ✅ Get the correct value based on liquid/solid
-        const actualGrams = isLiquid 
-          ? (item.volume_ml || item.grams || item.weight_g || 100)
-          : (item.weight_g || item.grams || item.volume_ml || 100);
-        
+        const actualGrams = isLiquid
+          ? item.volume_ml || item.grams || item.weight_g || 100
+          : item.weight_g || item.grams || item.volume_ml || 100;
+
         const unit = item.unit || (isLiquid ? "ml" : "g");
 
         // Calculate per100g if not present (needed for editing)
@@ -223,7 +224,7 @@ const NutritionDashboard = ({
   const handleCloseEditing = useCallback(async () => {
     // Save all editing items before closing
     setIsSaving(true);
-    
+
     try {
       // Get all item refs and call save() on editing items
       const savePromises = Object.keys(itemRefs.current).map((index) => {
@@ -235,18 +236,17 @@ const NutritionDashboard = ({
         }
         return Promise.resolve();
       });
-      
+
       // Wait for all saves to complete
       await Promise.all(savePromises);
       console.log("✅ All items saved successfully");
-      
     } catch (error) {
       console.error("❌ Error saving items:", error);
       // Continue to close even if save fails - items already handle errors
     } finally {
       setIsSaving(false);
     }
-    
+
     // Exit edit mode
     setIsEditing(false);
     setEditingStates({});
@@ -286,15 +286,15 @@ const NutritionDashboard = ({
 
       // Determine if this is a liquid food
       const isLiquid =
-        item.isLiquid === true || 
-        (item.volume_ml !== null && item.volume_ml !== undefined) || 
+        item.isLiquid === true ||
+        (item.volume_ml !== null && item.volume_ml !== undefined) ||
         isLiquidByName;
-      
-      // ✅ Get the correct value based on liquid/solid  
-      const actualGrams = isLiquid 
-        ? (item.volume_ml || item.grams || item.weight_g || 100)
-        : (item.weight_g || item.grams || item.volume_ml || 100);
-      
+
+      // ✅ Get the correct value based on liquid/solid
+      const actualGrams = isLiquid
+        ? item.volume_ml || item.grams || item.weight_g || 100
+        : item.weight_g || item.grams || item.volume_ml || 100;
+
       const unit = item.unit || (isLiquid ? "ml" : "g");
 
       return {
@@ -502,7 +502,7 @@ const NutritionDashboard = ({
   /* ---------------- Helpers ---------------- */
 
   const getMealCategory = (timeString) => {
-    const hour = new Date(timeString).getHours();
+    const hour = istToLocalDate(timeString).getHours();
     if (hour >= 5 && hour < 10) return "breakfast";
     if (hour >= 10 && hour < 12) return "morning-snack";
     if (hour >= 12 && hour < 16) return "lunch";
@@ -706,7 +706,14 @@ const NutritionDashboard = ({
           return;
         }
 
-        const dateString = date.toISOString().split("T")[0];
+        // ✅ TIMEZONE FIX: Use local date formatting instead of toISOString()
+        // toISOString() converts to UTC which can shift the date for users in positive UTC offsets
+        const dateString =
+          date.getFullYear() +
+          "-" +
+          String(date.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(date.getDate()).padStart(2, "0");
         // Add cache busting parameter to force fresh data
         const cacheBuster = Date.now();
         const response = await fetch(
@@ -1019,14 +1026,6 @@ const NutritionDashboard = ({
     }));
   };
 
-  // group by meal bucket (placeholders included, but ignored in totals)
-  const groupedMeals = analyses.reduce((groups, analysis) => {
-    const category = getMealCategory(analysis.CreatedAt);
-    if (!groups[category]) groups[category] = [];
-    groups[category].push(analysis);
-    return groups;
-  }, {});
-
   const UndoRow = ({
     pid,
     originalMeal,
@@ -1066,7 +1065,7 @@ const NutritionDashboard = ({
         });
       }, msLeft);
       return () => clearTimeout(t);
-    }, [expiresAt, pid, setAnalyses, setUndoState]);
+    }, [expiresAt, pid]);
 
     const foodName =
       parseAnalysisData(originalMeal.AnalysisData).name || "Food";
@@ -1793,10 +1792,11 @@ const NutritionDashboard = ({
                           <div className="space-y-3">
                             {meals
                               .slice()
-                              .sort(
-                                (a, b) =>
-                                  new Date(a.CreatedAt) - new Date(b.CreatedAt),
-                              )
+                              .sort((a, b) => {
+                                const dateA = istToLocalDate(a.CreatedAt);
+                                const dateB = istToLocalDate(b.CreatedAt);
+                                return dateA - dateB;
+                              })
                               .map((meal) => {
                                 // Show undo row if this is a placeholder
                                 if (meal.isUndoPlaceholder) {
@@ -1819,7 +1819,7 @@ const NutritionDashboard = ({
                                 const foodData = parseAnalysisData(
                                   meal.AnalysisData,
                                 );
-                                const mealTime = new Date(
+                                const mealTime = istToLocalDate(
                                   meal.CreatedAt,
                                 ).toLocaleTimeString("en-US", {
                                   hour: "2-digit",
@@ -1967,7 +1967,7 @@ const NutritionDashboard = ({
                 selectedMeal.AnalysisData,
                 "text-white",
               );
-              const mealTime = new Date(
+              const mealTime = istToLocalDate(
                 selectedMeal.CreatedAt,
               ).toLocaleTimeString("en-US", {
                 hour: "2-digit",

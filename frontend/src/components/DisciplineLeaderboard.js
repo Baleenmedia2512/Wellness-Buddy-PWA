@@ -5,23 +5,25 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Trophy } from "lucide-react";
+import { Award, Star } from "lucide-react";
+import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
 
 /**
- * WeightLossLeaderboard Component
- * Displays global weight loss leaderboard strip showing top performers
+ * DisciplineLeaderboard Component
+ * Displays global discipline leaderboard showing top performers
  *
  * Features:
- * - Shows rank, profile avatar, user name, coach name, weight loss
+ * - Shows rank, profile avatar, user name, coach name, discipline %
  * - Smooth marquee animation (continuous horizontal scroll)
  * - Pause on hover for better UX
+ * - Color-coded badges: Gold (≥90%), Silver (80-89%), Bronze (70-79%), Green (<70%)
  * - Hides completely if no eligible users
  * - Exposes refresh method via ref for manual updates
  *
  * @param {string} apiBaseUrl - API base URL
  * @param {number} topN - Number of top users to show (default: 10)
  */
-const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
+const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
 
@@ -29,12 +31,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const fetchLeaderboard = useCallback(async () => {
     try {
       console.log(
-        "🏆 [LEADERBOARD] Fetching data from:",
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
+        "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
+        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
       );
 
       const response = await fetch(
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
+        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}&t=${Date.now()}`,
         {
           method: "GET",
           headers: {
@@ -44,13 +46,13 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log("🏆 [LEADERBOARD] Response status:", response.status);
+      console.log("⭐ [DISCIPLINE-LEADERBOARD] Response status:", response.status);
       const result = await response.json();
-      console.log("🏆 [LEADERBOARD] Result:", result);
+      console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
         console.log(
-          "✅ [LEADERBOARD] Data found:",
+          "✅ [DISCIPLINE-LEADERBOARD] Data found:",
           result.data.length,
           "users",
         );
@@ -58,14 +60,14 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         setIsVisible(true);
       } else {
         console.log(
-          "⚠️ [LEADERBOARD] No data available:",
+          "⚠️ [DISCIPLINE-LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
         setIsVisible(false);
       }
     } catch (error) {
-      console.error("❌ [LEADERBOARD] Error fetching data:", error);
+      console.error("❌ [DISCIPLINE-LEADERBOARD] Error fetching data:", error);
       setLeaderboardData([]);
       setIsVisible(false);
     }
@@ -79,8 +81,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Initial fetch
   useEffect(() => {
     fetchLeaderboard();
-    // Refresh every 1 minute for real-time updates
-    const refreshInterval = setInterval(fetchLeaderboard, 1 * 60 * 1000);
+    // Refresh every 5 minutes for real-time updates
+    const refreshInterval = setInterval(fetchLeaderboard, 5 * 60 * 1000);
     return () => clearInterval(refreshInterval);
   }, [fetchLeaderboard]);
 
@@ -129,26 +131,29 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     );
   };
 
-  // Format weight loss display (grams for < 1kg, kg for >= 1kg)
-  const formatWeightLoss = (weightLoss) => {
-    if (weightLoss < 1) {
-      const grams = Math.round(weightLoss * 1000);
-      return { value: grams, unit: "g" };
-    }
-    // Round to 1 decimal place for kg
-    const kg = Math.round(weightLoss * 10) / 10;
-    return { value: kg, unit: "kg" };
+  // Get rank badge color based on discipline percentage
+  const getRankColor = (disciplinePercentage) => {
+    if (disciplinePercentage >= 90)
+      return "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white"; // Gold
+    if (disciplinePercentage >= 80)
+      return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800"; // Silver
+    if (disciplinePercentage >= 70)
+      return "bg-gradient-to-r from-orange-400 to-orange-600 text-white"; // Bronze
+    return "bg-gradient-to-r from-green-500 to-green-600 text-white"; // Green
   };
 
-  // Get rank badge color
-  const getRankColor = (rank) => {
-    if (rank === 1)
-      return "bg-gradient-to-r from-yellow-400 to-yellow-600 text-white";
-    if (rank === 2)
-      return "bg-gradient-to-r from-gray-300 to-gray-400 text-gray-800";
-    if (rank === 3)
-      return "bg-gradient-to-r from-orange-400 to-orange-600 text-white";
-    return "bg-gradient-to-r from-green-500 to-green-600 text-white";
+  // Get star icon based on discipline percentage
+  const getStarIcon = (disciplinePercentage) => {
+    if (disciplinePercentage >= 90) {
+      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 fill-yellow-500" />;
+    }
+    if (disciplinePercentage >= 80) {
+      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 fill-gray-400" />;
+    }
+    if (disciplinePercentage >= 70) {
+      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-orange-500 fill-orange-500" />;
+    }
+    return <Award className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-500" />;
   };
 
   // Don't render if no data or loading failed
@@ -163,12 +168,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       key={key}
       className="inline-flex items-center gap-2 sm:gap-3 md:gap-4 mx-4 sm:mx-6 md:mx-8 flex-shrink-0"
     >
-      {/* Trophy + Rank */}
+      {/* Star/Award + Rank */}
       <div className="inline-flex flex-col items-center justify-center gap-0.5 flex-shrink-0 w-10 sm:w-12 md:w-14">
-        <Trophy className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500" />
+        {getStarIcon(user.disciplinePercentage)}
         <div
           className={`px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] md:text-xs font-bold leading-none ${getRankColor(
-            user.rank,
+            user.disciplinePercentage,
           )}`}
         >
           #{user.rank}
@@ -192,13 +197,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         )}
       </div>
 
-      {/* Weight Loss Badge */}
+      {/* Discipline Percentage Badge */}
       <div className="flex items-center gap-0.5 bg-white px-2 sm:px-2.5 md:px-3 py-1.5 sm:py-2 rounded-lg shadow-sm flex-shrink-0">
-        <span className="font-bold text-green-600 text-sm sm:text-base md:text-lg whitespace-nowrap">
-          -{formatWeightLoss(user.weightLoss).value}{" "}
-          <span className="font-medium text-xs sm:text-sm md:text-base">
-            {formatWeightLoss(user.weightLoss).unit}
-          </span>
+        <span className="font-bold text-purple-600 text-sm sm:text-base md:text-lg whitespace-nowrap">
+          {user.disciplinePercentage.toFixed(1)}%
         </span>
       </div>
     </div>
@@ -206,19 +208,19 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
 
   // Marquee Animation - Show all users in continuous scroll
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 overflow-hidden shadow-sm border-b border-green-100">
+    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 overflow-hidden shadow-sm border-b border-purple-100">
       <div className="py-2 sm:py-2.5 px-3 sm:px-4 overflow-hidden">
         {/* Title */}
         <div className="text-center mb-1.5">
-          <span className="text-xs sm:text-sm font-semibold text-green-700">
-            🏅 Weight Loss Marathon (Today vs Yesterday)
+          <span className="text-xs sm:text-sm font-semibold text-purple-700">
+            🌟 Discipline Champions (Last 10 Days)
           </span>
         </div>
         
         <div
           className="animate-smooth-marquee whitespace-nowrap inline-flex"
           style={{
-            animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+            animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
           }}
         >
           {/* First set of items */}
@@ -232,4 +234,4 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   );
 });
 
-export default WeightLossLeaderboard;
+export default DisciplineLeaderboard;

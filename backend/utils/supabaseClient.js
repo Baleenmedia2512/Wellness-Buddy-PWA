@@ -14,11 +14,23 @@ let supabaseInstance = null;
  */
 export function getISTTimestamp() {
   const now = new Date();
+  const serverUTC = now.toISOString();
+  
   // IST is UTC+5:30
   const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
   const istTime = new Date(now.getTime() + istOffset);
+  const result = istTime.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+  
+  // 🔍 DEBUG: Show IST calculation
+  console.log('🕐 IST Timestamp Calculation:', {
+    serverUTC,
+    calculatedIST: result,
+    serverTimezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    note: 'Server time → IST conversion'
+  });
+  
   // Format as PostgreSQL timestamp without timezone
-  return istTime.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
+  return result;
 }
 
 /**

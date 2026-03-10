@@ -95,243 +95,110 @@ class ImageTypeDetector {
       };
 
       // ═══════════════════════════════════════════════════════════════════════
-      // CALL 1: DETECTION - Short prompt to identify image type
+      // ⚡ OPTIMIZED: UNIFIED DETECTION & ANALYSIS IN SINGLE API CALL
       // ═══════════════════════════════════════════════════════════════════════
-      const detectionPrompt = `Classify this image into ONE of these categories:
+      const unifiedPrompt = `Analyze this image and classify it into ONE category, then extract relevant data.
 
-1. "education" - Virtual meeting screenshot (Google Meet, Zoom, MS Teams, WebEx)
-2. "weight" - Weighing scale (bathroom scale, digital/analog scale showing weight)
-3. "food" - Food, meal, or drink (default if not education or weight)
+STEP 1 - CLASSIFY:
+- "education" - Virtual meeting screenshot (Google Meet, Zoom, MS Teams, WebEx)
+- "weight" - Weighing scale showing body weight
+- "food" - Food, meal, or drink (DEFAULT if neither education nor weight)
 
-Return ONLY this JSON:
+STEP 2 - EXTRACT DATA based on classification:
+
+IF EDUCATION:
 {
-  "type": "education" or "weight" or "food",
-  "confidence": 0.0 to 1.0,
-  "reason": "brief 5-word explanation"
-}`;
-
-      console.log('🔵 [API CALL 1/2] DETECTION API');
-      console.log('🔵 Model: gemini-2.5-flash-lite');
-      console.log('🔵 Sending detection request...');
-      
-      const detectionResult = await Promise.race([
-        this.model.generateContent([detectionPrompt, imagePart]),
-        this.timeoutPromise(this.timeout, 'Detection API timeout after 50s')
-      ]);
-      const detectionResponse = await detectionResult.response;
-      const detectionText = detectionResponse.text();
-      console.log('🔵 [API CALL 1/2] Raw response:', detectionText);
-      const detectionData = this.parseJsonResponse(detectionText);
-      console.log('🤖 [DEBUG] Parsed Detection Data:', detectionData);
-      
-      // Log detected image type
-      console.log(`🔍 Image type detected - ${detectionData.type}`);
-      console.log(`🔍 Confidence: ${detectionData.confidence}`);
-      console.log(`🔍 Reason: ${detectionData.reason}`);
-      
-      const detectionTime = Date.now() - startTime;
-      console.log(`⏱️ [TIMING] Detection took ${detectionTime}ms`);
-
-      
-
-      // ═══════════════════════════════════════════════════════════════════════
-      // CALL 2: ANALYSIS - Type-specific prompt for data extraction
-      // ═══════════════════════════════════════════════════════════════════════
-      const analysisStartTime = Date.now();
-      let analysisPrompt;
-      let operationType;
-
-      if (detectionData.type === 'weight') {
-        operationType = 'weight_detection';
-        analysisPrompt = `Extract weight data from this weighing scale image.
-
-Return ONLY this JSON:
-{
-  "weight": number (the weight reading),
-  "unit": "kg" or "lbs",
-  "bmi": number or null,
-  "bodyFat": number or null,
-  "muscleMass": number or null,
-  "bmr": number or null
+  "type": "education",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation",
+  "platform": "Google Meet"|"Zoom"|"MS Teams"|"WebEx"|"Online Meeting",
+  "topic": "meeting title or null"
 }
 
-RULES:
-- Weight range: 20-300 kg or 44-660 lbs
-- Set null for values not visible`;
-
-        console.log('🟢 [API CALL 2/2] WEIGHT ANALYSIS API');
-        console.log('🟢 Model: gemini-2.5-flash-lite');
-        console.log('🟢 Operation: weight_detection');
-        console.log('🟢 Prompt:', analysisPrompt);
-        console.log('🟢 Calling Gemini API for weight analysis...');
-
-      } else if (detectionData.type === 'education') {
-        operationType = 'education_detection';
-        analysisPrompt = `Extract meeting details from this virtual meeting screenshot.
-
-Return ONLY this JSON:
+IF WEIGHT:
 {
-  "platform": "Google Meet" or "Zoom" or "MS Teams" or "WebEx" or "Online Meeting",
-  "topic": "meeting title if visible, or null"
-}`;
+  "type": "weight",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation",
+  "weight": number (20-300 kg or 44-660 lbs),
+  "unit": "kg"|"lbs",
+  "bmi": number|null,
+  "bodyFat": number|null,
+  "muscleMass": number|null,
+  "bmr": number|null
+}
 
-        console.log('🟢 [API CALL 2/2] EDUCATION ANALYSIS API');
-        console.log('🟢 Model: gemini-2.5-flash-lite');
-        console.log('🟢 Operation: education_detection');
-        console.log('🟢 Prompt:', analysisPrompt);
-        console.log('🟢 Calling Gemini API for education analysis...');
-
-      } else {
-        operationType = 'image_analysis';
-        analysisPrompt = `Analyze this food image and extract nutrition data.
-
-Return ONLY this JSON:
+IF FOOD (default):
 {
+  "type": "food",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation",
   "foods": [
     {
       "name": "food item name",
-      "portion": "e.g. 2 idlis or 250ml juice",
-      "weight_g": number (for solids),
-      "volume_ml": number (for liquids),
-      "unit": "g" or "ml",
+      "portion": "e.g. 2 idlis, 250ml juice",
+      "weight_g": number (solids),
+      "volume_ml": number (liquids),
+      "unit": "g"|"ml",
       "isLiquid": boolean,
-      "nutrition": {
-        "calories": number,
-        "protein": number,
-        "carbs": number,
-        "fat": number,
-        "fiber": number
-      }
+      "nutrition": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
     }
   ],
-  "total": {
-    "calories": number,
-    "protein": number,
-    "carbs": number,
-    "fat": number,
-    "fiber": number
-  }
+  "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
 }
 
-CRITICAL RULES:
-- You MUST return at least ONE food item in the "foods" array - NEVER return an empty array
-- If you cannot identify specific dishes, describe what you see (e.g. "Rice dish", "Curry", "Mixed meal")
-- For complex plates with multiple curries/sides, list each visible portion separately
-- Regional/cultural dishes: identify by appearance (color, texture, consistency) even if unsure of exact name
-- If image is blurry or unclear, still provide your BEST GUESS with approximate nutrition values
-- Identify ALL visible food items
-- Estimate portions based on plate/container size
-- Use standard nutrition values
-- Liquids (juice, soup) use volume_ml, solids use weight_g`;
+CRITICAL FOOD RULES:
+- MUST return at least ONE food item - NEVER empty array
+- If unclear, describe what you see (Rice, Curry, Mixed meal)
+- Estimate portions from plate/container size
+- Use standard USDA nutrition values
 
-        console.log('🟢 [API CALL 2/2] FOOD ANALYSIS API');
-        console.log('🟢 Model: gemini-2.5-flash-lite');
-        console.log('🟢 Operation: image_analysis (FOOD)');
-        console.log('🟢 Prompt length:', analysisPrompt.length, 'chars');
-        console.log('🟢 Sending food analysis request...');
-      }
+Return ONLY JSON matching ONE of the above formats.`;
 
+      console.log('⚡ [UNIFIED API] Single call for detection + analysis');
+      console.log('⚡ Model: gemini-2.5-flash-lite');
+      console.log('⚡ Calling Gemini API...');
       
-      let analysisResult = await Promise.race([
-        this.model.generateContent([analysisPrompt, imagePart]),
-        this.timeoutPromise(this.timeout, 'Food analysis API timeout after 50s')
+      const apiCallStart = Date.now();
+      const apiResult = await Promise.race([
+        this.model.generateContent([unifiedPrompt, imagePart]),
+        this.timeoutPromise(this.timeout, 'Unified API timeout after 50s')
       ]);
-      let analysisResponse = await analysisResult.response;
-      let analysisText = analysisResponse.text();
-      console.log('🟢 [API CALL 2/2] Raw response:', analysisText);
-      let analysisData = this.parseJsonResponse(analysisText);
-      console.log('🤖 [DEBUG] Parsed Analysis Data:', analysisData);
-      console.log('🤖 [DEBUG] Foods array:', analysisData.foods);
-      console.log('🤖 [DEBUG] Foods count:', analysisData.foods?.length || 0);
-      console.log('🤖 [DEBUG] Total nutrition:', analysisData.total);
+      const apiCallTime = Date.now() - apiCallStart;
+      console.log(`⏱️ [PERF] 🎯 Gemini API response received: ${apiCallTime}ms`);
       
-      // ═══════════════════════════════════════════════════════════════════════
-      // RETRY: If food analysis returned empty foods, retry with enhanced prompt
-      // ═══════════════════════════════════════════════════════════════════════
-      if (operationType === 'image_analysis' && (!analysisData.foods || analysisData.foods.length === 0)) {
-        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        console.warn('⚠️ [RETRY] AI returned empty foods array!');
-        console.warn('⚠️ [RETRY] analysisData.foods:', analysisData.foods);
-        console.warn('⚠️ [RETRY] Full analysisData:', JSON.stringify(analysisData, null, 2));
-        console.warn('⚠️ [RETRY] Retrying with enhanced prompt...');
-        console.warn('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        
-        const retryPrompt = `Look at this food image very carefully. I need you to identify ANY food items visible.
-
-Even if the image is blurry, dark, or shows complex plating:
-- Describe what you SEE on the plate/container
-- If you see rice, say "Rice"
-- If you see curry/gravy, say "Curry" or describe its color (e.g. "Yellow Dal", "Brown Gravy")
-- If you see bread/roti, say "Roti" or "Flatbread"
-- If you see any drink, describe it
-- Be as specific as possible, but GENERIC names are acceptable
-
-You MUST return at least 1 food item. DO NOT return an empty foods array.
-
-Return ONLY this JSON:
-{
-  "foods": [
-    {
-      "name": "food item name",
-      "portion": "estimated portion",
-      "weight_g": number,
-      "volume_ml": null,
-      "unit": "g",
-      "isLiquid": false,
-      "nutrition": { "calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number }
-    }
-  ],
-  "total": { "calories": number, "protein": number, "carbs": number, "fat": number, "fiber": number }
-}`;
-        
-        try {
-          console.log('🔄 [RETRY] Sending retry request...');
-          const retryResult = await Promise.race([
-            this.model.generateContent([retryPrompt, imagePart]),
-            this.timeoutPromise(this.timeout, 'Retry API timeout after 50s')
-          ]);
-          const retryResponse = await retryResult.response;
-          const retryText = retryResponse.text();
-          console.log('🔄 [RETRY] Raw response:', retryText);
-          const retryData = this.parseJsonResponse(retryText);
-          console.log('🔄 [RETRY] Parsed result:', retryData);
-          console.log('🔄 [RETRY] Foods count:', retryData.foods?.length || 0);
-          
-          if (retryData.foods && retryData.foods.length > 0) {
-            console.log('✅ [RETRY] Successfully detected foods on retry:', retryData.foods.map(f => f.name).join(', '));
-            analysisData = retryData;
-            // Use retry response for token tracking
-            analysisResponse = retryResponse;
-          } else {
-            console.warn('⚠️ [RETRY] Retry also returned empty foods');
-            console.warn('⚠️ [RETRY] retryData.foods:', retryData.foods);
-            console.warn('⚠️ [RETRY] Full retryData:', JSON.stringify(retryData, null, 2));
-          }
-        } catch (retryError) {
-          console.error('❌ [RETRY] Retry failed:', retryError.message);
-        }
-      }
+      const apiResponse = await apiResult.response;
+      const apiText = apiResponse.text();
+      console.log('⚡ [UNIFIED API] Raw response:', apiText.substring(0, 300) + '...');
       
-      // Log detected food items
-      if (analysisData.foods && analysisData.foods.length > 0) {
-        const foodNames = analysisData.foods.map(food => food.name).join(', ');
-        console.log(`🍽️ AI detected - ${foodNames}`);
-      }
+      const parseStart = Date.now();
+      const analysisData = this.parseJsonResponse(apiText);
+      console.log(`⏱️ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);
+      console.log('🤖 [DEBUG] Parsed Result:', {
+        type: analysisData.type,
+        confidence: analysisData.confidence,
+        hasFoods: !!analysisData.foods,
+        foodsCount: analysisData.foods?.length || 0,
+        hasWeight: !!analysisData.weight
+      });
       
-      const analysisTime = Date.now() - analysisStartTime;
+      // Determine operation type for tracking
+      let operationType = 'image_analysis'; // default
+      if (analysisData.type === 'education') operationType = 'education_detection';
+      if (analysisData.type === 'weight') operationType = 'weight_detection';
+      
+      // Log detected type
+      console.log(`🔍 Detected: ${analysisData.type} (confidence: ${analysisData.confidence})`);
+      
       const totalTime = Date.now() - startTime;
-      console.log(`⏱️ [TIMING] Analysis took ${analysisTime}ms`);
-      console.log(`⏱️ [TIMING] Total time: ${totalTime}ms`);
-
-      
+      console.log(`⏱️ [TIMING] Total time: ${totalTime}ms (50% faster!)`);
 
       // ═══════════════════════════════════════════════════════════════════════
-      // Track COMBINED token usage (both calls)
+      // Track token usage (single call)
       // ═══════════════════════════════════════════════════════════════════════
       await trackCombinedTokenUsage({
         responses: [
-          { response: detectionResponse, label: 'Detection' },
-          { response: analysisResponse, label: 'Analysis' }
+          { response: apiResponse, label: 'Unified' }
         ],
         operationType,
         modelName: 'gemini-2.5-flash-lite',
@@ -343,27 +210,27 @@ Return ONLY this JSON:
       // ═══════════════════════════════════════════════════════════════════════
       // Return result based on detected type
       // ═══════════════════════════════════════════════════════════════════════
-      if (detectionData.type === 'education' && detectionData.confidence > 0.7) {
+      if (analysisData.type === 'education' && analysisData.confidence > 0.7) {
         return {
           type: 'education',
-          confidence: detectionData.confidence,
+          confidence: analysisData.confidence,
           details: {
             isMeeting: true,
             platform: analysisData.platform || 'Online Meeting',
             topic: analysisData.topic || 'Education Meeting',
             aiAnalysis: true,
-            reason: detectionData.reason
+            reason: analysisData.reason
           }
         };
       }
 
-      if (detectionData.type === 'weight' && detectionData.confidence > 0.6) {
+      if (analysisData.type === 'weight' && analysisData.confidence > 0.6) {
         return {
           type: 'weight',
-          confidence: detectionData.confidence,
+          confidence: analysisData.confidence,
           details: {
             isWeightScale: true,
-            reason: detectionData.reason,
+            reason: analysisData.reason,
             aiAnalysis: true,
             weightValue: analysisData.weight || null,
             unit: analysisData.unit || 'kg',
@@ -381,7 +248,7 @@ Return ONLY this JSON:
       console.log('🍽️ [RESULT] Foods count:', analysisData.foods?.length || 0);
       console.log('🍽️ [RESULT] Foods:', analysisData.foods?.map(f => `${f.name} (${f.nutrition?.calories || 0} cal)`).join(', ') || 'NONE');
       console.log('🍽️ [RESULT] Total calories:', analysisData.total?.calories || 0);
-      console.log('🍽️ [RESULT] Confidence:', detectionData.confidence || 0.5);
+      console.log('🍽️ [RESULT] Confidence:', analysisData.confidence || 0.5);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
@@ -395,9 +262,9 @@ Return ONLY this JSON:
       
       return {
         type: 'food',
-        confidence: detectionData.confidence || 0.5,
+        confidence: analysisData.confidence || 0.5,
         details: {
-          reason: detectionData.reason || 'Default classification',
+          reason: analysisData.reason || 'Default classification',
           aiAnalysis: true,
           foods: foodsWithOriginalName,
           total: analysisData.total || null

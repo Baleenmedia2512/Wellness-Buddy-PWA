@@ -32,8 +32,8 @@ const NutritionCard = ({
       // Create object URL from original file (no compression)
       const url = URL.createObjectURL(selectedImage);
       setHighResImageUrl(url);
-      console.log('📸 Created high-res image URL for sharing');
-      
+      console.log("📸 Created high-res image URL for sharing");
+
       // Cleanup on unmount
       return () => {
         URL.revokeObjectURL(url);
@@ -46,10 +46,10 @@ const NutritionCard = ({
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
-    console.log('🔄 [NutritionCard] Data prop changed, syncing local state');
-    console.log('   New nutrition values:', data?.nutrition);
-    console.log('   New detailedItems count:', data?.detailedItems?.length);
-    
+    console.log("🔄 [NutritionCard] Data prop changed, syncing local state");
+    console.log("   New nutrition values:", data?.nutrition);
+    console.log("   New detailedItems count:", data?.detailedItems?.length);
+
     if (data?.nutrition) {
       setLocalNutrition(data.nutrition);
     }
@@ -91,8 +91,11 @@ const NutritionCard = ({
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
-    console.log('🧮 [NutritionCard] recalculateTotals - Processing items:', items.length);
-    
+    console.log(
+      "🧮 [NutritionCard] recalculateTotals - Processing items:",
+      items.length,
+    );
+
     const totals = items.reduce(
       (acc, item, index) => {
         const itemCalories = item.nutrition?.calories || item.calories || 0;
@@ -100,12 +103,18 @@ const NutritionCard = ({
         const itemCarbs = item.nutrition?.carbs || item.carbs || 0;
         const itemFat = item.nutrition?.fat || item.fat || 0;
         const itemFiber = item.nutrition?.fiber || item.fiber || 0;
-        
+
         console.log(`   📊 Item ${index + 1}: ${item.name}`);
-        console.log(`      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`);
-        console.log(`      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`);
-        console.log(`      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`);
-        
+        console.log(
+          `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
+        );
+        console.log(
+          `      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
+        );
+        console.log(
+          `      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`,
+        );
+
         return {
           calories: acc.calories + itemCalories,
           protein: acc.protein + itemProtein,
@@ -125,8 +134,8 @@ const NutritionCard = ({
       fat: Math.round(totals.fat * 10) / 10,
       fiber: Math.round(totals.fiber * 10) / 10,
     };
-    
-    console.log('   ✅ Final totals:', rounded);
+
+    console.log("   ✅ Final totals:", rounded);
     return rounded;
   };
 
@@ -138,7 +147,7 @@ const NutritionCard = ({
       grams: updatedFood.grams,
       serving_grams: updatedFood.serving?.grams,
       unit: updatedFood.unit,
-      serving_unit: updatedFood.serving?.unit
+      serving_unit: updatedFood.serving?.unit,
     });
 
     const newItems = [...localDetailedItems];
@@ -185,10 +194,15 @@ const NutritionCard = ({
       const analysisData = {
         foods: newItems.map((item) => {
           // 🔍 Get the actual grams value from the serving or item
-          const actualGrams = item.serving?.grams || item.grams || item.weight_g || item.volume_ml || 100;
+          const actualGrams =
+            item.serving?.grams ||
+            item.grams ||
+            item.weight_g ||
+            item.volume_ml ||
+            100;
           const isLiquid = item.isLiquid || false;
           const unit = item.unit || (isLiquid ? "ml" : "g");
-          
+
           return {
             name: item.name,
             // 🔴 CRITICAL: Preserve correction metadata for database persistence
@@ -229,16 +243,17 @@ const NutritionCard = ({
       };
 
       // 🔍 DEBUG: Log what we're sending to the API
-      console.log("🔍 [NutritionCard] Sending to API - Foods with weights:", 
-        analysisData.foods.map(f => ({
+      console.log(
+        "🔍 [NutritionCard] Sending to API - Foods with weights:",
+        analysisData.foods.map((f) => ({
           name: f.name,
           weight_g: f.weight_g,
           volume_ml: f.volume_ml,
           grams: f.grams,
           unit: f.unit,
           isLiquid: f.isLiquid,
-          portion: f.portion
-        }))
+          portion: f.portion,
+        })),
       );
 
       // Update existing meal
@@ -351,8 +366,6 @@ const NutritionCard = ({
         breakdownText += `\n`;
       }
 
-      breakdownText += `Tracked with Wellness Valley 💚`;
-
       // Capture and share the complete nutrition card (food image + all nutrition details)
       await captureAndShare(shareRef.current, {
         title: `${mealName} - Wellness Valley`,
@@ -363,8 +376,10 @@ const NutritionCard = ({
     } catch (error) {
       console.error("❌ Failed to share:", error);
       // Show error to user if it's not a cancellation
-      if (!error?.message?.toLowerCase().includes('cancel')) {
-        alert('Unable to share. Please check your device settings and permissions.');
+      if (!error?.message?.toLowerCase().includes("cancel")) {
+        alert(
+          "Unable to share. Please check your device settings and permissions.",
+        );
       }
     } finally {
       setIsSharing(false);
@@ -389,29 +404,35 @@ const NutritionCard = ({
       <div
         ref={shareRef}
         className="fixed -left-[9999px] top-0"
-        style={{ 
-          position: "fixed", 
+        style={{
+          position: "fixed",
           left: "-9999px",
           top: "0",
           width: "1200px",
           maxHeight: "none",
-          height: "auto"
+          height: "auto",
         }}
       >
-        <div className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-visible"
+        <div
+          className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-visible"
           style={{ height: "auto" }}
         >
-          {/* Food Image for sharing - Maximum Quality */}
+          {/* Food Image for sharing - ULTRA HIGH QUALITY (No Compression) */}
           {highResImageUrl && (
-            <div className="relative" style={{ height: "1200px", overflow: "hidden" }}>
+            <div
+              className="relative"
+              style={{ height: "1200px", overflow: "hidden" }}
+            >
               <img
                 src={highResImageUrl}
                 alt="Food"
-                style={{ 
+                style={{
                   width: "100%",
                   height: "100%",
                   objectFit: "cover",
-                  imageRendering: "-webkit-optimize-contrast"
+                  imageRendering: "crisp-edges",
+                  WebkitImageRendering: "crisp-edges",
+                  msInterpolationMode: "nearest-neighbor",
                 }}
                 className="high-quality-image"
                 crossOrigin="anonymous"
@@ -422,11 +443,19 @@ const NutritionCard = ({
           )}
 
           {/* Duplicate card content for sharing - Scaled up for high resolution */}
-          <div className="bg-gradient-to-r from-green-500 to-green-600 text-white" style={{ padding: "32px" }}>
+          <div
+            className="bg-gradient-to-r from-green-500 to-green-600 text-white"
+            style={{ padding: "32px" }}
+          >
             <div className="text-center">
-              <h2 style={{ fontSize: "48px", fontWeight: "bold" }}>{generateMealName()}</h2>
+              <h2 style={{ fontSize: "48px", fontWeight: "bold" }}>
+                {generateMealName()}
+              </h2>
               {localDetailedItems.length > 1 && (
-                <p className="text-green-100" style={{ fontSize: "32px", marginTop: "8px" }}>
+                <p
+                  className="text-green-100"
+                  style={{ fontSize: "32px", marginTop: "8px" }}
+                >
                   {localDetailedItems.length} food items analyzed
                 </p>
               )}
@@ -434,55 +463,137 @@ const NutritionCard = ({
           </div>
 
           <div style={{ padding: "48px" }}>
-            <div className="grid grid-cols-2 gap-3 mb-4" style={{ gap: "24px", marginBottom: "32px" }}>
-              <div className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
-                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-red-600">
+            <div
+              className="grid grid-cols-2 gap-3 mb-4"
+              style={{ gap: "24px", marginBottom: "32px" }}
+            >
+              <div
+                className="bg-gradient-to-br from-red-50 to-red-100 border border-red-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-red-600"
+                >
                   {localNutrition.calories}
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-red-700">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-red-700"
+                >
                   Calories
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
-                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-yellow-600">
+              <div
+                className="bg-gradient-to-br from-yellow-50 to-yellow-100 border border-yellow-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-yellow-600"
+                >
                   {localNutrition.carbs}g
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-yellow-700">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-yellow-700"
+                >
                   Carbs
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
-                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-blue-600">
+              <div
+                className="bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-blue-600"
+                >
                   {localNutrition.protein}g
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-blue-700">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-blue-700"
+                >
                   Protein
                 </div>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px" }}>
-                <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-purple-600">
+              <div
+                className="bg-gradient-to-br from-purple-50 to-purple-100 border border-purple-200 rounded-xl text-center"
+                style={{ padding: "32px", borderRadius: "24px" }}
+              >
+                <div
+                  style={{ fontSize: "72px", fontWeight: "bold" }}
+                  className="text-purple-600"
+                >
                   {localNutrition.fat}g
                 </div>
-                <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-purple-700">
+                <div
+                  style={{
+                    fontSize: "32px",
+                    fontWeight: "500",
+                    marginTop: "8px",
+                  }}
+                  className="text-purple-700"
+                >
                   Fat
                 </div>
               </div>
             </div>
-            <div className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center" style={{ padding: "32px", borderRadius: "24px", marginBottom: "32px" }}>
-              <div style={{ fontSize: "72px", fontWeight: "bold" }} className="text-green-600">
+            <div
+              className="bg-gradient-to-br from-green-50 to-green-100 border border-green-200 rounded-xl text-center"
+              style={{
+                padding: "32px",
+                borderRadius: "24px",
+                marginBottom: "32px",
+              }}
+            >
+              <div
+                style={{ fontSize: "72px", fontWeight: "bold" }}
+                className="text-green-600"
+              >
                 {localNutrition.fiber}g
               </div>
-              <div style={{ fontSize: "32px", fontWeight: "500", marginTop: "8px" }} className="text-green-700">
+              <div
+                style={{
+                  fontSize: "32px",
+                  fontWeight: "500",
+                  marginTop: "8px",
+                }}
+                className="text-green-700"
+              >
                 Fiber
               </div>
             </div>
 
             {/* Macronutrient Bar */}
             <div style={{ marginTop: "32px" }}>
-              <h3 style={{ fontSize: "28px", fontWeight: "600", marginBottom: "16px" }} className="text-gray-700">
+              <h3
+                style={{
+                  fontSize: "28px",
+                  fontWeight: "600",
+                  marginBottom: "16px",
+                }}
+                className="text-gray-700"
+              >
                 Macronutrient Distribution
               </h3>
-              <div className="flex rounded-lg overflow-hidden bg-gray-200" style={{ height: "32px", borderRadius: "16px" }}>
+              <div
+                className="flex rounded-lg overflow-hidden bg-gray-200"
+                style={{ height: "32px", borderRadius: "16px" }}
+              >
                 {(() => {
                   const totalCals =
                     nutrition.carbs * 4 +
@@ -520,11 +631,27 @@ const NutritionCard = ({
 
             {/* Food Breakdown for sharing - Scaled up */}
             {localDetailedItems && localDetailedItems.length > 0 && (
-              <div style={{ marginTop: "48px", paddingTop: "32px" }} className="border-t border-gray-200">
-                <h3 style={{ fontSize: "42px", fontWeight: "600", marginBottom: "24px" }} className="text-gray-800">
+              <div
+                style={{ marginTop: "48px", paddingTop: "32px" }}
+                className="border-t border-gray-200"
+              >
+                <h3
+                  style={{
+                    fontSize: "42px",
+                    fontWeight: "600",
+                    marginBottom: "24px",
+                  }}
+                  className="text-gray-800"
+                >
                   Food Breakdown
                 </h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "24px",
+                  }}
+                >
                   {localDetailedItems.map((item, index) => {
                     const itemCals = Math.round(
                       item.nutrition?.calories || item.calories || 0,
@@ -543,39 +670,70 @@ const NutritionCard = ({
                         style={{ paddingBottom: "24px" }}
                         className="border-b border-gray-100 last:border-0"
                       >
-                        <div className="flex justify-between items-start" style={{ marginBottom: "12px" }}>
+                        <div
+                          className="flex justify-between items-start"
+                          style={{ marginBottom: "12px" }}
+                        >
                           <div className="flex-1 min-w-0">
-                            <div style={{ fontSize: "32px", fontWeight: "500" }} className="text-gray-900">
+                            <div
+                              style={{ fontSize: "32px", fontWeight: "500" }}
+                              className="text-gray-900"
+                            >
                               {item.name}
                             </div>
-                            <div style={{ fontSize: "24px", marginTop: "8px" }} className="text-gray-500">
+                            <div
+                              style={{ fontSize: "24px", marginTop: "8px" }}
+                              className="text-gray-500"
+                            >
                               {portion} {weight ? `(${weight}g)` : ""}
                             </div>
                           </div>
-                          
+
                           {/* Calories */}
-                          <div style={{ fontSize: "36px", fontWeight: "bold", marginLeft: "16px" }} className="text-red-600 flex-shrink-0">
+                          <div
+                            style={{
+                              fontSize: "36px",
+                              fontWeight: "bold",
+                              marginLeft: "16px",
+                            }}
+                            className="text-red-600 flex-shrink-0"
+                          >
                             {itemCals} kcal
                           </div>
                         </div>
-                        
+
                         {/* Nutrient breakdown */}
-                        <div style={{ fontSize: "24px", fontWeight: "500", display: "flex", flexWrap: "wrap", gap: "16px" }}>
+                        <div
+                          style={{
+                            fontSize: "24px",
+                            fontWeight: "500",
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: "16px",
+                          }}
+                        >
                           <span className="text-blue-600">
                             Protein{" "}
                             {Math.round(
                               item.nutrition?.protein || item.protein || 0,
-                            )}g
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-yellow-600">
                             Carbs{" "}
-                            {Math.round(item.nutrition?.carbs || item.carbs || 0)}g
+                            {Math.round(
+                              item.nutrition?.carbs || item.carbs || 0,
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-green-600">
                             Fiber{" "}
-                            {Math.round(item.nutrition?.fiber || item.fiber || 0)}g
+                            {Math.round(
+                              item.nutrition?.fiber || item.fiber || 0,
+                            )}
+                            g
                           </span>
                           <span className="text-gray-400">•</span>
                           <span className="text-purple-600">
@@ -828,8 +986,11 @@ const NutritionCard = ({
                   ? "opacity-50 cursor-not-allowed"
                   : "hover:shadow-lg active:scale-[0.98]"
               }`}
-              style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}>
-          
+              style={{
+                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent",
+              }}
+            >
               {isSharing ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>

@@ -1,6 +1,7 @@
 // src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Scale } from 'lucide-react';
+import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 /**
  * WeightCard Component
@@ -62,15 +63,12 @@ const WeightCard = React.memo(({
 
   /**
    * Format date with day and time
-   * Treats DB timestamp as local time (not UTC) to avoid timezone conversion
+   * Converts IST timestamp from database to user's local timezone
    */
   const formatDate = (dateString) => {
-    // Parse as local time by removing the 'Z' suffix if present
-    // Database stores: "2025-11-25 10:18:15" 
-    // Backend sends: "2025-11-25T10:18:15.000Z"
-    // We want to display: 10:18 AM (not converted to local timezone)
-    const localDateString = dateString.replace('Z', '');
-    const date = new Date(localDateString);
+    // Convert IST to user's local time
+    const date = istToLocalDate(dateString);
+    if (!date) return '';
     
     const today = new Date();
     const yesterday = new Date(today);

@@ -284,3 +284,46 @@ header img,
   animation-play-state: paused;
 }
 
+/* Smooth Marquee for Leaderboards - World-Class UI */
+@keyframes smooth-marquee {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+@keyframes smooth-marquee-fast {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.animate-smooth-marquee {
+  animation: smooth-marquee 30s linear infinite;
+}
+
+.animate-smooth-marquee-fast {
+  animation: smooth-marquee-fast 20s linear infinite;
+}
+
+/* Pause animation on hover for better UX */
+.animate-smooth-marquee:hover,
+.animate-smooth-marquee-fast:hover {
+  animation-play-state: paused;
+}
+
+/* Countdown animation for weight dashboard */
+@keyframes countdown-shrink {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+

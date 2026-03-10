@@ -86,22 +86,10 @@ export default async function handler(req, res) {
 
       if (error) throw error;
 
-      // Add meal_hour and meal_category on the server side
-      const enrichedData = (nutritionData || []).map((record) => {
-        const createdAt = new Date(record.CreatedAt);
-        const meal_hour = createdAt.getHours();
-        let meal_category = "late-night";
-
-        if (meal_hour >= 5 && meal_hour < 10) meal_category = "breakfast";
-        else if (meal_hour >= 10 && meal_hour < 12)
-          meal_category = "morning-snack";
-        else if (meal_hour >= 12 && meal_hour < 16) meal_category = "lunch";
-        else if (meal_hour >= 16 && meal_hour < 18)
-          meal_category = "evening-snack";
-        else if (meal_hour >= 18 && meal_hour < 23) meal_category = "dinner";
-
-        return { ...record, meal_hour, meal_category };
-      });
+      // ✅ TIMEZONE FIX: Removed server-side meal categorization
+      // Meal categories are now calculated on frontend using user's local timezone
+      // This ensures correct categorization regardless of server timezone
+      const enrichedData = nutritionData || [];
 
       // Filter out records with empty foods array in AnalysisData
       const filteredNutritionData = enrichedData.filter((record) => {
