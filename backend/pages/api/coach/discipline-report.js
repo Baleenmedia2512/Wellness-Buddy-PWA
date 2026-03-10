@@ -409,17 +409,10 @@ export default async function handler(req, res) {
         userId,
         educationWindow.start,
         educationWindow.end,
-      ); // Convert IST to user's local time
-            let time;
-            if (tzOffset !== null) {
-              time = convertISTToUserLocalTime(r.CreatedAt, tzOffset);
-            } else {
-              const timeMatch = String(r.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
-              if (!timeMatch) return;
-              time = timeMatch[1];
-            }
-            
-            if (!time) return) => {
+      );
+
+      // Helper function to get meal data with time windows
+      const getMealData = (mealWindow) => {
         const dates = new Set();
         const onTimeDates = new Set();
 
