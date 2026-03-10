@@ -54,6 +54,18 @@ export default async function handler(req, res) {
     // Insert into education_logs_table using Supabase
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
+    
+    // 🔍 DEBUG: Log education upload details
+    console.log('📚 Education Upload:', {
+      userId,
+      platform,
+      topic,
+      confidence,
+      serverUTC: new Date().toISOString(),
+      storedIST: currentTime,
+      note: 'Stored in IST timezone'
+    });
+    
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({

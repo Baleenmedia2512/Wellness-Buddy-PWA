@@ -35,7 +35,20 @@ export function convertISTToUserLocalTime(istTimestamp, userTimezoneOffset) {
     const minutes = String(userLocalTime.getUTCMinutes()).padStart(2, '0');
     const seconds = String(userLocalTime.getUTCSeconds()).padStart(2, '0');
     
-    return `${hours}:${minutes}:${seconds}`;
+    const result = `${hours}:${minutes}:${seconds}`;
+    
+    // 🔍 DEBUG: Log conversion (only for early morning times to reduce noise)
+    if (hours >= '03' && hours <= '10') {
+      console.log('🕐 Time Conversion:', {
+        istTimestamp,
+        userTimezoneOffset,
+        actualUTC: actualUTC.toISOString(),
+        userLocalTime: result,
+        calculation: `IST ${cleanTimestamp} → UTC ${actualUTC.toISOString()} → User Local ${result}`
+      });
+    }
+    
+    return result;
   } catch (error) {
     console.error('Error converting IST to user local time:', error);
     // Fallback: extract time directly from timestamp (assumes same timezone)

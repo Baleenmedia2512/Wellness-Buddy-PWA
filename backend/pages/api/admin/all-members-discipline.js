@@ -204,7 +204,7 @@ export default async function handler(req, res) {
         .in("UserId", memberIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Education records
       supabase
@@ -213,7 +213,7 @@ export default async function handler(req, res) {
         .in("UserId", memberIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Food/nutrition records
       supabase
@@ -222,7 +222,7 @@ export default async function handler(req, res) {
         .in("UserID", memberIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
 
     if (weightData.error) {

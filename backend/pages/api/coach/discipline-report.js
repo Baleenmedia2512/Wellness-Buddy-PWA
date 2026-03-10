@@ -282,7 +282,7 @@ export default async function handler(req, res) {
         .in("UserId", allUserIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Education records
       supabase
@@ -291,7 +291,7 @@ export default async function handler(req, res) {
         .in("UserId", allUserIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
       // Food/nutrition records
       supabase
@@ -300,8 +300,17 @@ export default async function handler(req, res) {
         .in("UserID", allUserIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
-        .eq("IsDeleted", 0),
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
+    
+    // 🔍 DEBUG: Log fetched data counts
+    console.log('📊 Fetched Data:', {
+      weightRecords: weightData.data?.length || 0,
+      educationRecords: educationData.data?.length || 0,
+      foodRecords: foodData.data?.length || 0,
+      dateRange: `${startDateStr} to ${endDateStr}`,
+      userIds: allUserIds
+    });
 
     // Process discipline data for each member
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
@@ -397,6 +406,16 @@ export default async function handler(req, res) {
         weightWindow.start,
         weightWindow.end,
       );
+      
+      // 🔍 DEBUG: Log weight data for each member
+      if ((weightData.data || []).filter(r => r.UserId == userId).length > 0) {
+        console.log(`👤 User ${userId} Weight Data:`, {
+          totalRecords: (weightData.data || []).filter(r => r.UserId == userId).length,
+          weightDates: Array.from(weightDates),
+          weightOnTimeDates: Array.from(weightOnTimeDates),
+          weightWindow
+        });
+      }
 
       // Education
       const educationDates = getUniqueDates(educationData.data || [], userId);
@@ -410,31 +429,52 @@ export default async function handler(req, res) {
         educationWindow.start,
         educationWindow.end,
       );
+      
+      // 🔍 DEBUG: Log education data for each member
+      if ((educationData.data || []).filter(r => r.UserId == userId).length > 0) {
+        console.log(`📚 User ${userId} Education Data:`, {
+          totalRecords: (educationData.data || []).filter(r => r.UserId == userId).length,
+          educationDates: Array.from(educationDates),
+          educationOnTimeDates: Array.from(educationOnTimeDates),
+          educationWindow
+        });
+      }
 
       // Helper function to get meal data with time windows
-      const getMealData = (mealWindow) => {
+      const getMealData = (mealWindow, mealType) => {
         const dates = new Set();
         const onTimeDates = new Set();
 
         (foodData.data || []).forEach((r) => {
           if (r.UserID == userId) {
-            // ✅ TIMEZONE FIX: Extract time directly from timestamp string
-            const timeMatch = String(r.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
-            if (!timeMatch) return;
-            const time = timeMatch[1];
+            // ✅ Use local date formatting to prevent timezone shifting
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            dates.add(dateStr);
 
-            // Check if this record falls within the meal window
-            if (time >= mealWindow.start && time <= mealWindow.end) {
-              // ✅ Use local date formatting to prevent timezone shifting
-              const date = new Date(r.CreatedAt);
-              const dateStr =
-                date.getFullYear() +
-                "-" +
-                String(date.getMonth() + 1).padStart(2, "0") +
-                "-" +
-                String(date.getDate()).padStart(2, "0");
-              dates.add(dateStr);
-              onTimeDates.add(dateStr); // If in window, it's on-time
+            // ✅ TIMEZONE FIX: Use isTimeInWindow for timezone conversion
+            const inWindow = isTimeInWindow(r.CreatedAt, mealWindow.start, mealWindow.end);
+            
+            // 🔍 DEBUG: Log meal categorization for USA timezone (offset 300)
+            if (tzOffset === 300 || tzOffset >= 240) {
+              const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
+              console.log(`🍽️ Meal Check [${mealType}]:`, {
+                userId,
+                createdAtIST: r.CreatedAt,
+                convertedTime,
+                mealWindow: `${mealWindow.start} - ${mealWindow.end}`,
+                inWindow,
+                dateStr
+              });
+            }
+            
+            if (inWindow) {
+              onTimeDates.add(dateStr);
             }
           }
         });
@@ -442,9 +482,38 @@ export default async function handler(req, res) {
         return { dates, onTimeDates };
       };
 
-      const breakfastData = getMealData(mealWindows.breakfast);
-      const lunchData = getMealData(mealWindows.lunch);
-      const dinnerData = getMealData(mealWindows.dinner);
+      const breakfastData = getMealData(mealWindows.breakfast, 'BREAKFAST');
+      const lunchData = getMealData(mealWindows.lunch, 'LUNCH');
+      const dinnerData = getMealData(mealWindows.dinner, 'DINNER');
+
+      // 🔍 DEBUG: Log meal data summary for USA users
+      if (tzOffset === 300 || tzOffset >= 240) {
+        console.log(`🍽️ User ${userId} Meal Summary:`, {
+          userId,
+          tzOffset,
+          breakfastWindow: mealWindows.breakfast,
+          lunchWindow: mealWindows.lunch,
+          dinnerWindow: mealWindows.dinner,
+          breakfast: {
+            totalDates: breakfastData.dates.size,
+            onTimeDates: breakfastData.onTimeDates.size,
+            dates: Array.from(breakfastData.dates),
+            onTime: Array.from(breakfastData.onTimeDates)
+          },
+          lunch: {
+            totalDates: lunchData.dates.size,
+            onTimeDates: lunchData.onTimeDates.size,
+            dates: Array.from(lunchData.dates),
+            onTime: Array.from(lunchData.onTimeDates)
+          },
+          dinner: {
+            totalDates: dinnerData.dates.size,
+            onTimeDates: dinnerData.onTimeDates.size,
+            dates: Array.from(dinnerData.dates),
+            onTime: Array.from(dinnerData.onTimeDates)
+          }
+        });
+      }
 
       return {
         userId,
@@ -475,6 +544,18 @@ export default async function handler(req, res) {
         },
       };
     });
+    
+    // 🔍 DEBUG: Log discipline calculation for first member
+    if (disciplineData.length > 0) {
+      console.log('📊 Sample Discipline Data (First Member):', {
+        userId: disciplineData[0].userId,
+        weight: disciplineData[0].weight,
+        education: disciplineData[0].education,
+        breakfast: disciplineData[0].breakfast,
+        lunch: disciplineData[0].lunch,
+        dinner: disciplineData[0].dinner
+      });
+    }
 
     // Step 5: Separate coach from team members (use unique members from processedUserIds)
     const loggedInCoach = allMembers.find((m) => m.IsLoggedInCoach);

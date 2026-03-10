@@ -83,6 +83,16 @@ export default async function handler(req, res) {
     // Use exact PascalCase column names as they exist in Supabase
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
+    
+    // 🔍 DEBUG: Log weight upload details
+    console.log('⚖️ Weight Upload:', {
+      userId,
+      weight,
+      serverUTC: new Date().toISOString(),
+      storedIST: currentTime,
+      note: 'Stored in IST timezone'
+    });
+    
     const { data, error } = await supabase
       .from('weight_records_table')
       .insert({

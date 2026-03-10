@@ -41,6 +41,14 @@ export const disciplineReportService = {
           // getTimezoneOffset() returns positive for west of UTC, negative for east
           const userTimezoneOffset = new Date().getTimezoneOffset();
           
+          // 🔍 DEBUG: Log timezone info
+          console.log('🌍 Frontend Timezone Info:', {
+            userTimezoneOffset,
+            currentTime: new Date().toString(),
+            dateRange,
+            coachId
+          });
+          
           const params = {
             coachId,
             dateRange,
