@@ -2428,14 +2428,14 @@ const NutritionDashboard = ({
                                 const dateB = istToLocalDate(b.CreatedAt);
                                 return dateA - dateB;
                               })
-                              .map((meal) => {
+                              .map((meal, mealIndex) => {
                                 // Show undo row if this is a placeholder
                                 if (meal.isUndoPlaceholder) {
                                   const entry = undoState[meal.ID];
                                   if (!entry) return null;
                                   return (
                                     <UndoRow
-                                      key={meal.ID}
+                                      key={`${meal.ID}-${mealIndex}`}
                                       pid={meal.ID}
                                       originalMeal={entry.originalMeal}
                                       expiresAt={entry.expiresAt}
@@ -2463,7 +2463,7 @@ const NutritionDashboard = ({
 
                                 return (
                                   <MealCard
-                                    key={meal.ID}
+                                    key={`${meal.ID}-${mealIndex}`}
                                     meal={meal}
                                     foodData={foodData}
                                     mealTime={mealTime}
