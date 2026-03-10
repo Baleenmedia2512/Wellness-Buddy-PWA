@@ -149,6 +149,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');
   const [weightPanelHeight, setWeightPanelHeight] = useState(null);
+  const [weightTrendChartWidth, setWeightTrendChartWidth] = useState(280);
 
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
@@ -165,6 +166,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const weightSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
   const weightSummaryRef = useRef(null);
   const weightTrendRef = useRef(null);
+  const weightTrendChartRef = useRef(null);
 
   /**
    * ✅ MEMOIZED: Group weight entries by month
@@ -347,6 +349,27 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       window.removeEventListener('resize', updateWeightPanelHeight);
     };
   }, [activeWeightPanel, weightTrendSeries, weightTrendRangeDays, globalStats, weightHistory]);
+
+  useEffect(() => {
+    const container = weightTrendChartRef.current;
+    if (!container) return;
+
+    const updateChartWidth = () => {
+      const nextWidth = Math.max(240, Math.floor(container.clientWidth || 0));
+      setWeightTrendChartWidth((prev) => (prev === nextWidth ? prev : nextWidth));
+    };
+
+    updateChartWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateChartWidth);
+      observer.observe(container);
+      return () => observer.disconnect();
+    }
+
+    window.addEventListener('resize', updateChartWidth);
+    return () => window.removeEventListener('resize', updateChartWidth);
+  }, [activeWeightPanel, weightTrendRangeDays, weightTrendSeries.length]);
 
   /**
    * Fetch ALL weight history on mount and when user changes
@@ -780,7 +803,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     </div>
                   </div>
 
-                  <div ref={weightTrendRef} className="w-1/2 shrink-0 px-4 sm:px-5 pb-4 sm:pb-5">
+                  <div ref={weightTrendRef} className="w-1/2 shrink-0 px-3 sm:px-5 pb-4 sm:pb-5">
                     {(() => {
                       const numericValues = weightTrendSeries
                         .map((point) => point.value)
@@ -828,7 +851,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-2 mb-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                       <div className="rounded-lg bg-sky-50 px-2 py-1.5">
                         <p className="text-[10px] text-sky-700">Average</p>
                         <p className="text-xs sm:text-sm font-semibold text-sky-900">
@@ -856,7 +879,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     ) : (
                       <>
                         {(() => {
-                          const chartWidth = 380;
+                          const chartWidth = weightTrendChartWidth;
                           const chartHeight = 132;
                           const numericValues = weightTrendSeries
                             .map((point) => point.value)
@@ -864,12 +887,17 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           const maxValue = Math.max(...numericValues);
                           const minValue = Math.min(...numericValues);
                           const spread = Math.max(maxValue - minValue, 0.5);
-                          const stepX = weightTrendSeries.length > 1 ? chartWidth / (weightTrendSeries.length - 1) : 0;
+                          const plotLeft = 10;
+                          const plotRight = 14;
+                          const stepX =
+                            weightTrendSeries.length > 1
+                              ? (chartWidth - plotLeft - plotRight) / (weightTrendSeries.length - 1)
+                              : 0;
 
                           const points = weightTrendSeries.map((point, index) => {
                             const hasValue = Number.isFinite(point.value);
                             const value = hasValue ? point.value : null;
-                            const x = index * stepX;
+                            const x = plotLeft + index * stepX;
                             const y = hasValue
                               ? chartHeight - ((value - minValue) / spread) * chartHeight
                               : null;
@@ -916,14 +944,15 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             .join(' ');
 
                           return (
-                            <div className="w-full overflow-x-auto pb-1">
+                            <div ref={weightTrendChartRef} className="w-full pb-1">
                               <svg
                                 viewBox={`0 -24 ${chartWidth} ${chartHeight + 52}`}
                                 className="block"
                                 style={{
                                   width: `${chartWidth}px`,
                                   height: `${chartHeight + 52}px`,
-                                  minWidth: `${chartWidth}px`
+                                  minWidth: `${chartWidth}px`,
+                                  overflow: 'visible'
                                 }}
                                 preserveAspectRatio="none"
                               >
@@ -955,7 +984,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                   const isLast = index === lastVisibleIndex;
                                   const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
                                   const labelX = isFirst ? point.x + 4 : isLast ? point.x - 4 : point.x;
-                                  const labelY = point.y <= 10 ? point.y + -8 : point.y - 7;
+                                  const labelY = Math.max(point.y - 7, -16);
                                   const labelText = `${point.value.toFixed(1)} kg`;
                                   const labelColor = '#9ca3af';
                                   return (
