@@ -7,7 +7,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   const [centerName, setCenterName] = useState('');
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
-  const [educationHour, setEducationHour] = useState('09:00');
   const [ownerPhone, setOwnerPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -273,7 +272,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       icon: {
         url: 'http://maps.google.com/mapfiles/ms/icons/red-dot.png',
       },
-      title: 'Selected Center Location',
+      title: 'Selected Centre Location',
       zIndex: 2,
     });
 
@@ -300,7 +299,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     return data.userId;
   };
 
-  // Fetch user's centers
+  // Fetch user's centres
   const fetchMyCenters = async () => {
     if (!user) return;
 
@@ -319,14 +318,14 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
       const result = await response.json();
       if (result.success) {
-        // Filter to show only centers owned by current user
+        // Filter to show only centres owned by current user
         const ownedCenters = (result.data || []).filter(
           (c) => c.owner_user_id === userId
         );
         setMyCenters(ownedCenters);
       }
     } catch (err) {
-      console.error('Error fetching centers:', err);
+      console.error('Error fetching centres:', err);
     } finally {
       setLoadingCenters(false);
     }
@@ -362,7 +361,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
           centerName,
           latitude: parseFloat(latitude),
           longitude: parseFloat(longitude),
-          educationHour: educationHour || null,
+          educationHour: '09:00',
           ownerUserId: userId,
           ownerPhone: ownerPhone || null,
         }),
@@ -371,16 +370,15 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to register center');
+        throw new Error(result.message || 'Failed to register centre');
       }
 
-      setSuccess('Nutrition center registered successfully!');
+      setSuccess('Nutrition centre registered successfully!');
       
       // Reset form
       setCenterName('');
       setLatitude('');
       setLongitude('');
-      setEducationHour('09:00');
       setOwnerPhone('');
       
       if (markerRef.current) {
@@ -388,13 +386,13 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         markerRef.current = null;
       }
 
-      // Refresh centers list
+      // Refresh centres list
       fetchMyCenters();
 
       // Clear success message after 3 seconds
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      console.error('Error registering center:', err);
+      console.error('Error registering centre:', err);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -403,7 +401,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   // Handle unregister
   const handleUnregister = async (centerId) => {
-    if (!window.confirm('Are you sure you want to unregister this nutrition center?')) {
+    if (!window.confirm('Are you sure you want to unregister this nutrition centre?')) {
       return;
     }
 
@@ -424,15 +422,15 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       const result = await response.json();
 
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to unregister center');
+        throw new Error(result.message || 'Failed to unregister centre');
       }
 
-      setSuccess('Center unregistered successfully');
+      setSuccess('Centre unregistered successfully');
       fetchMyCenters();
 
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      console.error('Error unregistering center:', err);
+      console.error('Error unregistering centre:', err);
       setError(err.message);
     }
   };
@@ -451,7 +449,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Register Nutrition Center</h1>
+              <h1 className="text-xl font-bold text-gray-800">Register Nutrition Centre</h1>
               <p className="text-xs text-gray-500">Add a new club location</p>
             </div>
           </div>
@@ -473,11 +471,11 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
         {/* Registration Form */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">New Center Details</h2>
+          <h2 className="text-lg font-bold text-gray-800 mb-4">New Centre Details</h2>
           <form onSubmit={handleRegister} className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
-                Center Name <span className="text-red-500">*</span>
+                Centre Name <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -489,59 +487,17 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Education Hour
-                </label>
-                <input
-                  type="time"
-                  value={educationHour}
-                  onChange={(e) => setEducationHour(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Phone Number
-                </label>
-                <input
-                  type="tel"
-                  value={ownerPhone}
-                  onChange={(e) => setOwnerPhone(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                  placeholder="+1-234-567-8900"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Latitude <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={latitude}
-                  readOnly
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  placeholder="Click map to select"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Longitude <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={longitude}
-                  readOnly
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50"
-                  placeholder="Click map to select"
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Phone Number
+              </label>
+              <input
+                type="tel"
+                value={ownerPhone}
+                onChange={(e) => setOwnerPhone(e.target.value)}
+                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                placeholder="+1-234-567-8900"
+              />
             </div>
 
             {/* Address Search */}
@@ -579,7 +535,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               )}
               <div className="mt-2 text-xs text-gray-500 space-y-1">
                 <p>Blue dot = Your current location</p>
-                <p>Red marker = Selected center location (click map or search to place)</p>
+                <p>Red marker = Selected centre location (click map or search to place)</p>
               </div>
             </div>
 
@@ -596,22 +552,22 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               ) : (
                 <>
                   <Save className="h-5 w-5" />
-                  Register Center
+                  Register Centre
                 </>
               )}
             </TouchFeedbackButton>
           </form>
         </div>
 
-        {/* My Centers */}
+        {/* My Centres */}
         <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-lg font-bold text-gray-800 mb-4">My Registered Centers</h2>
+          <h2 className="text-lg font-bold text-gray-800 mb-4">My Registered Centres</h2>
           {loadingCenters ? (
             <div className="flex justify-center py-8">
               <LoadingSpinner />
             </div>
           ) : myCenters.length === 0 ? (
-            <p className="text-gray-500 text-center py-8">No centers registered yet</p>
+            <p className="text-gray-500 text-center py-8">No centres registered yet</p>
           ) : (
             <div className="space-y-3">
               {myCenters.map((center) => (
@@ -643,7 +599,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                   <TouchFeedbackButton
                     onClick={() => handleUnregister(center.id)}
                     className="ml-4 p-2 text-red-600 hover:bg-red-50 rounded-lg"
-                    ariaLabel="Unregister center"
+                    ariaLabel="Unregister centre"
                   >
                     <Trash2 className="h-5 w-5" />
                   </TouchFeedbackButton>

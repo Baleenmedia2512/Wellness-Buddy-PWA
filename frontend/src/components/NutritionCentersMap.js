@@ -98,7 +98,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
     }
   }, [mapLoaded]);
 
-  // Fetch nutrition centers
+  // Fetch nutrition centres
   const fetchCenters = async () => {
     if (!user) return;
 
@@ -395,7 +395,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Nutrition Centers Map</h1>
+              <h1 className="text-xl font-bold text-gray-800">Nutrition Centres Map</h1>
               <p className="text-xs text-gray-500">View club locations & attendance</p>
             </div>
           </div>
@@ -468,15 +468,15 @@ const NutritionCentersMap = ({ user, onBack }) => {
               className="w-full h-[500px] rounded-lg shadow-lg border border-gray-200"
             />
             
-            {/* Centers List */}
+            {/* Centres List */}
             <div className="mt-4 space-y-2">
               <h2 className="text-lg font-bold text-gray-800 mb-2">
-                Centers ({centers.length})
+                Centres ({centers.length})
               </h2>
               {centers.length === 0 ? (
                 <div className="bg-white rounded-lg p-6 text-center shadow-sm">
                   <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500">No nutrition centers registered yet</p>
+                  <p className="text-gray-500">No nutrition centres registered yet</p>
                 </div>
               ) : (
                 centers.map((center) => (

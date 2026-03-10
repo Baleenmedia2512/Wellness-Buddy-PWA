@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, MapPin, TrendingUp, Building2 } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, MapPin, TrendingUp, Building2, Map } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
@@ -266,25 +266,25 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                     </TouchFeedbackButton>
                   )}
 
-                  {/* Nutrition Centers Map - shown for all users */}
+                  {/* Nutrition Centres Map - shown for all users */}
                   {onShowNutritionCentersMap && (
                     <TouchFeedbackButton
                       onClick={() => {
                         onShowNutritionCentersMap();
                         closeMenu();
                       }}
-                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
-                      ariaLabel="View Nutrition Centers Map"
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="View Nutrition Centres Map"
                     >
-                      <MapPin className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                      <Map className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Nutrition Centers Map</p>
+                        <p className="text-sm font-medium text-gray-800">Nutrition Centres Map</p>
                         <p className="text-xs text-gray-500">View club locations</p>
                       </div>
                     </TouchFeedbackButton>
                   )}
 
-                  {/* Register Nutrition Center - shown for coach/admin/developer roles only */}
+                  {/* Register Nutrition Centre - shown for coach/admin/developer roles only */}
                   {onShowRegisterCenter && (
                     <TouchFeedbackButton
                       onClick={() => {
@@ -292,11 +292,11 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
-                      ariaLabel="Register Nutrition Center"
+                      ariaLabel="Register Nutrition Centre"
                     >
                       <Building2 className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Register Center</p>
+                        <p className="text-sm font-medium text-gray-800">Register Centre</p>
                         <p className="text-xs text-gray-500">Add a new club location</p>
                       </div>
                     </TouchFeedbackButton>
