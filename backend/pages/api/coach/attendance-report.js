@@ -204,12 +204,25 @@ export default async function handler(req, res) {
     };
 
     // Helper: Calculate full team count recursively (dual-coaching model)
-    const calculateFullTeamCount = (userId, members) => {
-      const directTeam = members.filter(m => m.CoachId === userId || m.CoCoachId === userId);
+    // Includes circular reference protection
+    const calculateFullTeamCount = (userId, members, visited = new Set()) => {
+      // Prevent circular references
+      if (visited.has(userId)) {
+        console.warn(`⚠️ [attendance-report] Circular reference detected in calculateFullTeamCount for userId: ${userId}`);
+        return 0;
+      }
+      
+      // Add current user to visited set for this path
+      const newVisited = new Set(visited);
+      newVisited.add(userId);
+      
+      const directTeam = members.filter(m => 
+        (m.CoachId === userId || m.CoCoachId === userId) && m.UserId !== userId
+      );
       let fullCount = directTeam.length;
       
       directTeam.forEach(member => {
-        fullCount += calculateFullTeamCount(member.UserId, members);
+        fullCount += calculateFullTeamCount(member.UserId, members, newVisited);
       });
       
       return fullCount;
@@ -218,10 +231,17 @@ export default async function handler(req, res) {
     // Build hierarchical attendance data
     const attendanceData = await Promise.all(
       teamMembers.map(async (member) => {
-        // Get ALL education logs for this member in date range
+        // Calculate discipline metrics FIRST (this includes education on-time days)
+        const discipline = calculateMemberDiscipline(member.UserId);
+
+        // Use the education on-time days from discipline for attendance calculation
+        // This ensures consistency between discipline and attendance
+        const educationOnTimeDays = discipline.educationOnTime;
+
+        // Get ALL education logs for this member to determine club vs remote breakdown
         const { data: allEducationLogs, error: allLogsError } = await supabase
           .from('education_logs_table')
-          .select('id, attendance_type')
+          .select('id, attendance_type, CreatedAt')
           .eq('UserId', member.UserId)
           .eq('IsDeleted', 0)
           .gte('CreatedAt', start)
@@ -231,17 +251,25 @@ export default async function handler(req, res) {
           console.error('⚠️ [attendance-report] Error fetching education logs for user', member.UserId, ':', allLogsError);
         }
 
-        // Count by attendance type (treat NULL as remote for backward compatibility)
-        let clubCount = 0;
-        let remoteCount = 0;
+        // Count unique days by club/remote for on-time education logs only
+        const onTimeClubDays = new Set();
+        const onTimeRemoteDays = new Set();
         
         if (allEducationLogs && allEducationLogs.length > 0) {
           allEducationLogs.forEach(log => {
-            if (log.attendance_type === 'club') {
-              clubCount++;
-            } else {
-              // 'remote' or NULL = remote
-              remoteCount++;
+            // Check if this education log is on-time (within time window)
+            const isOnTime = log.CreatedAt && isTimeInWindow(log.CreatedAt, timeWindows.education.start, timeWindows.education.end);
+            
+            if (isOnTime) {
+              const logDate = new Date(log.CreatedAt).toISOString().split('T')[0];
+              
+              // Count unique days by attendance type (only on-time logs)
+              if (log.attendance_type === 'club') {
+                onTimeClubDays.add(logDate);
+              } else {
+                // 'remote' or NULL = remote
+                onTimeRemoteDays.add(logDate);
+              }
             }
           });
         }
@@ -250,8 +278,11 @@ export default async function handler(req, res) {
 
         console.log(`📊 [attendance-report] User ${member.UserName} (${member.UserId}):`, {
           totalEducationLogs: totalEducation,
-          clubCount,
-          remoteCount,
+          educationOnTimeDays,
+          clubDays: onTimeClubDays.size,
+          remoteDays: onTimeRemoteDays.size,
+          disciplineEducationOnTime: discipline.educationOnTime,
+          timeWindow: `${timeWindows.education.start} - ${timeWindows.education.end}`,
           sampleLog: allEducationLogs?.[0] || null
         });
 
@@ -260,15 +291,13 @@ export default async function handler(req, res) {
         const endDateObj = new Date(end);
         const daysInRange = Math.ceil((endDateObj - startDateObj) / (1000 * 60 * 60 * 24)) + 1;
 
-        // Calculate attendance percentage (total education sessions / days in range)
-        // This includes both club and remote attendance
-        const totalAttendance = clubCount + remoteCount;
+        // Calculate attendance percentage based on education on-time days from discipline
+        // This uses the SAME calculation as discipline's education component
+        // Logic: If education is logged on time for a day = 100% attendance for that day
+        //        If education is NOT logged on time for a day = 0% attendance for that day
         const attendancePercentage = daysInRange > 0 
-          ? Math.round((totalAttendance / daysInRange) * 100) 
+          ? Math.round((educationOnTimeDays / daysInRange) * 100) 
           : 0;
-
-        // Calculate discipline metrics
-        const discipline = calculateMemberDiscipline(member.UserId);
 
         // Calculate team counts (dual-coaching model)
         const directTeamCount = teamMembers.filter(m => 
@@ -285,9 +314,9 @@ export default async function handler(req, res) {
           uplineCoachId: member.HierarchyParent || null, // Use the tracked parent from hierarchy
           isLoggedInCoach: member.IsLoggedInCoach,
           
-          // Attendance metrics
-          clubAttendance: clubCount,
-          remoteAttendance: remoteCount,
+          // Attendance metrics (based on unique on-time days)
+          clubAttendance: onTimeClubDays.size,
+          remoteAttendance: onTimeRemoteDays.size,
           totalEducation: totalEducation,
           attendancePercentage,
           daysInRange,

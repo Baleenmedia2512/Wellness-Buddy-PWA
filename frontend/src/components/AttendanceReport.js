@@ -166,7 +166,7 @@ const AttendanceReport = ({ user, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, dateFilter]);
 
-  // Build hierarchical structure
+  // Build hierarchical structure (using same pattern as team-hierarchy.js)
   const buildHierarchy = (members) => {
     console.log('🔨 [buildHierarchy] Building hierarchy for', members?.length || 0, 'members');
     
@@ -184,21 +184,57 @@ const AttendanceReport = ({ user, onBack }) => {
       }))
     );
     
-    const memberMap = {};
-    members.forEach(m => {
-      memberMap[m.userId] = { ...m, teamMembers: [] };
-    });
-
-    const rootNodes = [];
-    members.forEach(m => {
-      if (m.uplineCoachId && memberMap[m.uplineCoachId]) {
-        console.log(`  ↳ ${m.userName} (${m.userId}) → under ${memberMap[m.uplineCoachId].userName} (${m.uplineCoachId})`);
-        memberMap[m.uplineCoachId].teamMembers.push(memberMap[m.userId]);
-      } else {
-        console.log(`  ↳ ${m.userName} (${m.userId}) → ROOT (uplineCoachId: ${m.uplineCoachId})`);
-        rootNodes.push(memberMap[m.userId]);
+    // Build recursive hierarchy with circular reference protection
+    const buildNode = (userId, visited = new Set()) => {
+      // Prevent circular references - check if we've already visited this user in current path
+      if (visited.has(userId)) {
+        console.warn(`⚠️ [buildHierarchy] Circular reference detected for userId: ${userId}`);
+        return null;
       }
-    });
+      
+      const member = members.find(m => m.userId === userId);
+      if (!member) return null;
+      
+      // Add to visited set for this path
+      const newVisited = new Set(visited);
+      newVisited.add(userId);
+      
+      // Clone member data for this specific relationship path
+      const node = {
+        ...member,
+        teamMembers: []
+      };
+      
+      // Find all direct reports
+      const directReports = members.filter(m => 
+        m.uplineCoachId === userId && m.userId !== userId
+      );
+      
+      // Recursively build children
+      directReports.forEach(report => {
+        const childNode = buildNode(report.userId, newVisited);
+        if (childNode) {
+          node.teamMembers.push(childNode);
+        }
+      });
+      
+      console.log(`  ↳ Built node: ${node.userName} (${node.userId}) with ${node.teamMembers.length} children`);
+      
+      return node;
+    };
+    
+    // Find root nodes (members with no uplineCoachId or uplineCoachId not in the list)
+    const memberIds = new Set(members.map(m => m.userId));
+    const rootNodeIds = members
+      .filter(m => !m.uplineCoachId || !memberIds.has(m.uplineCoachId))
+      .map(m => m.userId);
+    
+    console.log('🌳 [buildHierarchy] Root node IDs:', rootNodeIds);
+    
+    // Build hierarchy from each root
+    const rootNodes = rootNodeIds
+      .map(rootId => buildNode(rootId))
+      .filter(node => node !== null);
 
     console.log('🌳 [buildHierarchy] Built hierarchy:', {
       rootCount: rootNodes.length,
@@ -236,6 +272,13 @@ const AttendanceReport = ({ user, onBack }) => {
   const TeamNode = ({ node, level = 0, isLastChild = false }) => {
     const isExpanded = expandedNodes.has(node.userId);
     const hasChildren = node.teamMembers && node.teamMembers.length > 0;
+
+    // Safety: prevent infinite recursion by limiting depth
+    const MAX_DEPTH = 10;
+    if (level > MAX_DEPTH) {
+      console.warn(`⚠️ Max depth (${MAX_DEPTH}) reached for node ${node.userName}`);
+      return null;
+    }
 
     const getScoreColor = (percentage) => {
       if (percentage >= 80) return 'bg-green-50 border-green-300 text-green-700';
