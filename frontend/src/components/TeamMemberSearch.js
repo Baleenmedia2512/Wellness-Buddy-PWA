@@ -52,7 +52,12 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
           ...flatList,
         ];
         
-        setAllTeamMembers(membersWithCoach);
+        // Deduplicate by userId to prevent duplicate keys
+        const uniqueMembers = Array.from(
+          new Map(membersWithCoach.map(member => [member.userId, member])).values()
+        );
+        
+        setAllTeamMembers(uniqueMembers);
       } catch (error) {
         console.error('Error loading team members:', error);
       } finally {
@@ -226,8 +231,8 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
               </div>
             ) : suggestions.length > 0 ? (
               <ul className="py-1">
-                {suggestions.map((member) => (
-                  <li key={member.userId}>
+                {suggestions.map((member, index) => (
+                  <li key={`${member.userId}-${index}`}>
                     <button
                       onClick={() => handleSelectMember(member)}
                       className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"
