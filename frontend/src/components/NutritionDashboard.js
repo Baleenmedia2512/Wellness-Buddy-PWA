@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   TrendingUp,
@@ -15,6 +15,16 @@ import {
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ReferenceLine,
+  LabelList,
+  ResponsiveContainer,
+} from "recharts";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -70,6 +80,19 @@ const NutritionDashboard = ({
 
   // Calorie target from user's BMR (fallback to 1500 if not set)
   const [calorieTarget, setCalorieTarget] = useState(1500);
+  const [trendRangeDays, setTrendRangeDays] = useState(7);
+  const [calorieTrendData, setCalorieTrendData] = useState([]);
+  const [trendLoading, setTrendLoading] = useState(false);
+  const [showTrendCard, setShowTrendCard] = useState(false);
+  const [activeOverviewPanel, setActiveOverviewPanel] = useState("summary");
+  const [overviewPanelHeight, setOverviewPanelHeight] = useState(null);
+  const overviewSwipeRef = useRef({
+    active: false,
+    startX: 0,
+    lastX: 0,
+  });
+  const summaryPanelRef = useRef(null);
+  const trendPanelRef = useRef(null);
 
   const resolveUserId = useCallback(async () => {
     if (user?.id) return user.id;
@@ -855,6 +878,137 @@ const NutritionDashboard = ({
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
 
+  const toLocalDateString = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  };
+
+  const fetchCalorieTrend = useCallback(
+    async (days) => {
+      if (!user) return;
+
+      setTrendLoading(true);
+
+      try {
+        const actualUserId = await resolveUserId();
+        if (!actualUserId) {
+          setCalorieTrendData([]);
+          return;
+        }
+
+        const dates = [];
+        for (let i = days - 1; i >= 0; i--) {
+          const d = new Date(selectedDate);
+          d.setDate(selectedDate.getDate() - i);
+          dates.push(d);
+        }
+
+        const responses = await Promise.all(
+          dates.map(async (d) => {
+            const dateString = toLocalDateString(d);
+            const cacheBuster = Date.now() + Math.random();
+            const response = await fetch(
+              `${apiBaseUrl}/api/user-nutrition-stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+              {
+                cache: "no-store",
+                headers: {
+                  "Cache-Control": "no-cache",
+                  Pragma: "no-cache",
+                },
+              },
+            );
+
+            const data = await response.json();
+            const list = data?.success ? data.data || [] : [];
+            const calories = list.reduce((sum, analysis) => {
+              if (analysis.isUndoPlaceholder) return sum;
+              const foodData = parseAnalysisData(analysis.AnalysisData);
+              const n = foodData.nutrition || {};
+              return sum + (n.calories || analysis.TotalCalories || 0);
+            }, 0);
+
+            return {
+              key: dateString,
+              date: d,
+              label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+              calories: Math.round(calories),
+              hasData: list.some((analysis) => !analysis.isUndoPlaceholder),
+              target: calorieTarget,
+            };
+          }),
+        );
+
+        setCalorieTrendData(responses);
+      } catch (err) {
+        console.error("[NutritionDashboard] Failed to fetch calorie trend:", err);
+        setCalorieTrendData([]);
+      } finally {
+        setTrendLoading(false);
+      }
+    },
+    [user, resolveUserId, selectedDate, apiBaseUrl, calorieTarget],
+  );
+
+  useEffect(() => {
+    if (!user) return;
+    fetchCalorieTrend(trendRangeDays);
+  }, [user, selectedDate, trendRangeDays, fetchCalorieTrend]);
+
+  useEffect(() => {
+    setShowTrendCard(false);
+    const timer = setTimeout(() => setShowTrendCard(true), 40);
+    return () => clearTimeout(timer);
+  }, [calorieTrendData, trendRangeDays]);
+
+  const handleOverviewPointerDown = (e) => {
+    if (!e.isPrimary) return;
+    overviewSwipeRef.current.active = true;
+    overviewSwipeRef.current.startX = e.clientX;
+    overviewSwipeRef.current.lastX = e.clientX;
+  };
+
+  const handleOverviewPointerMove = (e) => {
+    if (!overviewSwipeRef.current.active || !e.isPrimary) return;
+    overviewSwipeRef.current.lastX = e.clientX;
+  };
+
+  const handleOverviewPointerEnd = () => {
+    const swipe = overviewSwipeRef.current;
+    if (!swipe.active) return;
+    swipe.active = false;
+
+    const deltaX = swipe.lastX - swipe.startX;
+    const threshold = 36;
+    if (Math.abs(deltaX) < threshold) return;
+
+    if (deltaX < 0) {
+      setActiveOverviewPanel("trend");
+    } else {
+      setActiveOverviewPanel("summary");
+    }
+  };
+
+  useEffect(() => {
+    const updateOverviewHeight = () => {
+      const activeRef =
+        activeOverviewPanel === "summary" ? summaryPanelRef : trendPanelRef;
+      if (activeRef.current) {
+        setOverviewPanelHeight(activeRef.current.scrollHeight);
+      }
+    };
+
+    // Wait one frame so content/layout is fully settled.
+    const rafId = requestAnimationFrame(updateOverviewHeight);
+    window.addEventListener("resize", updateOverviewHeight);
+
+    return () => {
+      cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", updateOverviewHeight);
+    };
+  }, [activeOverviewPanel, trendLoading, calorieTrendData, trendRangeDays, dailyStats]);
+
   // Fetch user's BMR from profile for calorie target
   useEffect(() => {
     const fetchUserBmr = async () => {
@@ -1298,6 +1452,131 @@ const NutritionDashboard = ({
     );
   };
 
+  const consumedCalories = dailyStats.totalCalories || 0;
+  const caloriesProgressPercent = Math.min(
+    100,
+    (consumedCalories / Math.max(calorieTarget, 1)) * 100,
+  );
+  const caloriesDelta = consumedCalories - calorieTarget;
+  const calorieStatus =
+    Math.abs(caloriesDelta) <= 100
+      ? {
+          label: "On Track",
+          className: "bg-emerald-50 text-emerald-700",
+          hint: "Great balance for today",
+        }
+      : caloriesDelta > 100
+        ? {
+            label: "Above Target",
+            className: "bg-rose-50 text-rose-700",
+            hint: `${Math.abs(caloriesDelta)} kcal above target`,
+          }
+        : {
+            label: "Below Target",
+            className: "bg-amber-50 text-amber-700",
+            hint: `${Math.abs(caloriesDelta)} kcal below target`,
+          };
+
+  const trendAverageCalories = calorieTrendData.length
+    ? Math.round(
+        calorieTrendData.reduce((sum, d) => sum + (d.calories || 0), 0) /
+          calorieTrendData.length,
+      )
+    : 0;
+  const trendAboveTargetDays = calorieTrendData.filter(
+    (d) => (d.calories || 0) > calorieTarget,
+  ).length;
+  const trendBestDay = calorieTrendData.reduce(
+    (best, day) => {
+      const dayDiff = Math.abs((day.calories || 0) - calorieTarget);
+      const bestDiff = best
+        ? Math.abs((best.calories || 0) - calorieTarget)
+        : Number.POSITIVE_INFINITY;
+      if (dayDiff < bestDiff) return day;
+      return best;
+    },
+    null,
+  );
+
+  const calorieChartData = useMemo(
+    () =>
+      calorieTrendData.map((point, index) => {
+        const previousCalories =
+          index > 0 ? calorieTrendData[index - 1]?.calories || 0 : null;
+        const currentCalories = point.calories || 0;
+        const changeDirection =
+          previousCalories === null
+            ? null
+            : currentCalories > previousCalories
+              ? "up"
+              : currentCalories < previousCalories
+                ? "down"
+                : "same";
+
+        return {
+          ...point,
+          calories: currentCalories,
+          previousCalories,
+          changeDirection,
+        };
+      }),
+    [calorieTrendData, calorieTarget],
+  );
+
+  const xAxisInterval =
+    trendRangeDays <= 7 ? 0 : trendRangeDays <= 14 ? 1 : trendRangeDays <= 21 ? 2 : 4;
+
+  const visibleNutritionDotIndices = useMemo(() => {
+    const total = calorieChartData.length;
+    if (total === 0) return new Set();
+    if (trendRangeDays <= 7) {
+      return new Set(Array.from({ length: total }, (_, i) => i));
+    }
+
+    const targetCount = Math.min(7, total);
+    if (targetCount <= 1) return new Set([total - 1]);
+
+    return new Set(
+      Array.from({ length: targetCount }, (_, i) =>
+        Math.round((i * (total - 1)) / (targetCount - 1)),
+      ),
+    );
+  }, [calorieChartData, trendRangeDays]);
+
+  const visibleNutritionTickLabels = useMemo(
+    () =>
+      Array.from(visibleNutritionDotIndices)
+        .sort((a, b) => a - b)
+        .map((index) => calorieChartData[index]?.label)
+        .filter(Boolean),
+    [calorieChartData, visibleNutritionDotIndices],
+  );
+
+  const renderCaloriePointLabel = useCallback(
+    ({ x, y, index }) => {
+      if (x === undefined || y === undefined || index === undefined) return null;
+      if (!visibleNutritionDotIndices.has(index)) return null;
+
+      const point = calorieChartData[index];
+      if (!point) return null;
+
+      const text = point.hasData ? `${point.calories}` : "0";
+      return (
+        <text
+          x={x}
+          y={y - 11}
+          textAnchor="middle"
+          fill="#9ca3af"
+          fontSize={9}
+          fontWeight={500}
+        >
+          {text}
+        </text>
+      );
+    },
+    [calorieChartData, visibleNutritionDotIndices],
+  );
+
   /* ---------------- UI ---------------- */
 
   return (
@@ -1734,83 +2013,311 @@ const NutritionDashboard = ({
           </div>
         ) : (
           <>
-            {/* Overview card ... (unchanged content) */}
             <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
-              <div className="w-full max-w-md mx-auto bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 p-4 md:p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-xs md:text-sm text-gray-500">
-                      Calories Consumed
-                    </p>
-                    <p className="text-xl md:text-2xl font-bold text-gray-900">
-                      {dailyStats.totalCalories || 0}
-                      <span className="text-xs md:text-sm font-normal text-gray-500">
-                        {" "}
-                        / {calorieTarget} kcal
-                      </span>
-                    </p>
+              <div
+                className={`w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
+                  showTrendCard ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6"
+                }`}
+                onPointerDown={handleOverviewPointerDown}
+                onPointerMove={handleOverviewPointerMove}
+                onPointerUp={handleOverviewPointerEnd}
+                onPointerCancel={handleOverviewPointerEnd}
+                onPointerLeave={handleOverviewPointerEnd}
+              >
+                <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between">
+                  <div className="text-xs md:text-sm text-gray-500">
+                    {activeOverviewPanel === "summary"
+                      ? "Daily Summary"
+                      : `Calorie Trend (${trendRangeDays}D)`}
                   </div>
-                  <div className="flex items-center space-x-1.5 bg-emerald-50 px-2 py-0.5 rounded-full">
-                    <TrendingUp className="w-4 h-4 text-emerald-500" />
-                    <span className="text-xs md:text-sm font-medium text-emerald-700">
-                      On Track
-                    </span>
+                  <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+                    <button
+                      type="button"
+                      onClick={() => setActiveOverviewPanel("summary")}
+                      className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
+                        activeOverviewPanel === "summary"
+                          ? "bg-emerald-500 text-white shadow-sm"
+                          : "text-gray-600 hover:bg-white"
+                      }`}
+                    >
+                      Summary
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveOverviewPanel("trend")}
+                      className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
+                        activeOverviewPanel === "trend"
+                          ? "bg-emerald-500 text-white shadow-sm"
+                          : "text-gray-600 hover:bg-white"
+                      }`}
+                    >
+                      Trend
+                    </button>
                   </div>
                 </div>
 
-                <div className="w-full bg-gray-200/70 rounded-full h-2 mb-4 overflow-hidden">
+                <div
+                  className="overflow-hidden transition-[height] duration-400 ease-out"
+                  style={
+                    overviewPanelHeight
+                      ? { height: `${overviewPanelHeight}px` }
+                      : undefined
+                  }
+                >
                   <div
-                    className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-500 h-2 rounded-full transition-all duration-500 ease-out"
+                    className="flex items-start w-[200%] transition-transform duration-500 ease-out"
                     style={{
-                      width: `${Math.min(
-                        100,
-                        ((dailyStats.totalCalories || 0) / calorieTarget) * 100,
-                      )}%`,
+                      transform:
+                        activeOverviewPanel === "summary"
+                          ? "translateX(0%)"
+                          : "translateX(-50%)",
                     }}
-                  />
+                  >
+                    <div ref={summaryPanelRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-xs md:text-sm text-gray-500">
+                            Calories Consumed
+                          </p>
+                          <p className="text-xl md:text-2xl font-bold text-gray-900">
+                            {consumedCalories}
+                            <span className="text-xs md:text-sm font-normal text-gray-500">
+                              {" "}
+                              / {calorieTarget} kcal
+                            </span>
+                          </p>
+                        </div>
+                        <div
+                          className={`flex items-center space-x-1.5 px-2 py-0.5 rounded-full ${calorieStatus.className}`}
+                        >
+                          <TrendingUp className="w-4 h-4 text-emerald-500" />
+                          <span className="text-xs md:text-sm font-medium">
+                            {calorieStatus.label}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] md:text-xs text-gray-500 mb-3">
+                        {calorieStatus.hint}
+                      </p>
+
+                      <div className="w-full bg-gray-200/70 rounded-full h-2 mb-4 overflow-hidden">
+                        <div
+                          className="bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-500 h-2 rounded-full transition-all duration-500 ease-out"
+                          style={{
+                            width: `${caloriesProgressPercent}%`,
+                          }}
+                        />
+                      </div>
+
+                      <div className="flex justify-between items-center gap-2">
+                        <div className="flex-1 p-2 rounded-lg bg-blue-50 flex flex-col items-center">
+                          <Beef className="w-4 h-4 text-blue-600 mb-0.5" />
+                          <p className="text-[10px] font-semibold text-blue-600">Protein</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.round(dailyStats.totalProtein) || 0}g
+                          </p>
+                          <p className="text-[10px] text-gray-500">of 131g</p>
+                        </div>
+                        <div className="flex-1 p-2 rounded-lg bg-orange-50 flex flex-col items-center">
+                          <Wheat className="w-4 h-4 text-orange-600 mb-0.5" />
+                          <p className="text-[10px] font-semibold text-orange-600">Carbs</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.round(dailyStats.totalCarbs) || 0}g
+                          </p>
+                          <p className="text-[10px] text-gray-500">of 263g</p>
+                        </div>
+                        <div className="flex-1 p-2 rounded-lg bg-yellow-50 flex flex-col items-center">
+                          <Droplet className="w-4 h-4 text-yellow-600 mb-0.5" />
+                          <p className="text-[10px] font-semibold text-yellow-600">Fat</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.round(dailyStats.totalFat) || 0}g
+                          </p>
+                          <p className="text-[10px] text-gray-500">of 70g</p>
+                        </div>
+                        <div className="flex-1 p-2 rounded-lg bg-green-50 flex flex-col items-center">
+                          <Leaf className="w-4 h-4 text-green-600 mb-0.5" />
+                          <p className="text-[10px] font-semibold text-green-600">Fiber</p>
+                          <p className="text-sm font-bold text-gray-900">
+                            {Math.round(dailyStats.totalFiber) || 0}g
+                          </p>
+                          <p className="text-[10px] text-gray-500">of 30g</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div ref={trendPanelRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-xs md:text-sm text-gray-500">Calorie Trend</p>
+                          <p className="text-sm md:text-base font-semibold text-gray-900">
+                            Last {trendRangeDays} days
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+                          {[7, 14, 30].map((days) => (
+                            <button
+                              key={days}
+                              type="button"
+                              onClick={() => setTrendRangeDays(days)}
+                              className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
+                                trendRangeDays === days
+                                  ? "bg-emerald-500 text-white shadow-sm"
+                                  : "text-gray-600 hover:bg-white"
+                              }`}
+                            >
+                              {days}D
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2 mb-3">
+                        <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
+                          <p className="text-[10px] text-emerald-700">Average</p>
+                          <p className="text-xs md:text-sm font-semibold text-emerald-900">
+                            {trendAverageCalories} kcal
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+                          <p className="text-[10px] text-slate-600">Best Day</p>
+                          <p className="text-xs md:text-sm font-semibold text-slate-900">
+                            {trendBestDay
+                              ? `${trendBestDay.label} (${trendBestDay.calories} kcal)`
+                              : "-"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-rose-50 px-2 py-1.5">
+                          <p className="text-[10px] text-rose-700">Above Target</p>
+                          <p className="text-xs md:text-sm font-semibold text-rose-900">
+                            {trendAboveTargetDays}/{calorieTrendData.length || trendRangeDays} days
+                          </p>
+                        </div>
+                      </div>
+
+                      {trendLoading ? (
+                        <div className="h-36 rounded-xl bg-gradient-to-r from-gray-100 via-gray-50 to-gray-100 animate-pulse" />
+                      ) : calorieTrendData.length === 0 ? (
+                        <div className="h-36 rounded-xl border border-dashed border-gray-200 flex items-center justify-center text-sm text-gray-500">
+                          No trend data available
+                        </div>
+                      ) : (
+                        <>
+                          <div className="w-full h-44">
+                            <ResponsiveContainer width="100%" height="100%">
+                              <LineChart
+                                data={calorieChartData}
+                                margin={{ top: 30, right: 22, left: 0, bottom: 12 }}
+                              >
+                                <XAxis
+                                  dataKey="label"
+                                  interval={0}
+                                  ticks={visibleNutritionTickLabels}
+                                  padding={{ left: 6, right: 12 }}
+                                  minTickGap={12}
+                                  tick={{ fontSize: 10, fill: "#6b7280" }}
+                                  axisLine={false}
+                                  tickLine={false}
+                                />
+                                <YAxis
+                                  width={34}
+                                  tick={{ fontSize: 10, fill: "#6b7280" }}
+                                  axisLine={false}
+                                  tickLine={false}
+                                  domain={[0, "auto"]}
+                                  tickCount={6}
+                                />
+                                {/* <Tooltip
+                                  cursor={{ stroke: "#d1d5db", strokeDasharray: "3 3" }}
+                                  formatter={(value) => [`${value} kcal`, "Calories"]}
+                                  labelFormatter={(label) => `${label}`}
+                                /> */}
+
+                                <ReferenceLine
+                                  y={calorieTarget}
+                                  stroke="#9ca3af"
+                                  strokeDasharray="5 5"
+                                  ifOverflow="extendDomain"
+                                />
+
+                                <Line
+                                  type="linear"
+                                  dataKey="calories"
+                                  stroke="#16a34a"
+                                  strokeWidth={2.5}
+                                  dot={({ cx, cy, payload, index }) => {
+                                    if (
+                                      cx === undefined ||
+                                      cy === undefined ||
+                                      !payload ||
+                                      !visibleNutritionDotIndices.has(index)
+                                    ) {
+                                      return null;
+                                    }
+                                    const isAbove = (payload.calories || 0) > calorieTarget;
+                                    return (
+                                      <circle
+                                        cx={cx}
+                                        cy={cy}
+                                        r={4}
+                                        fill={isAbove ? "#16a34a" : "#16a34a"}
+                                      />
+                                    );
+                                  }}
+                                  activeDot={false}
+                                  isAnimationActive={false}
+                                >
+                                  <LabelList
+                                    dataKey="calories"
+                                    content={renderCaloriePointLabel}
+                                  />
+                                </Line>
+                              </LineChart>
+                            </ResponsiveContainer>
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between text-xs text-gray-600">
+                            <span>Target: {calorieTarget} kcal</span>
+                            <span>Avg: {trendAverageCalories} kcal</span>
+                          </div>
+
+                          {/* <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-500">
+                            <span className="inline-flex items-center gap-1">
+                              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500" />
+                              within target
+                            </span>
+                            <span className="inline-flex items-center gap-1">
+                              <span className="inline-block w-2 h-2 rounded-full bg-rose-500" />
+                              above target
+                            </span>
+                          </div> */}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
-                <div className="flex justify-between items-center gap-2">
-                  <div className="flex-1 p-2 rounded-lg bg-blue-50 flex flex-col items-center">
-                    <Beef className="w-4 h-4 text-blue-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-blue-600">
-                      Protein
-                    </p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {Math.round(dailyStats.totalProtein) || 0}g
-                    </p>
-                    <p className="text-[10px] text-gray-500">of 131g</p>
-                  </div>
-                  <div className="flex-1 p-2 rounded-lg bg-orange-50 flex flex-col items-center">
-                    <Wheat className="w-4 h-4 text-orange-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-orange-600">
-                      Carbs
-                    </p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {Math.round(dailyStats.totalCarbs) || 0}g
-                    </p>
-                    <p className="text-[10px] text-gray-500">of 263g</p>
-                  </div>
-                  <div className="flex-1 p-2 rounded-lg bg-yellow-50 flex flex-col items-center">
-                    <Droplet className="w-4 h-4 text-yellow-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-yellow-600">
-                      Fat
-                    </p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {Math.round(dailyStats.totalFat) || 0}g
-                    </p>
-                    <p className="text-[10px] text-gray-500">of 70g</p>
-                  </div>
-                  <div className="flex-1 p-2 rounded-lg bg-green-50 flex flex-col items-center">
-                    <Leaf className="w-4 h-4 text-green-600 mb-0.5" />
-                    <p className="text-[10px] font-semibold text-green-600">
-                      Fiber
-                    </p>
-                    <p className="text-sm font-bold text-gray-900">
-                      {Math.round(dailyStats.totalFiber) || 0}g
-                    </p>
-                    <p className="text-[10px] text-gray-500">of 30g</p>
-                  </div>
+                <div className="pb-3 md:pb-4 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    aria-label="Go to summary slide"
+                    onClick={() => setActiveOverviewPanel("summary")}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      activeOverviewPanel === "summary"
+                        ? "w-6 bg-emerald-500"
+                        : "w-2.5 bg-gray-300 hover:bg-gray-400"
+                    }`}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Go to trend slide"
+                    onClick={() => setActiveOverviewPanel("trend")}
+                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                      activeOverviewPanel === "trend"
+                        ? "w-6 bg-emerald-500"
+                        : "w-2.5 bg-gray-300 hover:bg-gray-400"
+                    }`}
+                  />
                 </div>
               </div>
             </div>
