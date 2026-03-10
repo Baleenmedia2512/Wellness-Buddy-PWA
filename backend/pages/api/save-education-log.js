@@ -73,6 +73,7 @@ export default async function handler(req, res) {
         nutrition_center_id: nutritionCenterId || null,
         participant_count: participantCount || null,
         center_name: centerName || null,
+        IsDeleted: false,
         CreatedAt: currentTime,
         UpdatedAt: currentTime
       })

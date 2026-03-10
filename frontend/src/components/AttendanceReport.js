@@ -4,8 +4,6 @@ import {
   RefreshCw,
   Calendar,
   Users,
-  MapPin,
-  Home,
   TrendingUp,
   ChevronDown,
   ChevronUp,
@@ -368,14 +366,6 @@ const AttendanceReport = ({ user, onBack }) => {
                       {Math.round(node.attendancePercentage || 0)}% Attendance
                     </span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-3 w-3" />
-                    <span className="font-medium">{node.clubAttendance || 0} club</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Home className="h-3 w-3" />
-                    <span className="font-medium">{node.remoteAttendance || 0} remote</span>
-                  </div>
                 </div>
 
                 {/* Team Counts - Always visible */}
@@ -447,7 +437,7 @@ const AttendanceReport = ({ user, onBack }) => {
             </TouchFeedbackButton>
             <div>
               <h1 className="text-xl font-bold text-gray-800">Attendance Report</h1>
-              <p className="text-xs text-gray-500">Club vs Remote attendance</p>
+              <p className="text-xs text-gray-500">Track team education attendance</p>
             </div>
           </div>
           <TouchFeedbackButton

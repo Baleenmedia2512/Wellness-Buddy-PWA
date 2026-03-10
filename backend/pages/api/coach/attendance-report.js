@@ -85,7 +85,7 @@ export default async function handler(req, res) {
         .in('UserId', allUserIds)
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', 0),
+        .eq('IsDeleted', false),
       
       // Education records
       supabase
@@ -94,7 +94,7 @@ export default async function handler(req, res) {
         .in('UserId', allUserIds)
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', 0),
+        .eq('IsDeleted', false),
       
       // Food/nutrition records
       supabase
@@ -103,7 +103,7 @@ export default async function handler(req, res) {
         .in('UserID', allUserIds.map(String))
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
-        .eq('IsDeleted', 0)
+        .eq('IsDeleted', false)
     ]);
 
     console.log('📊 [attendance-report] Discipline data fetched:', {
@@ -243,7 +243,7 @@ export default async function handler(req, res) {
           .from('education_logs_table')
           .select('id, attendance_type, CreatedAt')
           .eq('UserId', member.UserId)
-          .eq('IsDeleted', 0)
+          .eq('IsDeleted', false)
           .gte('CreatedAt', start)
           .lte('CreatedAt', end + 'T23:59:59');
 
