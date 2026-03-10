@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, Phone, MessageCircle } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, Phone, MessageCircle, Eye, X } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -9,9 +9,14 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('direct'); // 'direct' | 'full'
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [showStreetView, setShowStreetView] = useState(false);
+  const [streetViewLoading, setStreetViewLoading] = useState(false);
+  const [selectedCenter, setSelectedCenter] = useState(null);
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
+  const panoramaRef = useRef(null);
+  const streetViewRef = useRef(null);
   const markersRef = useRef([]);
   const markersMapRef = useRef({}); // Map center.id to marker
   const infoWindowRef = useRef(null);
@@ -140,6 +145,100 @@ const NutritionCentersMap = ({ user, onBack }) => {
     return data.userId;
   };
 
+  // Open Street View for a center
+  const openStreetView = (center) => {
+    console.log('🗺️ Opening Street View for:', center.center_name, center);
+    console.log('📍 Coordinates:', center.latitude, center.longitude);
+    console.log('🔍 Google Maps available:', !!window.google?.maps);
+    console.log('🔍 StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
+    
+    if (!window.google || !window.google.maps) {
+      alert('Google Maps is not loaded yet. Please wait a moment and try again.');
+      return;
+    }
+    
+    setSelectedCenter(center);
+    setShowStreetView(true);
+  };
+
+  // Initialize Street View when overlay is shown
+  useEffect(() => {
+    if (showStreetView && selectedCenter && panoramaRef.current && window.google && window.google.maps) {
+      console.log('🏗️ Initializing Street View...');
+      
+      const position = {
+        lat: parseFloat(selectedCenter.latitude),
+        lng: parseFloat(selectedCenter.longitude),
+      };
+
+      try {
+        // Create Street View panorama
+        const panorama = new window.google.maps.StreetViewPanorama(
+          panoramaRef.current,
+          {
+            position: position,
+            pov: { heading: 0, pitch: 0 },
+            zoom: 1,
+            addressControl: true,
+            fullscreenControl: true,
+            motionTrackingControl: false,
+            enableCloseButton: false,
+          }
+        );
+
+        // Add marker to show club location
+        const marker = new window.google.maps.Marker({
+          position: position,
+          map: panorama,
+          title: selectedCenter.center_name,
+          label: {
+            text: '📍',
+            fontSize: '24px',
+          },
+          icon: {
+            path: window.google.maps.SymbolPath.CIRCLE,
+            scale: 15,
+            fillColor: '#10b981',
+            fillOpacity: 1,
+            strokeColor: '#ffffff',
+            strokeWeight: 3,
+          },
+        });
+
+        // Add info window for marker
+        const infoWindow = new window.google.maps.InfoWindow({
+          content: `
+            <div style="padding: 8px;">
+              <h3 style="margin: 0 0 4px 0; font-weight: bold; color: #1f2937;">${selectedCenter.center_name}</h3>
+              <p style="margin: 0; font-size: 12px; color: #6b7280;">Owner: ${selectedCenter.ownerName}</p>
+            </div>
+          `,
+        });
+
+        marker.addListener('click', () => {
+          infoWindow.open(panorama, marker);
+        });
+
+        // Auto-open info window
+        setTimeout(() => {
+          infoWindow.open(panorama, marker);
+        }, 500);
+
+        streetViewRef.current = panorama;
+        console.log('✅ Street View initialized successfully with marker');
+      } catch (err) {
+        console.error('❌ Error initializing Street View:', err);
+      }
+    }
+  }, [showStreetView, selectedCenter]);
+
+  // Close Street View
+  const closeStreetView = () => {
+    setShowStreetView(false);
+    setSelectedCenter(null);
+    streetViewRef.current = null;
+  };
+
   // View center on map - Simple function to zoom and show details
   const viewCenterOnMap = (center) => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
@@ -209,7 +308,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
         },
       });
 
-      // Info window content
+      // Info window content with Street View button
       const infoContent = `
         <div style="padding: 8px; max-width: 250px;">
           <h3 style="margin: 0 0 8px 0; font-weight: bold; color: #1f2937;">${center.center_name}</h3>
@@ -223,12 +322,20 @@ const NutritionCentersMap = ({ user, onBack }) => {
             <strong>Today's Attendance:</strong> ${center.todayAttendance} (${center.attendancePercentage}%)
           </p>
           ${center.education_hour ? `<p style="margin: 4px 0; font-size: 13px; color: #6b7280;"><strong>Education Hour:</strong> ${center.education_hour}</p>` : ''}
-          ${center.owner_phone ? `
-            <div style="margin-top: 12px; display: flex; gap: 8px;">
-              <a href="tel:${center.owner_phone}" style="padding: 6px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">📞 Call</a>
-              <a href="https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}" target="_blank" style="padding: 6px 12px; background: #25D366; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">💬 WhatsApp</a>
-            </div>
-          ` : ''}
+          <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
+            <button 
+              onclick="window.openStreetViewForCenter(${center.id})" 
+              style="padding: 8px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;"
+            >
+              👁️ View Street View
+            </button>
+            ${center.owner_phone ? `
+              <div style="display: flex; gap: 8px;">
+                <a href="tel:${center.owner_phone}" style="padding: 6px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">📞 Call</a>
+                <a href="https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}" target="_blank" style="padding: 6px 12px; background: #25D366; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">💬 WhatsApp</a>
+              </div>
+            ` : ''}
+          </div>
         </div>
       `;
 
@@ -258,6 +365,21 @@ const NutritionCentersMap = ({ user, onBack }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, user, teamFilter]);
+
+  // Set up global function for info window button
+  useEffect(() => {
+    window.openStreetViewForCenter = (centerId) => {
+      const center = centers.find(c => c.id === centerId);
+      if (center) {
+        openStreetView(center);
+        infoWindowRef.current?.close();
+      }
+    };
+
+    return () => {
+      delete window.openStreetViewForCenter;
+    };
+  }, [centers]);
 
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
@@ -378,28 +500,40 @@ const NutritionCentersMap = ({ user, onBack }) => {
                         </div>
                       </div>
 
-                      {center.owner_phone && (
-                        <div className="flex gap-2 ml-4">
-                          <a
-                            href={`tel:${center.owner_phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
-                            title="Call"
-                          >
-                            <Phone className="h-4 w-4" />
-                          </a>
-                          <a
-                            href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
-                            title="WhatsApp"
-                          >
-                            <MessageCircle className="h-4 w-4" />
-                          </a>
-                        </div>
-                      )}
+                      <div className="flex flex-col gap-2 ml-4">
+                        <TouchFeedbackButton
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openStreetView(center);
+                          }}
+                          className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
+                          title="Street View"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </TouchFeedbackButton>
+                        {center.owner_phone && (
+                          <>
+                            <a
+                              href={`tel:${center.owner_phone}`}
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                              title="Call"
+                            >
+                              <Phone className="h-4 w-4" />
+                            </a>
+                            <a
+                              href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                              title="WhatsApp"
+                            >
+                              <MessageCircle className="h-4 w-4" />
+                            </a>
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))
@@ -408,6 +542,29 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </>
         )}
       </div>
+
+      {/* Street View Overlay */}
+      {showStreetView && selectedCenter && (
+        <div className="fixed inset-0 z-[60] bg-black">
+          <div className="absolute top-0 left-0 right-0 z-10 bg-black bg-opacity-75 p-4 flex items-center justify-between">
+            <div>
+              <h2 className="text-white text-lg font-bold">{selectedCenter.center_name}</h2>
+              <p className="text-white text-sm opacity-75">Street View - {selectedCenter.ownerName}</p>
+            </div>
+            <TouchFeedbackButton
+              onClick={closeStreetView}
+              className="p-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg text-white"
+              ariaLabel="Close Street View"
+            >
+              <X className="h-6 w-6" />
+            </TouchFeedbackButton>
+          </div>
+          <div
+            ref={panoramaRef}
+            className="w-full h-full"
+          />
+        </div>
+      )}
     </div>
   );
 };
