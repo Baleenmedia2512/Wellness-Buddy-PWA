@@ -635,6 +635,20 @@ const NutritionDashboard = ({
 
   /* ---------------- Helpers ---------------- */
 
+  const istToLocalDate = (value) => {
+    if (!value) return new Date(NaN);
+    if (value instanceof Date) return new Date(value.getTime());
+
+    if (typeof value === "string") {
+      // API timestamps can include trailing Z; strip it when we need local-day behavior.
+      const normalized = value.endsWith("Z") ? value.slice(0, -1) : value;
+      const localDate = new Date(normalized);
+      if (!Number.isNaN(localDate.getTime())) return localDate;
+    }
+
+    return new Date(value);
+  };
+
   const getMealCategory = (timeString) => {
     const hour = istToLocalDate(timeString).getHours();
     if (hour >= 5 && hour < 10) return "breakfast";
