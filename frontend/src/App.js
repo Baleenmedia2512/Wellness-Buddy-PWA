@@ -1186,43 +1186,25 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
-      // Check if it's an online meeting platform (Zoom, Meet, Teams, etc.)
-      const onlinePlatforms = ['zoom', 'google meet', 'ms teams', 'webex', 'online meeting', 'microsoft teams', 'meet'];
-      const isOnlineMeeting = onlinePlatforms.some(platform => 
-        educationData.platform.toLowerCase().includes(platform)
+      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
+      // If within 100m of club → club attendance
+      // If not near club → remote attendance
+      console.log("📍 Checking GPS for nearby clubs...");
+      const attendance = await locationAttendanceService.determineAttendance(
+        apiBaseUrl,
+        userId
       );
+      console.log("✅ Attendance determined:", attendance);
 
-      let attendance;
-      if (isOnlineMeeting) {
-        // Online meeting - don't check GPS, mark as remote
-        console.log("💻 Online meeting detected - marking as remote");
-        attendance = {
-          attendanceType: 'remote',
-          latitude: null,
-          longitude: null,
-          nutritionCenterId: null,
-          nearbyCenters: [],
-          centerName: null,
-        };
-      } else {
-        // In-person or unknown - check GPS for club attendance
-        console.log("📍 In-person meeting detected - checking for nearby clubs...");
-        attendance = await locationAttendanceService.determineAttendance(
-          apiBaseUrl,
-          userId
-        );
-        console.log("✅ Attendance determined:", attendance);
-
-        // If multiple clubs detected and no club selected yet, show selection modal
-        if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
-          console.log("🏢 Multiple clubs detected, showing selection modal");
-          setNearbyCenters(attendance.nearbyCenters);
-          setPendingEducationData({ educationData, imageBase64, attendance });
-          setShowClubSelectionModal(true);
-          setSaveLoading(false);
-          setLoadingState("idle");
-          return; // Wait for user to select club
-        }
+      // If multiple clubs detected and no club selected yet, show selection modal
+      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+        console.log("🏢 Multiple clubs detected, showing selection modal");
+        setNearbyCenters(attendance.nearbyCenters);
+        setPendingEducationData({ educationData, imageBase64, attendance });
+        setShowClubSelectionModal(true);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        return; // Wait for user to select club
       }
 
       // Determine final values

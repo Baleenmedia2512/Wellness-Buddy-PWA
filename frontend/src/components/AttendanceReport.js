@@ -202,8 +202,8 @@ const AttendanceReport = ({ user, onBack }) => {
         ) : reportData ? (
           <>
             {/* Summary Stats */}
-            <div className="bg-white rounded-lg shadow-md p-3 mb-4">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
                 <Calendar className="h-5 w-5 text-green-600" />
                 <h2 className="text-lg font-bold text-gray-800">
                   {reportData.dateRange.start === reportData.dateRange.end
@@ -211,13 +211,14 @@ const AttendanceReport = ({ user, onBack }) => {
                     : `Period: ${reportData.dateRange.start} to ${reportData.dateRange.end}`}
                 </h2>
               </div>
-              <div className="flex justify-center">
-                <div className="bg-blue-50 rounded-lg p-4 text-center min-w-[150px]">
-                  <p className="text-3xl font-bold text-blue-600">
-                    {reportData.clubSummary?.length || 0}
-                  </p>
-                  <p className="text-sm text-gray-600 mt-1">Clubs Attended</p>
-                </div>
+              
+              {/* Clubs Attended - Single Stat */}
+              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-lg p-6 text-center shadow-sm">
+                <MapPin className="h-8 w-8 text-green-600 mx-auto mb-3" />
+                <p className="text-4xl font-bold text-green-600 mb-2">
+                  {reportData.clubSummary?.length || 0}
+                </p>
+                <p className="text-sm text-gray-600 font-medium">Clubs Attended</p>
               </div>
             </div>
 

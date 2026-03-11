@@ -333,25 +333,26 @@ const ClubAttendanceReport = ({ user, onBack }) => {
         ) : reportData ? (
           <>
             {/* Summary Stats */}
-            <div className="bg-white rounded-lg shadow-md p-3 mb-4">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="bg-white rounded-lg shadow-md p-4 mb-4">
+              <div className="flex items-center gap-2 mb-3">
                 <Calendar className="h-5 w-5 text-green-600" />
                 <h2 className="text-lg font-bold text-gray-800">
                   {reportData.clubInfo?.name || 'Club Attendance'}
                 </h2>
               </div>
-              <div className="text-sm text-gray-600 mb-2">
+              <div className="text-sm text-gray-600 mb-4">
                 {reportData.dateRange.start === reportData.dateRange.end
                   ? `Date: ${reportData.dateRange.start}`
                   : `Period: ${reportData.dateRange.start} to ${reportData.dateRange.end}`}
               </div>
-              <div className="flex justify-center">
-                <div className="bg-blue-50 rounded-lg p-3 text-center">
-                  <p className="text-2xl font-bold text-blue-600">
-                    {reportData.attendees.length}
-                  </p>
-                  <p className="text-xs text-gray-600 mt-1">Total Attendees</p>
-                </div>
+              
+              {/* Total Attendees - Single Stat */}
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 text-center shadow-sm">
+                <Users className="h-8 w-8 text-blue-600 mx-auto mb-3" />
+                <p className="text-4xl font-bold text-blue-600 mb-2">
+                  {reportData.attendees.length}
+                </p>
+                <p className="text-sm text-gray-600 font-medium">Total Attendees</p>
               </div>
             </div>
 
