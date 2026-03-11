@@ -34,17 +34,9 @@ const NutritionCentersMap = ({ user, onBack }) => {
     const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
     
     if (Capacitor.isNativePlatform()) {
-      // On native platforms, use Browser plugin to open WhatsApp
-      try {
-        await Browser.open({ 
-          url: `https://wa.me/${cleanPhone}`,
-          presentationStyle: 'popover'
-        });
-      } catch (error) {
-        console.error('Failed to open WhatsApp:', error);
-        // Fallback: try direct link
-        window.location.href = `https://wa.me/${cleanPhone}`;
-      }
+      // On native platforms, use direct window.location to trigger WhatsApp app
+      // This triggers the system's intent handler to open WhatsApp
+      window.location.href = `https://wa.me/${cleanPhone}`;
     } else {
       // On web, open in new tab
       window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
@@ -57,15 +49,8 @@ const NutritionCentersMap = ({ user, onBack }) => {
       const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
       
       if (Capacitor.isNativePlatform()) {
-        try {
-          await Browser.open({ 
-            url: `https://wa.me/${cleanPhone}`,
-            presentationStyle: 'popover'
-          });
-        } catch (error) {
-          console.error('Failed to open WhatsApp:', error);
-          window.location.href = `https://wa.me/${cleanPhone}`;
-        }
+        // On native platforms, use direct window.location to trigger WhatsApp app
+        window.location.href = `https://wa.me/${cleanPhone}`;
       } else {
         window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
       }
