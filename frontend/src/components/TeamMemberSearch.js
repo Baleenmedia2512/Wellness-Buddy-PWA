@@ -20,6 +20,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
   const [loading, setLoading] = useState(false);
   const [allTeamMembers, setAllTeamMembers] = useState([]);
   const [hasCleared, setHasCleared] = useState(false); // Track if user manually cleared search
+  const [savedUserName, setSavedUserName] = useState(''); // Store the user's saved profile name
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -30,6 +31,39 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
   // Check if user is a coach or coCoach
   const isCoach = userRole === 'coach' || userRole === 'coCoach' || userRole === 'admin' || userRole === 'developer';
+
+  // Fetch user's saved profile name
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (!user?.email) return;
+      
+      try {
+        const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+        const cacheBuster = Date.now();
+        const response = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
+          {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
+        );
+        
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.userName) {
+            setSavedUserName(data.data.userName);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching user profile for search:', err);
+      }
+    };
+
+    fetchUserProfile();
+  }, [user?.email]);
 
   // Load all team members on mount
   useEffect(() => {
@@ -44,7 +78,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
         const membersWithCoach = [
           {
             userId: user.id,
-            userName: user.name || user.email,
+            userName: savedUserName || user.name || user.email,
             email: user.email,
             role: userRole,
             isSelf: true,
@@ -52,7 +86,12 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
           ...flatList,
         ];
         
-        setAllTeamMembers(membersWithCoach);
+        // Deduplicate by userId to prevent duplicate keys
+        const uniqueMembers = Array.from(
+          new Map(membersWithCoach.map(member => [member.userId, member])).values()
+        );
+        
+        setAllTeamMembers(uniqueMembers);
       } catch (error) {
         console.error('Error loading team members:', error);
       } finally {
@@ -62,7 +101,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
     loadTeamMembers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, isCoach, userRole]);
+  }, [user?.id, isCoach, userRole, savedUserName]);
 
   // Filter suggestions based on search query
   useEffect(() => {
@@ -133,9 +172,9 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
   const displayName = selectedMember 
     ? selectedMember.isSelf 
-      ? user?.name || user?.email?.split('@')[0] || 'Me'
+      ? savedUserName || user?.name || user?.email?.split('@')[0] || 'Me'
       : selectedMember.userName
-    : user?.name || user?.email?.split('@')[0] || 'Me';
+    : savedUserName || user?.name || user?.email?.split('@')[0] || 'Me';
 
   // Show displayName only if user hasn't manually cleared it
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
@@ -226,8 +265,8 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
               </div>
             ) : suggestions.length > 0 ? (
               <ul className="py-1">
-                {suggestions.map((member) => (
-                  <li key={member.userId}>
+                {suggestions.map((member, index) => (
+                  <li key={`${member.userId}-${index}`}>
                     <button
                       onClick={() => handleSelectMember(member)}
                       className="w-full px-4 py-2.5 text-left hover:bg-gray-50 transition-colors flex items-center gap-3"

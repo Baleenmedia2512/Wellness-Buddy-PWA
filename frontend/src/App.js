@@ -79,6 +79,8 @@ const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"
 const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
+const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
+const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -171,6 +173,10 @@ function WellnessValleyApp() {
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
+
+  // Wellness University state
+  const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
+  const [showWellnessReport, setShowWellnessReport] = useState(false);
 
   // 🐛 Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
@@ -2784,24 +2790,14 @@ function WellnessValleyApp() {
             ? () => setShowAdminDashboard(true)
             : null
         }
-        onShowDisciplineReport={
-          userRole === "coach" || userRole === "admin" || userRole === "developer"
-            ? () => {
-                setShowDisciplineReport(true);
-                localStorage.setItem("currentPage", "discipline-report");
-              }
-            : null
-        }
-        onShowAttendanceReport={() => setShowAttendanceReport(true)}
-        onShowClubAttendanceReport={
-          userRole === "coach" || userRole === "admin" || userRole === "developer"
-            ? () => setShowClubAttendanceReport(true)
-            : null
-        }
-        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
-        onShowRegisterCenter={
-          userRole === "coach" || userRole === "admin" || userRole === "developer"
-            ? () => setShowRegisterCenter(true)
+        onShowDisciplineReport={() => {
+          setShowDisciplineReport(true);
+          localStorage.setItem("currentPage", "discipline-report");
+        }}
+        onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
+        onShowWellnessReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowWellnessReport(true)
             : null
         }
         onSignOut={handleSignOut}
@@ -3277,6 +3273,27 @@ function WellnessValleyApp() {
               // Setup complete, user can now access dashboard
             }}
             onLogout={handleSignOut}
+          />
+        </Suspense>
+      )}
+
+      {/* Wellness University Enrollment */}
+      {showWellnessEnrollment && (
+        <Suspense fallback={<LoadingSpinner message="Loading enrollment..." />}>
+          <WellnessUniversityEnrollment
+            onClose={() => setShowWellnessEnrollment(false)}
+            user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Wellness University Report */}
+      {showWellnessReport && (
+        <Suspense fallback={<LoadingSpinner message="Loading report..." />}>
+          <WellnessUniversityReport
+            onClose={() => setShowWellnessReport(false)}
+            user={user}
+            userRole={userRole}
           />
         </Suspense>
       )}

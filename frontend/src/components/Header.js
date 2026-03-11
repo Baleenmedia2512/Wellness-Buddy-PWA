@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, MapPin, TrendingUp, Building2, Map } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -248,74 +248,38 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                     </TouchFeedbackButton>
                   )}
 
-                  {/* Attendance Report - shown for all users to see their own attendance */}
-                  {onShowAttendanceReport && (
+                  {/* Wellness University Enrollment - shown for all users */}
+                  {onShowWellnessEnrollment && (
                     <TouchFeedbackButton
                       onClick={() => {
-                        onShowAttendanceReport();
+                        onShowWellnessEnrollment();
                         closeMenu();
                       }}
-                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-indigo-50 text-left transition-colors"
-                      ariaLabel="View My Attendance"
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
+                      ariaLabel="Wellness University Enrollment"
                     >
-                      <TrendingUp className="h-5 w-5 text-indigo-600 mt-1 flex-shrink-0" />
+                      <GraduationCap className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">My Club Attendance</p>
-                        <p className="text-xs text-gray-500">Your attendance history</p>
+                        <p className="text-sm font-medium text-gray-800">Wellness University</p>
+                        <p className="text-xs text-gray-500">View or enroll in programs</p>
                       </div>
                     </TouchFeedbackButton>
                   )}
 
-                  {/* Club Attendance Report - shown for coach/admin/developer roles only */}
-                  {onShowClubAttendanceReport && (
+                  {/* Wellness University Report - shown for coaches/admins only */}
+                  {onShowWellnessReport && (
                     <TouchFeedbackButton
                       onClick={() => {
-                        onShowClubAttendanceReport();
-                        closeMenu();
-                      }}
-                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-blue-50 text-left transition-colors"
-                      ariaLabel="View Club Attendance Report"
-                    >
-                      <TrendingUp className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Club Attendance Report</p>
-                        <p className="text-xs text-gray-500">Track club education attendance</p>
-                      </div>
-                    </TouchFeedbackButton>
-                  )}
-
-                  {/* Nutrition Centres Map - shown for all users */}
-                  {onShowNutritionCentersMap && (
-                    <TouchFeedbackButton
-                      onClick={() => {
-                        onShowNutritionCentersMap();
+                        onShowWellnessReport();
                         closeMenu();
                       }}
                       className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
-                      ariaLabel="View Nutrition Centres Map"
+                      ariaLabel="View Enrollment Reports"
                     >
-                      <Map className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <FileBarChart className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Nutrition Centres Map</p>
-                        <p className="text-xs text-gray-500">View club locations</p>
-                      </div>
-                    </TouchFeedbackButton>
-                  )}
-
-                  {/* Register Nutrition Centre - shown for coach/admin/developer roles only */}
-                  {onShowRegisterCenter && (
-                    <TouchFeedbackButton
-                      onClick={() => {
-                        onShowRegisterCenter();
-                        closeMenu();
-                      }}
-                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
-                      ariaLabel="Register Nutrition Centre"
-                    >
-                      <Building2 className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">Register Centre</p>
-                        <p className="text-xs text-gray-500">Add a new club location</p>
+                        <p className="text-sm font-medium text-gray-800">Enrollment Reports</p>
+                        <p className="text-xs text-gray-500">View program enrollments</p>
                       </div>
                     </TouchFeedbackButton>
                   )}

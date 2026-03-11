@@ -72,20 +72,27 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.3',
+  VERSION: '2.4',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 25,
+  VERSION_CODE: 26,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'WhatsApp Share Fix & Improvements',
+  RELEASE_NAME: 'Team Dashboard Enhancements',
   
   // Build date
-  BUILD_DATE: '2026-03-03',
+  BUILD_DATE: '2026-03-10',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.4 (Code 26) - 2026-03-10
+ *   🐛 Fixed timezone issue causing incorrect date calculations
+ *   📊 Enhanced Team Dashboard with improved member search functionality
+ *   🔍 Added advanced team member filtering and search capabilities
+ *   ✨ Improved overall team management experience
+ *   🔧 General stability improvements and bug fixes
  * 
  * Version 2.3 (Code 25) - 2026-03-03
  *   🔧 Fixed coach heading - now hidden completely when no coach is assigned
