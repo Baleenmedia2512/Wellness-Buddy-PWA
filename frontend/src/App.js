@@ -43,9 +43,13 @@ import { educationDetectionService } from "./services/educationDetectionService"
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
+import { locationAttendanceService } from "./services/locationAttendanceService";
+import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
+import ClubSelectionModal from "./components/ClubSelectionModal";
+import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import CoachScoreSummary from "./components/CoachScoreSummary";
@@ -69,6 +73,10 @@ import TouchFeedbackButton from "./components/TouchFeedbackButton";
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const ClubAttendanceReport = lazy(() => import("./components/ClubAttendanceReport"));
+const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
+const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
@@ -117,6 +125,19 @@ function WellnessValleyApp() {
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
 
+  // Club selection state
+  const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
+  const [nearbyCenters, setNearbyCenters] = useState([]);
+  const [pendingEducationData, setPendingEducationData] = useState(null);
+  
+  // Custom alert modal state
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
+
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
 
@@ -134,6 +155,18 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
+
+  // Attendance report state (for coaches)
+  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
+
+  // Club attendance report state (for coaches/club owners)
+  const [showClubAttendanceReport, setShowClubAttendanceReport] = useState(false);
+
+  // Nutrition centers map state (for all users)
+  const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
+
+  // Register nutrition center state (for coaches)
+  const [showRegisterCenter, setShowRegisterCenter] = useState(false);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -1173,7 +1206,7 @@ function WellnessValleyApp() {
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
    */
-  const saveEducationLog = async (educationData, imageBase64) => {
+  const saveEducationLog = async (educationData, imageBase64, selectedClub = null) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
 
@@ -1187,18 +1220,50 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
+      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
+      // If within 100m of club → club attendance
+      // If not near club → remote attendance
+      console.log("📍 Checking GPS for nearby clubs...");
+      const attendance = await locationAttendanceService.determineAttendance(
+        apiBaseUrl,
+        userId
+      );
+      console.log("✅ Attendance determined:", attendance);
+
+      // If multiple clubs detected and no club selected yet, show selection modal
+      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+        console.log("🏢 Multiple clubs detected, showing selection modal");
+        setNearbyCenters(attendance.nearbyCenters);
+        setPendingEducationData({ educationData, imageBase64, attendance });
+        setShowClubSelectionModal(true);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        return; // Wait for user to select club
+      }
+
+      // Determine final values
+      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      const finalCenterName = selectedClub?.center_name || attendance.centerName;
+      const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
           imageBase64: imageBase64,
-          platform: educationData.platform,
+          platform: finalPlatform,
           topic: educationData.topic,
           confidence: educationData.confidence,
+          participantCount: educationData.participantCount || null,
           deviceInfo: window.navigator.userAgent,
           clientTimestamp: new Date().toISOString(),
-          clientTimezoneOffset: new Date().getTimezoneOffset()
+          clientTimezoneOffset: new Date().getTimezoneOffset(),
+          latitude: attendance.latitude,
+          longitude: attendance.longitude,
+          attendanceType: attendance.attendanceType,
+          nutritionCenterId: finalCenterId,
+          centerName: finalCenterName,
         }),
       });
 
@@ -1213,6 +1278,18 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
       
+      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      if (finalCenterName) {
+        console.log(`   🏢 Club: ${finalCenterName}`);
+      }
+      if (educationData.participantCount) {
+        console.log(`   👥 Participants: ${educationData.participantCount}`);
+      }
+      if (data.isOnTime !== undefined) {
+        const status = data.isOnTime ? '✅ ON-TIME (Present)' : '⚠️ LATE (Absent)';
+        console.log(`   ⏰ Timing: ${status}`);
+        console.log(`   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`);
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -1222,6 +1299,23 @@ function WellnessValleyApp() {
       );
       setSaveLoading(false);
       setLoadingState("idle");
+    }
+  };
+
+  // Handle club selection from modal
+  const handleClubSelection = async (selectedCenter) => {
+    console.log("🏢 Club selected:", selectedCenter);
+    setShowClubSelectionModal(false);
+    
+    if (pendingEducationData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      await saveEducationLog(
+        pendingEducationData.educationData,
+        pendingEducationData.imageBase64,
+        selectedCenter
+      );
+      setPendingEducationData(null);
     }
   };
 
@@ -1407,6 +1501,25 @@ function WellnessValleyApp() {
       imageProcessingInProgress.current = false;
       return;
     }
+
+    // 🚨 FRAUD PREVENTION: Validate image freshness (prevent old/proxy images)
+    // Check EXIF metadata to ensure image was taken today
+    console.log('🔍 Validating image freshness...');
+    const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+    
+    if (!validation.isValid) {
+      console.error('❌ Image validation failed:', validation);
+      setAlertModal({
+        isOpen: true,
+        title: '🚨 PROXY ALERT',
+        message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+        type: 'error'
+      });
+      imageProcessingInProgress.current = false;
+      return;
+    }
+    
+    console.log('✅ Image validated:', validation.message);
 
     setSelectedImage(file);
     setError(null);
@@ -2671,10 +2784,26 @@ function WellnessValleyApp() {
             ? () => setShowAdminDashboard(true)
             : null
         }
-        onShowDisciplineReport={() => {
-          setShowDisciplineReport(true);
-          localStorage.setItem("currentPage", "discipline-report");
-        }}
+        onShowDisciplineReport={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => {
+                setShowDisciplineReport(true);
+                localStorage.setItem("currentPage", "discipline-report");
+              }
+            : null
+        }
+        onShowAttendanceReport={() => setShowAttendanceReport(true)}
+        onShowClubAttendanceReport={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => setShowClubAttendanceReport(true)
+            : null
+        }
+        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
+        onShowRegisterCenter={
+          userRole === "coach" || userRole === "admin" || userRole === "developer"
+            ? () => setShowRegisterCenter(true)
+            : null
+        }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
@@ -3026,6 +3155,28 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Club Selection Modal */}
+      <ClubSelectionModal
+        isOpen={showClubSelectionModal}
+        onClose={() => {
+          setShowClubSelectionModal(false);
+          setPendingEducationData(null);
+          setSaveLoading(false);
+          setLoadingState("idle");
+        }}
+        nearbyCenters={nearbyCenters}
+        onSelectClub={handleClubSelection}
+      />
+
+      {/* Custom Alert Modal (for proxy alerts and other critical messages) */}
+      <CustomAlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+      />
+
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
         isOpen={showNewUserProfileModal}
@@ -3044,6 +3195,54 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Attendance Report */}
+      {showAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading attendance report..." />}
+        >
+          <AttendanceReport
+            user={user}
+            onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Club Attendance Report */}
+      {showClubAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading club attendance report..." />}
+        >
+          <ClubAttendanceReport
+            user={user}
+            onBack={() => setShowClubAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Nutrition Centers Map */}
+      {showNutritionCentersMap && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading nutrition centers map..." />}
+        >
+          <NutritionCentersMap
+            user={user}
+            onBack={() => setShowNutritionCentersMap(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Register Nutrition Center */}
+      {showRegisterCenter && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading registration form..." />}
+        >
+          <NutritionCenterRegistration
+            user={user}
+            onBack={() => setShowRegisterCenter(false)}
           />
         </Suspense>
       )}

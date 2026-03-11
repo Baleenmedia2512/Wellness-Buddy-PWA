@@ -1,6 +1,7 @@
 ﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { largeBodyConfig as config } from '../../utils/apiConfig.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 
 export { config };
 
@@ -23,13 +24,18 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo, clientTimestamp, clientTimezoneOffset } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
     topic, 
     confidence,
-    hasImageBase64: !!imageBase64
+    participantCount,
+    hasImageBase64: !!imageBase64,
+    attendanceType,
+    hasLocation: !!(latitude && longitude),
+    nutritionCenterId,
+    centerName
   });
 
   // Validation
@@ -51,6 +57,10 @@ export default async function handler(req, res) {
 
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
+    // Get education time window and check if current time is within it
+    const timeWindows = await getTimeWindows();
+    const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
+    
     // Insert into education_logs_table using Supabase
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
@@ -70,6 +80,14 @@ export default async function handler(req, res) {
       note: 'Compare client upload time vs stored IST'
     });
     
+    const currentTimeOnly = new Date(currentTime).toTimeString().substring(0, 8);
+    const isOnTime = currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end;
+    
+    console.log('⏰ [save-education-log] Time check:', {
+      currentTime: currentTimeOnly,
+      window: educationWindow,
+      isOnTime: isOnTime ? '✅ ON-TIME' : '⚠️ LATE'
+    });
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({
@@ -79,6 +97,13 @@ export default async function handler(req, res) {
         Confidence: confidence || null,
         DeviceInfo: deviceInfo || null,
         ImageBase64: imageBase64ToSave,
+        latitude: latitude || null,
+        longitude: longitude || null,
+        attendance_type: attendanceType || null,
+        nutrition_center_id: nutritionCenterId || null,
+        participant_count: participantCount || null,
+        center_name: centerName || null,
+        IsDeleted: false,
         CreatedAt: currentTime,
         UpdatedAt: currentTime
       })
@@ -103,7 +128,11 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: 'Education log saved successfully',
-      id: data?.Id || data?.id || data?.ID
+      id: data?.Id || data?.id || data?.ID,
+      attendanceType: attendanceType,
+      isOnTime: currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end,
+      timeWindow: educationWindow,
+      uploadTime: currentTimeOnly
     });
     return;
 
