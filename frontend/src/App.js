@@ -70,6 +70,7 @@ const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const ClubAttendanceReport = lazy(() => import("./components/ClubAttendanceReport"));
 const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
 const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
@@ -145,6 +146,9 @@ function WellnessValleyApp() {
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
+
+  // Club attendance report state (for coaches/club owners)
+  const [showClubAttendanceReport, setShowClubAttendanceReport] = useState(false);
 
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
@@ -2679,9 +2683,10 @@ function WellnessValleyApp() {
               }
             : null
         }
-        onShowAttendanceReport={
+        onShowAttendanceReport={() => setShowAttendanceReport(true)}
+        onShowClubAttendanceReport={
           userRole === "coach" || userRole === "admin" || userRole === "developer"
-            ? () => setShowAttendanceReport(true)
+            ? () => setShowClubAttendanceReport(true)
             : null
         }
         onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
@@ -3047,6 +3052,18 @@ function WellnessValleyApp() {
           <AttendanceReport
             user={user}
             onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Club Attendance Report */}
+      {showClubAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading club attendance report..." />}
+        >
+          <ClubAttendanceReport
+            user={user}
+            onBack={() => setShowClubAttendanceReport(false)}
           />
         </Suspense>
       )}

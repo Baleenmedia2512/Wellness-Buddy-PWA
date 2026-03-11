@@ -3,12 +3,10 @@ import {
   ArrowLeft,
   RefreshCw,
   Calendar,
-  Users,
-  TrendingUp,
-  ChevronDown,
-  ChevronUp,
+  MapPin,
+  Clock,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -16,8 +14,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reportData, setReportData] = useState(null);
-  const [dateFilter, setDateFilter] = useState('today'); // today, yesterday, last-week, last-month, so-far
-  const [expandedNodes, setExpandedNodes] = useState(new Set());
+  const [dateFilter, setDateFilter] = useState('today'); // today, yesterday,last-week, last-month, so-far
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -95,7 +92,7 @@ const AttendanceReport = ({ user, onBack }) => {
       const { start, end } = getDateRange();
 
       const response = await fetch(
-        `${apiBaseUrl}/api/coach/attendance-report?userId=${userId}&startDate=${start}&endDate=${end}`,
+        `${apiBaseUrl}/api/get-my-club-attendance?userId=${userId}&startDate=${start}&endDate=${end}`,
         {
           cache: 'no-store',
           headers: {
@@ -108,47 +105,15 @@ const AttendanceReport = ({ user, onBack }) => {
 
       console.log('📥 [AttendanceReport] API Response:', {
         success: result.success,
-        memberCount: result.data?.members?.length || 0,
-        teamSize: result.data?.teamSize || 0,
-        sampleMember: result.data?.members?.[0] || null,
-        allMembers: result.data?.members?.map(m => ({ 
-          userId: m.userId, 
-          name: m.userName, 
-          uplineCoachId: m.uplineCoachId,
-          clubAttendance: m.clubAttendance,
-          remoteAttendance: m.remoteAttendance,
-          attendancePercentage: m.attendancePercentage,
-          disciplinePercentage: m.disciplinePercentage,
-          directTeamCount: m.directTeamCount,
-          fullTeamCount: m.fullTeamCount
-        })) || []
+        totalAttendance: result.data?.totalAttendance || 0,
+        clubCount: result.data?.clubSummary?.length || 0,
       });
 
       if (!response.ok || !result.success) {
         throw new Error(result.message || 'Failed to fetch attendance report');
       }
 
-      console.log('🎯 [AttendanceReport] Full Sample Member Data:', result.data?.members?.[0]);
-      console.log('👥 [AttendanceReport] Team counts check:', {
-        member1: result.data?.members?.[0] ? {
-          name: result.data.members[0].userName,
-          directTeam: result.data.members[0].directTeamCount,
-          fullTeam: result.data.members[0].fullTeamCount
-        } : null,
-        member2: result.data?.members?.[1] ? {
-          name: result.data.members[1].userName,
-          directTeam: result.data.members[1].directTeamCount,
-          fullTeam: result.data.members[1].fullTeamCount
-        } : null
-      });
-
       setReportData(result.data);
-      
-      // Auto-expand logged-in coach
-      const loggedInCoach = result.data.members.find(m => m.isLoggedInCoach);
-      if (loggedInCoach) {
-        setExpandedNodes(new Set([loggedInCoach.userId]));
-      }
     } catch (err) {
       console.error('Error fetching attendance report:', err);
       setError(err.message);
@@ -164,264 +129,6 @@ const AttendanceReport = ({ user, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, dateFilter]);
 
-  // Build hierarchical structure (using same pattern as team-hierarchy.js)
-  const buildHierarchy = (members) => {
-    console.log('🔨 [buildHierarchy] Building hierarchy for', members?.length || 0, 'members');
-    
-    if (!members || members.length === 0) {
-      console.log('⚠️ [buildHierarchy] No members to build hierarchy');
-      return [];
-    }
-    
-    console.log('🔨 [buildHierarchy] All members with uplineCoachId:', 
-      members.map(m => ({ 
-        userId: m.userId, 
-        name: m.userName, 
-        uplineCoachId: m.uplineCoachId,
-        isLoggedInCoach: m.isLoggedInCoach 
-      }))
-    );
-    
-    // Build recursive hierarchy with circular reference protection
-    const buildNode = (userId, visited = new Set()) => {
-      // Prevent circular references - check if we've already visited this user in current path
-      if (visited.has(userId)) {
-        console.warn(`⚠️ [buildHierarchy] Circular reference detected for userId: ${userId}`);
-        return null;
-      }
-      
-      const member = members.find(m => m.userId === userId);
-      if (!member) return null;
-      
-      // Add to visited set for this path
-      const newVisited = new Set(visited);
-      newVisited.add(userId);
-      
-      // Clone member data for this specific relationship path
-      const node = {
-        ...member,
-        teamMembers: []
-      };
-      
-      // Find all direct reports
-      const directReports = members.filter(m => 
-        m.uplineCoachId === userId && m.userId !== userId
-      );
-      
-      // Recursively build children
-      directReports.forEach(report => {
-        const childNode = buildNode(report.userId, newVisited);
-        if (childNode) {
-          node.teamMembers.push(childNode);
-        }
-      });
-      
-      console.log(`  ↳ Built node: ${node.userName} (${node.userId}) with ${node.teamMembers.length} children`);
-      
-      return node;
-    };
-    
-    // Find root nodes (members with no uplineCoachId or uplineCoachId not in the list)
-    const memberIds = new Set(members.map(m => m.userId));
-    const rootNodeIds = members
-      .filter(m => !m.uplineCoachId || !memberIds.has(m.uplineCoachId))
-      .map(m => m.userId);
-    
-    console.log('🌳 [buildHierarchy] Root node IDs:', rootNodeIds);
-    
-    // Build hierarchy from each root
-    const rootNodes = rootNodeIds
-      .map(rootId => buildNode(rootId))
-      .filter(node => node !== null);
-
-    console.log('🌳 [buildHierarchy] Built hierarchy:', {
-      rootCount: rootNodes.length,
-      roots: rootNodes.map(r => ({ 
-        userId: r.userId, 
-        name: r.userName, 
-        childrenCount: r.teamMembers?.length || 0,
-        directTeam: r.directTeamCount,
-        fullTeam: r.fullTeamCount,
-        discipline: r.disciplinePercentage,
-        children: r.teamMembers?.map(c => ({ 
-          name: c.userName, 
-          childCount: c.teamMembers?.length || 0,
-          directTeam: c.directTeamCount,
-          fullTeam: c.fullTeamCount,
-          discipline: c.disciplinePercentage
-        }))
-      }))
-    });
-
-    return rootNodes;
-  };
-
-  const toggleNode = (userId) => {
-    const newExpanded = new Set(expandedNodes);
-    if (newExpanded.has(userId)) {
-      newExpanded.delete(userId);
-    } else {
-      newExpanded.add(userId);
-    }
-    setExpandedNodes(newExpanded);
-  };
-
-  // Render hierarchical team node
-  const TeamNode = ({ node, level = 0, isLastChild = false }) => {
-    const isExpanded = expandedNodes.has(node.userId);
-    const hasChildren = node.teamMembers && node.teamMembers.length > 0;
-
-    // Safety: prevent infinite recursion by limiting depth
-    const MAX_DEPTH = 10;
-    if (level > MAX_DEPTH) {
-      console.warn(`⚠️ Max depth (${MAX_DEPTH}) reached for node ${node.userName}`);
-      return null;
-    }
-
-    const getScoreColor = (percentage) => {
-      if (percentage >= 80) return 'bg-green-50 border-green-300 text-green-700';
-      if (percentage >= 60) return 'bg-yellow-50 border-yellow-300 text-yellow-700';
-      return 'bg-red-50 border-red-300 text-red-700';
-    };
-
-    return (
-      <div className="relative flex">
-        {/* Tree Connector Lines */}
-        {level > 0 && (
-          <div className="relative flex-shrink-0" style={{ width: '32px' }}>
-            <div
-              className="absolute top-[32px] sm:top-[40px] left-0 h-[3px] bg-gray-600"
-              style={{ width: '32px' }}
-            />
-            {!isLastChild && (
-              <div
-                className="absolute left-0 top-0 w-[3px] bg-gray-600"
-                style={{ height: 'calc(100% + 12px)' }}
-              />
-            )}
-            {isLastChild && (
-              <div
-                className="absolute left-0 top-0 w-[3px] bg-gray-600"
-                style={{ height: '32px' }}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Node Content */}
-        <div className="flex-1 mb-3">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="bg-white rounded-lg shadow-md border-2 border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all"
-          >
-            {/* Card Header */}
-            <div className="flex items-center gap-3 p-3">
-              {/* Avatar */}
-              <div
-                className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 shadow-sm flex-shrink-0 ${getScoreColor(
-                  node.disciplinePercentage || 0
-                )}`}
-              >
-                {node.userName.charAt(0).toUpperCase()}
-              </div>
-
-              {/* User Info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h3 className="font-bold text-gray-900 text-sm truncate">
-                    {node.userName}
-                  </h3>
-                  {node.isLoggedInCoach && (
-                    <span className="text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-2 py-0.5 rounded-full font-bold">
-                      YOU
-                    </span>
-                  )}
-                  {node.role === 'coach' && level === 0 && (
-                    <span className="text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-2 py-0.5 rounded-full font-bold">
-                      COACH
-                    </span>
-                  )}
-                </div>
-                <p className="text-xs text-gray-500 mt-0.5 truncate">{node.email}</p>
-                {hasChildren && (
-                  <p className="text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-1">
-                    <Users className="w-3 h-3" />
-                    {node.teamMembers?.length || 0} team member
-                    {node.teamMembers?.length !== 1 ? "s" : ""}
-                  </p>
-                )}
-
-                {/* Attendance Stats */}
-                <div className="mt-1 flex gap-3 text-xs text-gray-600 flex-wrap">
-                  <div className="flex items-center gap-1">
-                    <TrendingUp className="h-3 w-3 text-blue-600" />
-                    <span className="font-bold text-blue-700">
-                      {Math.round(node.disciplinePercentage || 0)}% Discipline
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3 text-green-600" />
-                    <span className="font-bold text-green-700">
-                      {Math.round(node.attendancePercentage || 0)}% Attendance
-                    </span>
-                  </div>
-                </div>
-
-                {/* Team Counts - Always visible */}
-                <div className="mt-1 flex gap-3 text-xs text-purple-600 font-medium">
-                  <div className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    <span className="font-bold">Direct: {node.directTeamCount || 0}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <Users className="h-3 w-3" />
-                    <span className="font-bold">Full Team: {node.fullTeamCount || 0}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Expand/Collapse Button */}
-              {hasChildren && (
-                <TouchFeedbackButton
-                  onClick={() => toggleNode(node.userId)}
-                  className="p-2 hover:bg-gray-100 rounded-lg flex-shrink-0"
-                >
-                  {isExpanded ? (
-                    <ChevronUp className="h-5 w-5 text-gray-600" />
-                  ) : (
-                    <ChevronDown className="h-5 w-5 text-gray-600" />
-                  )}
-                </TouchFeedbackButton>
-              )}
-            </div>
-          </motion.div>
-
-          {/* Children */}
-          <AnimatePresence>
-            {hasChildren && isExpanded && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="ml-8 mt-2"
-              >
-                {node.teamMembers.map((child, index) => (
-                  <TeamNode
-                    key={child.userId}
-                    node={child}
-                    level={level + 1}
-                    isLastChild={index === node.teamMembers.length - 1}
-                  />
-                ))}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-    );
-  };
-
   return (
     <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
       {/* Header */}
@@ -436,8 +143,8 @@ const AttendanceReport = ({ user, onBack }) => {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Attendance Report</h1>
-              <p className="text-xs text-gray-500">Track team education attendance</p>
+              <h1 className="text-xl font-bold text-gray-800">My Club Attendance</h1>
+              <p className="text-xs text-gray-500">Your club education attendance history</p>
             </div>
           </div>
           <TouchFeedbackButton
@@ -496,49 +203,107 @@ const AttendanceReport = ({ user, onBack }) => {
         ) : reportData ? (
           <>
             {/* Summary Stats */}
-            <div className="bg-white rounded-lg shadow-md p-4 mb-4">
-              <div className="flex items-center gap-2 mb-3">
+            <div className="bg-white rounded-lg shadow-md p-3 mb-4">
+              <div className="flex items-center gap-2 mb-2">
                 <Calendar className="h-5 w-5 text-green-600" />
                 <h2 className="text-lg font-bold text-gray-800">
                   {reportData.dateRange.start === reportData.dateRange.end
-                    ? `${reportData.dateRange.start}`
-                    : `${reportData.dateRange.start} to ${reportData.dateRange.end}`}
+                    ? `Date: ${reportData.dateRange.start}`
+                    : `Period: ${reportData.dateRange.start} to ${reportData.dateRange.end}`}
                 </h2>
               </div>
-              <div className="grid grid-cols-3 gap-3 text-center">
+              <div className="grid grid-cols-2 gap-3 text-center">
                 <div className="bg-blue-50 rounded-lg p-3">
-                  <p className="text-2xl font-bold text-blue-600">{reportData.teamSize}</p>
-                  <p className="text-xs text-gray-600">Team Members</p>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-3">
-                  <p className="text-2xl font-bold text-purple-600">
-                    {Math.round(
-                      reportData.members.reduce((sum, m) => sum + (m.disciplinePercentage || 0), 0) /
-                        reportData.members.length
-                    )}
-                    %
+                  <p className="text-2xl font-bold text-blue-600">
+                    {reportData.clubSummary?.length || 0}
                   </p>
-                  <p className="text-xs text-gray-600">Avg Discipline</p>
+                  <p className="text-xs text-gray-600">Clubs Attended</p>
                 </div>
                 <div className="bg-green-50 rounded-lg p-3">
                   <p className="text-2xl font-bold text-green-600">
-                    {Math.round(
-                      reportData.members.reduce((sum, m) => sum + m.attendancePercentage, 0) /
-                        reportData.members.length
-                    )}
-                    %
+                    {reportData.totalAttendance}
                   </p>
-                  <p className="text-xs text-gray-600">Avg Attendance</p>
+                  <p className="text-xs text-gray-600">Total Visits</p>
                 </div>
               </div>
             </div>
 
-            {/* Hierarchical Team View */}
-            <div className="space-y-2">
-              {buildHierarchy(reportData.members).map((node) => (
-                <TeamNode key={node.userId} node={node} />
-              ))}
-            </div>
+            {/* Club Summary */}
+            {reportData.clubSummary && reportData.clubSummary.length > 0 ? (
+              <div className="space-y-3 mb-6">
+                <h3 className="text-lg font-bold text-gray-800 mb-3">
+                  Clubs Attended ({reportData.clubSummary.length})
+                </h3>
+                {reportData.clubSummary.map((club, index) => (
+                  <motion.div
+                    key={club.clubId || index}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="bg-white rounded-lg shadow-md p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 mt-1">
+                        <MapPin className="h-5 w-5 text-green-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-gray-800 truncate mb-1">
+                          {club.clubName}
+                        </h4>
+                        <div className="flex items-center gap-4 text-sm text-gray-600">
+                          <span className="font-semibold text-green-700">
+                            {club.attendanceCount} {club.attendanceCount === 1 ? 'visit' : 'visits'}
+                          </span>
+                          <span>
+                            {club.dates.length} {club.dates.length === 1 ? 'day' : 'days'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center mb-6">
+                <MapPin className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-600 font-medium mb-2">No Club Attendance</p>
+                <p className="text-gray-500 text-sm">
+                  You haven't attended any clubs during this period.
+                </p>
+              </div>
+            )}
+
+            {/* Attendance Details */}
+            {reportData.attendanceRecords && reportData.attendanceRecords.length > 0 && (
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 mb-3">
+                  Recent Visits ({reportData.attendanceRecords.length})
+                </h3>
+                <div className="space-y-2">
+                  {reportData.attendanceRecords.map((record, index) => (
+                    <motion.div
+                      key={record.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.03 }}
+                      className="bg-white rounded-lg shadow-sm p-3 flex items-center gap-3"
+                    >
+                      <div className="flex-shrink-0">
+                        <Clock className="h-4 w-4 text-gray-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800 truncate">
+                          {record.clubName}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {record.date} at {record.time}
+                        </p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         ) : null}
       </div>
