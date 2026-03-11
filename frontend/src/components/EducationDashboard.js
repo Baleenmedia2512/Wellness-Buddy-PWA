@@ -99,7 +99,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [educationTrendRangeDays, setEducationTrendRangeDays] = useState(7);
   const [activeEducationPanel, setActiveEducationPanel] = useState('summary');
   const [educationPanelHeight, setEducationPanelHeight] = useState(null);
-  const [educationTrendChartWidth, setEducationTrendChartWidth] = useState(300);
+  const [educationTrendChartWidth, setEducationTrendChartWidth] = useState(0);
   const userIdRef = useRef(null);
   const educationSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
   const educationSummaryRef = useRef(null);
@@ -190,6 +190,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         key,
         date: d,
         label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        compactLabel: `${d.toLocaleDateString('en-US', { month: 'short' }).slice(0, 1)} ${d.toLocaleDateString('en-US', { day: 'numeric' })}`,
         value: countByDate.get(key) || 0,
       });
     }
@@ -256,7 +257,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     if (!container) return;
 
     const updateChartWidth = () => {
-      const nextWidth = Math.max(240, Math.floor(container.clientWidth || 0));
+      const nextWidth = Math.floor(container.clientWidth || 0);
       setEducationTrendChartWidth((prev) => (prev === nextWidth ? prev : nextWidth));
     };
 
@@ -547,7 +548,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
    */
   if (loading) {
     return (
-      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
+      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse overflow-x-hidden">
         <div className="px-4 md:px-6">
           {/* Summary Card Skeleton */}
           <div className="mb-6 mt-2">
@@ -635,9 +636,9 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         @keyframes slideInUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
       
-    <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2">
-      <div className="px-4 md:px-6">
-        <div className="mb-6 mt-2">
+    <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
+      <div className="px-3 md:px-4">
+        <div className="mt-3 md:mt-5 mb-4">
           <div
             className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-200/60 shadow-sm overflow-hidden"
             onPointerDown={handleEducationPanelPointerDown}
@@ -646,8 +647,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             onPointerCancel={handleEducationPanelPointerEnd}
             onPointerLeave={handleEducationPanelPointerEnd}
           >
-            <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-2 flex items-center justify-between">
-              <div className="text-xs sm:text-sm text-gray-500">
+            <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between">
+              <div className="text-xs md:text-sm text-gray-500">
                 {activeEducationPanel === 'summary'
                   ? 'Education Summary'
                   : `Education Trend (${educationTrendRangeDays}D)`}
@@ -656,7 +657,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 <button
                   type="button"
                   onClick={() => setActiveEducationPanel('summary')}
-                  className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                  className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                     activeEducationPanel === 'summary'
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : 'text-gray-600 hover:bg-white'
@@ -667,7 +668,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 <button
                   type="button"
                   onClick={() => setActiveEducationPanel('trend')}
-                  className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                  className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                     activeEducationPanel === 'trend'
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : 'text-gray-600 hover:bg-white'
@@ -691,7 +692,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                       : 'translateX(-50%)',
                 }}
               >
-                <div ref={educationSummaryRef} className="w-1/2 shrink-0 px-4 sm:px-5 pb-4 sm:pb-5">
+                <div ref={educationSummaryRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
                   {/* Top Row: Streak & Persona */}
                   <div className="flex justify-between items-start mb-6">
                     <div>
@@ -807,7 +808,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   </div>
                 </div>
 
-                <div ref={educationTrendRef} className="w-1/2 shrink-0 px-3 sm:px-5 pb-4 sm:pb-5">
+                <div ref={educationTrendRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
                   {(() => {
                     const totalSessions = educationTrendSeries.reduce(
                       (sum, point) => sum + (point.value || 0),
@@ -827,8 +828,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                       <>
                         <div className="flex items-center justify-between mb-3">
                           <div>
-                            <p className="text-xs sm:text-sm text-gray-500">Education Trend</p>
-                            <p className="text-sm sm:text-base font-semibold text-gray-900">Last {educationTrendRangeDays} days</p>
+                            <p className="text-xs md:text-sm text-gray-500">Education Trend</p>
+                            <p className="text-sm md:text-base font-semibold text-gray-900">Last {educationTrendRangeDays} days</p>
                           </div>
                           <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
                             {[7, 14, 30].map((days) => (
@@ -836,7 +837,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 key={days}
                                 type="button"
                                 onClick={() => setEducationTrendRangeDays(days)}
-                                className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                                className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                                   educationTrendRangeDays === days
                                     ? 'bg-emerald-500 text-white shadow-sm'
                                     : 'text-gray-600 hover:bg-white'
@@ -851,7 +852,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                           <div className="rounded-lg bg-amber-50 px-2 py-1.5">
                             <p className="text-[10px] text-amber-700">Total Sessions</p>
-                            <p className="text-xs sm:text-sm font-semibold text-amber-900">{totalSessions}/{educationTrendSeries.length || educationTrendRangeDays}</p>
+                            <p className="text-xs md:text-sm font-semibold text-amber-900">{totalSessions}/{educationTrendSeries.length || educationTrendRangeDays}</p>
                           </div>
                           {/* <div className="rounded-lg bg-sky-50 px-2 py-1.5">
                             <p className="text-[10px] text-sky-700">Best Day</p>
@@ -874,7 +875,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         ) : (
                           <>
                             {(() => {
-                              const chartWidth = educationTrendChartWidth;
+                              const chartWidth = Math.max(educationTrendChartWidth, 1);
                               const chartHeight = 120;
                               const maxValue = Math.max(...educationTrendSeries.map((point) => point.value), 1);
                               const plotLeft = 10;
@@ -898,32 +899,28 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                     return Array.from({ length: points.length }, (_, i) => i);
                                   }
 
-                                  const interval = Math.max(
-                                    1,
-                                    Math.floor((points.length - 1) / (markerCountTarget - 1))
-                                  );
-                                  const start = (points.length - 1) - interval * (markerCountTarget - 1);
                                   return Array.from(
                                     { length: markerCountTarget },
-                                    (_, i) => start + i * interval
+                                    (_, i) => Math.round((i * (points.length - 1)) / (markerCountTarget - 1))
                                   );
                                 })()
                               );
                               const sampledIndices = Array.from(sampledMarkerIndices).sort((a, b) => a - b);
+                              const pickEvenlySpaced = (indices, targetCount) => {
+                                if (indices.length <= targetCount) return indices;
+                                if (targetCount <= 1) return [indices[indices.length - 1]];
+                                const picked = [];
+                                for (let i = 0; i < targetCount; i++) {
+                                  const position = Math.round((i * (indices.length - 1)) / (targetCount - 1));
+                                  picked.push(indices[position]);
+                                }
+                                return Array.from(new Set(picked));
+                              };
+                              const dateLabelIndices = new Set(sampledIndices);
 
                               const displayValueByIndex = new Map(
-                                sampledIndices.map((sampledIndex, position) => {
-                                  if (educationTrendRangeDays === 7) {
-                                    return [sampledIndex, points[sampledIndex].value || 0];
-                                  }
-
-                                  const previousSampledIndex = position === 0 ? -1 : sampledIndices[position - 1];
-                                  const intervalStart = previousSampledIndex + 1;
-                                  const intervalTotal = points
-                                    .slice(intervalStart, sampledIndex + 1)
-                                    .reduce((sum, point) => sum + (point.value || 0), 0);
-
-                                  return [sampledIndex, intervalTotal];
+                                sampledIndices.map((sampledIndex) => {
+                                  return [sampledIndex, points[sampledIndex].value || 0];
                                 })
                               );
 
@@ -935,21 +932,24 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 }
                                 return -1;
                               })();
+                              const firstDateLabelIndex = sampledIndices.find((index) => dateLabelIndices.has(index)) ?? -1;
+                              const lastDateLabelIndex =
+                                [...sampledIndices].reverse().find((index) => dateLabelIndices.has(index)) ?? -1;
 
-                              const linePath = points
+                              const linePoints = sampledIndices.map((index) => points[index]);
+                              const linePath = linePoints
                                 .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`)
                                 .join(' ');
                               const areaPath = `${linePath} L ${chartWidth},${chartHeight} L 0,${chartHeight} Z`;
 
                               return (
-                                <div ref={educationTrendChartRef} className="w-full">
+                                <div ref={educationTrendChartRef} className="w-full overflow-hidden">
                                   <svg
                                     viewBox={`0 -14 ${chartWidth} ${chartHeight + 38}`}
                                     className="block"
                                     style={{
-                                      width: `${chartWidth}px`,
+                                      width: '100%',
                                       height: `${chartHeight + 38}px`,
-                                      minWidth: `${chartWidth}px`,
                                       overflow: 'visible'
                                     }}
                                     preserveAspectRatio="none"
@@ -1006,23 +1006,23 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                   </svg>
 
                                   <div
-                                    className="relative mt-2 h-4 text-[10px] sm:text-xs text-gray-500"
+                                    className="relative mt-2 h-4 text-[10px] md:text-xs text-gray-500"
                                     style={{
-                                      width: `${chartWidth}px`,
-                                      minWidth: `${chartWidth}px`
+                                      width: '100%'
                                     }}
                                   >
                                     {points.map((point, index) => {
-                                      if (!sampledMarkerIndices.has(index)) return null;
-                                      const isFirst = index === 0;
-                                      const isLast = index === points.length - 1;
+                                      if (!dateLabelIndices.has(index)) return null;
+                                      const isFirst = index === firstDateLabelIndex;
+                                      const isLast = index === lastDateLabelIndex;
+                                      const isCompactLabelMode = chartWidth < 380;
 
                                       return (
                                         <span
                                           key={`${point.key}-label`}
                                           className="absolute whitespace-nowrap"
                                           style={{
-                                            left: `${point.x}px`,
+                                            left: `${(point.x / chartWidth) * 100}%`,
                                             transform: isFirst
                                               ? 'translateX(0)'
                                               : isLast
@@ -1030,7 +1030,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                                 : 'translateX(-50%)'
                                           }}
                                         >
-                                          {point.label}
+                                          {isCompactLabelMode ? point.compactLabel : point.label}
                                         </span>
                                       );
                                     })}
@@ -1063,12 +1063,12 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               </div>
             </div>
 
-            <div className="pb-3 sm:pb-4 flex items-center justify-center gap-2">
+            <div className="pb-3 md:pb-4 flex items-center justify-center gap-2">
               <button
                 type="button"
                 aria-label="Go to education summary slide"
                 onClick={() => setActiveEducationPanel('summary')}
-                className={`h-2 rounded-full transition-all duration-300 ${
+                className={`h-1.5 rounded-full transition-all duration-300 ${
                   activeEducationPanel === 'summary'
                     ? 'w-6 bg-emerald-500'
                     : 'w-2.5 bg-gray-300 hover:bg-gray-400'
@@ -1078,7 +1078,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 type="button"
                 aria-label="Go to education trend slide"
                 onClick={() => setActiveEducationPanel('trend')}
-                className={`h-2 rounded-full transition-all duration-300 ${
+                className={`h-1.5 rounded-full transition-all duration-300 ${
                   activeEducationPanel === 'trend'
                     ? 'w-6 bg-emerald-500'
                     : 'w-2.5 bg-gray-300 hover:bg-gray-400'

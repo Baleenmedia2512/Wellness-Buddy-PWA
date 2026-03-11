@@ -149,7 +149,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const [weightTrendRangeDays, setWeightTrendRangeDays] = useState(7);
   const [activeWeightPanel, setActiveWeightPanel] = useState('summary');
   const [weightPanelHeight, setWeightPanelHeight] = useState(null);
-  const [weightTrendChartWidth, setWeightTrendChartWidth] = useState(280);
+  const [weightTrendChartWidth, setWeightTrendChartWidth] = useState(0);
 
   // UI state - viewMode fixed to 'overview' since camera was removed
   const [viewMode] = useState('overview');
@@ -300,6 +300,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         key,
         date: d,
         label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        compactLabel: `${d.toLocaleDateString('en-US', { month: 'short' }).slice(0, 1)} ${d.toLocaleDateString('en-US', { day: 'numeric' })}`,
         hasRecorded: latestByDate.has(key),
         value: latestByDate.has(key) ? latestByDate.get(key) : 0,
       });
@@ -355,7 +356,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     if (!container) return;
 
     const updateChartWidth = () => {
-      const nextWidth = Math.max(240, Math.floor(container.clientWidth || 0));
+      const nextWidth = Math.floor(container.clientWidth || 0);
       setWeightTrendChartWidth((prev) => (prev === nextWidth ? prev : nextWidth));
     };
 
@@ -607,7 +608,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const renderOverview = () => {
     if (loading) {
       return (
-        <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse">
+        <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 animate-pulse overflow-x-hidden">
           <div className="px-4 md:px-6">
             {/* Chart Skeleton */}
             <div className="mb-6 mt-2">
@@ -644,8 +645,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const currentMonthStats = getMonthStats(currentMonthEntries);
 
     return (
-      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2">
-        <div className="px-4 md:px-6">
+      <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
+        <div className="px-3 md:px-4">
           {/* Current Month Header */}
           {/* <div className="mt-5 mb-6"> */}
             {/* <div className="flex items-rigth justify-between"> */}
@@ -659,7 +660,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             {/* </div> */}
           {/* </div> */}
 
-          <div className="mb-6">
+          <div className="mt-3 md:mt-5 mb-4">
             <div
               className="w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl border border-gray-100 shadow-md overflow-hidden"
               onPointerDown={handleWeightPanelPointerDown}
@@ -668,15 +669,15 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               onPointerCancel={handleWeightPanelPointerEnd}
               onPointerLeave={handleWeightPanelPointerEnd}
             >
-              <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-2 flex items-center justify-between">
-                <div className="text-xs sm:text-sm text-gray-500">
+              <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between">
+                <div className="text-xs md:text-sm text-gray-500">
                   {activeWeightPanel === 'summary' ? 'Weight Summary' : `Weight Trend (${weightTrendRangeDays}D)`}
                 </div>
                 <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
                   <button
                     type="button"
                     onClick={() => setActiveWeightPanel('summary')}
-                    className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                    className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                       activeWeightPanel === 'summary'
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : 'text-gray-600 hover:bg-white'
@@ -687,7 +688,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   <button
                     type="button"
                     onClick={() => setActiveWeightPanel('trend')}
-                    className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                    className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                       activeWeightPanel === 'trend'
                         ? 'bg-emerald-500 text-white shadow-sm'
                         : 'text-gray-600 hover:bg-white'
@@ -706,8 +707,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   className="flex items-start w-[200%] transition-transform duration-500 ease-out"
                   style={{ transform: activeWeightPanel === 'summary' ? 'translateX(0%)' : 'translateX(-50%)' }}
                 >
-                  <div ref={weightSummaryRef} className="w-1/2 shrink-0 px-4 sm:px-5 pb-4 sm:pb-5 text-black">
-                    <div className="flex items-start justify-between mb-4 sm:mb-5">
+                  <div ref={weightSummaryRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5 text-black">
+                    <div className="flex items-start justify-between mb-4 md:mb-5">
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] xs:text-xs sm:text-sm text-gray-500 mb-0.5 sm:mb-1">Current Weight</p>
                         <div className="flex items-baseline flex-wrap">
@@ -803,7 +804,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     </div>
                   </div>
 
-                  <div ref={weightTrendRef} className="w-1/2 shrink-0 px-3 sm:px-5 pb-4 sm:pb-5">
+                  <div ref={weightTrendRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-4 md:pb-5">
                     {(() => {
                       const numericValues = weightTrendSeries
                         .map((point) => point.value)
@@ -830,8 +831,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         <>
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <p className="text-xs sm:text-sm text-gray-500">Weight Trend</p>
-                        <p className="text-sm sm:text-base font-semibold text-gray-900">Last {weightTrendRangeDays} days</p>
+                        <p className="text-xs md:text-sm text-gray-500">Weight Trend</p>
+                        <p className="text-sm md:text-base font-semibold text-gray-900">Last {weightTrendRangeDays} days</p>
                       </div>
                       <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
                         {[7, 14, 30].map((days) => (
@@ -839,7 +840,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             key={days}
                             type="button"
                             onClick={() => setWeightTrendRangeDays(days)}
-                            className={`px-2.5 py-1 text-[11px] sm:text-xs rounded-full transition-all duration-300 ${
+                            className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
                               weightTrendRangeDays === days
                                 ? 'bg-emerald-500 text-white shadow-sm'
                                 : 'text-gray-600 hover:bg-white'
@@ -854,17 +855,17 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-3">
                       <div className="rounded-lg bg-sky-50 px-2 py-1.5">
                         <p className="text-[10px] text-sky-700">Average</p>
-                        <p className="text-xs sm:text-sm font-semibold text-sky-900">
+                        <p className="text-xs md:text-sm font-semibold text-sky-900">
                           {Number.isFinite(avgValue) ? avgValue.toFixed(1) : '-'} kg
                         </p>
                       </div>
                       <div className={`rounded-lg px-2 py-1.5 ${trendStatus.className}`}>
                         <p className="text-[10px]">Direction</p>
-                        <p className="text-xs sm:text-sm font-semibold">{trendStatus.label}</p>
+                        <p className="text-xs md:text-sm font-semibold">{trendStatus.label}</p>
                       </div>
                       <div className="rounded-lg bg-indigo-50 px-2 py-1.5">
                         <p className="text-[10px] text-indigo-700">Net Change</p>
-                        <p className="text-xs sm:text-sm font-semibold text-indigo-900">
+                        <p className="text-xs md:text-sm font-semibold text-indigo-900">
                           {Number.isFinite(deltaValue)
                             ? `${deltaValue > 0 ? '+' : ''}${deltaValue.toFixed(1)} kg`
                             : '-'}
@@ -879,7 +880,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     ) : (
                       <>
                         {(() => {
-                          const chartWidth = weightTrendChartWidth;
+                          const chartWidth = Math.max(weightTrendChartWidth, 1);
                           const chartHeight = 132;
                           const numericValues = weightTrendSeries
                             .map((point) => point.value)
@@ -912,18 +913,16 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 return Array.from({ length: points.length }, (_, i) => i);
                               }
 
-                              // Keep equal spacing between displayed points and force the last date to appear.
-                              const interval = Math.max(
-                                1,
-                                Math.floor((points.length - 1) / (markerCountTarget - 1))
-                              );
-                              const start = (points.length - 1) - interval * (markerCountTarget - 1);
+                              // Evenly sample and always include first/last to avoid side gaps.
                               return Array.from(
                                 { length: markerCountTarget },
-                                (_, i) => start + i * interval
+                                (_, i) => Math.round((i * (points.length - 1)) / (markerCountTarget - 1))
                               );
                             })()
                           );
+                          const sampledIndices = Array.from(sampledMarkerIndices).sort((a, b) => a - b);
+                          const dateLabelIndices = new Set(sampledIndices);
+                          const orderedDateLabelIndices = Array.from(dateLabelIndices).sort((a, b) => a - b);
 
                           const shouldRenderMarker = (point, index) => {
                             if (!point.hasValue) return false;
@@ -937,21 +936,26 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             }
                             return -1;
                           })();
+                          const firstDateLabelIndex = orderedDateLabelIndices[0] ?? -1;
+                          const lastDateLabelIndex =
+                            orderedDateLabelIndices[orderedDateLabelIndices.length - 1] ?? -1;
 
-                          const plottedPoints = points.filter((point) => point.hasValue);
+                          const renderIndices = sampledIndices;
+                          const plottedPoints = renderIndices
+                            .map((index) => points[index])
+                            .filter((point) => point.hasValue);
                           const linePath = plottedPoints
                             .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x},${point.y}`)
                             .join(' ');
 
                           return (
-                            <div ref={weightTrendChartRef} className="w-full pb-1">
+                            <div ref={weightTrendChartRef} className="w-full overflow-hidden pb-1">
                               <svg
                                 viewBox={`0 -24 ${chartWidth} ${chartHeight + 52}`}
                                 className="block"
                                 style={{
-                                  width: `${chartWidth}px`,
+                                  width: '100%',
                                   height: `${chartHeight + 52}px`,
-                                  minWidth: `${chartWidth}px`,
                                   overflow: 'visible'
                                 }}
                                 preserveAspectRatio="none"
@@ -1004,23 +1008,25 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                               </svg>
 
                               <div
-                                className="relative mt-2 h-4 text-[10px] sm:text-xs text-gray-500"
+                                className="relative mt-2 h-4 text-[10px] md:text-xs text-gray-500"
                                 style={{
-                                  width: `${chartWidth}px`,
-                                  minWidth: `${chartWidth}px`
+                                  width: '100%'
                                 }}
                               >
                                 {points.map((point, index) => {
-                                  if (!sampledMarkerIndices.has(index)) return null;
-                                  const isFirst = index === 0;
-                                  const isLast = index === points.length - 1;
+                                  if (!dateLabelIndices.has(index)) return null;
+                                  const isFirst = index === firstDateLabelIndex;
+                                  const isLast = index === lastDateLabelIndex;
+                                  const isCompactLabelMode = chartWidth < 380;
 
                                   return (
                                     <span
                                       key={`${point.key}-label`}
-                                      className="absolute whitespace-nowrap"
+                                      className={`absolute whitespace-nowrap ${
+                                        isCompactLabelMode ? 'text-[9px]' : ''
+                                      }`}
                                       style={{
-                                        left: `${point.x}px`,
+                                        left: `${(point.x / chartWidth) * 100}%`,
                                         transform: isFirst
                                           ? 'translateX(0)'
                                           : isLast
@@ -1028,7 +1034,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                             : 'translateX(-50%)'
                                       }}
                                     >
-                                      {point.label}
+                                      {isCompactLabelMode ? point.compactLabel : point.label}
                                     </span>
                                   );
                                 })}
@@ -1080,12 +1086,12 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 </div>
               </div>
 
-              <div className="pb-3 sm:pb-4 flex items-center justify-center gap-2">
+              <div className="pb-3 md:pb-4 flex items-center justify-center gap-2">
                 <button
                   type="button"
                   aria-label="Go to weight summary slide"
                   onClick={() => setActiveWeightPanel('summary')}
-                  className={`h-2.5 rounded-full transition-all duration-300 ${
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
                     activeWeightPanel === 'summary'
                       ? 'w-6 bg-emerald-500'
                       : 'w-2.5 bg-gray-300 hover:bg-gray-400'
@@ -1095,7 +1101,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   type="button"
                   aria-label="Go to weight trend slide"
                   onClick={() => setActiveWeightPanel('trend')}
-                  className={`h-2.5 rounded-full transition-all duration-300 ${
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
                     activeWeightPanel === 'trend'
                       ? 'w-6 bg-emerald-500'
                       : 'w-2.5 bg-gray-300 hover:bg-gray-400'
