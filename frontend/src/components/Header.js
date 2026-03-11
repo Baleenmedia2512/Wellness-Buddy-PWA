@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -244,6 +244,42 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
                         <p className="text-xs text-gray-500">Team performance insights</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Wellness University Enrollment - shown for all users */}
+                  {onShowWellnessEnrollment && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowWellnessEnrollment();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
+                      ariaLabel="Wellness University Enrollment"
+                    >
+                      <GraduationCap className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Wellness University</p>
+                        <p className="text-xs text-gray-500">View or enroll in programs</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Wellness University Report - shown for coaches/admins only */}
+                  {onShowWellnessReport && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowWellnessReport();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="View Enrollment Reports"
+                    >
+                      <FileBarChart className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Enrollment Reports</p>
+                        <p className="text-xs text-gray-500">View program enrollments</p>
                       </div>
                     </TouchFeedbackButton>
                   )}

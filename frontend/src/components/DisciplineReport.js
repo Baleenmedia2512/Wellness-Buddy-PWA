@@ -683,6 +683,29 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
     console.log("🔄 Sorting hierarchy with order:", sortOrder);
 
+    // Helper function to check if node or any descendant matches search
+    const nodeOrDescendantMatchesSearch = (node, query) => {
+      if (!query.trim()) return true; // Empty search matches all
+      
+      const lowerQuery = query.toLowerCase();
+      
+      // Check if current node matches
+      const currentMatches = 
+        (node.userName || "").toLowerCase().includes(lowerQuery) ||
+        (node.email || "").toLowerCase().includes(lowerQuery);
+      
+      if (currentMatches) return true;
+      
+      // Check if any child matches (recursively)
+      if (node.teamMembers && node.teamMembers.length > 0) {
+        return node.teamMembers.some(child => 
+          nodeOrDescendantMatchesSearch(child, query)
+        );
+      }
+      
+      return false;
+    };
+
     const sortHierarchyRecursive = (node, depth = 0) => {
       if (!node) return node;
 
@@ -713,16 +736,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             );
             if (!memberData?.periodDiscipline) return false;
 
-            // Apply search filter
-            const matchesSearch =
-              (child.userName || "")
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase()) ||
-              (child.email || "")
-                .toLowerCase()
-                .includes(searchQuery.toLowerCase());
+            // Apply search filter - keep node if it or any descendant matches
+            const matchesSearch = nodeOrDescendantMatchesSearch(child, searchQuery);
 
-            // Apply discipline filter
+            // Apply discipline filter only to the current node
             const score = memberData.periodDiscipline?.percentage || 0;
             let matchesDiscipline = true;
             if (disciplineFilter === "high") matchesDiscipline = score >= 80;
