@@ -219,8 +219,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       time = timeMatch[1];
     }
     
-    if (!time) return falselse;
-    const time = timeMatch[1];
+    if (!time) return false;
     return time >= window.start && time <= window.end;
   };
   
@@ -240,22 +239,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
     
-    return {Convert IST to user's local time before categorizing
-  const getMealType = (createdAt) => {
-    if (!createdAt) return null;
-    
-    let time;
-    if (userTimezoneOffset !== null) {
-      // Convert IST to user's local time
-      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
-    } else {
-      // Fallback: Extract time directly from timestamp string
-      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-      if (!timeMatch) return null;
-      time = timeMatch[1];
-    }
-    
-    if (!time) return nulll by time
+    return { totalDays: uniqueDates.size, onTimeDays: onTimeDates.size };
+  };
+
   // ✅ TIMEZONE FIX: Extract time directly from timestamp string
   const getMealType = (createdAt) => {
     if (!createdAt) return null;
