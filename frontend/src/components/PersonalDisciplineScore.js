@@ -149,9 +149,9 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                 <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
                   📊 Your Daily Discipline Score
                 </p>
-                <p className="text-[9px] text-gray-500 mt-0">
+                {/* <p className="text-[9px] text-gray-500 mt-0">
                   Swipe to see each of your meals
-                </p>
+                </p> */}
               </div>
               <div className="flex flex-col items-center">
                 <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">

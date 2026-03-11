@@ -284,34 +284,34 @@ const LoadingSkeleton = () => {
           borderBottom: "1px solid #93c9a1",
         }}
       >
-        <div className="max-w-3xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-green-400 rounded-full animate-pulse"></div>
+        <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
+          <div className="flex items-center justify-between mb-3 sm:mb-4">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
               <div>
-                <div className="h-5 w-32 bg-green-400 rounded animate-pulse mb-1"></div>
-                <div className="h-3 w-24 bg-green-300 rounded animate-pulse"></div>
+                <div className="h-4 w-28 sm:h-5 sm:w-32 bg-green-400 rounded animate-pulse mb-1"></div>
+                <div className="h-2.5 w-20 sm:h-3 sm:w-24 bg-green-300 rounded animate-pulse"></div>
               </div>
             </div>
-            <div className="flex gap-2">
-              <div className="w-8 h-8 bg-green-400 rounded-full animate-pulse"></div>
-              <div className="w-8 h-8 bg-green-400 rounded-full animate-pulse"></div>
+            <div className="flex gap-1 sm:gap-2">
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
+              <div className="w-6 h-6 sm:w-8 sm:h-8 bg-green-400 rounded-full animate-pulse"></div>
             </div>
           </div>
-          <div className="flex gap-2 overflow-hidden">
+          <div className="flex gap-1.5 sm:gap-2 overflow-hidden">
             {[1, 2, 3, 4].map((i) => (
               <div
                 key={i}
-                className="h-8 w-24 bg-gray-50 rounded-full shrink-0 animate-pulse border border-gray-100"
+                className="h-7 w-20 sm:h-8 sm:w-24 bg-gray-50 rounded-full shrink-0 animate-pulse border border-gray-100"
               ></div>
             ))}
           </div>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
         {/* Summary Stats Skeleton - Compact */}
-        <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 h-24 flex items-center justify-between animate-pulse">
+        <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm border border-gray-100 h-20 sm:h-24 flex items-center justify-between animate-pulse">
           <div className="flex-1 flex flex-col items-center gap-2 border-r border-gray-50">
             <div className="h-3 w-12 bg-gray-100 rounded"></div>
             <div className="h-6 w-16 bg-gray-100 rounded"></div>
@@ -954,25 +954,25 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           borderBottom: "1px solid #93c9a1",
         }}
       >
-        <div className="max-w-3xl mx-auto px-4 py-3">
+        <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
               <TouchFeedbackButton
                 onClick={onBack}
-                className="p-2 -ml-2 rounded-full transition-colors"
+                className="p-1.5 sm:p-2 -ml-2 rounded-full transition-colors"
                 style={{ color: "#1f2937" }}
                 ariaLabel="Go back"
               >
-                <ArrowLeft className="h-6 w-6" style={{ color: "#1f2937" }} />
+                <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6" style={{ color: "#1f2937" }} />
               </TouchFeedbackButton>
               <div>
                 <h1
-                  className="text-lg font-bold leading-tight"
+                  className="text-base sm:text-lg md:text-xl font-bold leading-tight"
                   style={{ color: "#1f2937" }}
                 >
                   Discipline Report
                 </h1>
-                <p className="text-xs font-medium" style={{ color: "#374151" }}>
+                <p className="text-[10px] sm:text-xs font-medium" style={{ color: "#374151" }}>
                   {isUserACoach
                     ? `${
                         filteredAndSortedMembers.length || allMembers.length
@@ -989,37 +989,37 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 sm:gap-2">
               <TouchFeedbackButton
                 onClick={handleManualRefresh}
                 disabled={refreshing}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600 disabled:opacity-50"
+                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600 disabled:opacity-50"
                 ariaLabel="Refresh"
               >
                 <RefreshCw
-                  className={`h-5 w-5 ${refreshing ? "animate-spin" : ""}`}
+                  className={`h-4 w-4 sm:h-5 sm:w-5 ${refreshing ? "animate-spin" : ""}`}
                 />
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={handleExportCSV}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
+                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
                 ariaLabel="Export CSV"
               >
-                <Download className="h-5 w-5" />
+                <Download className="h-4 w-4 sm:h-5 sm:w-5" />
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={() => setShowTimeWindowModal(!showTimeWindowModal)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
+                className="p-1.5 sm:p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-600"
                 ariaLabel="Configure Time Windows"
               >
-                <Settings className="h-5 w-5" />
+                <Settings className="h-4 w-4 sm:h-5 sm:w-5" />
               </TouchFeedbackButton>
             </div>
           </div>
 
           {/* Date Range Selector (Pills) */}
           <div
-            className="flex gap-2 overflow-x-auto sm:overflow-visible pb-2 scrollbar-hide mt-3 items-center sm:justify-center"
+            className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-hide mt-2 sm:mt-3 items-center justify-start md:justify-center"
             id="date-range-container"
           >
             {[
@@ -1037,7 +1037,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   setCustomStartDate(null);
                   setCustomEndDate(null);
                 }}
-                className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                   dateRange === range.id
                     ? "bg-green-600 text-white shadow-md shadow-green-200"
                     : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
@@ -1051,14 +1051,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               onClick={() => {
                 setShowDatePicker(!showDatePicker);
               }}
-              className={`px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1.5 flex-shrink-0 ${
+              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex items-center gap-1 sm:gap-1.5 flex-shrink-0 ${
                 dateRange === "custom"
                   ? "bg-green-600 text-white shadow-md shadow-green-200"
                   : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
               }`}
             >
-              <CalendarIcon className="w-4 h-4" />
-              <span>Custom</span>
+              <CalendarIcon className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden xs:inline">Custom</span>
+              <span className="xs:hidden">+</span>
             </TouchFeedbackButton>
           </div>
 
@@ -1078,17 +1079,17 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto px-4 py-6 relative z-10">
+      <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 relative z-10">
         {/* Summary Stats - Compact Dashboard Strip */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-4">
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3 sm:mb-4">
           <div className="grid grid-cols-3 divide-x divide-gray-50">
             {/* Average & Posts */}
-            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
-              <div className="text-[10px] sm:text-xs font-bold text-gray-400 uppercase tracking-wider">
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">
                 Avg Score
               </div>
-              <div className="flex items-baseline justify-center gap-0.5 my-1">
-                <span className="text-xl sm:text-2xl font-bold text-gray-900">
+              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
                   {(() => {
                     // Calculate from current view's members
                     if (adminView === "allMembers" && allMembers.length > 0) {
@@ -1105,9 +1106,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     ).toFixed(0);
                   })()}
                 </span>
-                <span className="text-xs text-gray-400">%</span>
+                <span className="text-[10px] sm:text-xs text-gray-400">%</span>
               </div>
-              <div className="text-[10px] sm:text-xs text-green-600 font-medium bg-green-50 px-2 py-0.5 rounded-full">
+              <div className="text-[8px] sm:text-[10px] md:text-xs text-green-600 font-medium bg-green-50 px-1.5 sm:px-2 py-0.5 rounded-full">
                 {(() => {
                   // Calculate from current view's members
                   const members =
@@ -1137,8 +1138,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </div>
 
             {/* Top Performer (Middle) */}
-            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
-              <div className="text-[10px] sm:text-xs font-bold text-green-600 uppercase tracking-wider">
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-green-600 uppercase tracking-wider">
                 Top Star
               </div>
               {(() => {
@@ -1156,9 +1157,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                         <span className="text-xl sm:text-2xl font-bold text-gray-900">
                           {topMember.periodDiscipline?.percentage || 0}
                         </span>
-                        <span className="text-xs text-gray-400">%</span>
+                        <span className="text-[10px] sm:text-xs text-gray-400">%</span>
                       </div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                      <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
                         {topMember.userName.split(" ")[0]}
                       </div>
                     </>
@@ -1169,13 +1170,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 if (getSummary()?.topPerformer) {
                   return (
                     <>
-                      <div className="flex items-baseline justify-center gap-0.5 my-1">
-                        <span className="text-xl sm:text-2xl font-bold text-gray-900">
+                      <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                        <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
                           {getSummary().topPerformer.discipline}
                         </span>
-                        <span className="text-xs text-gray-400">%</span>
+                        <span className="text-[10px] sm:text-xs text-gray-400">%</span>
                       </div>
-                      <div className="text-[10px] sm:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                      <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
                         {getSummary().topPerformer.userName.split(" ")[0]}
                       </div>
                     </>
@@ -1184,10 +1185,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
                 return (
                   <>
-                    <div className="flex items-baseline justify-center gap-0.5 my-1">
+                    <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
                       <span className="text-gray-300">-</span>
                     </div>
-                    <div className="text-[10px] sm:text-xs text-gray-300">
+                    <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-300">
                       N/A
                     </div>
                   </>
@@ -1196,12 +1197,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             </div>
 
             {/* At Risk (Right) */}
-            <div className="p-3 sm:p-4 flex flex-col items-center justify-between text-center min-h-[110px]">
-              <div className="text-[10px] sm:text-xs font-bold text-red-400 uppercase tracking-wider">
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-red-400 uppercase tracking-wider">
                 At Risk
               </div>
-              <div className="flex items-baseline justify-center gap-0.5 my-1">
-                <span className="text-xl sm:text-2xl font-bold text-red-600">
+              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                <span className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">
                   {(() => {
                     // Count at-risk members from current view
                     if (adminView === "allMembers" && allMembers.length > 0) {
@@ -1213,7 +1214,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   })()}
                 </span>
               </div>
-              <div className="text-[10px] sm:text-xs text-gray-400 font-medium">
+              <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-400 font-medium">
                 of{" "}
                 {adminView === "allMembers"
                   ? allMembers.length
@@ -1249,30 +1250,31 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
         {/* Search & Filter Bar - Only show for coaches */}
         {isUserACoach && (
-          <div className="flex gap-3 items-center z-30 relative mb-4">
+          <div className="flex gap-2 sm:gap-3 items-center z-30 relative mb-3 sm:mb-4">
+            {/* Search Bar */}
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 sm:h-4 sm:w-4 text-gray-400" />
               <input
                 type="text"
                 placeholder="Search members..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-gray-50 border-none rounded-xl text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all"
+                className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-gray-50 border-none rounded-lg sm:rounded-xl text-xs sm:text-sm focus:ring-2 focus:ring-green-500 focus:bg-white transition-all"
               />
             </div>
 
             {/* Custom Filter Dropdown */}
-            <div className="relative" ref={filterRef}>
+            <div className="relative flex-shrink-0" ref={filterRef}>
               <button
                 onClick={() => setIsFilterOpen(!isFilterOpen)}
-                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
+                className={`flex items-center justify-center gap-1.5 sm:gap-2 px-2.5 sm:px-4 py-2.5 sm:py-3 rounded-lg sm:rounded-xl text-xs sm:text-sm font-medium transition-all ${
                   disciplineFilter !== "all"
                     ? "bg-green-100 text-green-800"
                     : "bg-gray-50 text-gray-700 hover:bg-gray-100"
                 }`}
               >
-                <Filter className="h-4 w-4" />
-                <span>
+                <Filter className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                <span className="hidden xs:inline">
                   {disciplineFilter === "all"
                     ? "Filter"
                     : filterOptions
@@ -1280,7 +1282,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                         ?.label.split(" ")[0]}
                 </span>
                 <ChevronDown
-                  className={`h-3 w-3 transition-transform ${
+                  className={`h-2.5 w-2.5 sm:h-3 sm:w-3 transition-transform ${
                     isFilterOpen ? "rotate-180" : ""
                   }`}
                 />
@@ -1327,15 +1329,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                   console.log("🔀 Sort button clicked! Changing from", sortOrder, "to", newOrder);
                   setSortOrder(newOrder);
                 }}
-                className="p-3 rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors"
+                className="flex-shrink-0 p-2.5 sm:p-3 rounded-lg sm:rounded-xl bg-gray-50 text-gray-700 hover:bg-gray-100 transition-colors flex items-center justify-center"
                 ariaLabel={
                   sortOrder === "desc" ? "Highest First" : "Lowest First"
                 }
               >
                 {sortOrder === "desc" ? (
-                  <ArrowDown className="h-4 w-4" />
+                  <ArrowDown className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 ) : (
-                  <ArrowUp className="h-4 w-4" />
+                  <ArrowUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                 )}
               </TouchFeedbackButton>
             )}
