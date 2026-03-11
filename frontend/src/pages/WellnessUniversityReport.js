@@ -71,8 +71,9 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
     setError('');
 
     try {
+      const cacheBuster = Date.now();
       const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}`
+        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`
       );
       const data = await response.json();
 
@@ -93,6 +94,34 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   useEffect(() => {
     fetchEnrollments();
   }, [fetchEnrollments]);
+
+  // Handler to open enrollment details with fresh data
+  const handleViewEnrollmentDetails = async (enrollment) => {
+    try {
+      const cacheBuster = Date.now();
+      const response = await fetch(
+        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(enrollment.Email)}&userOnly=true&_t=${cacheBuster}`
+      );
+      const data = await response.json();
+      
+      if (data.success && data.enrollments && data.enrollments.length > 0) {
+        const freshEnrollment = data.enrollments[0];
+        setSelectedEnrollment(freshEnrollment);
+        
+        // Also update in the main list
+        setEnrollments(prev => 
+          prev.map(e => e.Email === freshEnrollment.Email ? freshEnrollment : e)
+        );
+      } else {
+        // Fallback to the existing enrollment data
+        setSelectedEnrollment(enrollment);
+      }
+    } catch (err) {
+      console.error('Error fetching fresh enrollment:', err);
+      // Fallback to the existing enrollment data
+      setSelectedEnrollment(enrollment);
+    }
+  };
 
   const getDateFilterRange = () => {
     const now = new Date();
@@ -394,7 +423,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   return (
                     <div
                       key={enrollment.Id}
-                      onClick={() => setSelectedEnrollment(enrollment)}
+                      onClick={() => handleViewEnrollmentDetails(enrollment)}
                       className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-3 sm:p-4 cursor-pointer"
                     >
                       <div className="flex items-center gap-3">

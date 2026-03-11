@@ -74,14 +74,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
       // Fetch user profile to get coach name
       const cacheBuster = Date.now();
       const profileResponse = await fetch(
-        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          }
-        }
+        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`
       );
       const profileData = await profileResponse.json();
       
@@ -96,7 +89,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
       // Check existing enrollment
       const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}&userOnly=true`
+        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}&userOnly=true&_t=${cacheBuster}`
       );
       const data = await response.json();
 
@@ -153,15 +146,22 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
       if (data.success) {
         setSuccess(true);
-        setTimeout(() => {
+        // Wait for success message, then refresh
+        setTimeout(async () => {
           if (existingEnrollment) {
-            // Refresh enrollment data
-            checkExistingEnrollment();
+            // Clear existing state first to force fresh fetch
+            setExistingEnrollment(null);
+            setSelectedPrograms([]);
+            // Small delay to ensure backend has committed changes
+            await new Promise(resolve => setTimeout(resolve, 500));
+            // Refresh enrollment data with fresh fetch
+            await checkExistingEnrollment();
             setIsEditMode(false);
+            setSuccess(false);
           } else {
             onClose();
           }
-        }, 2000);
+        }, 1500);
       } else {
         setError(data.message || 'Failed to submit enrollment');
       }
