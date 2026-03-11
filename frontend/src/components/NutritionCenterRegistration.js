@@ -9,6 +9,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   const [latitude, setLatitude] = useState('');
   const [longitude, setLongitude] = useState('');
   const [ownerPhone, setOwnerPhone] = useState('');
+  const [countryCode, setCountryCode] = useState('+91'); // Default to India
   const [loading, setLoading] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState(null);
@@ -341,6 +342,37 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     });
   };
 
+  // Get phone number max length based on country code
+  const getPhoneMaxLength = (code) => {
+    const phoneLengths = {
+      '+91': 10,  // India
+      '+1': 10,   // USA/Canada
+      '+44': 11,  // UK
+      '+61': 9,   // Australia
+      '+81': 10,  // Japan
+      '+86': 11,  // China
+      '+971': 9,  // UAE
+      '+966': 9,  // Saudi Arabia
+      '+65': 8,   // Singapore
+      '+60': 10,  // Malaysia
+    };
+    return phoneLengths[code] || 15; // Default max 15 digits
+  };
+
+  // Handle phone number input (only numbers)
+  const handlePhoneInput = (value) => {
+    // Remove all non-digit characters
+    const digitsOnly = value.replace(/\D/g, '');
+    
+    // Get max length for selected country
+    const maxLength = getPhoneMaxLength(countryCode);
+    
+    // Limit to max length
+    const limitedValue = digitsOnly.slice(0, maxLength);
+    
+    setOwnerPhone(limitedValue);
+  };
+
   // Get user ID helper
   const getUserId = async (email) => {
     const response = await fetch(
@@ -415,7 +447,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
           longitude: parseFloat(longitude),
           educationHour: '09:00',
           ownerUserId: userId,
-          ownerPhone: ownerPhone || null,
+          ownerPhone: ownerPhone ? `${countryCode}${ownerPhone}` : null,
         }),
       });
 
@@ -432,6 +464,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       setLatitude('');
       setLongitude('');
       setOwnerPhone('');
+      setCountryCode('+91');
       
       if (markerRef.current) {
         markerRef.current.setMap(null);
@@ -556,13 +589,46 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Phone Number
               </label>
-              <input
-                type="tel"
-                value={ownerPhone}
-                onChange={(e) => setOwnerPhone(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="+1-234-567-8900"
-              />
+              <div className="flex gap-2">
+                {/* Country Code Selector */}
+                <select
+                  value={countryCode}
+                  onChange={(e) => {
+                    setCountryCode(e.target.value);
+                    // Re-validate phone number with new country code
+                    handlePhoneInput(ownerPhone);
+                  }}
+                  className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                >
+                  <option value="+91">🇮🇳 +91</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+44">🇬🇧 +44</option>
+                  <option value="+61">🇦🇺 +61</option>
+                  <option value="+81">🇯🇵 +81</option>
+                  <option value="+86">🇨🇳 +86</option>
+                  <option value="+971">🇦🇪 +971</option>
+                  <option value="+966">🇸🇦 +966</option>
+                  <option value="+65">🇸🇬 +65</option>
+                  <option value="+60">🇲🇾 +60</option>
+                </select>
+                
+                {/* Phone Number Input */}
+                <div className="flex-1">
+                  <input
+                    type="tel"
+                    value={ownerPhone}
+                    onChange={(e) => handlePhoneInput(e.target.value)}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    placeholder={`Enter ${getPhoneMaxLength(countryCode)} digit number`}
+                    maxLength={getPhoneMaxLength(countryCode)}
+                  />
+                  {ownerPhone && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      {countryCode} {ownerPhone} ({ownerPhone.length}/{getPhoneMaxLength(countryCode)} digits)
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Address Search */}
