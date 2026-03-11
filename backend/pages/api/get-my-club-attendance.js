@@ -94,8 +94,29 @@ export default async function handler(req, res) {
         .eq('is_deleted', false);
 
       if (!clubsError && clubs) {
+        // Get owner user IDs
+        const ownerIds = [...new Set(clubs.map(club => club.owner_user_id).filter(id => id))];
+        
+        // Fetch owner names from team_table
+        let ownersMap = {};
+        if (ownerIds.length > 0) {
+          const { data: owners, error: ownersError } = await supabase
+            .from('team_table')
+            .select('UserId, UserName')
+            .in('UserId', ownerIds);
+
+          if (!ownersError && owners) {
+            owners.forEach(owner => {
+              ownersMap[owner.UserId] = owner.UserName;
+            });
+          }
+        }
+
         clubs.forEach(club => {
-          clubsMap[club.id] = club;
+          clubsMap[club.id] = {
+            ...club,
+            ownerName: ownersMap[club.owner_user_id] || 'Unknown Owner'
+          };
         });
       }
     }
@@ -113,10 +134,7 @@ export default async function handler(req, res) {
         }),
         clubId: log.nutrition_center_id,
         clubName: log.center_name || club?.center_name || 'Unknown Club',
-        clubLocation: club ? { 
-          latitude: club.latitude, 
-          longitude: club.longitude 
-        } : null,
+        clubOwnerName: club?.ownerName || 'Unknown Owner',
       };
     });
 
@@ -128,7 +146,7 @@ export default async function handler(req, res) {
         clubSummaryMap[key] = {
           clubId: record.clubId,
           clubName: record.clubName,
-          clubLocation: record.clubLocation,
+          clubOwnerName: record.clubOwnerName,
           attendanceCount: 0,
           dates: [],
         };
