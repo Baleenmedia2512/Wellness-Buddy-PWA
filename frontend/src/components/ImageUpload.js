@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import { validateImageFreshness } from "../utils/imageValidator";
 
 const ImageUpload = forwardRef(
   (
@@ -43,7 +44,7 @@ const ImageUpload = forwardRef(
       }
     };
 
-    const handleFileChange = (event) => {
+    const handleFileChange = async (event) => {
       const file = event.target.files[0];
       if (file) {
         if (!file.type.startsWith("image/")) {
@@ -54,6 +55,21 @@ const ImageUpload = forwardRef(
           alert("Image size should be less than 10MB");
           return;
         }
+        
+        // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
+        if (imageType === "education") {
+          const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+          
+          if (!validation.isValid) {
+            alert(validation.message + "\n\n" + validation.details);
+            // Clear the input
+            event.target.value = "";
+            return;
+          }
+          
+          console.log("✅ Image validated:", validation.message);
+        }
+        
         onImageSelect(file);
       }
     };
@@ -110,6 +126,19 @@ const ImageUpload = forwardRef(
               photo.base64String,
               `gallery-${Date.now()}.jpg`,
             );
+            
+            // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
+            if (imageType === "education") {
+              const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+              
+              if (!validation.isValid) {
+                alert(validation.message + "\n\n" + validation.details);
+                return;
+              }
+              
+              console.log("✅ Image validated:", validation.message);
+            }
+            
             onImageSelect(file);
           }
         } catch (err) {

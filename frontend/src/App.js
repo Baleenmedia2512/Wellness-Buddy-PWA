@@ -44,6 +44,7 @@ import { duplicateDetectionService } from "./services/duplicateDetectionService"
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
+import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
@@ -1458,6 +1459,22 @@ function WellnessValleyApp() {
       imageProcessingInProgress.current = false;
       return;
     }
+
+    // 🚨 FRAUD PREVENTION: Validate image freshness (prevent old/proxy images)
+    // Check EXIF metadata to ensure image was taken today
+    console.log('🔍 Validating image freshness...');
+    const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+    
+    if (!validation.isValid) {
+      console.error('❌ Image validation failed:', validation);
+      setError(
+        `${validation.message}\n\n${validation.details}\n\n⚠️ Please take a FRESH photo now. Using old images is not allowed.`
+      );
+      imageProcessingInProgress.current = false;
+      return;
+    }
+    
+    console.log('✅ Image validated:', validation.message);
 
     setSelectedImage(file);
     setError(null);

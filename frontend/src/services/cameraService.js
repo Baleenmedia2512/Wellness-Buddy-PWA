@@ -2,6 +2,7 @@
 
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
+import { validateImageFreshness } from '../utils/imageValidator';
 
 class CameraService {
   isNativeApp() {
@@ -76,7 +77,7 @@ class CameraService {
     return await response.blob();
   }
 
-  async selectFromGallery() {
+  async selectFromGallery(validateForEducation = false) {
     if (this.isNativeApp()) {
       // ✅ ANDROID PERFORMANCE: Use Base64 for faster processing
       try {
@@ -94,6 +95,22 @@ class CameraService {
         const blob = await this.base64ToBlob(dataUrl);
         const file = new File([blob], `gallery-${Date.now()}.jpg`, { type: 'image/jpeg' });
 
+        // 🚨 Validate image freshness for education logs (prevent proxy/old images)
+        if (validateForEducation) {
+          const validation = await validateImageFreshness(file, 0); // Only today's images
+          
+          if (!validation.isValid) {
+            return {
+              success: false,
+              error: validation.message,
+              reason: 'proxy',
+              details: validation.details
+            };
+          }
+          
+          console.log('✅ Image validated:', validation.message);
+        }
+
         return {
           success: true,
           src: dataUrl,
@@ -105,16 +122,33 @@ class CameraService {
       }
     } else {
       // Web fallback
-      return new Promise((resolve) => {
+      return new Promise(async (resolve) => {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = 'image/*';
 
-        input.onchange = (e) => {
+        input.onchange = async (e) => {
           const file = e.target.files[0];
           if (!file) {
             resolve({ success: false, error: 'No file selected' });
             return;
+          }
+
+          // 🚨 Validate image freshness for education logs (prevent proxy/old images)
+          if (validateForEducation) {
+            const validation = await validateImageFreshness(file, 0); // Only today's images
+            
+            if (!validation.isValid) {
+              resolve({
+                success: false,
+                error: validation.message,
+                reason: 'proxy',
+                details: validation.details
+              });
+              return;
+            }
+            
+            console.log('✅ Image validated:', validation.message);
           }
 
           const reader = new FileReader();
