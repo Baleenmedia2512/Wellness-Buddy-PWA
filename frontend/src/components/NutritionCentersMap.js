@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, Phone, MessageCircle, Eye, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, Eye, X } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -318,10 +318,6 @@ const NutritionCentersMap = ({ user, onBack }) => {
           <p style="margin: 4px 0; font-size: 13px; color: #6b7280;">
             <strong>Participants:</strong> ${center.totalParticipants}
           </p>
-          <p style="margin: 4px 0; font-size: 13px; color: #6b7280;">
-            <strong>Today's Attendance:</strong> ${center.todayAttendance} (${center.attendancePercentage}%)
-          </p>
-          ${center.education_hour ? `<p style="margin: 4px 0; font-size: 13px; color: #6b7280;"><strong>Education Hour:</strong> ${center.education_hour}</p>` : ''}
           <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
             <button 
               onclick="window.openStreetViewForCenter(${center.id})" 
@@ -330,9 +326,9 @@ const NutritionCentersMap = ({ user, onBack }) => {
               👁️ View Street View
             </button>
             ${center.owner_phone ? `
-              <div style="display: flex; gap: 8px;">
-                <a href="tel:${center.owner_phone}" style="padding: 6px 12px; background: #10b981; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">📞 Call</a>
-                <a href="https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}" target="_blank" style="padding: 6px 12px; background: #25D366; color: white; text-decoration: none; border-radius: 6px; font-size: 12px; flex: 1; text-align: center;">💬 WhatsApp</a>
+              <div style="display: flex; gap: 8px; justify-content: center;">
+                <a href="tel:${center.owner_phone}" style="padding: 10px; background: #10b981; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="Call"><img src="/call-icon.png" alt="Call" style="width: 24px; height: 24px;"/></a>
+                <a href="https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}" target="_blank" style="padding: 10px; background: #25D366; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></a>
               </div>
             ` : ''}
           </div>
@@ -489,14 +485,8 @@ const NutritionCentersMap = ({ user, onBack }) => {
                       <div className="flex-1">
                         <h3 className="font-bold text-gray-800">{center.center_name}</h3>
                         <p className="text-sm text-gray-600 mt-1">Owner: {center.ownerName}</p>
-                        {center.education_hour && (
-                          <p className="text-xs text-gray-500 mt-1">🕐 Education Hour: {center.education_hour}</p>
-                        )}
                         <div className="flex gap-4 mt-2 text-xs text-gray-500">
                           <span>👥 {center.totalParticipants} participants</span>
-                          <span className={center.attendancePercentage >= 50 ? 'text-green-600 font-medium' : 'text-orange-600'}>
-                            ✅ {center.todayAttendance} today ({center.attendancePercentage}%)
-                          </span>
                         </div>
                       </div>
 
@@ -516,20 +506,20 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             <a
                               href={`tel:${center.owner_phone}`}
                               onClick={(e) => e.stopPropagation()}
-                              className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                              className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
                               title="Call"
                             >
-                              <Phone className="h-4 w-4" />
+                              <img src="/call-icon.png" alt="Call" className="h-5 w-5" />
                             </a>
                             <a
                               href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={(e) => e.stopPropagation()}
-                              className="p-2 bg-green-100 text-green-600 rounded-lg hover:bg-green-200 transition-colors"
+                              className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
                               title="WhatsApp"
                             >
-                              <MessageCircle className="h-4 w-4" />
+                              <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5" />
                             </a>
                           </>
                         )}
