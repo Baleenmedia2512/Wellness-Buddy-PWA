@@ -374,7 +374,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             ))}
           </div>
 
-          {/* Error Message */}
+          {/* Error Message ,*/}
           {error && (
             <div className="mt-4 bg-red-50 border border-red-200 rounded-lg p-3 text-red-700 text-sm">
               {error}
