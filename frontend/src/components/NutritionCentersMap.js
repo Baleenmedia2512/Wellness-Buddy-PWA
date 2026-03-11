@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, RefreshCw, MapPin, Eye, X } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
+import { Browser } from '@capacitor/browser';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 
@@ -23,6 +25,56 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
+
+  // Handle WhatsApp link for mobile compatibility
+  const handleWhatsAppClick = async (e, phoneNumber) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    
+    if (Capacitor.isNativePlatform()) {
+      // On native platforms, use Browser plugin to open WhatsApp
+      try {
+        await Browser.open({ 
+          url: `https://wa.me/${cleanPhone}`,
+          presentationStyle: 'popover'
+        });
+      } catch (error) {
+        console.error('Failed to open WhatsApp:', error);
+        // Fallback: try direct link
+        window.location.href = `https://wa.me/${cleanPhone}`;
+      }
+    } else {
+      // On web, open in new tab
+      window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
+    }
+  };
+
+  // Make WhatsApp handler globally accessible for info window
+  useEffect(() => {
+    window.openWhatsAppForCenter = async (phoneNumber) => {
+      const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+      
+      if (Capacitor.isNativePlatform()) {
+        try {
+          await Browser.open({ 
+            url: `https://wa.me/${cleanPhone}`,
+            presentationStyle: 'popover'
+          });
+        } catch (error) {
+          console.error('Failed to open WhatsApp:', error);
+          window.location.href = `https://wa.me/${cleanPhone}`;
+        }
+      } else {
+        window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
+      }
+    };
+
+    return () => {
+      delete window.openWhatsAppForCenter;
+    };
+  }, []);
 
   // Load Google Maps script
   useEffect(() => {
@@ -328,7 +380,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
             ${center.owner_phone ? `
               <div style="display: flex; gap: 8px; justify-content: center;">
                 <a href="tel:${center.owner_phone}" style="padding: 10px; background: #10b981; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="Call"><img src="/call-icon.png" alt="Call" style="width: 24px; height: 24px;"/></a>
-                <a href="https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}" target="_blank" style="padding: 10px; background: #25D366; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></a>
+                <button onclick="window.openWhatsAppForCenter('${center.owner_phone}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
               </div>
             ` : ''}
           </div>
@@ -513,9 +565,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             </a>
                             <a
                               href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
+                              onClick={(e) => handleWhatsAppClick(e, center.owner_phone)}
                               className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
                               title="WhatsApp"
                             >
