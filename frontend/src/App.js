@@ -49,6 +49,7 @@ import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
+import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
@@ -126,6 +127,14 @@ function WellnessValleyApp() {
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
   const [nearbyCenters, setNearbyCenters] = useState([]);
   const [pendingEducationData, setPendingEducationData] = useState(null);
+  
+  // Custom alert modal state
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
@@ -1467,9 +1476,12 @@ function WellnessValleyApp() {
     
     if (!validation.isValid) {
       console.error('❌ Image validation failed:', validation);
-      setError(
-        `${validation.message}\n\n${validation.details}\n\n⚠️ Please take a FRESH photo now. Using old images is not allowed.`
-      );
+      setAlertModal({
+        isOpen: true,
+        title: '🚨 PROXY ALERT',
+        message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+        type: 'error'
+      });
       imageProcessingInProgress.current = false;
       return;
     }
@@ -3024,6 +3036,15 @@ function WellnessValleyApp() {
         }}
         nearbyCenters={nearbyCenters}
         onSelectClub={handleClubSelection}
+      />
+
+      {/* Custom Alert Modal (for proxy alerts and other critical messages) */}
+      <CustomAlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
       />
 
       {/* New User Profile Modal - shown for first-time users to complete their profile */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2 } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
+import CustomAlertModal from './CustomAlertModal';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
   const [centerName, setCenterName] = useState('');
@@ -16,6 +17,17 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   const [loadingCenters, setLoadingCenters] = useState(true);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [searchAddress, setSearchAddress] = useState('');
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info',
+    confirmText: 'OK',
+    cancelText: null,
+    onConfirm: null,
+    onCancel: null,
+  });
+  const [centerToDelete, setCenterToDelete] = useState(null);
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
@@ -401,9 +413,22 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   // Handle unregister
   const handleUnregister = async (centerId) => {
-    if (!window.confirm('Are you sure you want to unregister this nutrition centre?')) {
-      return;
-    }
+    // Show confirmation modal
+    setCenterToDelete(centerId);
+    setAlertModal({
+      isOpen: true,
+      title: '⚠️ Delete Nutrition Centre',
+      message: 'Are you sure you want to unregister this nutrition centre? This action cannot be undone.',
+      type: 'warning',
+      confirmText: 'Yes, Delete',
+      cancelText: 'Cancel',
+      onConfirm: () => confirmUnregister(centerId),
+      onCancel: () => setCenterToDelete(null),
+    });
+  };
+
+  // Confirm unregister after user confirmation
+  const confirmUnregister = async (centerId) => {
 
     try {
       const userId = await getUserId(user.email);
@@ -609,6 +634,19 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
           )}
         </div>
       </div>
+      
+      {/* Custom Alert Modal */}
+      <CustomAlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+        confirmText={alertModal.confirmText}
+        cancelText={alertModal.cancelText}
+        onConfirm={alertModal.onConfirm}
+        onCancel={alertModal.onCancel}
+      />
     </div>
   );
 };

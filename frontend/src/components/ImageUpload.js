@@ -10,6 +10,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import CustomAlertModal from "./CustomAlertModal";
 import { validateImageFreshness } from "../utils/imageValidator";
 
 const ImageUpload = forwardRef(
@@ -28,6 +29,14 @@ const ImageUpload = forwardRef(
     const cameraInputRef = useRef(null);
     const galleryInputRef = useRef(null);
     const fallbackInputRef = useRef(null);
+    
+    // Custom alert modal state
+    const [alertModal, setAlertModal] = useState({
+      isOpen: false,
+      title: '',
+      message: '',
+      type: 'info'
+    });
 
     // Helper to convert base64 to File
     const base64ToFile = async (base64String, filename = "image.jpg") => {
@@ -48,11 +57,21 @@ const ImageUpload = forwardRef(
       const file = event.target.files[0];
       if (file) {
         if (!file.type.startsWith("image/")) {
-          alert("Please select an image file");
+          setAlertModal({
+            isOpen: true,
+            title: 'Invalid File',
+            message: 'Please select an image file',
+            type: 'error'
+          });
           return;
         }
         if (file.size > 10 * 1024 * 1024) {
-          alert("Image size should be less than 10MB");
+          setAlertModal({
+            isOpen: true,
+            title: 'File Too Large',
+            message: 'Image size should be less than 10MB',
+            type: 'error'
+          });
           return;
         }
         
@@ -61,7 +80,12 @@ const ImageUpload = forwardRef(
           const validation = await validateImageFreshness(file, 0); // Only today's images allowed
           
           if (!validation.isValid) {
-            alert(validation.message + "\n\n" + validation.details);
+            setAlertModal({
+              isOpen: true,
+              title: '🚨 PROXY ALERT',
+              message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+              type: 'error'
+            });
             // Clear the input
             event.target.value = "";
             return;
@@ -132,7 +156,12 @@ const ImageUpload = forwardRef(
               const validation = await validateImageFreshness(file, 0); // Only today's images allowed
               
               if (!validation.isValid) {
-                alert(validation.message + "\n\n" + validation.details);
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 PROXY ALERT',
+                  message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+                  type: 'error'
+                });
                 return;
               }
               
@@ -258,9 +287,10 @@ const ImageUpload = forwardRef(
     }, [loading, taglines.length, loadingState, imageType]);
 
     return (
-      <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
-        {/* Camera input */}
-        <input
+      <>
+        <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
+          {/* Camera input */}
+          <input
           ref={cameraInputRef}
           type="file"
           accept="image/*"
@@ -396,7 +426,17 @@ const ImageUpload = forwardRef(
             </div>
           </div>
         )}
+        
+        {/* Custom Alert Modal */}
+        <CustomAlertModal
+          isOpen={alertModal.isOpen}
+          onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+          title={alertModal.title}
+          message={alertModal.message}
+          type={alertModal.type}
+        />
       </div>
+      </>
     );
   },
 );
