@@ -1,6 +1,7 @@
 ﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { largeBodyConfig as config } from '../../utils/apiConfig.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 
 export { config };
 
@@ -56,8 +57,20 @@ export default async function handler(req, res) {
 
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
+    // Get education time window and check if current time is within it
+    const timeWindows = await getTimeWindows();
+    const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
+    
     // Insert into education_logs_table using Supabase
     const currentTime = getISTTimestamp();
+    const currentTimeOnly = new Date(currentTime).toTimeString().substring(0, 8);
+    const isOnTime = currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end;
+    
+    console.log('⏰ [save-education-log] Time check:', {
+      currentTime: currentTimeOnly,
+      window: educationWindow,
+      isOnTime: isOnTime ? '✅ ON-TIME' : '⚠️ LATE'
+    });
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({
@@ -98,7 +111,11 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: 'Education log saved successfully',
-      id: data?.Id || data?.id || data?.ID
+      id: data?.Id || data?.id || data?.ID,
+      attendanceType: attendanceType,
+      isOnTime: currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end,
+      timeWindow: educationWindow,
+      uploadTime: currentTimeOnly
     });
     return;
 

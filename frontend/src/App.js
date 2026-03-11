@@ -1263,6 +1263,11 @@ function WellnessValleyApp() {
       if (educationData.participantCount) {
         console.log(`   👥 Participants: ${educationData.participantCount}`);
       }
+      if (data.isOnTime !== undefined) {
+        const status = data.isOnTime ? '✅ ON-TIME (Present)' : '⚠️ LATE (Absent)';
+        console.log(`   ⏰ Timing: ${status}`);
+        console.log(`   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`);
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
