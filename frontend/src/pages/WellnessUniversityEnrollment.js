@@ -201,13 +201,13 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           className="bg-white rounded-2xl shadow-2xl max-w-md w-full"
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-green-400 to-teal-400 p-6 rounded-t-2xl">
+          <div className="bg-gradient-to-r from-green-400 to-green-400 p-6 rounded-t-2xl">
             <div className="flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                  🎓 Your Enrollment
+                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                   Your Enrollment
                 </h2>
-                <p className="text-white text-sm mt-1">Wellness University Program</p>
+                {/* <p className="text-white text-sm mt-1">Wellness University Program</p> */}
               </div>
               <button
                 onClick={onClose}
@@ -264,9 +264,9 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
               </button>
               <button
                 onClick={() => setIsEditMode(true)}
-                className="flex-1 bg-gradient-to-r from-green-400 to-teal-400 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                className="flex-1 bg-gradient-to-r from-green-400 to-green-400 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
               >
-                ✏️ Edit Programs
+                Edit
               </button>
             </div>
           </div>
@@ -284,7 +284,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-400 to-teal-400 p-6 rounded-t-2xl">
+        <div className="bg-gradient-to-r from-green-400 to-green-400 p-6 rounded-t-2xl">
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
