@@ -2800,6 +2800,18 @@ function WellnessValleyApp() {
             ? () => setShowWellnessReport(true)
             : null
         }
+        onShowAttendanceReport={() => setShowAttendanceReport(true)}
+        onShowClubAttendanceReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowClubAttendanceReport(true)
+            : null
+        }
+        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
+        onShowRegisterCenter={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowRegisterCenter(true)
+            : null
+        }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
