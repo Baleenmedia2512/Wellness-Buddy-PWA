@@ -236,8 +236,14 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
           const place = autocomplete.getPlace();
           
           if (!place.geometry || !place.geometry.location) {
-            setError('No location found for: ' + place.name);
+            // User pressed Enter without selecting a suggestion - ignore silently
             return;
+          }
+
+          // Exit street view if active
+          const streetView = map.getStreetView();
+          if (streetView && streetView.getVisible()) {
+            streetView.setVisible(false);
           }
 
           // Center map on selected place
@@ -298,6 +304,40 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     marker.addListener('dragend', (event) => {
       setLatitude(event.latLng.lat().toFixed(8));
       setLongitude(event.latLng.lng().toFixed(8));
+    });
+  };
+
+  // Geocode address search
+  const geocodeAddress = (address) => {
+    if (!address || !window.google || !window.google.maps) return;
+
+    const geocoder = new window.google.maps.Geocoder();
+    
+    geocoder.geocode({ address: address }, (results, status) => {
+      if (status === 'OK' && results[0]) {
+        const location = results[0].geometry.location;
+        
+        // Exit street view if active
+        if (googleMapRef.current) {
+          const streetView = googleMapRef.current.getStreetView();
+          if (streetView && streetView.getVisible()) {
+            streetView.setVisible(false);
+          }
+          
+          // Center map on geocoded location
+          googleMapRef.current.setCenter(location);
+          googleMapRef.current.setZoom(15);
+        }
+
+        // Place marker at geocoded location
+        placeMarker(location);
+
+        // Update search box with formatted address
+        setSearchAddress(results[0].formatted_address);
+      } else {
+        setError('Location not found. Please try a different search term.');
+        setTimeout(() => setError(null), 3000);
+      }
     });
   };
 
@@ -535,6 +575,13 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                 type="text"
                 value={searchAddress}
                 onChange={(e) => setSearchAddress(e.target.value)}
+                onKeyDown={(e) => {
+                  // When Enter is pressed, geocode the address
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    geocodeAddress(searchAddress);
+                  }
+                }}
                 className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                 placeholder="Type address to search..."
               />
