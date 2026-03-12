@@ -214,8 +214,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             🏅 Weight Loss Marathon (Today vs Yesterday)
           </span>
         </div>
-        
-        <div className="overflow-x-auto overflow-y-hidden pb-2 scrollbar-thin scrollbar-thumb-green-400 scrollbar-track-green-100">
+
+        <div className="overflow-x-auto overflow-y-hidden scrollbar-hide">
           <div
             className="animate-smooth-marquee whitespace-nowrap inline-flex"
             style={{
@@ -223,10 +223,14 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             }}
           >
             {/* First set of items */}
-            {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-            
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `first-${user.userId}`),
+            )}
+
             {/* Duplicate set for seamless loop */}
-            {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `second-${user.userId}`),
+            )}
           </div>
         </div>
       </div>

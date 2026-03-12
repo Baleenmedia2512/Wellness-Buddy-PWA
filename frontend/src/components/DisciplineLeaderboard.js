@@ -46,7 +46,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log("⭐ [DISCIPLINE-LEADERBOARD] Response status:", response.status);
+      console.log(
+        "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
+        response.status,
+      );
       const result = await response.json();
       console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
@@ -145,15 +148,23 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Get star icon based on discipline percentage
   const getStarIcon = (disciplinePercentage) => {
     if (disciplinePercentage >= 90) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 fill-yellow-500" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 fill-yellow-500" />
+      );
     }
     if (disciplinePercentage >= 80) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 fill-gray-400" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 fill-gray-400" />
+      );
     }
     if (disciplinePercentage >= 70) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-orange-500 fill-orange-500" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-orange-500 fill-orange-500" />
+      );
     }
-    return <Award className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-500" />;
+    return (
+      <Award className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-500" />
+    );
   };
 
   // Don't render if no data or loading failed
@@ -216,8 +227,8 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             🌟 Discipline Champions (Last 10 Days)
           </span>
         </div>
-        
-        <div className="overflow-x-auto overflow-y-hidden pb-2 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-100">
+
+        <div className="overflow-x-auto overflow-y-hidden scrollbar-hide">
           <div
             className="animate-smooth-marquee whitespace-nowrap inline-flex"
             style={{
@@ -225,10 +236,14 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             }}
           >
             {/* First set of items */}
-            {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-            
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `first-${user.userId}`),
+            )}
+
             {/* Duplicate set for seamless loop */}
-            {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `second-${user.userId}`),
+            )}
           </div>
         </div>
       </div>
