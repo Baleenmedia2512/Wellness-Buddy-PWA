@@ -237,65 +237,63 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
       {/* Header */}
       <div className="sticky top-0 z-10 bg-white shadow-md">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <TouchFeedbackButton
-              onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-full"
-              ariaLabel="Go back"
-            >
-              <ArrowLeft className="h-5 w-5 text-gray-600" />
-            </TouchFeedbackButton>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">Club Attendance Report</h1>
-              <p className="text-xs text-gray-500">Track education attendance by club</p>
+        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <TouchFeedbackButton
+                onClick={onBack}
+                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full"
+                ariaLabel="Go back"
+              >
+                <ArrowLeft className="h-5 w-5 text-gray-600" />
+              </TouchFeedbackButton>
+              <div>
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-800">Club Attendance Report</h1>
+                <p className="text-[10px] sm:text-xs text-gray-500">Track attendance at your nutrition centers</p>
+              </div>
             </div>
-          </div>
-          <TouchFeedbackButton
-            onClick={fetchReport}
-            disabled={loading || !selectedClubId}
-            className="p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
-            ariaLabel="Refresh"
-          >
-            <RefreshCw className={`h-5 w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
-          </TouchFeedbackButton>
-        </div>
-
-        {/* Club Selection Dropdown */}
-        <div className="max-w-4xl mx-auto px-4 pb-3">
-          <div className="flex items-center gap-2 mb-3">
-            <MapPin className="h-5 w-5 text-green-600" />
-            <select
-              value={selectedClubId || ''}
-              onChange={(e) => setSelectedClubId(e.target.value ? parseInt(e.target.value) : null)}
-              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-              disabled={clubs.length === 0}
+            <TouchFeedbackButton
+              onClick={fetchReport}
+              disabled={loading}
+              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
+              ariaLabel="Refresh"
             >
-              <option value="">Select a club</option>
-              {clubs.map((club) => (
-                <option key={club.id} value={club.id}>
-                  {club.center_name}
-                </option>
-              ))}
-            </select>
+              <RefreshCw className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+            </TouchFeedbackButton>
           </div>
 
-          {/* Date Filter */}
-          <div className="flex gap-2 overflow-x-auto">
+          {/* Club Selector - Full width dropdown */}
+          {clubs.length > 0 && (
+            <div className="mt-2 sm:mt-3 mb-2">
+              <select
+                value={selectedClubId || ''}
+                onChange={(e) => setSelectedClubId(parseInt(e.target.value))}
+                className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-200 rounded-full text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              >
+                {clubs.map((club) => (
+                  <option key={club.id} value={club.id}>
+                    {club.center_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Date Filter - Responsive Pills */}
+          <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-hide items-center">
             {[
               { value: 'today', label: 'Today' },
               { value: 'yesterday', label: 'Yesterday' },
-              { value: 'last-week', label: 'Last Week' },
-              { value: 'last-month', label: 'Last Month' },
-              { value: 'so-far', label: 'So Far' },
+              { value: 'last-week', label: 'Week' },
+              { value: 'last-month', label: 'Month' },
             ].map((filter) => (
               <TouchFeedbackButton
                 key={filter.value}
                 onClick={() => setDateFilter(filter.value)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
                   dateFilter === filter.value
-                    ? 'bg-green-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    ? 'bg-green-600 text-white shadow-md shadow-green-200'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                 }`}
               >
                 {filter.label}
@@ -306,7 +304,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       </div>
 
       {/* Content */}
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-4xl mx-auto p-3 sm:p-4">
         {clubs.length === 0 && !loading ? (
           <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
             <MapPin className="h-12 w-12 text-yellow-600 mx-auto mb-3" />
