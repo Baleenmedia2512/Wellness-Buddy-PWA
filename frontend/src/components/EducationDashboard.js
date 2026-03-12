@@ -716,7 +716,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     {educationLogs.length > 0 && (() => {
                       const timeSlots = { morning: 0, afternoon: 0, evening: 0, night: 0 };
                       educationLogs.forEach(log => {
-                        const hour = new Date(log.CreatedAt).getHours();
+                        const hour = istToLocalDate(log.CreatedAt).getHours();
                         if (hour >= 5 && hour < 12) timeSlots.morning++;
                         else if (hour >= 12 && hour < 17) timeSlots.afternoon++;
                         else if (hour >= 17 && hour < 22) timeSlots.evening++;
@@ -774,7 +774,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         const today = new Date();
                         const activeDates = summary?.last7DaysDates
                           ? summary.last7DaysDates.map(d => new Date(d).toDateString())
-                          : educationLogs.map(log => new Date(log.CreatedAt).toDateString());
+                          : educationLogs.map(log => istToLocalDate(log.CreatedAt).toDateString());
 
                         for (let i = 6; i >= 0; i--) {
                           const d = new Date(today);
