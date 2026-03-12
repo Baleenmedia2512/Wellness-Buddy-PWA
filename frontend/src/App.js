@@ -108,6 +108,7 @@ function WellnessValleyApp() {
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
+  const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
@@ -1240,6 +1241,10 @@ function WellnessValleyApp() {
       const finalCenterName = selectedClub?.center_name || attendance.centerName;
       const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
 
+      // Use EXIF timestamp if available, otherwise use current time
+      const logTimestamp = imageTimestamp || new Date().toISOString();
+      console.log("📅 Education log timestamp:", logTimestamp, imageTimestamp ? "(from EXIF)" : "(current time)");
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1256,6 +1261,7 @@ function WellnessValleyApp() {
           attendanceType: attendance.attendanceType,
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
+          imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
         }),
       });
 
@@ -1453,7 +1459,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file) => {
+  const handleImageSelect = async (file, exifTimestamp = null) => {
     if (imageProcessingInProgress.current) {
       console.log(
         "Image processing already in progress, skipping duplicate call",
@@ -1461,6 +1467,14 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
+    
+    // Store EXIF timestamp for education logs
+    if (exifTimestamp) {
+      console.log("📸 EXIF Timestamp received:", exifTimestamp);
+      setImageTimestamp(exifTimestamp);
+    } else {
+      setImageTimestamp(null);
+    }
 
     if (!user) {
       setError("Please sign in to analyze food images");

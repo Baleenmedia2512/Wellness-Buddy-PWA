@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName, imageTimestamp } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
@@ -35,7 +35,8 @@ export default async function handler(req, res) {
     attendanceType,
     hasLocation: !!(latitude && longitude),
     nutritionCenterId,
-    centerName
+    centerName,
+    imageTimestamp: imageTimestamp || 'NOT PROVIDED (will use server time)'
   });
 
   // Validation
@@ -61,16 +62,19 @@ export default async function handler(req, res) {
     const timeWindows = await getTimeWindows();
     const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
     
-    // Insert into education_logs_table using Supabase
-    const currentTime = getISTTimestamp();
-    const currentTimeOnly = new Date(currentTime).toTimeString().substring(0, 8);
-    const isOnTime = currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end;
+    // Use imageTimestamp if provided (from EXIF), otherwise use server time
+    const logTimestamp = imageTimestamp ? new Date(imageTimestamp) : new Date(getISTTimestamp());
+    const logTimeOnly = logTimestamp.toTimeString().substring(0, 8);
+    const isOnTime = logTimeOnly >= educationWindow.start && logTimeOnly <= educationWindow.end;
     
     console.log('⏰ [save-education-log] Time check:', {
-      currentTime: currentTimeOnly,
+      logTimestamp: logTimestamp.toISOString(),
+      logTime: logTimeOnly,
+      source: imageTimestamp ? '📸 EXIF metadata' : '🖥️ Server time',
       window: educationWindow,
       isOnTime: isOnTime ? '✅ ON-TIME' : '⚠️ LATE'
     });
+
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({
@@ -87,8 +91,8 @@ export default async function handler(req, res) {
         participant_count: participantCount || null,
         center_name: centerName || null,
         IsDeleted: false,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
+        CreatedAt: logTimestamp.toISOString(), // Use image EXIF timestamp or server time
+        UpdatedAt: logTimestamp.toISOString()
       })
       .select()
       .single();
@@ -98,8 +102,6 @@ export default async function handler(req, res) {
       console.error('❌ [save-education-log] Error code:', error.code);
       throw error;
     }
-    
-    console.log('✅ [save-education-log] Successfully saved, ID:', data?.ID);
     
     console.log('✅ [save-education-log] Successfully saved, ID:', data?.Id || data?.id || data?.ID);
     
@@ -113,9 +115,11 @@ export default async function handler(req, res) {
       message: 'Education log saved successfully',
       id: data?.Id || data?.id || data?.ID,
       attendanceType: attendanceType,
-      isOnTime: currentTimeOnly >= educationWindow.start && currentTimeOnly <= educationWindow.end,
+      isOnTime: isOnTime,
       timeWindow: educationWindow,
-      uploadTime: currentTimeOnly
+      uploadTime: logTimeOnly,
+      logTimestamp: logTimestamp.toISOString(),
+      timestampSource: imageTimestamp ? 'EXIF' : 'server'
     });
     return;
 

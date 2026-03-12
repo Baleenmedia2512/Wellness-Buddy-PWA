@@ -11,7 +11,7 @@ import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
-import { validateImageFreshness } from "../utils/imageValidator";
+import { validateImageFreshness, validateImageForEducation } from "../utils/imageValidator";
 
 const ImageUpload = forwardRef(
   (
@@ -77,13 +77,15 @@ const ImageUpload = forwardRef(
         
         // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
         if (imageType === "education") {
-          const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+          // Get education time window (default: 5:00 AM - 11:59 PM)
+          const educationWindow = { start: '05:00:00', end: '23:59:00' };
+          const validation = await validateImageForEducation(file, educationWindow);
           
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
               title: '🚨 PROXY ALERT',
-              message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+              message: validation.message,
               type: 'error'
             });
             // Clear the input
@@ -92,6 +94,11 @@ const ImageUpload = forwardRef(
           }
           
           console.log("✅ Image validated:", validation.message);
+          console.log("📸 Image timestamp:", validation.imageTimestamp);
+          
+          // Pass both file and timestamp to parent
+          onImageSelect(file, validation.imageTimestamp);
+          return;
         }
         
         onImageSelect(file);
@@ -120,19 +127,26 @@ const ImageUpload = forwardRef(
             
             // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
             if (imageType === "education") {
-              const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+              // Get education time window (default: 5:00 AM - 11:59 PM)
+              const educationWindow = { start: '05:00:00', end: '23:59:00' };
+              const validation = await validateImageForEducation(file, educationWindow);
               
               if (!validation.isValid) {
                 setAlertModal({
                   isOpen: true,
                   title: '🚨 PROXY ALERT',
-                  message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+                  message: validation.message,
                   type: 'error'
                 });
                 return;
               }
               
               console.log("✅ Image validated:", validation.message);
+              console.log("📸 Image timestamp:", validation.imageTimestamp);
+              
+              // Pass both file and timestamp to parent
+              onImageSelect(file, validation.imageTimestamp);
+              return;
             }
             
             onImageSelect(file);
@@ -171,19 +185,26 @@ const ImageUpload = forwardRef(
             
             // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
             if (imageType === "education") {
-              const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+              // Get education time window (default: 5:00 AM - 11:59 PM)
+              const educationWindow = { start: '05:00:00', end: '23:59:00' };
+              const validation = await validateImageForEducation(file, educationWindow);
               
               if (!validation.isValid) {
                 setAlertModal({
                   isOpen: true,
                   title: '🚨 PROXY ALERT',
-                  message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+                  message: validation.message,
                   type: 'error'
                 });
                 return;
               }
               
               console.log("✅ Image validated:", validation.message);
+              console.log("📸 Image timestamp:", validation.imageTimestamp);
+              
+              // Pass both file and timestamp to parent
+              onImageSelect(file, validation.imageTimestamp);
+              return;
             }
             
             onImageSelect(file);
