@@ -302,7 +302,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
           </div>
         </div>
       </div>
-
+      
       {/* Content */}
       <div className="max-w-4xl mx-auto p-3 sm:p-4">
         {clubs.length === 0 && !loading ? (
