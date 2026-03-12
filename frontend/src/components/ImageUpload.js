@@ -117,6 +117,24 @@ const ImageUpload = forwardRef(
               photo.base64String,
               `photo-${Date.now()}.jpg`,
             );
+            
+            // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
+            if (imageType === "education") {
+              const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+              
+              if (!validation.isValid) {
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 PROXY ALERT',
+                  message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+                  type: 'error'
+                });
+                return;
+              }
+              
+              console.log("✅ Image validated:", validation.message);
+            }
+            
             onImageSelect(file);
           }
         } catch (err) {

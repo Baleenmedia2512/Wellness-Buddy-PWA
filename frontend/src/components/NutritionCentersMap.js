@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, RefreshCw, MapPin, Eye, X } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
+import { Capacitor } from '@capacitor/core';
 
 const NutritionCentersMap = ({ user, onBack }) => {
   const [centers, setCenters] = useState([]);
@@ -239,6 +240,30 @@ const NutritionCentersMap = ({ user, onBack }) => {
     streetViewRef.current = null;
   };
 
+  // Open WhatsApp helper function
+  const openWhatsApp = async (phoneNumber) => {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // For native Android - use custom plugin to bypass webview
+        const { WhatsAppShare } = Capacitor.Plugins;
+        
+        if (!WhatsAppShare || typeof WhatsAppShare.openChat !== 'function') {
+          console.error('WhatsAppShare plugin not available');
+          return;
+        }
+        
+        await WhatsAppShare.openChat({ phoneNumber: cleanPhone });
+      } else {
+        // For web/PWA, open in new tab
+        window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      console.error('Error opening WhatsApp:', error);
+    }
+  };
+
   // View center on map - Simple function to zoom and show details
   const viewCenterOnMap = (center) => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
@@ -362,7 +387,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, user, teamFilter]);
 
-  // Set up global function for info window button
+  // Set up global functions for info window buttons
   useEffect(() => {
     window.openStreetViewForCenter = (centerId) => {
       const center = centers.find(c => c.id === centerId);
@@ -372,8 +397,14 @@ const NutritionCentersMap = ({ user, onBack }) => {
       }
     };
 
+    window.openWhatsAppForCenter = (phoneNumber) => {
+      openWhatsApp(phoneNumber);
+      infoWindowRef.current?.close();
+    };
+
     return () => {
       delete window.openStreetViewForCenter;
+      delete window.openWhatsAppForCenter;
     };
   }, [centers]);
 
@@ -511,16 +542,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             >
                               <img src="/call-icon.png" alt="Call" className="h-5 w-5" />
                             </a>
-                            <a
-                              href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(e) => e.stopPropagation()}
+                            <TouchFeedbackButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openWhatsApp(center.owner_phone);
+                              }}
                               className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
                               title="WhatsApp"
                             >
                               <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5" />
-                            </a>
+                            </TouchFeedbackButton>
                           </>
                         )}
                       </div>
