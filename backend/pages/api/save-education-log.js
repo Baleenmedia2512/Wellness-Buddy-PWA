@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName, clientTimestamp, clientTimezoneOffset } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
@@ -35,7 +35,9 @@ export default async function handler(req, res) {
     attendanceType,
     hasLocation: !!(latitude && longitude),
     nutritionCenterId,
-    centerName
+    centerName,
+    clientTimestamp,
+    clientTimezoneOffset
   });
 
   // Validation
