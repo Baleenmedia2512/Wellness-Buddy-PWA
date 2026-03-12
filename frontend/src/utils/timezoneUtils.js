@@ -18,10 +18,16 @@ export function istToLocalDate(istTimestamp) {
   if (!istTimestamp) return null;
 
   // Normalize to string and remove timezone markers
-  const cleanTimestamp = String(istTimestamp)
+  let cleanTimestamp = String(istTimestamp)
     .replace("Z", "")
     .replace("T", " ")
     .trim();
+
+  // ✅ Handle date-only format (YYYY-MM-DD) by adding default time
+  // If timestamp is just a date without time, assume midnight (00:00:00)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(cleanTimestamp)) {
+    cleanTimestamp = cleanTimestamp + " 00:00:00";
+  }
 
   // ✅ Validate timestamp format: YYYY-MM-DD HH:MM:SS
   // This prevents parsing errors from malformed data
