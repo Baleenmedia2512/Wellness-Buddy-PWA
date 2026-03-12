@@ -146,17 +146,17 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           <div className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-blue-50 to-green-50 border-b border-gray-100">
             <div className="flex items-center justify-center gap-2">
               <div className="flex-1 text-left">
-                <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
+                {/* <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
                   Your Daily Discipline Score
-                </p>
+                </p> */}
                 {/* <p className="text-[9px] text-gray-500 mt-0">
                   Swipe to see each of your meals
                 </p> */}
               </div>
               <div className="flex flex-col items-center">
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">
+                {/* <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">
                   Overall
-                </p>
+                </p> */}
                 <div
                   className={`text-lg sm:text-xl md:text-2xl font-black ${
                     overallScore >= 80
