@@ -272,7 +272,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const sorted = (weightHistory || [])
       .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
       .map((entry) => ({
-        createdAt: new Date(entry.CreatedAt),
+        createdAt: istToLocalDate(entry.CreatedAt),
         weight: Number.parseFloat(entry.Weight),
       }))
       .filter((entry) => !Number.isNaN(entry.createdAt.getTime()) && Number.isFinite(entry.weight))
@@ -717,7 +717,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         </div>
                         <p className="text-[10px] xs:text-xs text-gray-500 mt-0.5 sm:mt-1">
                           {latestWeight
-                            ? new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', {
+                            ? istToLocalDate(latestWeight.CreatedAt).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
