@@ -206,10 +206,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation - Show all users in continuous scroll
+  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 overflow-hidden shadow-sm border-b border-purple-100">
-      <div className="py-2 sm:py-2.5 px-3 sm:px-4 overflow-hidden">
+    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
+      <div className="py-2 sm:py-2.5 px-3 sm:px-4">
         {/* Title */}
         <div className="text-center mb-1.5">
           <span className="text-xs sm:text-sm font-semibold text-purple-700">
@@ -217,17 +217,19 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
           </span>
         </div>
         
-        <div
-          className="animate-smooth-marquee whitespace-nowrap inline-flex"
-          style={{
-            animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-          }}
-        >
-          {/* First set of items */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-          
-          {/* Duplicate set for seamless loop */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+        <div className="overflow-x-auto overflow-y-hidden pb-2 scrollbar-thin scrollbar-thumb-purple-400 scrollbar-track-purple-100">
+          <div
+            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            style={{
+              animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+            }}
+          >
+            {/* First set of items */}
+            {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
+            
+            {/* Duplicate set for seamless loop */}
+            {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+          </div>
         </div>
       </div>
     </div>

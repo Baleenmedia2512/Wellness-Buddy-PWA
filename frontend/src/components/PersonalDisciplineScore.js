@@ -115,14 +115,6 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     dinner: <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
   };
 
-  const categoryLabels = {
-    weight: "WEI",
-    education: "EDU",
-    breakfast: "BRE",
-    lunch: "LUN",
-    dinner: "DIN",
-  };
-
   // Don't render if loading
   if (loading) {
     return null;
@@ -186,9 +178,6 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                 >
                   {categoryIcons[key]}
                 </div>
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
-                  {categoryLabels[key]}
-                </p>
                 <div
                   className={`text-xs sm:text-sm md:text-base font-black ${
                     data.percentage >= 80

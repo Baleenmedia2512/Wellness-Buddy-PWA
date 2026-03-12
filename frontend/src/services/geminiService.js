@@ -429,11 +429,13 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
-      // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
+      // 🎯 APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
+      // - Herbalife Formula 1: Auto-corrects for ALL users (global)
+      // - Other foods: Auto-corrects only for specific user (personal)
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
         nutritionData.foods = await applyGlobalAutoCorrections(
           nutritionData.foods,
+          userId, // Pass userId for user-specific corrections
         );
       }
 
