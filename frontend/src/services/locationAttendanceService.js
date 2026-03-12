@@ -3,6 +3,8 @@
  * Handles GPS permissions and proximity detection for nutrition centers
  */
 
+import { Geolocation } from '@capacitor/geolocation';
+
 class LocationAttendanceService {
   constructor() {
     this.PROXIMITY_RADIUS_METERS = 100; // 100 meters radius
@@ -36,41 +38,29 @@ class LocationAttendanceService {
    * @returns {Promise<{latitude: number, longitude: number} | null>}
    */
   async getCurrentLocation() {
-    return new Promise((resolve) => {
-      if (!navigator.geolocation) {
-        console.warn('⚠️ Geolocation not supported by this browser');
-        resolve(null);
-        return;
-      }
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000, // 10 seconds
+      maximumAge: 0, // No caching
+    };
 
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 10000, // 10 seconds
-        maximumAge: 0, // No caching
+    try {
+      const position = await Geolocation.getCurrentPosition(options);
+      console.log('✅ GPS location obtained:', {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+        accuracy: position.coords.accuracy,
+      });
+      return {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+        accuracy: position.coords.accuracy,
       };
-
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          console.log('✅ GPS location obtained:', {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-          });
-          resolve({
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-            accuracy: position.coords.accuracy,
-          });
-        },
-        (error) => {
-          console.warn('⚠️ GPS location error:', error.message);
-          console.warn('  Code:', error.code);
-          console.warn('  Permission denied or not available');
-          resolve(null); // Return null instead of throwing error
-        },
-        options
-      );
-    });
+    } catch (error) {
+      console.warn('⚠️ GPS location error:', error.message);
+      console.warn('  Permission denied or not available');
+      return null; // Return null instead of throwing error
+    }
   }
 
   /**

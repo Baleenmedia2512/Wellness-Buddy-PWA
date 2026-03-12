@@ -11,6 +11,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { Geolocation } from "@capacitor/geolocation";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -470,7 +471,11 @@ function WellnessValleyApp() {
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      // Request push notification permissions
       await PushNotifications.requestPermissions();
+      
+      // Request location permissions for attendance tracking
+      await Geolocation.requestPermissions();
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }
@@ -1200,11 +1205,24 @@ function WellnessValleyApp() {
       // If within 100m of club → club attendance
       // If not near club → remote attendance
       console.log("📍 Checking GPS for nearby clubs...");
-      const attendance = await locationAttendanceService.determineAttendance(
-        apiBaseUrl,
-        userId
-      );
-      console.log("✅ Attendance determined:", attendance);
+      
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(
+          apiBaseUrl,
+          userId
+        );
+        console.log("✅ Attendance determined:", attendance);
+      } catch (gpsError) {
+        console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
+        // Fallback to remote attendance if GPS fails
+        attendance = {
+          attendanceType: 'remote',
+          nutritionCenterId: null,
+          centerName: null,
+          nearbyCenters: []
+        };
+      }
 
       // If multiple clubs detected and no club selected yet, show selection modal
       if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
