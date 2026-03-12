@@ -125,7 +125,101 @@ function extractDateTime(dataView, offset, length) {
 }
 
 /**
- * Validate if image was taken today (fresh image)
+ * Validate if image was taken during valid education timing
+ * @param {File} file - Image file to validate
+ * @param {Object} educationWindow - Education timing window {start: 'HH:MM:SS', end: 'HH:MM:SS'}
+ * @returns {Promise<Object>} - Validation result with EXIF timestamp
+ */
+export async function validateImageForEducation(file, educationWindow = { start: '05:00:00', end: '23:59:00' }) {
+  try {
+    const metadata = await extractImageMetadata(file);
+    
+    // Use EXIF date if available, otherwise fall back to file modified date
+    const imageDate = metadata.hasExif ? metadata.dateTime : metadata.fileModified;
+    
+    if (!imageDate || isNaN(imageDate.getTime())) {
+      return {
+        isValid: false,
+        reason: 'proxy',
+        message: '🚨 PROXY ALERT: Unable to verify image date. Please take a fresh photo.',
+        details: 'Image metadata is missing or corrupted.',
+        imageTimestamp: null
+      };
+    }
+    
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const imageDateOnly = new Date(imageDate.getFullYear(), imageDate.getMonth(), imageDate.getDate());
+    
+    // Calculate days difference
+    const daysDiff = Math.floor((todayStart - imageDateOnly) / (1000 * 60 * 60 * 24));
+    
+    // Get image time in HH:MM:SS format
+    const imageTimeStr = imageDate.toTimeString().substring(0, 8);
+    
+    console.log('📅 Image Education Timing Check:', {
+      imageDate: imageDate.toISOString(),
+      imageTime: imageTimeStr,
+      today: todayStart.toISOString(),
+      daysDiff,
+      educationWindow,
+      hasExif: metadata.hasExif
+    });
+    
+    // Check if image is from today
+    if (daysDiff !== 0) {
+      return {
+        isValid: false,
+        reason: 'proxy',
+        message: daysDiff < 0 
+          ? '🚨 PROXY ALERT: Image date is in the future. Please check your device clock.'
+          : `🚨 PROXY ALERT: This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY during education hours.`,
+        details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY during education timing (${educationWindow.start} - ${educationWindow.end}) are allowed.`,
+        imageDate,
+        imageTimestamp: imageDate.toISOString(),
+        daysDiff
+      };
+    }
+    
+    // Check if image time is within education window
+    if (imageTimeStr < educationWindow.start || imageTimeStr > educationWindow.end) {
+      return {
+        isValid: false,
+        reason: 'proxy',
+        message: `🚨 PROXY ALERT: Image was taken at ${imageTimeStr}, outside education hours (${educationWindow.start} - ${educationWindow.end}).`,
+        details: `Education timing validation failed. Please take a photo during valid education hours only.`,
+        imageDate,
+        imageTimestamp: imageDate.toISOString(),
+        imageTime: imageTimeStr,
+        educationWindow
+      };
+    }
+    
+    // Image is valid - from today and within education timing
+    return {
+      isValid: true,
+      reason: 'valid',
+      message: '✅ Image verified - taken today during education hours',
+      imageDate,
+      imageTimestamp: imageDate.toISOString(),
+      imageTime: imageTimeStr,
+      hasExif: metadata.hasExif,
+      daysDiff: 0
+    };
+  } catch (error) {
+    console.error('Error validating image for education:', error);
+    return {
+      isValid: false,
+      reason: 'error',
+      message: '🚨 PROXY ALERT: Unable to validate image. Please try again.',
+      details: error.message,
+      imageTimestamp: null
+    };
+  }
+}
+
+/**
+ * Validate if image was taken today (fresh image) - for non-education images
  * @param {File} file - Image file to validate
  * @param {number} allowedDaysOld - Maximum age in days (default: 0 = today only)
  * @returns {Promise<Object>} - Validation result

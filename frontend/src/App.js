@@ -11,6 +11,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { Geolocation } from "@capacitor/geolocation";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -111,6 +112,7 @@ function WellnessValleyApp() {
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
+  const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
@@ -496,7 +498,11 @@ function WellnessValleyApp() {
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      // Request push notification permissions
       await PushNotifications.requestPermissions();
+      
+      // Request location permissions for attendance tracking
+      await Geolocation.requestPermissions();
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }
@@ -1230,11 +1236,24 @@ function WellnessValleyApp() {
       // If within 100m of club → club attendance
       // If not near club → remote attendance
       console.log("📍 Checking GPS for nearby clubs...");
-      const attendance = await locationAttendanceService.determineAttendance(
-        apiBaseUrl,
-        userId
-      );
-      console.log("✅ Attendance determined:", attendance);
+      
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(
+          apiBaseUrl,
+          userId
+        );
+        console.log("✅ Attendance determined:", attendance);
+      } catch (gpsError) {
+        console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
+        // Fallback to remote attendance if GPS fails
+        attendance = {
+          attendanceType: 'remote',
+          nutritionCenterId: null,
+          centerName: null,
+          nearbyCenters: []
+        };
+      }
 
       // If multiple clubs detected and no club selected yet, show selection modal
       if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
@@ -1251,6 +1270,10 @@ function WellnessValleyApp() {
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
       const finalCenterName = selectedClub?.center_name || attendance.centerName;
       const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+
+      // Use EXIF timestamp if available, otherwise use current time
+      const logTimestamp = imageTimestamp || new Date().toISOString();
+      console.log("📅 Education log timestamp:", logTimestamp, imageTimestamp ? "(from EXIF)" : "(current time)");
 
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
@@ -1270,6 +1293,7 @@ function WellnessValleyApp() {
           attendanceType: attendance.attendanceType,
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
+          imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
         }),
       });
 
@@ -1474,7 +1498,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file) => {
+  const handleImageSelect = async (file, exifTimestamp = null) => {
     if (imageProcessingInProgress.current) {
       console.log(
         "Image processing already in progress, skipping duplicate call",
@@ -1482,6 +1506,14 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
+    
+    // Store EXIF timestamp for education logs
+    if (exifTimestamp) {
+      console.log("📸 EXIF Timestamp received:", exifTimestamp);
+      setImageTimestamp(exifTimestamp);
+    } else {
+      setImageTimestamp(null);
+    }
 
     if (!user) {
       setError("Please sign in to analyze food images");

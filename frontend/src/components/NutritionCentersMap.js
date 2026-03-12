@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, RefreshCw, MapPin, Eye, X } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
-import { Browser } from '@capacitor/browser';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
+import { Capacitor } from '@capacitor/core';
 
 const NutritionCentersMap = ({ user, onBack }) => {
   const [centers, setCenters] = useState([]);
@@ -25,41 +24,6 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
-
-  // Handle WhatsApp link for mobile compatibility
-  const handleWhatsAppClick = async (e, phoneNumber) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-    
-    if (Capacitor.isNativePlatform()) {
-      // On native platforms, use direct window.location to trigger WhatsApp app
-      // This triggers the system's intent handler to open WhatsApp
-      window.location.href = `https://wa.me/${cleanPhone}`;
-    } else {
-      // On web, open in new tab
-      window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
-    }
-  };
-
-  // Make WhatsApp handler globally accessible for info window
-  useEffect(() => {
-    window.openWhatsAppForCenter = async (phoneNumber) => {
-      const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
-      
-      if (Capacitor.isNativePlatform()) {
-        // On native platforms, use direct window.location to trigger WhatsApp app
-        window.location.href = `https://wa.me/${cleanPhone}`;
-      } else {
-        window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
-      }
-    };
-
-    return () => {
-      delete window.openWhatsAppForCenter;
-    };
-  }, []);
 
   // Load Google Maps script
   useEffect(() => {
@@ -276,6 +240,30 @@ const NutritionCentersMap = ({ user, onBack }) => {
     streetViewRef.current = null;
   };
 
+  // Open WhatsApp helper function
+  const openWhatsApp = async (phoneNumber) => {
+    const cleanPhone = phoneNumber.replace(/[^0-9]/g, '');
+    
+    try {
+      if (Capacitor.isNativePlatform()) {
+        // For native Android - use custom plugin to bypass webview
+        const { WhatsAppShare } = Capacitor.Plugins;
+        
+        if (!WhatsAppShare || typeof WhatsAppShare.openChat !== 'function') {
+          console.error('WhatsAppShare plugin not available');
+          return;
+        }
+        
+        await WhatsAppShare.openChat({ phoneNumber: cleanPhone });
+      } else {
+        // For web/PWA, open in new tab
+        window.open(`https://wa.me/${cleanPhone}`, '_blank', 'noopener,noreferrer');
+      }
+    } catch (error) {
+      console.error('Error opening WhatsApp:', error);
+    }
+  };
+
   // View center on map - Simple function to zoom and show details
   const viewCenterOnMap = (center) => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
@@ -365,7 +353,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
             ${center.owner_phone ? `
               <div style="display: flex; gap: 8px; justify-content: center;">
                 <a href="tel:${center.owner_phone}" style="padding: 10px; background: #10b981; text-decoration: none; border-radius: 8px; display: flex; align-items: center; justify-content: center;" title="Call"><img src="/call-icon.png" alt="Call" style="width: 24px; height: 24px;"/></a>
-                <button onclick="window.openWhatsAppForCenter('${center.owner_phone}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
+                <button onclick="window.openWhatsAppForCenter('${center.owner_phone.replace(/[^0-9]/g, '')}')" style="padding: 10px; background: #25D366; border: none; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="WhatsApp"><img src="/whatsapp-icon.png" alt="WhatsApp" style="width: 24px; height: 24px;"/></button>
               </div>
             ` : ''}
           </div>
@@ -399,7 +387,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded, user, teamFilter]);
 
-  // Set up global function for info window button
+  // Set up global functions for info window buttons
   useEffect(() => {
     window.openStreetViewForCenter = (centerId) => {
       const center = centers.find(c => c.id === centerId);
@@ -409,8 +397,14 @@ const NutritionCentersMap = ({ user, onBack }) => {
       }
     };
 
+    window.openWhatsAppForCenter = (phoneNumber) => {
+      openWhatsApp(phoneNumber);
+      infoWindowRef.current?.close();
+    };
+
     return () => {
       delete window.openStreetViewForCenter;
+      delete window.openWhatsAppForCenter;
     };
   }, [centers]);
 
@@ -548,14 +542,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             >
                               <img src="/call-icon.png" alt="Call" className="h-5 w-5" />
                             </a>
-                            <a
-                              href={`https://wa.me/${center.owner_phone.replace(/[^0-9]/g, '')}`}
-                              onClick={(e) => handleWhatsAppClick(e, center.owner_phone)}
+                            <TouchFeedbackButton
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openWhatsApp(center.owner_phone);
+                              }}
                               className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
                               title="WhatsApp"
                             >
                               <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5" />
-                            </a>
+                            </TouchFeedbackButton>
                           </>
                         )}
                       </div>
