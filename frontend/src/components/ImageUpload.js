@@ -9,6 +9,7 @@ import React, {
 import { AnimatePresence, motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { Filesystem } from "@capacitor/filesystem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
 import { validateImageFreshness, validateImageForEducation } from "../utils/imageValidator";
@@ -221,18 +222,59 @@ const ImageUpload = forwardRef(
                 return;
               }
               
-              // No EXIF from Capacitor — fall back to file-byte EXIF parser
-              const validation = await validateImageForEducation(file, educationWindow);
-              if (!validation.isValid) {
-                setAlertModal({ isOpen: true, title: '🚨 PROXY ALERT', message: validation.message, type: 'error' });
+              // No EXIF from Capacitor — fall back to Filesystem.stat() for modification time
+              console.log('⚠️ No EXIF metadata, using Filesystem.stat() for education image');
+              try {
+                const stat = await Filesystem.stat({ path: photo.path });
+                const fileDate = new Date(stat.mtime);
+                
+                const now = new Date();
+                const isSameDay =
+                  fileDate.getFullYear() === now.getFullYear() &&
+                  fileDate.getMonth() === now.getMonth() &&
+                  fileDate.getDate() === now.getDate();
+                
+                if (!isSameDay) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today during education hours.`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                const imageTimeStr = fileDate.toTimeString().substring(0, 8);
+                if (imageTimeStr < educationWindow.start || imageTimeStr > educationWindow.end) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ Photo modified at ${imageTimeStr}, outside education hours (${educationWindow.start} – ${educationWindow.end}).`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                console.log('✅ Education gallery image validated via Filesystem.stat:', fileDate.toISOString());
+                onImageSelect(file, fileDate.toISOString());
+                return;
+              } catch (fsError) {
+                console.error('❌ Filesystem.stat failed, falling back to byte parser:', fsError);
+                // Last resort: use byte-level EXIF parser
+                const validation = await validateImageForEducation(file, educationWindow);
+                if (!validation.isValid) {
+                  setAlertModal({ isOpen: true, title: '🚨 PROXY ALERT', message: validation.message, type: 'error' });
+                  return;
+                }
+                onImageSelect(file, validation.imageTimestamp);
                 return;
               }
-              onImageSelect(file, validation.imageTimestamp);
-              return;
             }
             
             // Non-education native gallery: extract EXIF for accurate timestamp + validate same-day
-            let galleryTimestamp = new Date().toISOString();
+            let galleryTimestamp = null;
+            
+            // Try EXIF first
             if (photo.exif) {
               const exifDateStr =
                 photo.exif.DateTimeOriginal || photo.exif.dateTimeOriginal ||
@@ -263,6 +305,40 @@ const ImageUpload = forwardRef(
                 }
               }
             }
+            
+            // Fallback to Filesystem.stat() if EXIF is missing
+            if (!galleryTimestamp) {
+              console.log('⚠️ No EXIF metadata, using Filesystem.stat() for non-education image');
+              try {
+                const stat = await Filesystem.stat({ path: photo.path });
+                const fileDate = new Date(stat.mtime);
+                
+                const now = new Date();
+                const isSameDay =
+                  fileDate.getFullYear() === now.getFullYear() &&
+                  fileDate.getMonth() === now.getMonth() &&
+                  fileDate.getDate() === now.getDate();
+                
+                if (!isSameDay) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                galleryTimestamp = fileDate.toISOString();
+                console.log('✅ Non-education gallery image validated via Filesystem.stat:', galleryTimestamp);
+              } catch (fsError) {
+                console.error('❌ Filesystem.stat failed:', fsError);
+                // Last resort: use current time
+                galleryTimestamp = new Date().toISOString();
+                console.log('⚠️ Using current time as fallback');
+              }
+            }
+            
             onImageSelect(file, galleryTimestamp);
           }
         } catch (err) {
