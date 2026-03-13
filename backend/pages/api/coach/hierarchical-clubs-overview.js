@@ -28,9 +28,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId } = req.query;
+  const { userId, date } = req.query;
 
-  console.log('🏢 [hierarchical-clubs-overview] Request:', { userId });
+  console.log('🏢 [hierarchical-clubs-overview] Request:', { userId, date });
 
   if (!userId) {
     res.status(400).json({
@@ -83,41 +83,46 @@ export default async function handler(req, res) {
     // Step 4: Calculate participant counts for each club
     const clubsWithMetrics = await Promise.all(
       (teamClubs || []).map(async (club) => {
+        // Use the requested date (or today as fallback)
+        const targetDateStr = date || new Date().toISOString().split('T')[0];
+        const startOfDay = targetDateStr + 'T00:00:00';
+        const endOfDay = targetDateStr + 'T23:59:59';
+
         // Count total unique participants at this club (all time)
         const { data: totalLogs } = await supabase
           .from('education_logs_table')
-          .select('UserId', { count: 'exact', head: false })
+          .select('"UserId"', { count: 'exact', head: false })
           .eq('nutrition_center_id', club.id)
-          .eq('IsDeleted', false);
+          .or('"IsDeleted".is.null,"IsDeleted".eq.false');
 
         const uniqueUserIds = new Set((totalLogs || []).map(log => log.UserId));
         const totalParticipants = uniqueUserIds.size;
 
-        // Get today's attendance
-        const today = new Date().toISOString().split('T')[0];
+        // Get selected date's attendance
         const { data: todayLogs } = await supabase
           .from('education_logs_table')
-          .select('UserId')
+          .select('"UserId"')
           .eq('nutrition_center_id', club.id)
-          .eq('IsDeleted', false)
-          .gte('CreatedAt', today)
-          .lte('CreatedAt', today + 'T23:59:59');
+          .or('"IsDeleted".is.null,"IsDeleted".eq.false')
+          .gte('"CreatedAt"', startOfDay)
+          .lte('"CreatedAt"', endOfDay);
 
         const todayUniqueUsers = new Set((todayLogs || []).map(log => log.UserId));
         const todayAttendance = todayUniqueUsers.size;
 
-        // Get this week's attendance (last 7 days)
-        const weekAgo = new Date();
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        const weekAgoStr = weekAgo.toISOString().split('T')[0];
-        
+        // Get this week's attendance (7 days ending on target date)
+        const targetDateObj = new Date(targetDateStr + 'T00:00:00');
+        const weekAgoObj = new Date(targetDateObj);
+        weekAgoObj.setDate(weekAgoObj.getDate() - 6);
+        const weekAgoStr = weekAgoObj.toISOString().split('T')[0];
+
         const { data: weekLogs } = await supabase
           .from('education_logs_table')
-          .select('UserId')
+          .select('"UserId"')
           .eq('nutrition_center_id', club.id)
-          .eq('IsDeleted', false)
-          .gte('CreatedAt', weekAgoStr)
-          .lte('CreatedAt', today + 'T23:59:59');
+          .or('"IsDeleted".is.null,"IsDeleted".eq.false')
+          .gte('"CreatedAt"', weekAgoStr + 'T00:00:00')
+          .lte('"CreatedAt"', endOfDay);
 
         const weekUniqueUsers = new Set((weekLogs || []).map(log => log.UserId));
         const weekAttendance = weekUniqueUsers.size;

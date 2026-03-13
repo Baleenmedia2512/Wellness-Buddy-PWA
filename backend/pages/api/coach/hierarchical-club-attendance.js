@@ -107,6 +107,7 @@ export default async function handler(req, res) {
       .select(`
         "UserId",
         "CreatedAt",
+        "Platform",
         attendance_type,
         nutrition_center_id,
         center_name
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
       .filter('"UserId"', 'in', `(${allUserIds.join(',')})`)
       .gte('"CreatedAt"', startOfDay)
       .lte('"CreatedAt"', endOfDay)
-      .eq('"IsDeleted"', false);
+      .or('"IsDeleted".is.null,"IsDeleted".eq.false');
 
     // If specific club selected, filter to only that club
     if (clubIdNum) {
@@ -146,11 +147,10 @@ export default async function handler(req, res) {
           "UserId",
           "CreatedAt"
         `)
-        .eq('attendance_type', 'club')
         .eq('nutrition_center_id', clubIdNum)
         .gte('"CreatedAt"', startOfDay)
         .lte('"CreatedAt"', endOfDay)
-        .eq('"IsDeleted"', false);
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false');
 
       if (!allAttendanceError && allClubAttendance) {
         // Find user IDs who are NOT in the team
@@ -224,7 +224,11 @@ export default async function handler(req, res) {
         const userId = log.UserId;
         const clubId = log.nutrition_center_id;
         const clubInfo = clubId ? clubsMap[clubId] : null;
-        const isRemote = log.attendance_type === 'remote' || (!clubId && log.attendance_type !== 'club');
+        // Determine if remote: check attendance_type first, then fall back to Platform column
+        const platform = (log.Platform || '').toLowerCase();
+        const attendanceType = (log.attendance_type || '').toLowerCase();
+        const isClubVisit = attendanceType === 'club' || platform === 'club' || !!clubId;
+        const isRemote = attendanceType === 'remote' || platform === 'zoom' || platform === 'online meeting' || (!isClubVisit && !clubId);
 
         if (!attendanceMap.has(userId)) {
           attendanceMap.set(userId, {
@@ -237,17 +241,15 @@ export default async function handler(req, res) {
 
         const userAttendance = attendanceMap.get(userId);
         
-        if (!isRemote) {
-          // Club attendance — use clubsMap name first, fallback to center_name stored in log
+        if (isClubVisit && !isRemote) {
+          // Club / In-Person attendance
           const clubName = clubInfo?.name || log.center_name || null;
           if (clubName && !userAttendance.clubs.find(c => c.id === clubId && clubId)) {
             userAttendance.clubs.push({ id: clubId, name: clubName });
-          } else if (!clubId && !isRemote) {
-            // Has attendance_type='club' but no nutrition_center_id - count it
-            userAttendance.remoteCount += 1;
           }
+          // Club visit with no center ID is still physical attendance — don't penalise
         } else {
-          // Remote attendance
+          // Remote / Online attendance
           userAttendance.remoteCount += 1;
         }
         

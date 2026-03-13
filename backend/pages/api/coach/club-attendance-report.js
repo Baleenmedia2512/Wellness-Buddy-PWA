@@ -96,16 +96,15 @@ export default async function handler(req, res) {
     const { data: educationLogs, error: logsError } = await supabase
       .from('education_logs_table')
       .select(`
-        UserId,
-        CreatedAt,
+        "UserId",
+        "CreatedAt",
         attendance_type,
         nutrition_center_id
       `)
-      .eq('attendance_type', 'club')
       .eq('nutrition_center_id', clubIdNum)
-      .gte('CreatedAt', start)
-      .lte('CreatedAt', end + 'T23:59:59')
-      .eq('IsDeleted', false);
+      .gte('"CreatedAt"', start + 'T00:00:00')
+      .lte('"CreatedAt"', end + 'T23:59:59')
+      .or('"IsDeleted".is.null,"IsDeleted".eq.false');
 
     if (logsError) {
       console.error('❌ [club-attendance-report] Error fetching education logs:', logsError);
