@@ -1540,24 +1540,24 @@ function WellnessValleyApp() {
       return;
     }
 
-    // 🚨 FRAUD PREVENTION: Validate image freshness (prevent old/proxy images)
-    // Check EXIF metadata to ensure image was taken today
-    console.log('🔍 Validating image freshness...');
-    const validation = await validateImageFreshness(file, 0); // Only today's images allowed
-    
-    if (!validation.isValid) {
-      console.error('❌ Image validation failed:', validation);
-      setAlertModal({
-        isOpen: true,
-        title: '🚨 PROXY ALERT',
-        message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
-        type: 'error'
-      });
-      imageProcessingInProgress.current = false;
-      return;
+    // 🚨 FRAUD PREVENTION: On web only — native handles this per-source in ImageUpload
+    // (native camera = always live; native gallery = checked via Capacitor photo.exif)
+    if (!Capacitor.isNativePlatform()) {
+      console.log('🔍 Validating image freshness (web)...');
+      const validation = await validateImageFreshness(file, 0);
+      if (!validation.isValid) {
+        console.error('❌ Image validation failed:', validation);
+        setAlertModal({
+          isOpen: true,
+          title: '🚨 PROXY ALERT',
+          message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+          type: 'error'
+        });
+        imageProcessingInProgress.current = false;
+        return;
+      }
+      console.log('✅ Image validated:', validation.message);
     }
-    
-    console.log('✅ Image validated:', validation.message);
 
     setSelectedImage(file);
     setError(null);
@@ -1678,9 +1678,10 @@ function WellnessValleyApp() {
 
             setEducationResult({
               platform: educationData.platform,
-              topic: educationData.topic, // Already has fallback to "Education Meeting"
+              topic: educationData.topic,
               confidence: educationData.confidence,
               participantCount: educationData.participantCount,
+              loggedAt: exifTimestamp || new Date().toISOString(),
             });
 
             // AUTO-SAVE to database immediately
@@ -1751,7 +1752,7 @@ function WellnessValleyApp() {
             console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
 
-          setWeightResult(weightToSave); // Store for display below upload box
+          setWeightResult({ ...weightToSave, loggedAt: exifTimestamp || new Date().toISOString() }); // Store for display below upload box
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           await saveWeightEntry(weightToSave, processedImage);
@@ -2043,7 +2044,7 @@ function WellnessValleyApp() {
           return;
         }
 
-        setNutritionData(result);
+        setNutritionData({ ...result, loggedAt: exifTimestamp || new Date().toISOString() });
 
         // Check for duplicate food before saving
         setLoadingState("saving"); // Switch to saving state
@@ -3006,6 +3007,10 @@ function WellnessValleyApp() {
                       {weightResult.unit}
                     </span>
                   </p>
+                </div>
+
+                <div className="mt-3 text-center text-xs text-gray-500">
+                  Logged at {new Date(weightResult.loggedAt || Date.now()).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
 
                 {/* Share Button at Bottom - Only show if there's an image */}

@@ -1461,6 +1461,13 @@ const NutritionCard = ({
             </div>
           )}
 
+          {/* Logged At */}
+          {data?.loggedAt && (
+            <div className="mt-4 text-center text-xs text-gray-500">
+              Logged at {new Date(data.loggedAt).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+            </div>
+          )}
+
           {/* Share Button at Bottom - Only show if there's an image */}
           {(imagePreview || selectedImage) && (
             <button
