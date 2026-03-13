@@ -69,6 +69,7 @@ import {
   cleanup,
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
+import { screenTimeService } from "./services/screenTimeService";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -80,8 +81,12 @@ const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"
 const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
+
 const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
 const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
+const StepCounter = lazy(() => import("./components/StepCounter"));
+const ScreenTime = lazy(() => import("./components/ScreenTime"));
+
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -101,6 +106,9 @@ function WellnessValleyApp() {
       localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
+  const [showStepCounter, setShowStepCounter] = useState(
+    localStorage.getItem("currentPage") === "step-counter",
+  );
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
@@ -159,6 +167,21 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
+  
+  // Step Counter state
+  const showStepCounterPage = useCallback(() => {
+    setShowStepCounter(true);
+    localStorage.setItem("currentPage", "step-counter");
+  }, []);
+
+  // Screen Time state
+  const [showScreenTime, setShowScreenTime] = useState(
+    localStorage.getItem("currentPage") === "screen-time",
+  );
+  const showScreenTimePage = useCallback(() => {
+    setShowScreenTime(true);
+    localStorage.setItem("currentPage", "screen-time");
+  }, []);
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
@@ -330,16 +353,26 @@ function WellnessValleyApp() {
         showMainPage();
         return true;
       }
+      if (showStepCounter) {
+        setShowStepCounter(false);
+        localStorage.setItem("currentPage", "main");
+        return true;
+      }
+      if (showScreenTime) {
+        setShowScreenTime(false);
+        localStorage.setItem("currentPage", "main");
+        return true;
+      }
       return ionRouter.canGoBack() && ionRouter.goBack();
     };
 
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showDisciplineReport,
+      !showDashboard && !showDisciplineReport && !showStepCounter && !showScreenTime,
     );
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard, showDisciplineReport]);
+  }, [ionRouter, showDashboard, showDisciplineReport, showStepCounter, showScreenTime]);
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -444,7 +477,7 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  const showDashboardPage = useCallback(async () => {
+  const showDashboardPage = useCallback(async (preferredTab = null) => {
     // Re-check user status in real-time before opening dashboard
     if (user) {
       const isActive = await checkUserStatus(user);
@@ -460,8 +493,15 @@ function WellnessValleyApp() {
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
 
-    // Set the initial tab based on the last analyzed image type
-    if (imageType === "weight") {
+    // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
+    if (
+      preferredTab === "weight" ||
+      preferredTab === "nutrition" ||
+      preferredTab === "education"
+    ) {
+      setDashboardInitialTab(preferredTab);
+    } else if (imageType === "weight") {
+      // Set the initial tab based on the last analyzed image type
       setDashboardInitialTab("weight");
     } else if (imageType === "food") {
       setDashboardInitialTab("nutrition");
@@ -552,6 +592,53 @@ function WellnessValleyApp() {
     }
   }, []);
 
+  // ── Screen Time lifecycle tracking ─────────────────────────────────────────
+  // Starts a session when the user is authenticated and the app is in the
+  // foreground; ends it when the app goes to background / tab loses focus.
+  useEffect(() => {
+    if (!user?.id) return; // Only track authenticated users
+
+    // Start a new session as soon as the user is confirmed
+    screenTimeService.startSession(user.id);
+
+    const handlePause = () => screenTimeService.endSession();
+    const handleResume = () => screenTimeService.startSession(user.id);
+
+    let nativeListener = null;
+
+    if (Capacitor.isNativePlatform()) {
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) {
+          handleResume();
+        } else {
+          handlePause();
+        }
+      }).then((listener) => {
+        nativeListener = listener;
+      });
+    } else {
+      // Web / browser tab focus/blur
+      document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "hidden") {
+          handlePause();
+        } else {
+          handleResume();
+        }
+      });
+      window.addEventListener("beforeunload", handlePause);
+    }
+
+    return () => {
+      screenTimeService.endSession();
+      if (nativeListener) nativeListener.remove();
+      if (!Capacitor.isNativePlatform()) {
+        document.removeEventListener("visibilitychange", handlePause);
+        window.removeEventListener("beforeunload", handlePause);
+      }
+    };
+  }, [user?.id]);
+  // ──────────────────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const initializeGalleryMonitoring = async () => {
       if (Capacitor.isNativePlatform()) {
@@ -602,6 +689,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(resultUser);
           if (dbUserId) {
             resultUser.id = dbUserId;
+            localStorage.setItem('dbUserId', String(dbUserId));
             console.log(
               "✅ [Redirect] Attached database UserId to user object:",
               resultUser.id,
@@ -633,6 +721,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(user);
           if (dbUserId) {
             user.id = dbUserId;
+            localStorage.setItem('dbUserId', String(dbUserId));
             console.log(
               "✅ [Auth State] Attached database UserId to user object:",
               user.id,
@@ -814,6 +903,7 @@ function WellnessValleyApp() {
               const dbUserId = await getUserId(parsedUser);
               if (dbUserId) {
                 parsedUser.id = dbUserId;
+                localStorage.setItem('dbUserId', String(dbUserId));
                 console.log(
                   "✅ [OTP Restore] Attached database UserId to user object:",
                   parsedUser.id,
@@ -2638,6 +2728,7 @@ function WellnessValleyApp() {
 
       // Clear userId session cache
       clearUserIdCache();
+      localStorage.removeItem('dbUserId');
       console.log("🗑️ [Sign Out] UserId cache cleared");
 
       if (Capacitor.isNativePlatform()) {
@@ -2793,6 +2884,36 @@ function WellnessValleyApp() {
     );
   }
 
+  // Step Counter page
+  if (showStepCounter) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
+        <StepCounter
+          userId={user?.id}
+          onBack={() => {
+            setShowStepCounter(false);
+            localStorage.setItem("currentPage", "main");
+          }}
+        />
+      </Suspense>
+    );
+  }
+
+  // Screen Time page
+  if (showScreenTime) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
+        <ScreenTime
+          userId={user?.id}
+          onBack={() => {
+            setShowScreenTime(false);
+            localStorage.setItem("currentPage", "main");
+          }}
+        />
+      </Suspense>
+    );
+  }
+
   // Discipline Report for all users
   if (showDisciplineReport) {
     return (
@@ -2818,6 +2939,8 @@ function WellnessValleyApp() {
       <Header
         user={user}
         onShowBackgroundHistory={showDashboardPage}
+        onShowStepCounter={showStepCounterPage}
+        onShowScreenTime={showScreenTimePage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)

@@ -109,24 +109,50 @@ export default async function handler(req, res) {
       )
       .order('"LastUpdated"', { ascending: false });
 
-    // If not admin/developer, filter to show their own enrollment + their team's enrollments
+    // If not admin/developer, filter to show their own enrollment + their team's enrollments (multi-level)
     if (requestingUser.Role !== 'admin' && requestingUser.Role !== 'developer') {
-      // Get all users where this person is the coach
-      const { data: teamMembers, error: teamError } = await supabase
-        .from('team_table')
-        .select('"UserId"')
-        .eq('"UplineCoachId"', requestingUser.UserId);
+      // Get all team members recursively (multi-level hierarchy)
+      const teamUserIds = [requestingUser.UserId]; // Start with coach's own ID
+      let currentLevelCoachIds = [requestingUser.UserId];
+      let currentLevel = 1;
+      const maxLevel = 10;
 
-      if (teamError) {
-        console.error('❌ [get-enrollments] Team lookup error:', teamError);
-        throw new Error(teamError.message);
+      while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+        // Fetch members where CoachId OR CoCoachId matches current level coaches
+        const { data: levelMembers, error: levelError } = await supabase
+          .from('team_table')
+          .select('"UserId", "Role", "CoachId", "CoCoachId"')
+          .or(
+            `CoachId.in.(${currentLevelCoachIds.join(",")}),CoCoachId.in.(${currentLevelCoachIds.join(",")})`,
+          )
+          .eq('"Status"', 'Active');
+
+        if (levelError) {
+          console.error('❌ [get-enrollments] Team lookup error:', levelError);
+          break;
+        }
+
+        if (!levelMembers || levelMembers.length === 0) break;
+
+        const nextLevelCoachIds = [];
+
+        for (const member of levelMembers) {
+          // Add member to team if not already included
+          if (!teamUserIds.includes(member.UserId)) {
+            teamUserIds.push(member.UserId);
+          }
+
+          // If member is a coach, add to next level for recursive fetch
+          if (member.Role === 'coach' && !nextLevelCoachIds.includes(member.UserId)) {
+            nextLevelCoachIds.push(member.UserId);
+          }
+        }
+
+        currentLevelCoachIds = nextLevelCoachIds;
+        currentLevel++;
       }
 
-      // Include coach's own UserId + team members
-      const teamUserIds = teamMembers ? teamMembers.map((m) => m.UserId) : [];
-      teamUserIds.push(requestingUser.UserId); // Add coach's own ID
-
-      console.log(`✅ [get-enrollments] Coach viewing: self + ${teamUserIds.length - 1} team members`);
+      console.log(`✅ [get-enrollments] Coach viewing: ${teamUserIds.length} total members (multi-level hierarchy)`);
       query = query.in('"UserId"', teamUserIds);
     }
 
@@ -141,7 +167,7 @@ export default async function handler(req, res) {
     const userIds = enrollments.map((e) => e.UserId);
     const { data: users, error: usersError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "UplineCoachId"')
+      .select('"UserId", "UserName", "Email", "CoachId", "CoCoachId"')
       .in('"UserId"', userIds);
 
     if (usersError) {
@@ -149,8 +175,8 @@ export default async function handler(req, res) {
       throw new Error(usersError.message);
     }
 
-    // Fetch coach names for UplineCoachIds
-    const coachIds = [...new Set(users.map((u) => u.UplineCoachId).filter(Boolean))];
+    // Fetch coach names for CoachIds
+    const coachIds = [...new Set(users.map((u) => u.CoachId).filter(Boolean))];
     let coaches = [];
     if (coachIds.length > 0) {
       const { data: coachData, error: coachError } = await supabase
@@ -166,14 +192,15 @@ export default async function handler(req, res) {
     // Merge user data with enrollments
     const enrichedEnrollments = enrollments.map((enrollment) => {
       const user = users.find((u) => u.UserId === enrollment.UserId);
-      const coach = coaches.find((c) => c.UserId === user?.UplineCoachId);
+      const coach = coaches.find((c) => c.UserId === user?.CoachId);
 
       return {
         ...enrollment,
         UserName: user?.UserName || 'Unknown',
         Email: user?.Email || '',
         CoachName: coach?.UserName || '',
-        CoachId: user?.UplineCoachId || null,
+        CoachId: user?.CoachId || null,
+        CoCoachId: user?.CoCoachId || null,
       };
     });
 

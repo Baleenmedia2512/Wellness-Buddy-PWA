@@ -187,6 +187,14 @@
           }
         },
         {
+          "client_id": "610941252952-u6bvvq1cer3rt1gtb69t6u7123e17ebd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessvalley.app",
+            "certificate_hash": "c0a1f89955ce0029061afbc66bb015e4f8a5979a"
+          }
+        },
+        {
           "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
           "client_type": 3
         }

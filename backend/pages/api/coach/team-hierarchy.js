@@ -26,23 +26,56 @@ export default async function handler(req, res) {
   }
   
   try {
-    const { coachId, includeInactive } = req.query;
+    const { coachId, email, includeInactive } = req.query;
     
-    // Validation
-    if (!coachId) {
-      res.status(400).json({ success: false, message: 'Coach ID required' });
+    console.log('📊 [team-hierarchy] Request:', { coachId, email, includeInactive });
+    
+    const supabase = getSupabaseClient();
+    let coachIdInt;
+    
+    // If email is provided, look up the coach ID
+    if (email) {
+      console.log('🔍 [team-hierarchy] Looking up coach by email:', email);
+      const { data: coach, error: coachError } = await supabase
+        .from('team_table')
+        .select('UserId')
+        .eq('Email', email)
+        .maybeSingle();
+      
+      if (coachError) {
+        console.error('❌ [team-hierarchy] Email lookup error:', coachError);
+        res.status(500).json({ success: false, message: 'Database error: ' + coachError.message });
+        return;
+      }
+      
+      if (!coach) {
+        console.error('❌ [team-hierarchy] Coach not found for email:', email);
+        res.status(404).json({ success: false, message: 'Coach not found' });
+        return;
+      }
+      
+      coachIdInt = coach.UserId;
+      console.log('✅ [team-hierarchy] Found coach ID:', coachIdInt);
+    } else if (coachId) {
+      coachIdInt = parseInt(coachId);
+      console.log('✅ [team-hierarchy] Using provided coach ID:', coachIdInt);
+    } else {
+      console.error('❌ [team-hierarchy] No coach ID or email provided');
+      res.status(400).json({ success: false, message: 'Coach ID or email required' });
       return;
     }
     
-    const supabase = getSupabaseClient();
-    const coachIdInt = parseInt(coachId);
-    
     // Fetch all users in the hierarchy
-    const { data: allUsers, error: usersError } = await supabase
+    let query = supabase
       .from('team_table')
-      .select('UserId, UserName, Email, Role, CoachId, CoCoachId, Status')
-      .eq('Status', includeInactive === 'true' ? undefined : 'Active')
-      .order('UserName');
+      .select('UserId, UserName, Email, Role, CoachId, CoCoachId, Status');
+    
+    // Only filter by Active status if includeInactive is not true
+    if (includeInactive !== 'true') {
+      query = query.eq('Status', 'Active');
+    }
+    
+    const { data: allUsers, error: usersError } = await query.order('UserName');
     
     if (usersError) {
       console.error('Error fetching users:', usersError);
@@ -170,6 +203,40 @@ export default async function handler(req, res) {
     // Build hierarchy starting from logged-in coach
     const hierarchy = buildHierarchy(coachIdInt);
     
+    // Flatten hierarchy to get all members (for enrollment reports)
+    // Use Set to avoid duplicates from dual reporting relationships
+    const flattenHierarchy = (node, result = new Map()) => {
+      if (!node) return result;
+      
+      // Add current node (excluding the root coach for allMembers)
+      // Use Map to ensure unique users by UserId
+      if (node.userId !== coachIdInt && !result.has(node.userId)) {
+        result.set(node.userId, {
+          UserId: node.userId,
+          UserName: node.userName,
+          Email: node.email,
+          Role: node.role,
+          CoachId: node.coachId,
+          CoCoachId: node.coCoachId,
+          coachName: node.coachName,
+          coCoachName: node.coCoachName,
+          Status: node.status,
+        });
+      }
+      
+      // Recursively flatten children
+      if (node.teamMembers && node.teamMembers.length > 0) {
+        node.teamMembers.forEach(child => flattenHierarchy(child, result));
+      }
+      
+      return result;
+    };
+    
+    const memberMap = flattenHierarchy(hierarchy);
+    const allMembers = Array.from(memberMap.values());
+    
+    console.log(`✅ Team hierarchy built for coach ${coachIdInt}: ${allMembers.length} unique members`);
+    
     // Count statistics (use unique users)
     const uniqueUserIds = new Set(allUsers.map(u => u.UserId));
     const coaches = allUsers.filter(u => u.Role === 'coach' || u.Role === 'admin');
@@ -189,6 +256,7 @@ export default async function handler(req, res) {
         totalMemberCount: hierarchy.totalMemberCount
       },
       hierarchy: hierarchy,
+      allMembers: allMembers, // Flat array of all unique team members
       stats: {
         totalCoaches: coaches.length,
         totalMembers: totalMembers.length,

@@ -8,6 +8,7 @@
         <domain includeSubdomains="false">127.0.0.1</domain>
         <!-- Add your development server if different -->
         <domain includeSubdomains="false">192.168.1.100</domain>
+        <domain includeSubdomains="false">192.168.1.5</domain>
     </domain-config>
     
     <!-- For production, you should use HTTPS -->
