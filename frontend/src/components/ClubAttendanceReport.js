@@ -230,7 +230,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                 </h3>
                 
                 {/* Statistics Cards */}
-                <div className="mb-4 grid grid-cols-3 gap-2">
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
                   {/* Self Stats */}
                   <div className="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-lg p-3 border-2 border-yellow-300 shadow-md">
                     <div className="flex items-center gap-1 mb-2">
@@ -241,11 +241,11 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-2xl font-bold text-yellow-700">1</span>
+                        <span className="text-xl sm:text-2xl font-bold text-yellow-700">1</span>
                         <Users className="h-4 w-4 text-yellow-600" />
-                        <span className="text-lg font-bold text-yellow-600">/</span>
-                        <span className="text-2xl font-bold text-yellow-700">{hierarchyData.metrics?.totalClubs || 0}</span>
-                        <Building2 className="h-5 w-5 text-yellow-600" />
+                        <span className="text-base sm:text-lg font-bold text-yellow-600">/</span>
+                        <span className="text-xl sm:text-2xl font-bold text-yellow-700">{hierarchyData.metrics?.totalClubs || 0}</span>
+                        <Building2 className="h-4 sm:h-5 w-4 sm:w-5 text-yellow-600" />
                       </div>
                     </div>
                     <p className="text-[10px] text-yellow-700 font-medium mt-1">owner/clubs</p>
@@ -256,9 +256,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                     <p className="text-xs text-blue-700 font-bold mb-2">Direct Team</p>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-2xl font-bold text-blue-700">{hierarchyData.directTeamCount?.qualified || 0}</span>
-                        <span className="text-lg text-blue-600">/</span>
-                        <span className="text-xl font-semibold text-blue-600">{hierarchyData.directTeamCount?.total || 0}</span>
+                        <span className="text-xl sm:text-2xl font-bold text-blue-700">{hierarchyData.directTeamCount?.qualified || 0}</span>
+                        <span className="text-base sm:text-lg text-blue-600">/</span>
+                        <span className="text-lg sm:text-xl font-semibold text-blue-600">{hierarchyData.directTeamCount?.total || 0}</span>
                         <Users className="h-4 w-4 text-blue-600" />
                       </div>
                     </div>
@@ -272,9 +272,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                     <p className="text-xs text-green-700 font-bold mb-2">Full Team</p>
                     <div className="flex items-center gap-2">
                       <div className="flex items-center gap-1">
-                        <span className="text-2xl font-bold text-green-700">{hierarchyData.fullTeamCount?.qualified || 0}</span>
-                        <span className="text-lg text-green-600">/</span>
-                        <span className="text-xl font-semibold text-green-600">{hierarchyData.fullTeamCount?.total || 0}</span>
+                        <span className="text-xl sm:text-2xl font-bold text-green-700">{hierarchyData.fullTeamCount?.qualified || 0}</span>
+                        <span className="text-base sm:text-lg text-green-600">/</span>
+                        <span className="text-lg sm:text-xl font-semibold text-green-600">{hierarchyData.fullTeamCount?.total || 0}</span>
                         <Users className="h-4 w-4 text-green-600" />
                       </div>
                     </div>

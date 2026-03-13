@@ -353,7 +353,7 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                 <>
                   {clubs.length > 0 && remoteCount > 0 ? (
                     <>
-                      <span className="text-base font-bold leading-none text-green-600">
+                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
                         {clubs.length + remoteCount}
                       </span>
                       <span className="text-[9px] font-semibold mt-0.5 text-green-500">
@@ -362,7 +362,7 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                     </>
                   ) : clubs.length > 0 ? (
                     <>
-                      <span className="text-base font-bold leading-none text-green-600">
+                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
                         {clubs.length}
                       </span>
                       <span className="text-[9px] font-semibold mt-0.5 text-green-500">
@@ -371,7 +371,7 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                     </>
                   ) : remoteCount > 0 ? (
                     <>
-                      <span className="text-base font-bold leading-none text-blue-600">
+                      <span className="text-sm sm:text-base font-bold leading-none text-blue-600">
                         {remoteCount}
                       </span>
                       <span className="text-[9px] font-semibold mt-0.5 text-blue-500">
@@ -380,7 +380,7 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                     </>
                   ) : (
                     <>
-                      <span className="text-base font-bold leading-none text-green-600">
+                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
                         ✓
                       </span>
                       <span className="text-[9px] font-semibold mt-0.5 text-green-500">
@@ -391,7 +391,7 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                 </>
               ) : (
                 <>
-                  <span className="text-base font-bold leading-none text-gray-400">
+                  <span className="text-sm sm:text-base font-bold leading-none text-gray-400">
                     ✗
                   </span>
                   <span className="text-[9px] font-semibold mt-0.5 text-gray-400">
@@ -403,16 +403,16 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
             {/* Direct Team */}
             <div className="flex-1 flex flex-col items-center px-2">
               <span className="text-[9px] font-bold uppercase tracking-wide text-blue-400 mb-0.5">Direct</span>
-              <span className="text-base font-bold text-blue-700 leading-none">
-                {attendedDirect}<span className="text-xs font-normal text-blue-400">/{totalDirect}</span>
+              <span className="text-sm sm:text-base font-bold text-blue-700 leading-none">
+                {attendedDirect}<span className="text-[10px] sm:text-xs font-normal text-blue-400">/{totalDirect}</span>
               </span>
               <span className="text-[9px] font-semibold text-blue-400 mt-0.5">attended</span>
             </div>
             {/* Full Team */}
             <div className="flex-1 flex flex-col items-center pl-2">
               <span className="text-[9px] font-bold uppercase tracking-wide text-green-500 mb-0.5">Full Team</span>
-              <span className="text-base font-bold text-green-700 leading-none">
-                {attendedFull}<span className="text-xs font-normal text-green-400">/{totalFull}</span>
+              <span className="text-sm sm:text-base font-bold text-green-700 leading-none">
+                {attendedFull}<span className="text-[10px] sm:text-xs font-normal text-green-400">/{totalFull}</span>
               </span>
               <span className="text-[9px] font-semibold text-green-500 mt-0.5">attended</span>
             </div>
