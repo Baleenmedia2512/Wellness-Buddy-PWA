@@ -56,7 +56,7 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
 /**
  * Unified Dashboard with tabs for Nutrition and Weight tracking
  * Replaces the separate Nutrition Dashboard and Weight Tracking pages
- * @param {string} initialTab - Optional tab to open initially ('nutrition' or 'weight')
+ * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  */
 const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
   const [activeTab, setActiveTab] = useState(() => {
@@ -117,7 +117,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab }) => {
                 <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
-            {/* Empty space for weight and education tabs to maintain layout */}
+            {/* Empty space for tabs without top-right action */}
             {(activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}

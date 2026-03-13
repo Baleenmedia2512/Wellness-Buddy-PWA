@@ -11,6 +11,7 @@
     <!-- For newer Android versions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Queries for share functionality (Android 11+) -->
     <queries>

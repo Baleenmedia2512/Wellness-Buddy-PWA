@@ -171,6 +171,30 @@
           }
         },
         {
+          "client_id": "610941252952-qjjvuna4h745ll979dja5s7b9kgm8d3e.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessvalley.app",
+            "certificate_hash": "ed421268c78a9ca853e5c7708e73037aebe9c514"
+          }
+        },
+        {
+          "client_id": "610941252952-qvp8g22pke199jaqo6c2ngt24uvc2pmp.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessvalley.app",
+            "certificate_hash": "42853895132d6948b2bd494cc8e1477d8360add5"
+          }
+        },
+        {
+          "client_id": "610941252952-u6bvvq1cer3rt1gtb69t6u7123e17ebd.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.wellnessvalley.app",
+            "certificate_hash": "c0a1f89955ce0029061afbc66bb015e4f8a5979a"
+          }
+        },
+        {
           "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
           "client_type": 3
         }
