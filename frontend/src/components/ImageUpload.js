@@ -231,7 +231,7 @@ const ImageUpload = forwardRef(
               return;
             }
             
-            // Non-education native gallery: extract EXIF for accurate timestamp
+            // Non-education native gallery: extract EXIF for accurate timestamp + validate same-day
             let galleryTimestamp = new Date().toISOString();
             if (photo.exif) {
               const exifDateStr =
@@ -240,7 +240,27 @@ const ImageUpload = forwardRef(
               if (exifDateStr) {
                 const iso = exifDateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
                 const parsed = new Date(iso);
-                if (!isNaN(parsed.getTime())) galleryTimestamp = parsed.toISOString();
+                if (!isNaN(parsed.getTime())) {
+                  // Validate photo is from today
+                  const now = new Date();
+                  const isSameDay =
+                    parsed.getFullYear() === now.getFullYear() &&
+                    parsed.getMonth() === now.getMonth() &&
+                    parsed.getDate() === now.getDate();
+                  
+                  if (!isSameDay) {
+                    setAlertModal({
+                      isOpen: true,
+                      title: '🚨 PROXY ALERT',
+                      message: `⚠️ This photo was taken on ${parsed.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                      type: 'error'
+                    });
+                    return;
+                  }
+                  
+                  galleryTimestamp = parsed.toISOString();
+                  console.log('✅ Non-education gallery image validated via EXIF:', galleryTimestamp);
+                }
               }
             }
             onImageSelect(file, galleryTimestamp);
