@@ -2681,11 +2681,7 @@ function WellnessValleyApp() {
           setShowDisciplineReport(true);
           localStorage.setItem("currentPage", "discipline-report");
         }}
-        onShowWellnessEnrollment={
-          userRole !== "admin" && userRole !== "coach" && userRole !== "developer"
-            ? () => setShowWellnessEnrollment(true)
-            : null
-        }
+        onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
         onShowWellnessReport={
           userRole === "admin" || userRole === "coach" || userRole === "developer"
             ? () => setShowWellnessReport(true)
