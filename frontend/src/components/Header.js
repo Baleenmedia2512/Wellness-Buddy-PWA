@@ -248,7 +248,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                     </TouchFeedbackButton>
                   )}
 
-                  {/* Wellness University Enrollment - shown for all users */}
+                  {/* Wellness University Enrollment - shown for regular users only (not coaches/admins) */}
                   {onShowWellnessEnrollment && (
                     <TouchFeedbackButton
                       onClick={() => {
