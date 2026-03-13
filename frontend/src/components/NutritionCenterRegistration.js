@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 import CustomAlertModal from './CustomAlertModal';
@@ -29,6 +29,9 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     onCancel: null,
   });
   const [centerToDelete, setCenterToDelete] = useState(null);
+  const [nameAvailable, setNameAvailable] = useState(null); // null=unchecked, true=available, false=taken
+  const [nameChecking, setNameChecking] = useState(false);
+  const nameCheckTimerRef = useRef(null);
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
@@ -39,6 +42,40 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   const GOOGLE_MAPS_API_KEY = process.env.REACT_APP_GOOGLE_MAPS_API_KEY || '';
+
+  // Debounced centre name availability check
+  const checkNameAvailability = useCallback((name) => {
+    if (nameCheckTimerRef.current) clearTimeout(nameCheckTimerRef.current);
+
+    if (!name || name.trim().length < 2) {
+      setNameAvailable(null);
+      setNameChecking(false);
+      return;
+    }
+
+    setNameChecking(true);
+    setNameAvailable(null);
+
+    nameCheckTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/api/check-center-name?name=${encodeURIComponent(name.trim())}`,
+          { cache: 'no-store' }
+        );
+        const data = await response.json();
+        setNameAvailable(data.available);
+      } catch {
+        setNameAvailable(null);
+      } finally {
+        setNameChecking(false);
+      }
+    }, 600);
+  }, [apiBaseUrl]);
+
+  const handleCenterNameChange = (value) => {
+    setCenterName(value);
+    checkNameAvailability(value);
+  };
 
   // Load Google Maps script
   useEffect(() => {
@@ -434,6 +471,11 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         throw new Error('Please fill in all required fields and select a location on the map');
       }
 
+      // Block submission if name is taken
+      if (nameAvailable === false) {
+        throw new Error('This centre name is already taken. Please choose a different name.');
+      }
+
       const userId = await getUserId(user.email);
 
       const response = await fetch(`${apiBaseUrl}/api/register-nutrition-center`, {
@@ -465,6 +507,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       setLongitude('');
       setOwnerPhone('');
       setCountryCode('+91');
+      setNameAvailable(null);
+      setNameChecking(false);
       
       if (markerRef.current) {
         markerRef.current.setMap(null);
@@ -578,11 +622,38 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               <input
                 type="text"
                 value={centerName}
-                onChange={(e) => setCenterName(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                onChange={(e) => handleCenterNameChange(e.target.value)}
+                className={`w-full px-4 py-2 border rounded-lg focus:ring-2 focus:border-transparent ${
+                  nameAvailable === false
+                    ? 'border-red-400 focus:ring-red-400'
+                    : nameAvailable === true
+                    ? 'border-green-400 focus:ring-green-400'
+                    : 'border-gray-300 focus:ring-green-500'
+                }`}
                 placeholder="e.g., Downtown Wellness Hub"
                 required
               />
+              {/* Name availability indicator */}
+              <div className="mt-1 h-5 flex items-center gap-1">
+                {nameChecking && (
+                  <>
+                    <Loader className="h-3.5 w-3.5 text-gray-400 animate-spin" />
+                    <span className="text-xs text-gray-400">Checking availability...</span>
+                  </>
+                )}
+                {!nameChecking && nameAvailable === true && (
+                  <>
+                    <CheckCircle className="h-3.5 w-3.5 text-green-500" />
+                    <span className="text-xs text-green-600 font-medium">Name is available</span>
+                  </>
+                )}
+                {!nameChecking && nameAvailable === false && (
+                  <>
+                    <XCircle className="h-3.5 w-3.5 text-red-500" />
+                    <span className="text-xs text-red-600 font-medium">This name is already taken</span>
+                  </>
+                )}
+              </div>
             </div>
 
             <div>
@@ -679,7 +750,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
             <TouchFeedbackButton
               type="submit"
-              disabled={loading}
+              disabled={loading || nameAvailable === false || nameChecking}
               className="w-full py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               {loading ? (

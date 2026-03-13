@@ -73,6 +73,27 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Check for duplicate centre name (case-insensitive, across all active centres)
+    const { data: existing, error: dupError } = await supabase
+      .from('nutrition_centers_table')
+      .select('id, center_name')
+      .ilike('center_name', centerName.trim())
+      .eq('is_deleted', false)
+      .maybeSingle();
+
+    if (dupError) {
+      console.error('❌ [register-nutrition-center] Duplicate check error:', dupError);
+      throw new Error(dupError.message);
+    }
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        message: `This centre name is already taken. Please choose a different name.`,
+        duplicate: true,
+      });
+    }
+
     // Insert nutrition center
     const { data: center, error: insertError } = await supabase
       .from('nutrition_centers_table')
