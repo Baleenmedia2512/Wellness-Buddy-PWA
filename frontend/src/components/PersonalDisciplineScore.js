@@ -115,14 +115,6 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     dinner: <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
   };
 
-  const categoryLabels = {
-    weight: "WEI",
-    education: "EDU",
-    breakfast: "BRE",
-    lunch: "LUN",
-    dinner: "DIN",
-  };
-
   // Don't render if loading
   if (loading) {
     return null;
@@ -146,17 +138,17 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           <div className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-blue-50 to-green-50 border-b border-gray-100">
             <div className="flex items-center justify-center gap-2">
               <div className="flex-1 text-left">
-                <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
+                {/* <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
                   Your Daily Discipline Score
-                </p>
+                </p> */}
                 {/* <p className="text-[9px] text-gray-500 mt-0">
                   Swipe to see each of your meals
                 </p> */}
               </div>
               <div className="flex flex-col items-center">
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">
+                {/* <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">
                   Overall
-                </p>
+                </p> */}
                 <div
                   className={`text-lg sm:text-xl md:text-2xl font-black ${
                     overallScore >= 80
@@ -186,9 +178,6 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                 >
                   {categoryIcons[key]}
                 </div>
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
-                  {categoryLabels[key]}
-                </p>
                 <div
                   className={`text-xs sm:text-sm md:text-base font-black ${
                     data.percentage >= 80

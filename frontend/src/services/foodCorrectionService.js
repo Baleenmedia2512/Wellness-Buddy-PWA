@@ -238,11 +238,12 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
 };
 
 /**
- * Apply hybrid corrections (global + user) to AI-detected food names
- * Priority: User's personal corrections > Global community patterns > Original AI
- * ✅ GLOBAL AUTO-CORRECTIONS ENABLED
+ * Apply hybrid corrections (global + user-specific) to AI-detected food names
+ * 🎯 NEW LOGIC:
+ * - Herbalife Formula 1: Global corrections (all users see same correction)
+ * - Other foods: User-specific corrections (only that user sees their corrections)
  * @param {Array} foods - Array of food items detected by AI
- * @param {number} userId - User ID
+ * @param {number} userId - User ID for fetching user-specific corrections
  * @returns {Promise<Array>} Foods with corrected names
  */
 export const applyUserCorrections = async (foods, userId) => {
@@ -252,12 +253,12 @@ export const applyUserCorrections = async (foods, userId) => {
     }
 
     console.log(
-      "🔄 [CORRECTION] Processing foods for userId:",
+      "🔄 [HYBRID-CORRECTION] Processing foods for userId:",
       userId,
-      "- Global auto-corrections ENABLED",
+      "- Hybrid mode (global Herbalife + user-specific)",
     );
 
-    // Apply global auto-corrections with current userId for comparison
+    // Apply hybrid auto-corrections with current userId
     return await applyGlobalAutoCorrections(foods, userId);
   } catch (error) {
     console.error("❌ [CORRECTION] Error processing foods:", error);
@@ -283,30 +284,37 @@ export const clearGlobalCorrectionsCache = () => {
 };
 
 /**
- * 🌍 GLOBAL AUTO-CORRECTION FEATURE
- * Get global auto-corrections lookup map (cached with request deduplication)
- * When ANY user corrects once, it applies to ALL users globally
+ * 🌍 HYBRID AUTO-CORRECTION FEATURE
+ * Get hybrid auto-corrections lookup map (cached with request deduplication)
+ * Returns:
+ * - Global corrections: Herbalife Formula 1 (applies to ALL users)
+ * - User-specific corrections: Other foods (applies to specific user only)
+ * @param {number} userId - User ID for fetching user-specific corrections
  * @returns {Promise<Map>} Map of ai_detected -> corrected_name
  */
-export const getGlobalCorrectionsMap = async () => {
-  const cacheKey = cacheManager.generateKey('globalCorrections', 'map');
+export const getGlobalCorrectionsMap = async (userId = null) => {
+  const cacheKey = cacheManager.generateKey('globalCorrections', userId || 'global');
   
   return cacheManager.execute(
     cacheKey,
     async () => {
-      console.log("🌍 [GLOBAL-AUTO] Fetching corrections from server...");
+      console.log("🌍 [HYBRID-AUTO] Fetching corrections from server...");
+      if (userId) {
+        console.log(`   👤 Including user-specific corrections for user ${userId}`);
+      }
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/get-global-corrections?t=${Date.now()}`,
-        {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            Pragma: "no-cache",
-          },
+      const url = userId 
+        ? `${API_BASE_URL}/api/get-global-corrections?userId=${userId}&t=${Date.now()}`
+        : `${API_BASE_URL}/api/get-global-corrections?t=${Date.now()}`;
+
+      const response = await fetch(url, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
         },
-      );
+      });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -324,8 +332,11 @@ export const getGlobalCorrectionsMap = async () => {
           );
         });
 
+        const globalCount = data.globalCount || 0;
+        const userCount = data.userCount || 0;
+        
         console.log(
-          `✅ [GLOBAL-AUTO] Loaded ${correctionMap.size} corrections (cached)`,
+          `✅ [HYBRID-AUTO] Loaded ${correctionMap.size} corrections (🌍 ${globalCount} global + 👤 ${userCount} user)`,
         );
       }
 
@@ -333,20 +344,23 @@ export const getGlobalCorrectionsMap = async () => {
     },
     cacheManager.ttls.foodCorrections
   ).catch(error => {
-    console.error("❌ [GLOBAL-AUTO] Error:", error);
+    console.error("❌ [HYBRID-AUTO] Error:", error);
     return new Map(); // Return empty map on error
   });
 };
 
 /**
- * Apply global auto-corrections to AI-detected food names
- * 🎯 KEY FEATURE: If user A corrects "Roti" to "Chapathi",
- *    next time ANY user uploads Roti, it auto-corrects to Chapathi!
- * 🔗 CHAIN SUPPORT: Follows correction chains to final result
- *    "Golden Milk" → "Formula 1" → "Juice"
- *    Both "Golden Milk" AND "Formula 1" will show "Juice"
+ * Apply hybrid auto-corrections to AI-detected food names
+ * 🎯 NEW LOGIC (Hybrid Mode):
+ * - Herbalife Formula 1: GLOBAL correction (applies to all users)
+ * - Other foods: USER-SPECIFIC correction (only for that user)
+ * 
+ * Examples:
+ * - Balaji corrects "water" → "coconut water": Only Balaji sees it
+ * - Balaji corrects "milk" → "Herbalife Formula 1": ALL users see it
+ * 
  * @param {Array} foods - Array of food items detected by AI
- * @param {number} currentUserId - Current logged in user ID (optional)
+ * @param {number} currentUserId - Current logged in user ID (optional but recommended)
  * @returns {Promise<Array>} Foods with auto-corrected names
  */
 export const applyGlobalAutoCorrections = async (foods, currentUserId = null) => {
@@ -356,16 +370,19 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     }
 
     console.log(
-      "🔄 [GLOBAL-AUTO] Processing",
+      "🔄 [HYBRID-AUTO] Processing",
       foods.length,
       "items...",
     );
+    if (currentUserId) {
+      console.log(`   👤 User ID: ${currentUserId} (will include user-specific corrections)`);
+    }
 
-    // Fetch global corrections map (cached)
-    const correctionMap = await getGlobalCorrectionsMap();
+    // Fetch hybrid corrections map (cached) - pass userId for user-specific corrections
+    const correctionMap = await getGlobalCorrectionsMap(currentUserId);
 
     if (correctionMap.size === 0) {
-      console.log("⚠️ [GLOBAL-AUTO] No corrections available");
+      console.log("⚠️ [HYBRID-AUTO] No corrections available");
       return foods.map((food) => ({
         ...food,
         originalAiName: food.originalAiName || food.name,  // Preserve existing originalAiName
@@ -386,7 +403,9 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       // Direct lookup - backend already followed chains
       if (correctionMap.has(normalizedOriginal)) {
         const correction = correctionMap.get(normalizedOriginal);
-        const isCorrectedByCurrentUser = currentUserId && String(correction.lastCorrectedByUserId) === String(currentUserId);
+        
+        // Determine if this is a global (Herbalife) or user-specific correction
+        const correctionType = correction.isGlobal ? '🌍 Global' : '👤 User';
         
         // Type safety check - only apply if food types match
         const shouldApplyCorrection = !correction.correctedFoodType || 
@@ -405,7 +424,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         }
         
         console.log(
-          `✅ [AUTO-CORRECT] "${originalName}" → "${correction.correctedName}" ` +
+          `✅ [${correctionType}] "${originalName}" → "${correction.correctedName}" ` +
             `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`
         );
 
@@ -417,12 +436,13 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           name: correction.correctedName,
           originalAiName: trueOriginalAiName,
           wasAutoCorrected: true,
-          correctionSource: `Auto-corrected (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
+          correctionSource: `${correction.isGlobal ? 'Global' : 'Personal'} (${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`,
           correctionMetadata: {
             aiDetected: trueOriginalAiName,
             userCorrected: correction.correctedName,
             finalDisplay: correction.correctedName,
-            userCount: correction.userCount
+            userCount: correction.userCount,
+            isGlobal: correction.isGlobal
           },
           // Ensure per100g is explicitly preserved
           per100g: food.per100g || food.defaultServing?.per100g
@@ -531,9 +551,15 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       (f) => f.wasAutoCorrected,
     ).length;
     
+    const globalCount = correctedFoods.filter(
+      (f) => f.wasAutoCorrected && f.correctionMetadata?.isGlobal
+    ).length;
+    
+    const userCount = correctedCount - globalCount;
+    
     if (correctedCount > 0) {
       console.log(
-        `🎯 [GLOBAL-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected`,
+        `🎯 [HYBRID-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected (🌍 ${globalCount} global + 👤 ${userCount} personal)`,
       );
     }
 
