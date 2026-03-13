@@ -115,7 +115,7 @@ export default async function handler(req, res) {
       .filter('"UserId"', 'in', `(${allUserIds.join(',')})`)
       .gte('"CreatedAt"', startOfDay)
       .lte('"CreatedAt"', endOfDay)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.false');
+      .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0');
 
     // If specific club selected, filter to only that club
     if (clubIdNum) {
@@ -221,7 +221,9 @@ export default async function handler(req, res) {
     
     if (attendanceLogs) {
       attendanceLogs.forEach(log => {
-        const userId = log.UserId;
+        // education_logs_table.UserId is varchar — convert to number so it matches
+        // team_table.UserId (int4) used as the Map key in hierarchyHelpers
+        const userId = parseInt(log.UserId, 10);
         const clubId = log.nutrition_center_id;
         const clubInfo = clubId ? clubsMap[clubId] : null;
         // Determine if remote: check attendance_type first, then fall back to Platform column

@@ -4,7 +4,6 @@ import {
   RefreshCw,
   Calendar,
   MapPin,
-  Users,
   Wifi,
   XCircle,
   ChevronDown,
@@ -18,7 +17,6 @@ const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hierarchyData, setHierarchyData] = useState(null);
-  const [statsData, setStatsData] = useState(null);
   const [dateFilter, setDateFilter] = useState('today');
   const [customDate, setCustomDate] = useState(null);
 
@@ -76,7 +74,6 @@ const AttendanceReport = ({ user, onBack }) => {
         throw new Error(result.message || 'Failed to fetch attendance data');
       }
       setHierarchyData(result.data.hierarchy);
-      setStatsData(result.data.stats);
     } catch (err) {
       console.error('Error fetching attendance:', err);
       setError(err.message);
@@ -186,40 +183,6 @@ const AttendanceReport = ({ user, onBack }) => {
           </div>
         ) : hierarchyData ? (
           <>
-            {/* Summary Cards */}
-            <div className="grid grid-cols-3 gap-2">
-              {/* Self */}
-              <div className={`rounded-xl p-3 border-2 shadow-sm ${hierarchyData.metrics?.attended ? 'bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-300' : 'bg-white border-gray-200'}`}>
-                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wide mb-1">You</p>
-                <p className={`text-2xl font-bold ${hierarchyData.metrics?.attended ? 'text-yellow-700' : 'text-gray-400'}`}>
-                  {hierarchyData.metrics?.attended ? '✓' : '✗'}
-                </p>
-                <p className={`text-[10px] font-semibold mt-0.5 ${hierarchyData.metrics?.attended ? 'text-yellow-700' : 'text-gray-400'}`}>
-                  {hierarchyData.metrics?.attended ? 'Present' : 'Absent'}
-                </p>
-              </div>
-
-              {/* Direct Team */}
-              <div className="rounded-xl p-3 border-2 bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-200 shadow-sm">
-                <p className="text-[10px] font-bold text-blue-500 uppercase tracking-wide mb-1">Direct Team</p>
-                <p className="text-2xl font-bold text-blue-700">
-                  {hierarchyData.directTeamCount?.qualified || 0}
-                  <span className="text-base font-normal text-blue-400">/{hierarchyData.directTeamCount?.total || 0}</span>
-                </p>
-                <p className="text-[10px] font-semibold text-blue-500 mt-0.5">attended</p>
-              </div>
-
-              {/* Full Team */}
-              <div className="rounded-xl p-3 border-2 bg-gradient-to-br from-green-50 to-emerald-50 border-green-200 shadow-sm">
-                <p className="text-[10px] font-bold text-green-500 uppercase tracking-wide mb-1">Full Team</p>
-                <p className="text-2xl font-bold text-green-700">
-                  {hierarchyData.fullTeamCount?.qualified || 0}
-                  <span className="text-base font-normal text-green-400">/{hierarchyData.fullTeamCount?.total || 0}</span>
-                </p>
-                <p className="text-[10px] font-semibold text-green-500 mt-0.5">attended</p>
-              </div>
-            </div>
-
             {/* Date label */}
             <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-green-600" />
@@ -233,7 +196,6 @@ const AttendanceReport = ({ user, onBack }) => {
           </>
         ) : (
           <div className="text-center py-16 text-gray-400">
-            <Users className="h-12 w-12 mx-auto mb-3 opacity-30" />
             <p className="text-sm">No data available</p>
           </div>
         )}
@@ -358,21 +320,6 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                   </span>
                 )}
               </div>
-              {/* Team counts row */}
-              {(totalDirect > 0 || totalFull > 0) && (
-                <div className="flex items-center gap-2 mt-0.5">
-                  {totalDirect > 0 && (
-                    <span className="text-[10px] text-blue-600 font-medium">
-                      Direct {attendedDirect}/{totalDirect}
-                    </span>
-                  )}
-                  {totalFull > 0 && (
-                    <span className="text-[10px] text-green-600 font-medium">
-                      Full {attendedFull}/{totalFull}
-                    </span>
-                  )}
-                </div>
-              )}
             </div>
 
             {/* Attendance badge — prominent on right */}
@@ -388,6 +335,42 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                   {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                 </button>
               )}
+            </div>
+          </div>
+
+          {/* Stats strip — You / Direct / Full for every node */}
+          <div className={`flex items-center divide-x px-3 py-2 border-t ${
+            level === 0
+              ? attended ? 'border-yellow-200 divide-yellow-200' : 'border-gray-100 divide-gray-100'
+              : attended ? 'border-green-100 divide-green-100' : 'border-gray-100 divide-gray-100'
+          }`}>
+            {/* Self attendance */}
+            <div className="flex-1 flex flex-col items-center pr-2">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
+                {level === 0 ? 'You' : 'Self'}
+              </span>
+              <span className={`text-base font-bold leading-none ${attended ? (level === 0 ? 'text-yellow-700' : 'text-green-600') : 'text-gray-400'}`}>
+                {attended ? '✓' : '✗'}
+              </span>
+              <span className={`text-[9px] font-semibold mt-0.5 ${attended ? (level === 0 ? 'text-yellow-600' : 'text-green-500') : 'text-gray-400'}`}>
+                {attended ? 'Present' : 'Absent'}
+              </span>
+            </div>
+            {/* Direct Team */}
+            <div className="flex-1 flex flex-col items-center px-2">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-blue-400 mb-0.5">Direct</span>
+              <span className="text-base font-bold text-blue-700 leading-none">
+                {attendedDirect}<span className="text-xs font-normal text-blue-400">/{totalDirect}</span>
+              </span>
+              <span className="text-[9px] font-semibold text-blue-400 mt-0.5">attended</span>
+            </div>
+            {/* Full Team */}
+            <div className="flex-1 flex flex-col items-center pl-2">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-green-500 mb-0.5">Full Team</span>
+              <span className="text-base font-bold text-green-700 leading-none">
+                {attendedFull}<span className="text-xs font-normal text-green-400">/{totalFull}</span>
+              </span>
+              <span className="text-[9px] font-semibold text-green-500 mt-0.5">attended</span>
             </div>
           </div>
         </div>
