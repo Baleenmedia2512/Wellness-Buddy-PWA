@@ -39,27 +39,26 @@ export default async function handler(req, res) {
     const userIdNum = parseInt(userId);
 
     // Calculate date range
-    const start = startDate || formatDateForMySQL(new Date());
-    const end = endDate || formatDateForMySQL(new Date());
+    const start = (startDate || formatDateForMySQL(new Date())) + 'T00:00:00';
+    const end = (endDate || formatDateForMySQL(new Date())) + 'T23:59:59';
 
     console.log('📅 [get-my-club-attendance] Date range:', { start, end });
 
-    // Fetch all education logs with attendance_type = 'club' for this user
+    // Fetch ALL education logs (club + remote) for this user
     const { data: educationLogs, error: logsError } = await supabase
       .from('education_logs_table')
       .select(`
-        Id,
-        CreatedAt,
+        "Id",
+        "CreatedAt",
         attendance_type,
         nutrition_center_id,
         center_name
       `)
-      .eq('UserId', userIdNum)
-      .eq('attendance_type', 'club')
-      .gte('CreatedAt', start)
-      .lte('CreatedAt', end + 'T23:59:59')
-      .eq('IsDeleted', false)
-      .order('CreatedAt', { ascending: false });
+      .eq('"UserId"', userIdNum)
+      .gte('"CreatedAt"', start)
+      .lte('"CreatedAt"', end)
+      .eq('"IsDeleted"', false)
+      .order('"CreatedAt"', { ascending: false });
 
     if (logsError) {
       console.error('❌ [get-my-club-attendance] Error fetching education logs:', logsError);

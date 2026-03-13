@@ -48,7 +48,7 @@ export default async function handler(req, res) {
 
     // Use provided date or default to today
     const targetDate = date || formatDateForMySQL(new Date());
-    const startOfDay = targetDate;
+    const startOfDay = targetDate + 'T00:00:00';
     const endOfDay = targetDate + 'T23:59:59';
 
     console.log('📅 [hierarchical-club-attendance] Target date:', targetDate);
@@ -97,21 +97,24 @@ export default async function handler(req, res) {
     // Step 2: Get all user IDs from hierarchy
     const allUserIds = teamHierarchy.map(m => m.UserId);
 
-    // Step 3: Fetch club attendance for all team members on the target date
-    // Filter by clubId if provided
+    console.log('🔍 [hierarchical-club-attendance] allUserIds:', allUserIds);
+    console.log('🔍 [hierarchical-club-attendance] Date range:', { startOfDay, endOfDay });
+
+    // Step 3: Fetch ALL education logs (club + remote) for all team members on the target date
+    // Use .filter() for quoted PascalCase column names — more reliable than .in() with quoted names
     let attendanceQuery = supabase
       .from('education_logs_table')
       .select(`
-        UserId,
-        CreatedAt,
+        "UserId",
+        "CreatedAt",
         attendance_type,
-        nutrition_center_id
+        nutrition_center_id,
+        center_name
       `)
-      .in('UserId', allUserIds)
-      .eq('attendance_type', 'club')
-      .gte('CreatedAt', startOfDay)
-      .lte('CreatedAt', endOfDay)
-      .eq('IsDeleted', false);
+      .filter('"UserId"', 'in', `(${allUserIds.join(',')})`)
+      .gte('"CreatedAt"', startOfDay)
+      .lte('"CreatedAt"', endOfDay)
+      .eq('"IsDeleted"', false);
 
     // If specific club selected, filter to only that club
     if (clubIdNum) {
@@ -122,10 +125,16 @@ export default async function handler(req, res) {
 
     if (logsError) {
       console.error('❌ [hierarchical-club-attendance] Error fetching attendance logs:', logsError);
+      console.error('❌ [hierarchical-club-attendance] Query details:', { allUserIds, startOfDay, endOfDay });
       throw new Error(logsError.message);
     }
 
-    console.log('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'team attendance records');
+    console.log('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'attendance records');
+    if (attendanceLogs && attendanceLogs.length > 0) {
+      console.log('📊 [hierarchical-club-attendance] Records:', JSON.stringify(attendanceLogs));
+    } else {
+      console.log('📊 [hierarchical-club-attendance] NO records found. Params:', { startOfDay, endOfDay, allUserIds });
+    }
 
     // Step 3b: Fetch external attendees (people NOT in team who attended the club)
     let externalAttendees = [];
@@ -134,14 +143,14 @@ export default async function handler(req, res) {
       const { data: allClubAttendance, error: allAttendanceError } = await supabase
         .from('education_logs_table')
         .select(`
-          UserId,
-          CreatedAt
+          "UserId",
+          "CreatedAt"
         `)
         .eq('attendance_type', 'club')
         .eq('nutrition_center_id', clubIdNum)
-        .gte('CreatedAt', startOfDay)
-        .lte('CreatedAt', endOfDay)
-        .eq('IsDeleted', false);
+        .gte('"CreatedAt"', startOfDay)
+        .lte('"CreatedAt"', endOfDay)
+        .eq('"IsDeleted"', false);
 
       if (!allAttendanceError && allClubAttendance) {
         // Find user IDs who are NOT in the team
@@ -214,21 +223,32 @@ export default async function handler(req, res) {
       attendanceLogs.forEach(log => {
         const userId = log.UserId;
         const clubId = log.nutrition_center_id;
-        const clubInfo = clubsMap[clubId];
+        const clubInfo = clubId ? clubsMap[clubId] : null;
+        const isRemote = log.attendance_type === 'remote' || (!clubId && log.attendance_type !== 'club');
 
         if (!attendanceMap.has(userId)) {
           attendanceMap.set(userId, {
             attended: true,
             clubs: [],
+            remoteCount: 0,
             timestamps: [],
           });
         }
 
         const userAttendance = attendanceMap.get(userId);
         
-        // Add club info (avoid duplicates)
-        if (clubInfo && !userAttendance.clubs.find(c => c.id === clubId)) {
-          userAttendance.clubs.push(clubInfo);
+        if (!isRemote) {
+          // Club attendance — use clubsMap name first, fallback to center_name stored in log
+          const clubName = clubInfo?.name || log.center_name || null;
+          if (clubName && !userAttendance.clubs.find(c => c.id === clubId && clubId)) {
+            userAttendance.clubs.push({ id: clubId, name: clubName });
+          } else if (!clubId && !isRemote) {
+            // Has attendance_type='club' but no nutrition_center_id - count it
+            userAttendance.remoteCount += 1;
+          }
+        } else {
+          // Remote attendance
+          userAttendance.remoteCount += 1;
         }
         
         userAttendance.timestamps.push(log.CreatedAt);
@@ -242,11 +262,13 @@ export default async function handler(req, res) {
         attended: true,
         clubs: attendance.clubs,
         count: attendance.clubs.length,
+        remoteCount: attendance.remoteCount || 0,
         lastAttendance: attendance.timestamps[attendance.timestamps.length - 1],
       } : {
         attended: false,
         clubs: [],
         count: 0,
+        remoteCount: 0,
         lastAttendance: null,
       };
     };
