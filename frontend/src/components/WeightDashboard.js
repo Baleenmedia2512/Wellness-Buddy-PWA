@@ -9,6 +9,7 @@ import {
   Minus 
 } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
+import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
 import '../LazyLoadStyles.css';
 
 // ✅ LAZY LOADING: Load heavy components only when needed
@@ -181,10 +182,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       // Skip invalid entries but allow placeholders
       if (!entry || !entry.CreatedAt || !entry.Weight) return;
       
-      // Parse as local time (remove Z to avoid timezone conversion)
-      const date = new Date(entry.CreatedAt.replace('Z', ''));
+      // Convert IST to user's local time
+      const date = istToLocalDate(entry.CreatedAt);
       // Check if date is valid
-      if (isNaN(date.getTime())) return;
+      if (!date || isNaN(date.getTime())) return;
       
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -216,7 +217,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const map = new Map();
     const sorted = weightHistory
       .filter(e => e && !e.isUndoPlaceholder && e.Weight && e.CreatedAt)
-      .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt));
+      .sort((a, b) => {
+        const dateA = istToLocalDate(a.CreatedAt);
+        const dateB = istToLocalDate(b.CreatedAt);
+        return dateB - dateA;
+      });
     
     for (let i = 0; i < sorted.length; i++) {
       const prevEntry = i < sorted.length - 1 ? sorted[i + 1] : null;
@@ -267,7 +272,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const sorted = (weightHistory || [])
       .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
       .map((entry) => ({
-        createdAt: new Date(entry.CreatedAt),
+        createdAt: istToLocalDate(entry.CreatedAt),
         weight: Number.parseFloat(entry.Weight),
       }))
       .filter((entry) => !Number.isNaN(entry.createdAt.getTime()) && Number.isFinite(entry.weight))
@@ -368,12 +373,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, [activeWeightPanel, weightTrendRangeDays, weightTrendSeries.length]);
 
   /**
-   * Fetch ALL weight history on mount
+   * Fetch ALL weight history on mount and when user changes
    */
   useEffect(() => {
+    // Clear cached userId when user changes
+    userIdRef.current = null;
     fetchWeightHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id, user?.email]);
 
   /**
    * Fetch ALL weight history (no pagination)
@@ -710,7 +717,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         </div>
                         <p className="text-[10px] xs:text-xs text-gray-500 mt-0.5 sm:mt-1">
                           {latestWeight
-                            ? new Date(latestWeight.CreatedAt.replace('Z', '')).toLocaleDateString('en-US', {
+                            ? istToLocalDate(latestWeight.CreatedAt).toLocaleDateString('en-US', {
                                 month: 'short',
                                 day: 'numeric',
                                 year: 'numeric'
@@ -1150,7 +1157,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   <div className="space-y-3">
                     {monthGroup.entries
                       .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight)
-                      .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
+                      .sort((a, b) => {
+                        const dateA = istToLocalDate(a.CreatedAt);
+                        const dateB = istToLocalDate(b.CreatedAt);
+                        return dateB - dateA;
+                      })
                       .map((entry, index) => {
                         // Show undo row if this is a placeholder
                         if (entry.isUndoPlaceholder) {

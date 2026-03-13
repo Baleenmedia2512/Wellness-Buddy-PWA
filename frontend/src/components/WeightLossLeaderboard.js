@@ -204,28 +204,34 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation - Show all users in continuous scroll
+  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 overflow-hidden shadow-sm border-b border-green-100">
-      <div className="py-2 sm:py-2.5 px-3 sm:px-4 overflow-hidden">
+    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 shadow-sm">
+      <div className="py-2 sm:py-2.5 px-3 sm:px-4">
         {/* Title */}
         <div className="text-center mb-1.5">
           <span className="text-xs sm:text-sm font-semibold text-green-700">
             🏅 Weight Loss Marathon (Today vs Yesterday)
           </span>
         </div>
-        
-        <div
-          className="animate-smooth-marquee whitespace-nowrap inline-flex"
-          style={{
-            animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-          }}
-        >
-          {/* First set of items */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-          
-          {/* Duplicate set for seamless loop */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+
+        <div className="overflow-x-auto overflow-y-hidden scrollbar-hide">
+          <div
+            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            style={{
+              animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+            }}
+          >
+            {/* First set of items */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `first-${user.userId}`),
+            )}
+
+            {/* Duplicate set for seamless loop */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `second-${user.userId}`),
+            )}
+          </div>
         </div>
       </div>
     </div>

@@ -1,18 +1,14 @@
 import React from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
+import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 /**
  * Format date
  */
 const formatDate = (dateString) => {
   if (!dateString) return '';
-  
-  const date = new Date(dateString);
-  
-  if (isNaN(date.getTime())) return '';
-  
-  return date.toLocaleDateString('en-US', {
+  return formatISTToLocalDate(dateString, {
     month: 'long',
     day: 'numeric',
     year: 'numeric'
@@ -24,12 +20,7 @@ const formatDate = (dateString) => {
  */
 const formatTime = (dateString) => {
   if (!dateString) return '';
-  
-  const date = new Date(dateString);
-  
-  if (isNaN(date.getTime())) return '';
-  
-  return date.toLocaleTimeString('en-US', {
+  return formatISTToLocalTime(dateString, {
     hour: '2-digit',
     minute: '2-digit'
   });

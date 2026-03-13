@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Footprints, Timer } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Footprints, Timer, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowStepCounter, onShowScreenTime, onShowAdminDashboard, onShowDisciplineReport, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -278,6 +278,114 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowStepCounter, o
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Discipline Report</p>
                         <p className="text-xs text-gray-500">Team performance insights</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Wellness University Enrollment - shown for regular users only (not coaches/admins) */}
+                  {onShowWellnessEnrollment && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowWellnessEnrollment();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-green-50 text-left transition-colors"
+                      ariaLabel="Wellness University Enrollment"
+                    >
+                      <GraduationCap className="h-5 w-5 text-green-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Wellness University</p>
+                        <p className="text-xs text-gray-500">View or enroll in programs</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Wellness University Report - shown for coaches/admins only */}
+                  {onShowWellnessReport && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowWellnessReport();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="View Enrollment Reports"
+                    >
+                      <FileBarChart className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Enrollment Reports</p>
+                        <p className="text-xs text-gray-500">View program enrollments</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* My Club Attendance - shown for all users to see their own attendance */}
+                  {onShowAttendanceReport && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowAttendanceReport();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-indigo-50 text-left transition-colors"
+                      ariaLabel="View My Attendance"
+                    >
+                      <TrendingUp className="h-5 w-5 text-indigo-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">My Club Attendance</p>
+                        <p className="text-xs text-gray-500">Your attendance history</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Club Attendance Report - shown for coach/admin/developer roles only */}
+                  {onShowClubAttendanceReport && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowClubAttendanceReport();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-blue-50 text-left transition-colors"
+                      ariaLabel="View Club Attendance Report"
+                    >
+                      <FileBarChart className="h-5 w-5 text-blue-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Club Attendance Report</p>
+                        <p className="text-xs text-gray-500">Track club member attendance</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Nutrition Centres Map - shown for all users */}
+                  {onShowNutritionCentersMap && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowNutritionCentersMap();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-emerald-50 text-left transition-colors"
+                      ariaLabel="View Nutrition Centres Map"
+                    >
+                      <Map className="h-5 w-5 text-emerald-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Nutrition Centres Map</p>
+                        <p className="text-xs text-gray-500">Find nearby nutrition clubs</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Register Nutrition Centre - shown for coach/admin/developer roles only */}
+                  {onShowRegisterCenter && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowRegisterCenter();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-amber-50 text-left transition-colors"
+                      ariaLabel="Register Nutrition Centre"
+                    >
+                      <Building2 className="h-5 w-5 text-amber-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Register Centre</p>
+                        <p className="text-xs text-gray-500">Add a new nutrition club</p>
                       </div>
                     </TouchFeedbackButton>
                   )}

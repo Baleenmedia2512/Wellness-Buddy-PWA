@@ -211,4 +211,118 @@ public class WhatsAppSharePlugin extends Plugin {
             call.reject("Failed to share to WhatsApp: " + e.getMessage(), e);
         }
     }
+    
+    /**
+     * Open WhatsApp chat with a specific phone number
+     * BULLETPROOF: Uses explicit component and multiple fallback strategies
+     * @param call - Contains phoneNumber
+     */
+    @PluginMethod
+    public void openChat(PluginCall call) {
+        try {
+            String phoneNumber = call.getString("phoneNumber");
+            
+            if (phoneNumber == null || phoneNumber.isEmpty()) {
+                call.reject("phoneNumber is required");
+                return;
+            }
+            
+            // Clean phone number (remove non-digits)
+            String cleanPhone = phoneNumber.replaceAll("[^0-9]", "");
+            
+            Log.d(TAG, "========================================");
+            Log.d(TAG, "OPENING WHATSAPP FOR: " + cleanPhone);
+            Log.d(TAG, "========================================");
+            
+            // Check if WhatsApp is installed first
+            boolean isWhatsAppInstalled = isAppInstalled("com.whatsapp");
+            Log.d(TAG, "WhatsApp installed: " + isWhatsAppInstalled);
+            
+            if (!isWhatsAppInstalled) {
+                call.reject("WhatsApp is not installed on this device");
+                return;
+            }
+            
+            // Strategy 1: Use explicit component with phone number data
+            try {
+                Log.d(TAG, "Trying Strategy 1: Explicit component with phone data");
+                Intent intent = new Intent(Intent.ACTION_VIEW);
+                intent.setPackage("com.whatsapp");
+                intent.setData(Uri.parse("https://api.whatsapp.com/send?phone=" + cleanPhone));
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                
+                getActivity().startActivity(intent);
+                
+                Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 1");
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("method", "explicit_component");
+                call.resolve(result);
+                return;
+                
+            } catch (Exception e1) {
+                Log.e(TAG, "Strategy 1 failed: " + e1.getMessage());
+            }
+            
+            // Strategy 2: Direct package launch with extras
+            try {
+                Log.d(TAG, "Trying Strategy 2: Direct package launch");
+                Intent intent = getActivity().getPackageManager().getLaunchIntentForPackage("com.whatsapp");
+                if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    intent.putExtra("jid", cleanPhone + "@s.whatsapp.net");
+                    getActivity().startActivity(intent);
+                    
+                    Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 2");
+                    JSObject result = new JSObject();
+                    result.put("success", true);
+                    result.put("method", "direct_launch");
+                    call.resolve(result);
+                    return;
+                }
+            } catch (Exception e2) {
+                Log.e(TAG, "Strategy 2 failed: " + e2.getMessage());
+            }
+            
+            // Strategy 3: Open via Play Store link (user can then open WhatsApp)
+            try {
+                Log.d(TAG, "Trying Strategy 3: Just open WhatsApp app");
+                Intent intent = new Intent(Intent.ACTION_MAIN);
+                intent.addCategory(Intent.CATEGORY_LAUNCHER);
+                intent.setPackage("com.whatsapp");
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getActivity().startActivity(intent);
+                
+                Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 3");
+                JSObject result = new JSObject();
+                result.put("success", true);
+                result.put("method", "launcher");
+                result.put("note", "WhatsApp opened - user should manually find contact");
+                call.resolve(result);
+                return;
+                
+            } catch (Exception e3) {
+                Log.e(TAG, "Strategy 3 failed: " + e3.getMessage());
+            }
+            
+            Log.e(TAG, "❌ ALL STRATEGIES FAILED");
+            call.reject("Could not open WhatsApp despite it being installed. Please check app permissions.");
+            
+        } catch (Exception e) {
+            Log.e(TAG, "❌ CRITICAL ERROR: " + e.getMessage(), e);
+            call.reject("Failed to open WhatsApp: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Check if an app is installed
+     */
+    private boolean isAppInstalled(String packageName) {
+        try {
+            getContext().getPackageManager().getPackageInfo(packageName, 0);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { BookOpen, Calendar, RotateCcw, Monitor, Clock, Layers, TrendingUp, Video, CheckCircle2, Flame, Sun, Moon, Sunset, Check } from 'lucide-react';
 import { getUserId } from '../services/getUserId';
+import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
 import EducationCardModal from './EducationCardModal';
 
 const UNDO_SECONDS = 10;
@@ -122,8 +123,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     educationLogs.forEach(log => {
       if (!log || !log.CreatedAt) return;
       
-      const date = new Date(log.CreatedAt);
-      if (isNaN(date.getTime())) return;
+      const date = istToLocalDate(log.CreatedAt);
+      if (!date || isNaN(date.getTime())) return;
       
       const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
       const monthName = date.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
@@ -273,12 +274,14 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, [activeEducationPanel, educationTrendRangeDays, educationTrendSeries.length]);
 
   /**
-   * Fetch education logs on mount
+   * Fetch education logs and summary on mount and when user changes
    */
   useEffect(() => {
+    // Clear cached userId when user changes
+    userIdRef.current = null;
     fetchEducationLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [user?.id, user?.email]);
 
   /**
    * Fetch summary data independently
@@ -713,7 +716,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                     {educationLogs.length > 0 && (() => {
                       const timeSlots = { morning: 0, afternoon: 0, evening: 0, night: 0 };
                       educationLogs.forEach(log => {
-                        const hour = new Date(log.CreatedAt).getHours();
+                        const hour = istToLocalDate(log.CreatedAt).getHours();
                         if (hour >= 5 && hour < 12) timeSlots.morning++;
                         else if (hour >= 12 && hour < 17) timeSlots.afternoon++;
                         else if (hour >= 17 && hour < 22) timeSlots.evening++;
@@ -771,7 +774,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                         const today = new Date();
                         const activeDates = summary?.last7DaysDates
                           ? summary.last7DaysDates.map(d => new Date(d).toDateString())
-                          : educationLogs.map(log => new Date(log.CreatedAt).toDateString());
+                          : educationLogs.map(log => istToLocalDate(log.CreatedAt).toDateString());
 
                         for (let i = 6; i >= 0; i--) {
                           const d = new Date(today);
@@ -1118,7 +1121,11 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                   <div className="space-y-3">
                     {monthGroup.entries
                       .filter(log => log && log.Id && log.CreatedAt)
-                      .sort((a, b) => new Date(b.CreatedAt) - new Date(a.CreatedAt))
+                      .sort((a, b) => {
+                        const dateA = istToLocalDate(a.CreatedAt);
+                        const dateB = istToLocalDate(b.CreatedAt);
+                        return dateB - dateA;
+                      })
                       .map((log, index) => {
                         // Show undo row if this is a placeholder
                         if (log.isUndoPlaceholder) {

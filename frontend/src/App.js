@@ -11,6 +11,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { Geolocation } from "@capacitor/geolocation";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -43,11 +44,17 @@ import { educationDetectionService } from "./services/educationDetectionService"
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
+import { locationAttendanceService } from "./services/locationAttendanceService";
+import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
+import ClubSelectionModal from "./components/ClubSelectionModal";
+import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
+import CoachScoreSummary from "./components/CoachScoreSummary";
+import PersonalDisciplineScore from "./components/PersonalDisciplineScore";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -68,10 +75,18 @@ import { screenTimeService } from "./services/screenTimeService";
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const ClubAttendanceReport = lazy(() => import("./components/ClubAttendanceReport"));
+const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
+const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
+
+const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
+const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTime = lazy(() => import("./components/ScreenTime"));
+
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -105,6 +120,7 @@ function WellnessValleyApp() {
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
+  const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
@@ -120,6 +136,19 @@ function WellnessValleyApp() {
     useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
+
+  // Club selection state
+  const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
+  const [nearbyCenters, setNearbyCenters] = useState([]);
+  const [pendingEducationData, setPendingEducationData] = useState(null);
+  
+  // Custom alert modal state
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
@@ -154,9 +183,25 @@ function WellnessValleyApp() {
     localStorage.setItem("currentPage", "screen-time");
   }, []);
 
+  // Attendance report state (for coaches)
+  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
+
+  // Club attendance report state (for coaches/club owners)
+  const [showClubAttendanceReport, setShowClubAttendanceReport] = useState(false);
+
+  // Nutrition centers map state (for all users)
+  const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
+
+  // Register nutrition center state (for coaches)
+  const [showRegisterCenter, setShowRegisterCenter] = useState(false);
+
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
+
+  // Wellness University state
+  const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
+  const [showWellnessReport, setShowWellnessReport] = useState(false);
 
   // 🐛 Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
@@ -168,6 +213,7 @@ function WellnessValleyApp() {
   // Ref for leaderboards to trigger manual refresh
   const leaderboardRef = useRef(null);
   const disciplineLeaderboardRef = useRef(null);
+  const personalDisciplineRef = useRef(null);
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
@@ -252,20 +298,20 @@ function WellnessValleyApp() {
   // 🐛 Keyboard shortcut for closing correction modal (ESC key on web)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (e.key === 'Escape' && showCorrectionModal) {
+      if (e.key === "Escape" && showCorrectionModal) {
         setShowCorrectionModal(false);
       }
     };
 
     if (showCorrectionModal) {
-      window.addEventListener('keydown', handleKeyDown);
+      window.addEventListener("keydown", handleKeyDown);
       // Prevent body scroll when modal is open (web only)
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     }
 
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = 'unset';
+      window.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = "unset";
     };
   }, [showCorrectionModal]);
 
@@ -275,11 +321,11 @@ function WellnessValleyApp() {
     if (Capacitor.isNativePlatform()) {
       // Double-check splash screen is hidden after React renders
       const timer = setTimeout(() => {
-        SplashScreen.hide().catch(err => {
-          console.log('Splash screen already hidden');
+        SplashScreen.hide().catch((err) => {
+          console.log("Splash screen already hidden");
         });
       }, 500);
-      
+
       return () => clearTimeout(timer);
     }
   }, []);
@@ -426,6 +472,9 @@ function WellnessValleyApp() {
     if (disciplineLeaderboardRef.current) {
       disciplineLeaderboardRef.current.refresh();
     }
+    if (personalDisciplineRef.current) {
+      personalDisciplineRef.current.refresh();
+    }
   }, []);
 
   const showDashboardPage = useCallback(async (preferredTab = null) => {
@@ -469,13 +518,31 @@ function WellnessValleyApp() {
     setShowDashboard(false);
     setShowDisciplineReport(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
+
+    // Clear weight result, education result, and images when going back to main page
+    if (weightResult) setWeightResult(null);
+    if (educationResult) setEducationResult(null);
+    if (nutritionData) setNutritionData(null);
+    if (imagePreview) setImagePreview(null);
+    if (selectedImage) setSelectedImage(null);
+    if (imageType) setImageType(null);
+
+    // Reset file inputs to allow selecting the same image again
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
+
     localStorage.setItem("currentPage", "main");
   };
 
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      // Request push notification permissions
       await PushNotifications.requestPermissions();
+      
+      // Request location permissions for attendance tracking
+      await Geolocation.requestPermissions();
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }
@@ -994,14 +1061,16 @@ function WellnessValleyApp() {
       if (!user || !user.id) return;
 
       try {
-        console.log('⚡ [PRELOAD] Warming user context cache...');
+        console.log("⚡ [PRELOAD] Warming user context cache...");
         const context = await getUserContext(user.id);
         if (context) {
           setUserContext(context);
-          console.log('✅ [PRELOAD] Context cached - image analysis will be faster');
+          console.log(
+            "✅ [PRELOAD] Context cached - image analysis will be faster",
+          );
         }
       } catch (error) {
-        console.warn('⚠️ [PRELOAD] Failed to preload context:', error);
+        console.warn("⚠️ [PRELOAD] Failed to preload context:", error);
       }
     };
 
@@ -1108,6 +1177,8 @@ function WellnessValleyApp() {
         muscleMass: weightData.muscleMass,
         bmr: weightData.bmr,
         imageBase64ToSave: imageBase64,
+        clientTimestamp: new Date().toISOString(), // User's actual upload time
+        clientTimezoneOffset: new Date().getTimezoneOffset() // User's timezone offset
       };
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
@@ -1237,7 +1308,7 @@ function WellnessValleyApp() {
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
    */
-  const saveEducationLog = async (educationData, imageBase64) => {
+  const saveEducationLog = async (educationData, imageBase64, selectedClub = null) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
 
@@ -1251,16 +1322,68 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
+      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
+      // If within 100m of club → club attendance
+      // If not near club → remote attendance
+      console.log("📍 Checking GPS for nearby clubs...");
+      
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(
+          apiBaseUrl,
+          userId
+        );
+        console.log("✅ Attendance determined:", attendance);
+      } catch (gpsError) {
+        console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
+        // Fallback to remote attendance if GPS fails
+        attendance = {
+          attendanceType: 'remote',
+          nutritionCenterId: null,
+          centerName: null,
+          nearbyCenters: []
+        };
+      }
+
+      // If multiple clubs detected and no club selected yet, show selection modal
+      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+        console.log("🏢 Multiple clubs detected, showing selection modal");
+        setNearbyCenters(attendance.nearbyCenters);
+        setPendingEducationData({ educationData, imageBase64, attendance });
+        setShowClubSelectionModal(true);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        return; // Wait for user to select club
+      }
+
+      // Determine final values
+      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      const finalCenterName = selectedClub?.center_name || attendance.centerName;
+      const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+
+      // Use EXIF timestamp if available, otherwise use current time
+      const logTimestamp = imageTimestamp || new Date().toISOString();
+      console.log("📅 Education log timestamp:", logTimestamp, imageTimestamp ? "(from EXIF)" : "(current time)");
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
           imageBase64: imageBase64,
-          platform: educationData.platform,
+          platform: finalPlatform,
           topic: educationData.topic,
           confidence: educationData.confidence,
+          participantCount: educationData.participantCount || null,
           deviceInfo: window.navigator.userAgent,
+          clientTimestamp: new Date().toISOString(),
+          clientTimezoneOffset: new Date().getTimezoneOffset(),
+          latitude: attendance.latitude,
+          longitude: attendance.longitude,
+          attendanceType: attendance.attendanceType,
+          nutritionCenterId: finalCenterId,
+          centerName: finalCenterName,
+          imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
         }),
       });
 
@@ -1271,6 +1394,22 @@ function WellnessValleyApp() {
       }
 
       console.log("✅ Education log auto-saved successfully:", data.id);
+      
+      // Refresh discipline scores and leaderboards after education save
+      handleLeaderboardRefresh();
+      
+      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      if (finalCenterName) {
+        console.log(`   🏢 Club: ${finalCenterName}`);
+      }
+      if (educationData.participantCount) {
+        console.log(`   👥 Participants: ${educationData.participantCount}`);
+      }
+      if (data.isOnTime !== undefined) {
+        const status = data.isOnTime ? '✅ ON-TIME (Present)' : '⚠️ LATE (Absent)';
+        console.log(`   ⏰ Timing: ${status}`);
+        console.log(`   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`);
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -1280,6 +1419,23 @@ function WellnessValleyApp() {
       );
       setSaveLoading(false);
       setLoadingState("idle");
+    }
+  };
+
+  // Handle club selection from modal
+  const handleClubSelection = async (selectedCenter) => {
+    console.log("🏢 Club selected:", selectedCenter);
+    setShowClubSelectionModal(false);
+    
+    if (pendingEducationData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      await saveEducationLog(
+        pendingEducationData.educationData,
+        pendingEducationData.imageBase64,
+        selectedCenter
+      );
+      setPendingEducationData(null);
     }
   };
 
@@ -1305,6 +1461,9 @@ function WellnessValleyApp() {
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
       console.log("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
+
+      // Refresh discipline scores and leaderboards after meal save
+      handleLeaderboardRefresh();
 
       // ✅ ANDROID FIX: Don't auto-show popup - data is saved silently
       // Users can view saved data from Dashboard/Insights button
@@ -1429,7 +1588,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file) => {
+  const handleImageSelect = async (file, exifTimestamp = null) => {
     if (imageProcessingInProgress.current) {
       console.log(
         "Image processing already in progress, skipping duplicate call",
@@ -1437,6 +1596,14 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
+    
+    // Store EXIF timestamp for education logs
+    if (exifTimestamp) {
+      console.log("📸 EXIF Timestamp received:", exifTimestamp);
+      setImageTimestamp(exifTimestamp);
+    } else {
+      setImageTimestamp(null);
+    }
 
     if (!user) {
       setError("Please sign in to analyze food images");
@@ -1463,6 +1630,25 @@ function WellnessValleyApp() {
       return;
     }
 
+    // 🚨 FRAUD PREVENTION: Validate image freshness (prevent old/proxy images)
+    // Check EXIF metadata to ensure image was taken today
+    console.log('🔍 Validating image freshness...');
+    const validation = await validateImageFreshness(file, 0); // Only today's images allowed
+    
+    if (!validation.isValid) {
+      console.error('❌ Image validation failed:', validation);
+      setAlertModal({
+        isOpen: true,
+        title: '🚨 PROXY ALERT',
+        message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
+        type: 'error'
+      });
+      imageProcessingInProgress.current = false;
+      return;
+    }
+    
+    console.log('✅ Image validated:', validation.message);
+
     setSelectedImage(file);
     setError(null);
     setNutritionData(null);
@@ -1475,7 +1661,7 @@ function WellnessValleyApp() {
 
     // ⚡ PERFORMANCE TRACKING
     const perfStart = Date.now();
-    console.log('⏱️ [PERF] 🟢 Image processing started');
+    console.log("⏱️ [PERF] 🟢 Image processing started");
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -1502,7 +1688,7 @@ function WellnessValleyApp() {
         if (imageSizeMB > 0.3) {
           // > 300KB
           const maxWidth = 800; // Smaller = faster upload & API processing
-          const quality = imageSizeMB > 2 ? 0.60 : 0.70; // Higher compression
+          const quality = imageSizeMB > 2 ? 0.6 : 0.7; // Higher compression
           processedImage = await compressImage(imageBase64, quality, maxWidth);
           compressionApplied = true;
         }
@@ -1510,16 +1696,22 @@ function WellnessValleyApp() {
         // Web: Also compress aggressively
         if (imageSizeMB > 0.5) {
           // > 500KB
-          processedImage = await compressImage(imageBase64, 0.70, 800);
+          processedImage = await compressImage(imageBase64, 0.7, 800);
           compressionApplied = true;
         }
       }
 
       if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
-        console.log(`⏱️ [PERF] Compression: ${Date.now() - compressStart}ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`);
+        console.log(
+          `⏱️ [PERF] Compression: ${
+            Date.now() - compressStart
+          }ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`,
+        );
       } else {
-        console.log(`⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`);
+        console.log(
+          `⏱️ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`,
+        );
       }
 
       // Set preview and loading together to ensure overlay shows
@@ -1535,18 +1727,24 @@ function WellnessValleyApp() {
       const apiStart = Date.now();
       const detectedType = await imageTypeDetector.detectImageType(file);
       console.log(`⏱️ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
-      console.log('🔍 [DEBUG] Image Type Detection Result:', {
+      console.log("🔍 [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
         hasDetails: !!detectedType.details,
         hasFoods: detectedType.details?.foods?.length || 0,
-        fullResponse: detectedType
+        fullResponse: detectedType,
       });
 
       // 🍽️ Early detection: If food items detected, show them immediately
-      if (detectedType.details?.foods && detectedType.details.foods.length > 0) {
-        const foodNames = detectedType.details.foods.map(f => f.name);
-        console.log('🍽️ [AI-DETECTED] Food items identified:', foodNames.join(', '));
+      if (
+        detectedType.details?.foods &&
+        detectedType.details.foods.length > 0
+      ) {
+        const foodNames = detectedType.details.foods.map((f) => f.name);
+        console.log(
+          "🍽️ [AI-DETECTED] Food items identified:",
+          foodNames.join(", "),
+        );
         setDetectedFoodNames(foodNames); // Show detected names in UI immediately
       }
 
@@ -1663,12 +1861,12 @@ function WellnessValleyApp() {
 
       // It's a food image - use nutrition data from unified detection
       setImageType("food");
-      console.log('🍽️ [DEBUG] Processing as FOOD image');
-      console.log('🍽️ [DEBUG] Food details check:', {
+      console.log("🍽️ [DEBUG] Processing as FOOD image");
+      console.log("🍽️ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
         hasFoodsArray: !!detectedType.details?.foods,
         foodsLength: detectedType.details?.foods?.length || 0,
-        foodsData: detectedType.details?.foods
+        foodsData: detectedType.details?.foods,
       });
 
       try {
@@ -1682,19 +1880,22 @@ function WellnessValleyApp() {
           console.log("✅ Using nutrition data from unified detection");
 
           let foods = detectedType.details.foods;
-          
+
           // 🎯 Update detected food names for display
-          const foodNames = foods.map(f => f.name);
+          const foodNames = foods.map((f) => f.name);
           setDetectedFoodNames(foodNames);
-          console.log('🍽️ [AI-DETECTED] Food names:', foodNames.join(', '));
+          console.log("🍽️ [AI-DETECTED] Food names:", foodNames.join(", "));
 
           // 🔴 CRITICAL: Preserve original AI-detected names BEFORE any corrections
           // This ensures we always know what the AI originally detected, even after auto-corrections
-          foods = foods.map(food => ({
+          foods = foods.map((food) => ({
             ...food,
-            originalAiName: food.name // Store the fresh AI detection
+            originalAiName: food.name, // Store the fresh AI detection
           }));
-          console.log('✅ [PRESERVE] Original AI names saved:', foods.map(f => `${f.name}`).join(', '));
+          console.log(
+            "✅ [PRESERVE] Original AI names saved:",
+            foods.map((f) => `${f.name}`).join(", "),
+          );
 
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
           // console.log("📋 [CORRECTION] Starting auto-correction process...");
@@ -1712,9 +1913,9 @@ function WellnessValleyApp() {
               //   correctedFoods.map((f) => f.name),
               // );
               foods = correctedFoods;
-              
+
               // 🐛 Capture ALL food detections for debug modal (corrections + no corrections)
-              const newLogs = correctedFoods.map(food => ({
+              const newLogs = correctedFoods.map((food) => ({
                 timestamp: new Date().toISOString(),
                 aiDetected: food.originalAiName || food.name,
                 userCorrected: food.name,
@@ -1722,13 +1923,17 @@ function WellnessValleyApp() {
                 wasAutoCorrected: food.wasAutoCorrected || false,
                 correctionSource: food.correctionSource || null,
                 userCount: food.correctionMetadata?.userCount || 0,
-                portion: food.portion || 'N/A',
+                portion: food.portion || "N/A",
                 calories: food.nutrition?.calories || 0,
               }));
-              
+
               if (newLogs.length > 0) {
-                setCorrectionLogs(prev => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
-                console.log('🐛 [DEBUG-LOGS] Captured', newLogs.length, 'food detection(s)');
+                setCorrectionLogs((prev) => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
+                console.log(
+                  "🐛 [DEBUG-LOGS] Captured",
+                  newLogs.length,
+                  "food detection(s)",
+                );
               }
             } else {
               console.warn(
@@ -1755,20 +1960,22 @@ function WellnessValleyApp() {
           // This caused bug where corrected food (317 cal) showed wrong total (300 cal from AI)
           const total = foods.reduce(
             (acc, food) => ({
-              calories: acc.calories + (food.nutrition?.calories || food.calories || 0),
-              protein: acc.protein + (food.nutrition?.protein || food.protein || 0),
+              calories:
+                acc.calories + (food.nutrition?.calories || food.calories || 0),
+              protein:
+                acc.protein + (food.nutrition?.protein || food.protein || 0),
               carbs: acc.carbs + (food.nutrition?.carbs || food.carbs || 0),
               fat: acc.fat + (food.nutrition?.fat || food.fat || 0),
               fiber: acc.fiber + (food.nutrition?.fiber || food.fiber || 0),
             }),
             { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
           );
-          
-          console.log('📊 [App.js] Calculated total from corrected foods:', {
+
+          console.log("📊 [App.js] Calculated total from corrected foods:", {
             totalCalories: total.calories,
             totalCarbs: total.carbs,
             totalProtein: total.protein,
-            foodCount: foods.length
+            foodCount: foods.length,
           });
 
           // Generate category name from food items
@@ -1812,24 +2019,36 @@ function WellnessValleyApp() {
             detailedItems: foods.map((food) => {
               // 🎯 Extract nutrition values from the corrected food object
               const nutritionValues = {
-                calories: Math.round(food.nutrition?.calories || food.calories || 0),
-                protein: Math.round(food.nutrition?.protein || food.protein || 0),
+                calories: Math.round(
+                  food.nutrition?.calories || food.calories || 0,
+                ),
+                protein: Math.round(
+                  food.nutrition?.protein || food.protein || 0,
+                ),
                 carbs: Math.round(food.nutrition?.carbs || food.carbs || 0),
                 fat: Math.round(food.nutrition?.fat || food.fat || 0),
                 fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
               };
-              
-              console.log(`📊 [App.js] Mapping food "${food.name}" to detailedItem:`);
-              console.log(`   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`);
-              console.log(`   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`);
-              console.log(`   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`);
-              
+
+              console.log(
+                `📊 [App.js] Mapping food "${food.name}" to detailedItem:`,
+              );
+              console.log(
+                `   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`,
+              );
+              console.log(
+                `   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`,
+              );
+              console.log(
+                `   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`,
+              );
+
               return {
                 name: food.name,
-                originalAiName: food.originalAiName,  // 🔴 Preserve original AI detection
-                wasAutoCorrected: food.wasAutoCorrected,  // 🔴 Track if auto-corrected
-                correctionSource: food.correctionSource,  // 🔴 Track correction source
-                correctionMetadata: food.correctionMetadata,  // 🔴 Full correction metadata
+                originalAiName: food.originalAiName, // 🔴 Preserve original AI detection
+                wasAutoCorrected: food.wasAutoCorrected, // 🔴 Track if auto-corrected
+                correctionSource: food.correctionSource, // 🔴 Track correction source
+                correctionMetadata: food.correctionMetadata, // 🔴 Full correction metadata
                 portionDescription: food.portion || "Unknown portion",
                 estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
                 unit: food.unit || (food.volume_ml ? "ml" : "g"),
@@ -1845,63 +2064,70 @@ function WellnessValleyApp() {
           // Fallback: No food data extracted, show specific actionable error
           console.error("❌ [DEBUG] No food data extracted from image");
           console.error("❌ [DEBUG] Detection details:", detectedType.details);
-          console.error("❌ [DEBUG] Full detectedType object:", JSON.stringify(detectedType, null, 2));
-          
-          const errorDetails = detectedType.details?.error || '';
-          const detectionReason = detectedType.details?.reason || '';
-          let errorMessage = '';
-          
+          console.error(
+            "❌ [DEBUG] Full detectedType object:",
+            JSON.stringify(detectedType, null, 2),
+          );
+
+          const errorDetails = detectedType.details?.error || "";
+          const detectionReason = detectedType.details?.reason || "";
+          let errorMessage = "";
+
           // 1. Check for API/Service errors (quota, timeout, rate limits)
-          const isApiError = errorDetails && (
-            errorDetails.includes('quota') || 
-            errorDetails.includes('API') || 
-            errorDetails.includes('timeout') ||
-            errorDetails.includes('429') ||
-            errorDetails.includes('503') ||
-            errorDetails.includes('overloaded') ||
-            errorDetails.includes('rate limit')
-          );
-          
+          const isApiError =
+            errorDetails &&
+            (errorDetails.includes("quota") ||
+              errorDetails.includes("API") ||
+              errorDetails.includes("timeout") ||
+              errorDetails.includes("429") ||
+              errorDetails.includes("503") ||
+              errorDetails.includes("overloaded") ||
+              errorDetails.includes("rate limit"));
+
           // 2. Check for network errors
-          const isNetworkError = errorDetails && (
-            errorDetails.includes('network') ||
-            errorDetails.includes('Failed to fetch') ||
-            errorDetails.includes('connection') ||
-            errorDetails.toLowerCase().includes('internet')
-          );
-          
+          const isNetworkError =
+            errorDetails &&
+            (errorDetails.includes("network") ||
+              errorDetails.includes("Failed to fetch") ||
+              errorDetails.includes("connection") ||
+              errorDetails.toLowerCase().includes("internet"));
+
           // 3. Check if image is not food (weight scale, body, etc.)
-          const isNonFoodImage = detectedType.type && (
-            detectedType.type === 'weight_scale' ||
-            detectedType.type === 'body' ||
-            detectedType.type === 'not_food' ||
-            detectionReason.toLowerCase().includes('scale') ||
-            detectionReason.toLowerCase().includes('body') ||
-            detectionReason.toLowerCase().includes('not food')
-          );
-          
+          const isNonFoodImage =
+            detectedType.type &&
+            (detectedType.type === "weight_scale" ||
+              detectedType.type === "body" ||
+              detectedType.type === "not_food" ||
+              detectionReason.toLowerCase().includes("scale") ||
+              detectionReason.toLowerCase().includes("body") ||
+              detectionReason.toLowerCase().includes("not food"));
+
           // 4. Image quality issues
-          const isQualityIssue = detectionReason && (
-            detectionReason.toLowerCase().includes('blurry') ||
-            detectionReason.toLowerCase().includes('unclear') ||
-            detectionReason.toLowerCase().includes('dark') ||
-            detectionReason.toLowerCase().includes('low quality') ||
-            detectionReason.toLowerCase().includes('poor lighting')
-          );
-          
+          const isQualityIssue =
+            detectionReason &&
+            (detectionReason.toLowerCase().includes("blurry") ||
+              detectionReason.toLowerCase().includes("unclear") ||
+              detectionReason.toLowerCase().includes("dark") ||
+              detectionReason.toLowerCase().includes("low quality") ||
+              detectionReason.toLowerCase().includes("poor lighting"));
+
           // Set appropriate error message
           if (isApiError) {
-            errorMessage = "🤖 The AI model is temporarily unavailable. Please try again later.";
+            errorMessage =
+              "🤖 The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {
-            errorMessage = "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+            errorMessage =
+              "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isNonFoodImage) {
-            errorMessage = "⚠️ Please take a photo of food, weight scale, or educational content.";
+            errorMessage =
+              "⚠️ Please take a photo of food, weight scale, or educational content.";
           } else if (isQualityIssue) {
             errorMessage = "📸 Please take a clear photo with good lighting.";
           } else {
-            errorMessage = "🍽️ Could not detect food items. Please take a clear photo of your meal.";
+            errorMessage =
+              "🍽️ Could not detect food items. Please take a clear photo of your meal.";
           }
-          
+
           setError(errorMessage);
           setLoading(false);
           return;
@@ -1936,7 +2162,7 @@ function WellnessValleyApp() {
                 imageBase64: processedImage,
                 analysisResult: result,
                 deviceInfo: window.navigator.userAgent,
-                userEmail: user?.email || user?.Email || 'unknown'
+                userEmail: user?.email || user?.Email || "unknown",
               });
               return;
             }
@@ -1953,7 +2179,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || 'unknown'
+              userEmail: user?.email || user?.Email || "unknown",
             });
             return;
           }
@@ -1978,7 +2204,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || 'unknown'
+              userEmail: user?.email || user?.Email || "unknown",
             });
             return;
           }
@@ -1994,7 +2220,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || 'unknown'
+              userEmail: user?.email || user?.Email || "unknown",
             });
             return;
           }
@@ -2009,7 +2235,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || 'unknown'
+              userEmail: user?.email || user?.Email || "unknown",
             });
             setShowDuplicateModal(true);
             setSaveLoading(false);
@@ -2021,7 +2247,7 @@ function WellnessValleyApp() {
               imageBase64: processedImage,
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
-              userEmail: user?.email || user?.Email || 'unknown'
+              userEmail: user?.email || user?.Email || "unknown",
             });
           }
         } catch (err) {
@@ -2064,8 +2290,10 @@ function WellnessValleyApp() {
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
-      console.log(`⏱️ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`);
-      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      console.log(
+        `⏱️ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
+      );
+      console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
     }
   };
 
@@ -2083,18 +2311,30 @@ function WellnessValleyApp() {
     // API/Service availability errors
     if (rawMessage.includes("429") || rawMessage.includes("rate limit")) {
       return "The AI model is temporarily unavailable. Please try again later.";
-    } else if (rawMessage.includes("503") || rawMessage.includes("overloaded")) {
+    } else if (
+      rawMessage.includes("503") ||
+      rawMessage.includes("overloaded")
+    ) {
       return "The AI model is temporarily unavailable. Please try again later.";
-    } else if (rawMessage.includes("quota") || rawMessage.includes("exceeded")) {
+    } else if (
+      rawMessage.includes("quota") ||
+      rawMessage.includes("exceeded")
+    ) {
       return "The AI model is temporarily unavailable. Please try again later.";
     } else if (rawMessage.includes("API key is not configured")) {
       return "The AI model is temporarily unavailable. Please try again later.";
-    } else if (rawMessage.includes("models/") && rawMessage.includes("not found")) {
+    } else if (
+      rawMessage.includes("models/") &&
+      rawMessage.includes("not found")
+    ) {
       return "The AI model is temporarily unavailable. Please try again later.";
     }
 
-    // Network and connectivity errors  
-    else if (rawMessage.includes("network") || rawMessage.includes("Failed to fetch")) {
+    // Network and connectivity errors
+    else if (
+      rawMessage.includes("network") ||
+      rawMessage.includes("Failed to fetch")
+    ) {
       return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("timeout")) {
       return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
@@ -2103,9 +2343,14 @@ function WellnessValleyApp() {
     }
 
     // Server errors
-    else if (rawMessage.includes("500") || rawMessage.includes("Internal Server Error")) {
+    else if (
+      rawMessage.includes("500") ||
+      rawMessage.includes("Internal Server Error")
+    ) {
       return "The AI model is temporarily unavailable. Please try again later.";
-    } else if (rawMessage.includes("Server returned an unexpected response format")) {
+    } else if (
+      rawMessage.includes("Server returned an unexpected response format")
+    ) {
       return "💾 Unable to save your analysis right now. Your food data is still displayed above.";
     }
 
@@ -2188,7 +2433,7 @@ function WellnessValleyApp() {
               userEmail,
             );
           }
-          
+
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handleSignIn] saveResult:", saveResult);
@@ -2315,7 +2560,7 @@ function WellnessValleyApp() {
               userEmail,
             );
           }
-          
+
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
           console.log("📦 [handlePopupSignIn] saveResult:", saveResult);
@@ -2534,7 +2779,7 @@ function WellnessValleyApp() {
 
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
-        
+
         // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
@@ -2544,7 +2789,7 @@ function WellnessValleyApp() {
             userEmail,
           );
         }
-        
+
         setUser(parsedUser);
 
         // Show profile modal for new users
@@ -2632,6 +2877,7 @@ function WellnessValleyApp() {
           onBack={showMainPage}
           apiBaseUrl={apiBaseUrl}
           initialTab={dashboardInitialTab}
+          userRole={userRole}
         />
       </Suspense>
     );
@@ -2703,257 +2949,312 @@ function WellnessValleyApp() {
           setShowDisciplineReport(true);
           localStorage.setItem("currentPage", "discipline-report");
         }}
+        onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
+        onShowWellnessReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowWellnessReport(true)
+            : null
+        }
+        onShowAttendanceReport={() => setShowAttendanceReport(true)}
+        onShowClubAttendanceReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowClubAttendanceReport(true)
+            : null
+        }
+        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
+        onShowRegisterCenter={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowRegisterCenter(true)
+            : null
+        }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
 
+      {/* Personal Discipline Score - Shows individual category breakdown (WEI, EDU, BRE, LUN, DIN) */}
+      {user && <PersonalDisciplineScore ref={personalDisciplineRef} apiBaseUrl={apiBaseUrl} userId={user.id} />}
+
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
-      <WeightLossLeaderboard 
+      <WeightLossLeaderboard
         ref={leaderboardRef}
-        apiBaseUrl={apiBaseUrl} 
+        apiBaseUrl={apiBaseUrl}
         topN={LEADERBOARD_CONFIG.TOP_N}
       />
 
-      {/* Discipline Leaderboard Strip - Top 5 Discipline Champions */}
-      <DisciplineLeaderboard 
+      {/* Discipline Leaderboard Strip - Top 10 Discipline Champions */}
+      <DisciplineLeaderboard
         ref={disciplineLeaderboardRef}
-        apiBaseUrl={apiBaseUrl} 
-        topN={5}
+        apiBaseUrl={apiBaseUrl}
+        topN={10}
       />
 
       <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
         <div className="max-w-md w-full mx-auto space-y-6">
-        {/* Back button toast message */}
-        {toast.visible && (
-          <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
-            {toast.message}
-          </div>
-        )}
-
-        <ImageUpload
-          onImageSelect={handleImageSelect}
-          imagePreview={imagePreview}
-          loading={loading}
-          loadingState={loadingState}
-          imageType={imageType}
-          detectedFoodNames={detectedFoodNames}
-          ref={fileInputRef}
-          onHelpClick={() => setShowHowToUse(!showHowToUse)}
-        />
-
-        {error && (
-          <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
-            <div className="flex items-start space-x-3">
-              <div className="text-xl">⚠️</div>
-              <div className="flex-1">
-                <p className="font-semibold">Error</p>
-                <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
-              </div>
+          {/* Back button toast message */}
+          {toast.visible && (
+            <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
+              {toast.message}
             </div>
-            {lastImageFileRef.current && (
-              <div className="mt-2 flex gap-2 justify-end">
-                <TouchFeedbackButton
-                  onClick={handleRetryAnalysis}
-                  className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
-                >
-                  Retry
-                </TouchFeedbackButton>
-                <TouchFeedbackButton
-                  onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
-                  className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                >
-                  Dismiss
-                </TouchFeedbackButton>
+          )}
+
+          <ImageUpload
+            onImageSelect={handleImageSelect}
+            imagePreview={imagePreview}
+            loading={loading}
+            loadingState={loadingState}
+            imageType={imageType}
+            detectedFoodNames={detectedFoodNames}
+            ref={fileInputRef}
+            onHelpClick={() => setShowHowToUse(!showHowToUse)}
+          />
+
+          {error && (
+            <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
+              <div className="flex items-start space-x-3">
+                <div className="text-xl">⚠️</div>
+                <div className="flex-1">
+                  <p className="font-semibold">Error</p>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">
+                    {error}
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
-        )}
+              {lastImageFileRef.current && (
+                <div className="mt-2 flex gap-2 justify-end">
+                  <TouchFeedbackButton
+                    onClick={handleRetryAnalysis}
+                    className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
+                  >
+                    Retry
+                  </TouchFeedbackButton>
+                  <TouchFeedbackButton
+                    onClick={() => {
+                      setError(null);
+                      setImagePreview(null);
+                      lastImageFileRef.current = null;
+                    }}
+                    className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                  >
+                    Dismiss
+                  </TouchFeedbackButton>
+                </div>
+              )}
+            </div>
+          )}
 
-        {imageType === "food" && nutritionData && (
-          <NutritionCard
-            data={nutritionData}
-            user={user}
-            imagePreview={imagePreview}
-            selectedImage={selectedImage}
-            savedMealId={savedNutritionMealId}
-            onClose={() => {
-              setNutritionData(null);
-              setImagePreview(null);
-              setSelectedImage(null);
-              setSavedNutritionMealId(null);
-            }}
-          />
-        )}
+          {imageType === "food" && nutritionData && (
+            <NutritionCard
+              data={nutritionData}
+              user={user}
+              imagePreview={imagePreview}
+              selectedImage={selectedImage}
+              savedMealId={savedNutritionMealId}
+              onClose={() => {
+                setNutritionData(null);
+                setImagePreview(null);
+                setSelectedImage(null);
+                setSavedNutritionMealId(null);
+              }}
+            />
+          )}
 
-        {/* Education Meeting Result */}
-        {imageType === "education" && educationResult && (
-          <EducationLogCard
-            educationData={educationResult}
-            imagePreview={imagePreview}
-            onClose={() => {
-              setEducationResult(null);
-              setImagePreview(null);
-              setSelectedImage(null);
-            }}
-          />
-        )}
+          {/* Education Meeting Result */}
+          {imageType === "education" && educationResult && (
+            <EducationLogCard
+              educationData={educationResult}
+              imagePreview={imagePreview}
+              onClose={() => {
+                setEducationResult(null);
+                setImagePreview(null);
+                setSelectedImage(null);
+              }}
+            />
+          )}
 
-        {imageType === "weight" && weightResult && (
-          <>
-            {/* Hidden container for sharing - includes image + card */}
-            <div
-              ref={weightAnalysisShareRef}
-              className="fixed -left-[9999px] top-0 w-[400px]"
-              style={{ position: "fixed", left: "-9999px" }}
-            >
-              <div className="bg-white rounded-2xl shadow-xl border-2 border-teal-400 overflow-hidden">
-                {/* Weight Image for sharing */}
-                {imagePreview && (
-                  <div className="relative bg-black">
-                    <img
-                      src={imagePreview}
-                      alt="Weight Scale"
-                      className="w-full h-64 object-contain"
-                    />
-                  </div>
-                )}
+          {imageType === "weight" && weightResult && (
+            <>
+              {/* Hidden container for sharing - includes image + card */}
+              <div
+                ref={weightAnalysisShareRef}
+                className="fixed -left-[9999px] top-0 w-[400px]"
+                style={{ position: "fixed", left: "-9999px" }}
+              >
+                <div className="bg-white rounded-2xl shadow-xl border-2 border-teal-400 overflow-hidden">
+                  {/* Weight Image for sharing */}
+                  {imagePreview && (
+                    <div className="relative bg-black">
+                      <img
+                        src={imagePreview}
+                        alt="Weight Scale"
+                        className="w-full h-64 object-contain"
+                      />
+                    </div>
+                  )}
 
-                {/* Card content for sharing - Simple and Clean */}
-                <div className="bg-white p-8">
-                  <h2 className="text-2xl font-bold text-emerald-600 mb-6 text-center">Weight Analysis</h2>
-                  
-                  <div className="bg-purple-50 rounded-2xl p-6 text-center">
-                    <p className="text-sm font-semibold text-purple-600 mb-2 uppercase tracking-wide">Weight</p>
-                    <p className="text-5xl font-bold text-purple-700">
-                      {weightResult.weightValue}
-                      <span className="text-2xl font-normal ml-2">{weightResult.unit}</span>
-                    </p>
+                  {/* Card content for sharing - Simple and Clean */}
+                  <div className="bg-white p-8">
+                    <h2 className="text-2xl font-bold text-emerald-600 mb-6 text-center">
+                      Weight Analysis
+                    </h2>
+
+                    <div className="bg-purple-50 rounded-2xl p-6 text-center">
+                      <p className="text-sm font-semibold text-purple-600 mb-2 uppercase tracking-wide">
+                        Weight
+                      </p>
+                      <p className="text-5xl font-bold text-purple-700">
+                        {weightResult.weightValue}
+                        <span className="text-2xl font-normal ml-2">
+                          {weightResult.unit}
+                        </span>
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            {/* Visible card */}
-            <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
-              <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
-                Weight Analysis
-              </h2>
+              {/* Visible card */}
+              <div className="bg-white rounded-xl shadow-lg border-2 border-white-200 p-6">
+                <h2 className="text-xl font-bold text-green-700 flex items-center mb-4">
+                  Weight Analysis
+                </h2>
 
-              <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
-                <p className="text-sm text-purple-600 font-medium mb-1">
-                  Weight
-                </p>
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
+                  <p className="text-sm text-purple-600 font-medium mb-1">
+                    Weight
+                  </p>
 
-                <p className="text-3xl font-bold text-purple-700">
-                  {weightResult.weightValue}
-                  <span className="text-lg font-normal ml-1">
-                    {weightResult.unit}
-                  </span>
-                </p>
+                  <p className="text-3xl font-bold text-purple-700">
+                    {weightResult.weightValue}
+                    <span className="text-lg font-normal ml-1">
+                      {weightResult.unit}
+                    </span>
+                  </p>
+                </div>
+
+                {/* Share Button at Bottom - Only show if there's an image */}
+                {imagePreview && (
+                  <button
+                    onClick={async () => {
+                      if (isWeightSharing) return;
+                      setIsWeightSharing(true);
+                      try {
+                        // Small delay to ensure hidden container is fully rendered
+                        await new Promise((resolve) =>
+                          setTimeout(resolve, 100),
+                        );
+
+                        await captureAndShare(weightAnalysisShareRef.current, {
+                          title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
+                          text: "",
+                          fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
+                        });
+                      } catch (error) {
+                        console.error("Failed to share:", error);
+                      } finally {
+                        setIsWeightSharing(false);
+                      }
+                    }}
+                    disabled={isWeightSharing}
+                    className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                      isWeightSharing
+                        ? "opacity-50 cursor-not-allowed"
+                        : "hover:shadow-lg active:scale-[0.98]"
+                    }`}
+                    style={{ touchAction: "manipulation" }}
+                  >
+                    {isWeightSharing ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                        <span>Sharing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Share2 className="w-5 h-5" />
+                        <span>Share Weight</span>
+                      </>
+                    )}
+                  </button>
+                )}
               </div>
+            </>
+          )}
 
-              {/* Share Button at Bottom - Only show if there's an image */}
-              {imagePreview && (
-                <button
-                  onClick={async () => {
-                    if (isWeightSharing) return;
-                    setIsWeightSharing(true);
-                    try {
-                      // Small delay to ensure hidden container is fully rendered
-                      await new Promise(resolve => setTimeout(resolve, 100));
-                      
-                      await captureAndShare(weightAnalysisShareRef.current, {
-                        title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
-                        text: "",
-                        fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
-                      });
-                    } catch (error) {
-                      console.error("Failed to share:", error);
-                    } finally {
-                      setIsWeightSharing(false);
-                    }
-                  }}
-                  disabled={isWeightSharing}
-                  className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
-                    isWeightSharing
-                      ? "opacity-50 cursor-not-allowed"
-                      : "hover:shadow-lg active:scale-[0.98]"
-                  }`}
-                  style={{ touchAction: "manipulation" }}
-                >
-                  {isWeightSharing ? (
-                    <>
-                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Sharing...</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-5 h-5" />
-                      <span>Share Weight</span>
-                    </>
-                  )}
-                </button>
-              )}
+          {/* Saving Toast */}
+          {saveLoading && (
+            <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
+              <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
+                {imageType === "weight"
+                  ? "Saving your weight progress..."
+                  : imageType === "education"
+                  ? "Saving your study session..."
+                  : "Saving your nutrition analysis..."}
+              </div>
             </div>
-          </>
-        )}
+          )}
 
-        {/* Saving Toast */}
-        {saveLoading && (
-          <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
-            <div className="bg-green-600 text-white px-6 py-3 rounded-t-xl shadow-lg animate-pulse font-semibold">
-              {imageType === "weight"
-                ? "Saving your weight progress..."
-                : imageType === "education"
-                ? "Saving your study session..."
-                : "Saving your nutrition analysis..."}
+          {/* Error Toast */}
+          {saveError && (
+            <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
+              <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
+                {saveError}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Error Toast */}
-        {saveError && (
-          <div className="fixed bottom-0 left-0 right-0 flex justify-center z-50">
-            <div className="bg-red-600 text-white px-6 py-3 rounded-t-xl shadow-lg font-semibold">
-              {saveError}
+          {showHowToUse && (
+            <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative">
+              {" "}
+              <button
+                onClick={() => setShowHowToUse(false)}
+                className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none"
+                aria-label="Close"
+              >
+                {" "}
+                ×{" "}
+              </button>{" "}
+              <h3 className="font-semibold text-green-700 mb-2">
+                📋 How to use:
+              </h3>{" "}
+              <div className="space-y-3">
+                {" "}
+                <div>
+                  {" "}
+                  <h4 className="font-medium text-green-600 mb-1">
+                    {" "}
+                    📸 Image Analysis:{" "}
+                  </h4>
+                  <ol className="text-sm text-gray-600 space-y-1 ml-4">
+                    <li>1. Take a clear photo of your food or weight</li>
+                    <li>
+                      2. Make sure the food or weight are well-lit and visible
+                    </li>
+                    <li>
+                      3. View detailed nutrition breakdown for detected foods or
+                      weights
+                    </li>
+                  </ol>
+                </div>
+              </div>
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <h4 className="font-semibold text-green-700 mb-2">
+                  💡 Tips for better results:
+                </h4>
+                <ul className="text-xs text-gray-600 space-y-1">
+                  <li>• Take photos in good lighting conditions </li>
+                  <li>• Ensure food items or weights are clearly visible</li>
+                  <li>• Avoid cluttered backgrounds </li>
+                  <li>
+                    • For text queries, be specific about preparation methods{" "}
+                  </li>
+                </ul>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-{showHowToUse && ( <div className="bg-white rounded-xl shadow-lg border border-green-200 p-4 relative"> <button onClick={() => setShowHowToUse(false)} className="absolute top-4 right-4 text-gray-600 text-xl hover:text-gray-800 transition-colors focus:outline-none" aria-label="Close" > × </button> <h3 className="font-semibold text-green-700 mb-2">📋 How to use:</h3> <div className="space-y-3"> <div> <h4 className="font-medium text-green-600 mb-1"> 📸 Image Analysis: </h4>
-              <ol className="text-sm text-gray-600 space-y-1 ml-4">
-                <li>1. Take a clear photo of your food or weight</li>
-                <li>
-                  2. Make sure the food or weight are well-lit and visible
-                </li>
-                <li>
-                  3. View detailed nutrition breakdown for detected foods or
-                  weights
-                </li>
-              </ol>
-            </div>
-          </div>
-
-          <div className="mt-3 pt-3 border-t border-gray-200">
-            <h4 className="font-semibold text-green-700 mb-2">
-              💡 Tips for better results:
-            </h4>
-            <ul className="text-xs text-gray-600 space-y-1">
-              <li>• Take photos in good lighting conditions </li>
-              <li>• Ensure food items or weights are clearly visible</li>
-              <li>• Avoid cluttered backgrounds </li>
-              <li>
-                • For text queries, be specific about preparation methods{" "}
-              </li>
-            </ul>
-          </div>
-        </div>
-        )}
-
-        <TestImageGuide
-          isVisible={showTestGuide}
-          onClose={() => setShowTestGuide(false)}
-        />
+          <TestImageGuide
+            isVisible={showTestGuide}
+            onClose={() => setShowTestGuide(false)}
+          />
         </div>
       </div>
 
@@ -3017,6 +3318,28 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Club Selection Modal */}
+      <ClubSelectionModal
+        isOpen={showClubSelectionModal}
+        onClose={() => {
+          setShowClubSelectionModal(false);
+          setPendingEducationData(null);
+          setSaveLoading(false);
+          setLoadingState("idle");
+        }}
+        nearbyCenters={nearbyCenters}
+        onSelectClub={handleClubSelection}
+      />
+
+      {/* Custom Alert Modal (for proxy alerts and other critical messages) */}
+      <CustomAlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+      />
+
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
         isOpen={showNewUserProfileModal}
@@ -3035,6 +3358,54 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Attendance Report */}
+      {showAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading attendance report..." />}
+        >
+          <AttendanceReport
+            user={user}
+            onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Club Attendance Report */}
+      {showClubAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading club attendance report..." />}
+        >
+          <ClubAttendanceReport
+            user={user}
+            onBack={() => setShowClubAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Nutrition Centers Map */}
+      {showNutritionCentersMap && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading nutrition centers map..." />}
+        >
+          <NutritionCentersMap
+            user={user}
+            onBack={() => setShowNutritionCentersMap(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Register Nutrition Center */}
+      {showRegisterCenter && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading registration form..." />}
+        >
+          <NutritionCenterRegistration
+            user={user}
+            onBack={() => setShowRegisterCenter(false)}
           />
         </Suspense>
       )}
@@ -3073,6 +3444,27 @@ function WellnessValleyApp() {
         </Suspense>
       )}
 
+      {/* Wellness University Enrollment */}
+      {showWellnessEnrollment && (
+        <Suspense fallback={<LoadingSpinner message="Loading enrollment..." />}>
+          <WellnessUniversityEnrollment
+            onClose={() => setShowWellnessEnrollment(false)}
+            user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Wellness University Report */}
+      {showWellnessReport && (
+        <Suspense fallback={<LoadingSpinner message="Loading report..." />}>
+          <WellnessUniversityReport
+            onClose={() => setShowWellnessReport(false)}
+            user={user}
+            userRole={userRole}
+          />
+        </Suspense>
+      )}
+
       {/* 🐛 Floating Bug Button - Show Correction Logs (Web & Android) */}
       {/* {user && (
         <button
@@ -3097,7 +3489,7 @@ function WellnessValleyApp() {
 
       {/* 🐛 Correction Logs Modal (Web & Android Optimized) */}
       {showCorrectionModal && (
-        <div 
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-[9999] flex items-center justify-center p-4"
           onClick={(e) => {
             if (e.target === e.currentTarget) setShowCorrectionModal(false);
@@ -3109,9 +3501,12 @@ function WellnessValleyApp() {
               <div className="flex items-center gap-3">
                 <Bug className="w-6 h-6 md:w-8 md:h-8" />
                 <div>
-                  <h2 className="text-xl md:text-2xl font-bold">Food Correction Logs</h2>
+                  <h2 className="text-xl md:text-2xl font-bold">
+                    Food Correction Logs
+                  </h2>
                   <p className="text-orange-100 text-xs md:text-sm">
-                    AI Detection vs User Corrections ({correctionLogs.length} entries)
+                    AI Detection vs User Corrections ({correctionLogs.length}{" "}
+                    entries)
                   </p>
                 </div>
               </div>
@@ -3120,8 +3515,18 @@ function WellnessValleyApp() {
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
                 aria-label="Close modal"
               >
-                <svg className="w-5 h-5 md:w-6 md:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-5 h-5 md:w-6 md:h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -3131,8 +3536,12 @@ function WellnessValleyApp() {
               {correctionLogs.length === 0 ? (
                 <div className="text-center py-12 text-gray-400">
                   <Bug className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-lg font-semibold">No correction logs yet</p>
-                  <p className="text-sm">Upload food images to see correction logs</p>
+                  <p className="text-lg font-semibold">
+                    No correction logs yet
+                  </p>
+                  <p className="text-sm">
+                    Upload food images to see correction logs
+                  </p>
                 </div>
               ) : (
                 correctionLogs.map((log, index) => (
@@ -3142,7 +3551,9 @@ function WellnessValleyApp() {
                   >
                     {/* Timestamp Header */}
                     <div className="text-gray-400 mb-3 pb-2 border-b border-gray-700">
-                      <span className="text-blue-400">📅 {new Date(log.timestamp).toLocaleString()}</span>
+                      <span className="text-blue-400">
+                        📅 {new Date(log.timestamp).toLocaleString()}
+                      </span>
                       {log.wasAutoCorrected && (
                         <span className="ml-3 bg-green-900 text-green-300 px-2 py-1 rounded text-xs">
                           ✅ AUTO-CORRECTED
@@ -3161,29 +3572,46 @@ function WellnessValleyApp() {
                       <div className="text-blue-400 font-bold mb-2">
                         ╠════════════════════════════════════════════════════════════════
                       </div>
-                      
+
                       <div className="text-white mb-1">
-                        <span className="text-gray-400">║</span> 🤖 <span className="text-cyan-400">AI Detected Name:</span>
-                        <span className="ml-4 text-yellow-300">"{log.aiDetected}"</span>
+                        <span className="text-gray-400">║</span> 🤖{" "}
+                        <span className="text-cyan-400">AI Detected Name:</span>
+                        <span className="ml-4 text-yellow-300">
+                          "{log.aiDetected}"
+                        </span>
                       </div>
-                      
-                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+
+                      {log.aiDetected.trim().toLowerCase() ===
+                      log.userCorrected.trim().toLowerCase() ? (
                         <div className="text-white mb-2">
-                          <span className="text-gray-400">║</span> ✓ <span className="text-cyan-400">Status:</span>
-                          <span className="ml-2 text-green-300">No Correction - User accepted AI suggestion</span>
+                          <span className="text-gray-400">║</span> ✓{" "}
+                          <span className="text-cyan-400">Status:</span>
+                          <span className="ml-2 text-green-300">
+                            No Correction - User accepted AI suggestion
+                          </span>
                         </div>
                       ) : (
                         <div className="text-white mb-2">
-                          <span className="text-gray-400">║</span> 👤 <span className="text-cyan-400">User Corrected To:</span>
-                          <span className="ml-2 text-green-300">"{log.userCorrected}"</span>
+                          <span className="text-gray-400">║</span> 👤{" "}
+                          <span className="text-cyan-400">
+                            User Corrected To:
+                          </span>
+                          <span className="ml-2 text-green-300">
+                            "{log.userCorrected}"
+                          </span>
                         </div>
                       )}
-                      
+
                       <div className="text-white mb-2">
-                        <span className="text-gray-400">║</span> 📊 <span className="text-cyan-400">Final Display Name:</span>
-                        <span className="ml-2 text-green-300">"{log.finalDisplay}"</span>
+                        <span className="text-gray-400">║</span> 📊{" "}
+                        <span className="text-cyan-400">
+                          Final Display Name:
+                        </span>
+                        <span className="ml-2 text-green-300">
+                          "{log.finalDisplay}"
+                        </span>
                       </div>
-                      
+
                       <div className="text-blue-400 font-bold">
                         ╚════════════════════════════════════════════════════════════════
                       </div>
@@ -3192,25 +3620,49 @@ function WellnessValleyApp() {
                     {/* Individual Console Logs */}
                     <div className="space-y-1 text-gray-300">
                       <div>
-                        <span className="text-blue-400">🤖 [AI-DETECTED]</span> 
-                        <span className="ml-2">Original: <span className="text-yellow-300">{log.aiDetected}</span></span>
+                        <span className="text-blue-400">🤖 [AI-DETECTED]</span>
+                        <span className="ml-2">
+                          Original:{" "}
+                          <span className="text-yellow-300">
+                            {log.aiDetected}
+                          </span>
+                        </span>
                       </div>
-                      
-                      {log.aiDetected.trim().toLowerCase() === log.userCorrected.trim().toLowerCase() ? (
+
+                      {log.aiDetected.trim().toLowerCase() ===
+                      log.userCorrected.trim().toLowerCase() ? (
                         <div>
-                          <span className="text-green-400">✓ [NO-CORRECTION]</span> 
-                          <span className="ml-2">User accepted AI suggestion</span>
+                          <span className="text-green-400">
+                            ✓ [NO-CORRECTION]
+                          </span>
+                          <span className="ml-2">
+                            User accepted AI suggestion
+                          </span>
                         </div>
                       ) : (
                         <div>
-                          <span className="text-green-400">👤 [USER-CORRECTED]</span> 
-                          <span className="ml-2">Mapped to: <span className="text-green-300">{log.userCorrected}</span></span>
+                          <span className="text-green-400">
+                            👤 [USER-CORRECTED]
+                          </span>
+                          <span className="ml-2">
+                            Mapped to:{" "}
+                            <span className="text-green-300">
+                              {log.userCorrected}
+                            </span>
+                          </span>
                         </div>
                       )}
-                      
+
                       <div>
-                        <span className="text-purple-400">📊 [FINAL-DISPLAY]</span> 
-                        <span className="ml-2">Will show: <span className="text-green-300">{log.finalDisplay}</span></span>
+                        <span className="text-purple-400">
+                          📊 [FINAL-DISPLAY]
+                        </span>
+                        <span className="ml-2">
+                          Will show:{" "}
+                          <span className="text-green-300">
+                            {log.finalDisplay}
+                          </span>
+                        </span>
                       </div>
                     </div>
 
@@ -3218,15 +3670,19 @@ function WellnessValleyApp() {
                     <div className="mt-3 pt-3 border-t border-gray-700">
                       <div className="text-gray-400">[CORRECTION-DATA]</div>
                       <pre className="text-xs text-gray-300 mt-1 overflow-x-auto">
-{JSON.stringify({
-  aiDetected: log.aiDetected,
-  userCorrected: log.userCorrected,
-  finalDisplay: log.finalDisplay,
-  userCount: log.userCount,
-  portion: log.portion,
-  calories: log.calories,
-  timestamp: log.timestamp
-}, null, 2)}
+                        {JSON.stringify(
+                          {
+                            aiDetected: log.aiDetected,
+                            userCorrected: log.userCorrected,
+                            finalDisplay: log.finalDisplay,
+                            userCount: log.userCount,
+                            portion: log.portion,
+                            calories: log.calories,
+                            timestamp: log.timestamp,
+                          },
+                          null,
+                          2,
+                        )}
                       </pre>
                     </div>
                   </div>
@@ -3249,14 +3705,18 @@ function WellnessValleyApp() {
                 <button
                   onClick={() => {
                     // Copy logs to clipboard for web users
-                    const logText = correctionLogs.map(log => 
-                      `${new Date(log.timestamp).toLocaleString()}\n` +
-                      `AI: ${log.aiDetected} → Corrected: ${log.userCorrected} → Final: ${log.finalDisplay}\n` +
-                      `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`
-                    ).join('\n');
-                    navigator.clipboard?.writeText(logText)
-                      .then(() => alert('Logs copied to clipboard!'))
-                      .catch(() => console.log('Copy not supported'));
+                    const logText = correctionLogs
+                      .map(
+                        (log) =>
+                          `${new Date(log.timestamp).toLocaleString()}\n` +
+                          `AI: ${log.aiDetected} → Corrected: ${log.userCorrected} → Final: ${log.finalDisplay}\n` +
+                          `Stats: Users ${log.userCount} | ${log.portion} | ${log.calories}cal\n`,
+                      )
+                      .join("\n");
+                    navigator.clipboard
+                      ?.writeText(logText)
+                      .then(() => alert("Logs copied to clipboard!"))
+                      .catch(() => console.log("Copy not supported"));
                   }}
                   className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
                 >

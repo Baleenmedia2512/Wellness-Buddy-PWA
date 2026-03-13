@@ -164,6 +164,7 @@ class GeminiService {
     // Images are now pre-compressed in App.js to 800px @ 60-70% quality
     // Skip duplicate compression to save 2-3 seconds
     const maxSize = 1024 * 1024; // 1MB threshold (very generous)
+    const maxDimension = 800; // Max dimension for fallback compression
 
     // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
@@ -172,7 +173,6 @@ class GeminiService {
     }
 
     // Fallback compression for oversized images
-    const maxDimension = 800;
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
@@ -429,11 +429,13 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
-      // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
+      // 🎯 APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
+      // - Herbalife Formula 1: Auto-corrects for ALL users (global)
+      // - Other foods: Auto-corrects only for specific user (personal)
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
         nutritionData.foods = await applyGlobalAutoCorrections(
           nutritionData.foods,
+          userId, // Pass userId for user-specific corrections
         );
       }
 

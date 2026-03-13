@@ -29,6 +29,7 @@ const TeamNode = ({
   disciplineScores = {},
   memberActivities = {},
   isLastChild = false,
+  allTeamMembers = [], // All team members for calculating team scores
 }) => {
   const [showActivities, setShowActivities] = useState(false);
   const isExpanded = expandedNodes.has(node.userId);
@@ -57,6 +58,68 @@ const TeamNode = ({
 
   const score = disciplineScores[node.userId];
   const activities = memberActivities[node.userId];
+
+  // Debug logging for scores
+  console.log("TeamNode score check:", {
+    name: node.userName,
+    userId: node.userId,
+    userIdType: typeof node.userId,
+    score,
+    scoreType: typeof score,
+    hasDisciplineScores: Object.keys(disciplineScores).length > 0,
+    disciplineScoresKeys: Object.keys(disciplineScores).slice(0, 5),
+    disciplineScoresSample: Object.entries(disciplineScores).slice(0, 3)
+  });
+
+  // Calculate team scores for any node with team members
+  let directTeamScore = null;
+  let underTeamScore = null;
+
+  // Get direct reports (children of current node)
+  const directReports = node.teamMembers || [];
+
+  if (directReports.length > 0) {
+    // Calculate direct team average
+    const directScores = directReports
+      .map((member) => disciplineScores[member.userId])
+      .filter((s) => s !== undefined && s !== null);
+
+    if (directScores.length > 0) {
+      directTeamScore = Math.round(
+        directScores.reduce((sum, s) => sum + s, 0) / directScores.length,
+      );
+    }
+
+    // Calculate full team average (direct reports + all descendants)
+    // This includes all team members under this node
+    const flattenDescendants = (parentNode) => {
+      const descendants = [];
+      const flatten = (n) => {
+        if (n.teamMembers && n.teamMembers.length > 0) {
+          n.teamMembers.forEach((child) => {
+            descendants.push(child);
+            flatten(child);
+          });
+        }
+      };
+      flatten(parentNode);
+      return descendants;
+    };
+
+    const allDescendants = flattenDescendants(node);
+
+    if (allDescendants.length > 0) {
+      const allScores = allDescendants
+        .map((member) => disciplineScores[member.userId])
+        .filter((s) => s !== undefined && s !== null);
+
+      if (allScores.length > 0) {
+        underTeamScore = Math.round(
+          allScores.reduce((sum, s) => sum + s, 0) / allScores.length,
+        );
+      }
+    }
+  }
 
   // Activity icons matching DisciplineReport.js
   const activityIcons = {
@@ -100,21 +163,21 @@ const TeamNode = ({
       )}
 
       {/* Node Content */}
-      <div className="flex-1 mb-3">
+      <div className="flex-1 mb-2 sm:mb-3 w-full overflow-hidden">
         {/* Node Card */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg sm:rounded-xl shadow-md border-2 border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all duration-200"
+          className="bg-white rounded-lg sm:rounded-xl shadow-md border-2 border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all duration-200 w-full max-w-full"
         >
           {/* Card Header */}
           <div
-            className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 cursor-pointer active:bg-gray-50 transition-colors relative"
+            className="flex items-center gap-1 xs:gap-1.5 sm:gap-2 p-1.5 xs:p-2 sm:p-2.5 cursor-pointer active:bg-gray-50 transition-colors relative w-full overflow-hidden"
             onClick={handleCardClick}
           >
             {/* Avatar */}
             <div
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold border-2 shadow-sm flex-shrink-0 ${
+              className={`w-8 h-8 xs:w-9 xs:h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-full flex items-center justify-center text-[10px] xs:text-xs sm:text-sm font-bold border-2 shadow-sm flex-shrink-0 ${
                 score >= 80
                   ? "bg-green-50 border-green-300 text-green-700"
                   : score >= 60
@@ -126,29 +189,31 @@ const TeamNode = ({
             </div>
 
             {/* User Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h3 className="font-bold text-gray-900 text-sm sm:text-[15px] truncate">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 flex-wrap">
+                <h3 className="font-bold text-gray-900 text-[11px] xs:text-xs sm:text-sm truncate max-w-[120px] xs:max-w-[150px] sm:max-w-none">
                   {node.userName}
                 </h3>
                 {/* Role Badge */}
                 {level === 0 && node.role === "coach" && (
-                  <span className="text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     COACH
                   </span>
                 )}
                 {level === 1 && node.role === "coach" && (
-                  <span className="text-[9px] sm:text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     CO-COACH
                   </span>
                 )}
                 {level >= 2 && (
-                  <span className="text-[9px] sm:text-[10px] bg-gray-100 text-gray-700 border border-gray-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-gray-100 text-gray-700 border border-gray-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     MEMBER
                   </span>
                 )}
               </div>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">{node.email}</p>
+              <p className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
+                {node.email}
+              </p>
               {(node.coachName || node.coCoachName) && (
                 <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
                   Reports to:{" "}
@@ -160,8 +225,8 @@ const TeamNode = ({
                 </p>
               )}
               {hasChildren && (
-                <p className="text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-1">
-                  <Users className="w-3 h-3" />
+                <p className="text-[9px] xs:text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-0.5 xs:gap-1">
+                  <Users className="w-2.5 h-2.5 xs:w-3 xs:h-3" />
                   {node.teamMembers?.length || 0} team member
                   {node.teamMembers?.length !== 1 ? "s" : ""}
                 </p>
@@ -169,31 +234,79 @@ const TeamNode = ({
             </div>
 
             {/* Score and Chevron */}
-            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 flex-shrink-0">
               {showDisciplineScores && (
-                <div className="text-right">
-                  <div
-                    className={`text-xl sm:text-2xl font-bold ${
-                      score !== undefined && score >= 80
-                        ? "text-green-700"
-                        : score !== undefined && score >= 60
-                        ? "text-yellow-700"
-                        : score !== undefined
-                        ? "text-red-700"
-                        : "text-gray-400"
-                    }`}
-                  >
-                    {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                <>
+                  {/* All nodes: Show three metrics horizontally */}
+                  <div className="flex flex-row gap-[2px] xs:gap-0.5 sm:gap-1 md:gap-1.5">
+                    {/* My Score */}
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
+                      <div
+                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                          score !== undefined && score >= 80
+                            ? "text-blue-700"
+                            : score !== undefined && score >= 60
+                            ? "text-blue-600"
+                            : score !== undefined
+                            ? "text-blue-500"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {score !== undefined ? `${Math.round(score)}%` : "N/A"}
+                      </div>
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-blue-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
+                        MY SCORE
+                      </div>
+                    </div>
+
+                    {/* Direct Team */}
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
+                      <div
+                        className={`text-[8px] xs:text-[9px] sm:text-xs md:text-sm font-extrabold leading-none ${
+                          directTeamScore !== null && directTeamScore >= 80
+                            ? "text-green-700"
+                            : directTeamScore !== null && directTeamScore >= 60
+                            ? "text-yellow-700"
+                            : directTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {directTeamScore !== null
+                          ? `${directTeamScore}%`
+                          : "N/A"}
+                      </div>
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-green-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
+                        DIRECT TEAM
+                      </div>
+                    </div>
+
+                    {/* Full Team */}
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
+                      <div
+                        className={`text-[8px] xs:text-[9px] sm:text-xs md:text-sm font-extrabold leading-none ${
+                          underTeamScore !== null && underTeamScore >= 80
+                            ? "text-green-700"
+                            : underTeamScore !== null && underTeamScore >= 60
+                            ? "text-yellow-700"
+                            : underTeamScore !== null
+                            ? "text-red-700"
+                            : "text-gray-400"
+                        }`}
+                      >
+                        {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
+                      </div>
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-green-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
+                        FULL TEAM
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
-                    Score
-                  </div>
-                </div>
+                </>
               )}
               {showActivities ? (
-                <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <ChevronUp className="h-3 w-3 xs:h-3.5 xs:w-3.5 sm:h-4 sm:w-4 text-gray-400" />
               ) : (
-                <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <ChevronDown className="h-3 w-3 xs:h-3.5 xs:w-3.5 sm:h-4 sm:w-4 text-gray-400" />
               )}
             </div>
           </div>
@@ -284,6 +397,7 @@ const TeamNode = ({
                   disciplineScores={disciplineScores}
                   memberActivities={memberActivities}
                   isLastChild={index === node.teamMembers.length - 1}
+                  allTeamMembers={allTeamMembers}
                 />
               ))}
             </motion.div>
@@ -313,10 +427,10 @@ const HierarchicalTeamView = ({
     if (hierarchy) {
       console.log("Auto-expanding first level:", hierarchy);
       const firstLevelIds = new Set();
-      
+
       // Expand root node
       firstLevelIds.add(hierarchy.userId);
-      
+
       // Optionally expand direct reports (Level 1 - Co-Coaches)
       if (hierarchy.teamMembers && hierarchy.teamMembers.length > 0) {
         hierarchy.teamMembers.forEach((child) => {
@@ -350,10 +464,27 @@ const HierarchicalTeamView = ({
     );
   }
 
+  // Flatten the hierarchy to get all team members for score calculations
+  const flattenHierarchy = (node) => {
+    const members = [];
+    const flatten = (n) => {
+      if (n.teamMembers && n.teamMembers.length > 0) {
+        n.teamMembers.forEach((child) => {
+          members.push(child);
+          flatten(child);
+        });
+      }
+    };
+    flatten(node);
+    return members;
+  };
+
+  const allTeamMembers = flattenHierarchy(hierarchy);
+
   return (
-    <div className="space-y-3 sm:space-y-4">
+    <div className="space-y-3 sm:space-y-4 w-full">
       {/* Hierarchy Tree */}
-      <div className="px-2 sm:px-4">
+      <div className="px-1 sm:px-2 md:px-3">
         <TeamNode
           node={hierarchy}
           level={0}
@@ -364,6 +495,7 @@ const HierarchicalTeamView = ({
           disciplineScores={disciplineScores}
           memberActivities={memberActivities}
           isLastChild={true}
+          allTeamMembers={allTeamMembers}
         />
       </div>
     </div>
