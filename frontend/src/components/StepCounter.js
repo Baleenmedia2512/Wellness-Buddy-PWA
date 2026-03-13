@@ -82,9 +82,6 @@ const StepCounter = ({ onBack, userId }) => {
   const [currentSlide, setCurrentSlide] = useState(0); // 0: Today, 1: History
   const [historyView, setHistoryView] = useState('week'); // 'week', 'month'
   const [panelHeight, setPanelHeight] = useState(null);
-  const [diagnosticInfo, setDiagnosticInfo] = useState(null);
-  const [showDiagnostic, setShowDiagnostic] = useState(false);
-
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
     // Try initializing from prop or localStorage immediately (synchronous)
@@ -172,42 +169,6 @@ const StepCounter = ({ onBack, userId }) => {
   const pollIntervalRef = useRef(null);
   const todayStepsRef = useRef(0);       // Req 8: always-current step count for resume saves
   const lastSavedStepsRef = useRef(null); // Req 8: prevent duplicate saves
-  
-  /**
-   * Diagnostic function to check step counter status
-   */
-  const runDiagnostic = useCallback(async () => {
-    const diagnostic = {
-      timestamp: new Date().toISOString(),
-      userId: resolvedUserId || 'NOT SET',
-      isNativePlatform,
-      sensorAvailable,
-      permissionGranted,
-      todaySteps,
-      todayCalories,
-      latestSensorTotal: latestSensorTotalRef.current,
-      baseline: readBaseline(toDateKey()),
-      loading,
-      ready,
-      error,
-      saving,
-      lastSaved: lastSaved ? lastSaved.toLocaleTimeString() : 'Never'
-    };
-    
-    // Try to get current sensor reading
-    if (isNativePlatform && permissionGranted) {
-      try {
-        const current = await StepCounterPlugin.getCurrentStepCount();
-        diagnostic.currentReading = current;
-      } catch (err) {
-        diagnostic.currentReadingError = err.message;
-      }
-    }
-    
-    console.log('🔍 Step Counter Diagnostic:', diagnostic);
-    setDiagnosticInfo(diagnostic);
-    setShowDiagnostic(true);
-  }, [isNativePlatform, sensorAvailable, permissionGranted, todaySteps, todayCalories, loading, ready, error]);
   
   /**
    * Process sensor value and calculate daily steps
