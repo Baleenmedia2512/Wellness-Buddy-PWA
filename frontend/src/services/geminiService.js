@@ -164,6 +164,7 @@ class GeminiService {
     // Images are now pre-compressed in App.js to 800px @ 60-70% quality
     // Skip duplicate compression to save 2-3 seconds
     const maxSize = 1024 * 1024; // 1MB threshold (very generous)
+    const maxDimension = 800; // Max dimension for fallback compression
 
     // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
@@ -172,7 +173,6 @@ class GeminiService {
     }
 
     // Fallback compression for oversized images
-    const maxDimension = 800;
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");

@@ -22,7 +22,7 @@ export async function getTeamHierarchy(coachId) {
     .from('team_table')
     .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
     .eq('"UserId"', coachId)
-    .eq('"Status"', 'active')
+    .eq('"Status"', 'Active')
     .maybeSingle();
   
   if (coachError) {
@@ -52,7 +52,7 @@ export async function getTeamHierarchy(coachId) {
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
       .in('"UplineCoachId"', parentIds)
-      .eq('"Status"', 'active');
+      .eq('"Status"', 'Active');
     
     if (error) {
       console.error(`❌ Error fetching level ${level} members:`, error);
@@ -72,7 +72,7 @@ export async function getTeamHierarchy(coachId) {
     
     // Get next level (coaches' teams)
     const coachIds = members
-      .filter(m => m.Role === 'coach')
+      .filter(m => m.Role === 'coach' || m.Role === 'admin' || m.Role === 'developer')
       .map(m => m.UserId);
     
     const nextLevelMembers = await getTeamAtLevel(coachIds, level + 1, maxLevel);
@@ -219,8 +219,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       time = timeMatch[1];
     }
     
-    if (!time) return falselse;
-    const time = timeMatch[1];
+    if (!time) return false;
     return time >= window.start && time <= window.end;
   };
   
@@ -240,22 +239,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
     
-    return {Convert IST to user's local time before categorizing
-  const getMealType = (createdAt) => {
-    if (!createdAt) return null;
-    
-    let time;
-    if (userTimezoneOffset !== null) {
-      // Convert IST to user's local time
-      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
-    } else {
-      // Fallback: Extract time directly from timestamp string
-      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-      if (!timeMatch) return null;
-      time = timeMatch[1];
-    }
-    
-    if (!time) return nulll by time
+    return { totalDays: uniqueDates.size, onTimeDays: onTimeDates.size };
+  };
+
   // ✅ TIMEZONE FIX: Extract time directly from timestamp string
   const getMealType = (createdAt) => {
     if (!createdAt) return null;
@@ -371,3 +357,189 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
   
   return results;
 }
+
+/**
+ * Calculate attendance metrics for a member
+ * @param {number} userId - User ID
+ * @param {Date} startDate - Start date
+ * @param {Date} endDate - End date
+ * @returns {Object} Attendance metrics
+ */
+export async function calculateAttendanceMetrics(userId, startDate, endDate) {
+  const supabase = getSupabaseClient();
+  const startDateStr = formatDateForMySQL(startDate);
+  const endDateStr = formatDateForMySQL(endDate);
+  const daysInPeriod = getDaysBetween(startDate, endDate);
+  
+  // Get club attendance count
+  const { data: clubLogs, error: clubError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'club')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const clubCount = clubError ? 0 : (clubLogs || 0);
+  
+  // Get remote attendance count
+  const { data: remoteLogs, error: remoteError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'remote')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const remoteCount = remoteError ? 0 : (remoteLogs || 0);
+  
+  // Calculate attendance percentage (club sessions / days in period)
+  const attendancePercentage = daysInPeriod > 0 
+    ? Math.round((clubCount / daysInPeriod) * 100) 
+    : 0;
+  
+  return {
+    clubAttendance: clubCount,
+    remoteAttendance: remoteCount,
+    totalEducation: clubCount + remoteCount,
+    attendancePercentage,
+    daysInPeriod,
+  };
+}
+
+/**
+ * Get team hierarchy using DUAL COACHING MODEL (CoachId + CoCoachId)
+ * This function properly tracks the hierarchy path to ensure correct parent-child relationships
+ * when members can report to two coaches simultaneously.
+ * 
+ * @param {number} userId - User ID (coach, admin, or any member)
+ * @param {boolean} enableLogging - Enable detailed console logging for debugging (default: false)
+ * @returns {Promise<Array>} Array of team members with hierarchy info including:
+ *   - All fields from team_table
+ *   - HierarchyLevel: number (0 = logged in user, 1 = direct, 2+ = nested)
+ *   - IsLoggedInCoach: boolean (true only for the querying user)
+ *   - HierarchyParent: UserId of parent in THIS specific hierarchy path
+ */
+export async function getDualCoachingTeamHierarchy(userId, enableLogging = false) {
+  const supabase = getSupabaseClient();
+  const userIdNum = parseInt(userId);
+
+  // Step 1: Get the logged-in user
+  const { data: user, error: userError } = await supabase
+    .from('team_table')
+    .select('*')
+    .eq('UserId', userIdNum)
+    .eq('Status', 'Active')
+    .maybeSingle();
+
+  if (userError) {
+    console.error('❌ [getDualCoachingTeamHierarchy] Error fetching user:', userError);
+    throw userError;
+  }
+
+  if (!user) {
+    if (enableLogging) {
+      console.log('⚠️ [getDualCoachingTeamHierarchy] User not found:', userIdNum);
+    }
+    return [];
+  }
+
+  // Step 2: Fetch all team members recursively using DUAL COACHING MODEL
+  // Support both CoachId and CoCoachId - members can report to 2 coaches
+  const allMembers = [];
+  const processedUserIds = new Map(); // Track unique users
+
+  // Add user as level 0
+  const userEntry = {
+    ...user,
+    HierarchyLevel: 0,
+    IsLoggedInCoach: true,
+    HierarchyParent: null,
+  };
+  allMembers.push(userEntry);
+  processedUserIds.set(user.UserId, user);
+
+  // Iteratively fetch team members level by level
+  let currentLevelCoachIds = [userIdNum];
+  let currentLevel = 1;
+  const maxLevel = 10;
+
+  while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+    // Fetch members where CoachId OR CoCoachId matches current level coaches
+    const { data: levelMembers, error: levelError } = await supabase
+      .from('team_table')
+      .select('*')
+      .or(`CoachId.in.(${currentLevelCoachIds.join(',')}),CoCoachId.in.(${currentLevelCoachIds.join(',')})`)
+      .eq('Status', 'Active');
+
+    if (enableLogging) {
+      console.log(`📊 [getDualCoachingTeamHierarchy] Level ${currentLevel} query:`, {
+        searchingUnder: currentLevelCoachIds,
+        foundMembers: levelMembers?.length || 0,
+        memberNames: levelMembers?.map(m => m.UserName) || []
+      });
+    }
+
+    if (levelError) {
+      console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
+      break;
+    }
+
+    if (!levelMembers || levelMembers.length === 0) break;
+
+    const nextLevelCoachIds = [];
+
+    for (const member of levelMembers) {
+      // Store unique member
+      if (!processedUserIds.has(member.UserId)) {
+        // Determine which coach this member reports to in THIS hierarchy path
+        // Check if CoachId is in current level, use that; otherwise use CoCoachId
+        let hierarchyParent = null;
+        if (member.CoachId && currentLevelCoachIds.includes(member.CoachId)) {
+          hierarchyParent = member.CoachId;
+        } else if (member.CoCoachId && currentLevelCoachIds.includes(member.CoCoachId)) {
+          hierarchyParent = member.CoCoachId;
+        }
+        
+        if (enableLogging) {
+          console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}, CoCoachId:${member.CoCoachId}]`);
+        }
+        
+        processedUserIds.set(member.UserId, member);
+        allMembers.push({
+          ...member,
+          HierarchyLevel: currentLevel,
+          IsLoggedInCoach: false,
+          HierarchyParent: hierarchyParent, // Track actual parent in THIS hierarchy
+        });
+
+        // Add ALL members to next level check (not just coaches)
+        // This ensures we fetch team members even if the parent's Role isn't 'coach'
+        nextLevelCoachIds.push(member.UserId);
+      }
+    }
+
+    currentLevelCoachIds = nextLevelCoachIds;
+    currentLevel++;
+  }
+
+  if (enableLogging) {
+    console.log('🔍 [getDualCoachingTeamHierarchy] Team members found (dual-coaching model):', {
+      count: allMembers?.length || 0,
+      members: allMembers?.map(m => ({
+        id: m.UserId,
+        name: m.UserName,
+        level: m.HierarchyLevel,
+        parent: m.HierarchyParent,
+        role: m.Role,
+        coachId: m.CoachId,
+        coCoachId: m.CoCoachId,
+      })) || []
+    });
+  }
+
+  return allMembers;
+}
+

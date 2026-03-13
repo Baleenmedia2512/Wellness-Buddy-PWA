@@ -9,7 +9,10 @@ import React, {
 import { AnimatePresence, motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { Filesystem } from "@capacitor/filesystem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import CustomAlertModal from "./CustomAlertModal";
+import { validateImageFreshness, validateImageForEducation } from "../utils/imageValidator";
 
 const ImageUpload = forwardRef(
   (
@@ -27,6 +30,14 @@ const ImageUpload = forwardRef(
     const cameraInputRef = useRef(null);
     const galleryInputRef = useRef(null);
     const fallbackInputRef = useRef(null);
+    
+    // Custom alert modal state
+    const [alertModal, setAlertModal] = useState({
+      isOpen: false,
+      title: '',
+      message: '',
+      type: 'info'
+    });
 
     // Helper to convert base64 to File
     const base64ToFile = async (base64String, filename = "image.jpg") => {
@@ -43,18 +54,57 @@ const ImageUpload = forwardRef(
       }
     };
 
-    const handleFileChange = (event) => {
+    const handleFileChange = async (event) => {
       const file = event.target.files[0];
       if (file) {
         if (!file.type.startsWith("image/")) {
-          alert("Please select an image file");
+          setAlertModal({
+            isOpen: true,
+            title: 'Invalid File',
+            message: 'Please select an image file',
+            type: 'error'
+          });
           return;
         }
         if (file.size > 10 * 1024 * 1024) {
-          alert("Image size should be less than 10MB");
+          setAlertModal({
+            isOpen: true,
+            title: 'File Too Large',
+            message: 'Image size should be less than 10MB',
+            type: 'error'
+          });
           return;
         }
-        onImageSelect(file);
+        
+        // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
+        if (imageType === "education") {
+          // Get education time window (default: 5:00 AM - 11:59 PM)
+          const educationWindow = { start: '05:00:00', end: '23:59:00' };
+          const validation = await validateImageForEducation(file, educationWindow);
+          
+          if (!validation.isValid) {
+            setAlertModal({
+              isOpen: true,
+              title: '🚨 Invalid Image Source',
+              message: 'Please select an image created TODAY during education hours.',
+              type: 'error'
+            });
+            // Clear the input
+            event.target.value = "";
+            return;
+          }
+          
+          console.log("✅ Image validated:", validation.message);
+          console.log("📸 Image timestamp:", validation.imageTimestamp);
+          
+          // Pass both file and timestamp to parent
+          // Fall back to file.lastModified if EXIF timestamp unavailable
+          onImageSelect(file, validation.imageTimestamp || new Date(file.lastModified).toISOString());
+          return;
+        }
+        
+        // Non-education: use file.lastModified (reflects actual file creation time on web)
+        onImageSelect(file, new Date(file.lastModified).toISOString());
       }
     };
 
@@ -77,7 +127,14 @@ const ImageUpload = forwardRef(
               photo.base64String,
               `photo-${Date.now()}.jpg`,
             );
-            onImageSelect(file);
+            
+            // ✅ Native camera = user is taking the photo RIGHT NOW — always fresh
+            if (imageType === "education") {
+              onImageSelect(file, new Date().toISOString());
+              return;
+            }
+            
+            onImageSelect(file, new Date().toISOString());
           }
         } catch (err) {
           console.error("Camera capture failed:", err);
@@ -110,7 +167,208 @@ const ImageUpload = forwardRef(
               photo.base64String,
               `gallery-${Date.now()}.jpg`,
             );
-            onImageSelect(file);
+            
+            // 🚨 Native gallery: use Capacitor's photo.exif for reliable date check
+            // (base64ToFile always gives lastModified=now, so file date is useless here)
+            if (imageType === "education") {
+              const educationWindow = { start: '05:00:00', end: '23:59:00' };
+              
+              // Capacitor exposes EXIF via photo.exif — use it if available
+              let photoDate = null;
+              if (photo.exif) {
+                const exifDateStr =
+                  photo.exif.DateTimeOriginal ||
+                  photo.exif.dateTimeOriginal ||
+                  photo.exif.DateTime ||
+                  photo.exif.dateTime;
+                if (exifDateStr) {
+                  // EXIF format: "YYYY:MM:DD HH:MM:SS" → convert to ISO
+                  const iso = exifDateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+                  const parsed = new Date(iso);
+                  if (!isNaN(parsed.getTime())) photoDate = parsed;
+                }
+              }
+              
+              if (photoDate) {
+                const now = new Date();
+                const isSameDay =
+                  photoDate.getFullYear() === now.getFullYear() &&
+                  photoDate.getMonth() === now.getMonth() &&
+                  photoDate.getDate() === now.getDate();
+                
+                if (!isSameDay) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today during education hours.`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                const imageTimeStr = photoDate.toTimeString().substring(0, 8);
+                if (imageTimeStr < educationWindow.start || imageTimeStr > educationWindow.end) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ Photo taken at ${imageTimeStr}, outside education hours (${educationWindow.start} – ${educationWindow.end}).`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                console.log('✅ Gallery image validated via EXIF:', photoDate.toISOString());
+                onImageSelect(file, photoDate.toISOString());
+                return;
+              }
+              
+              // No EXIF from Capacitor — fall back to Filesystem.stat() for modification time
+              console.log('⚠️ No EXIF metadata, checking Filesystem.stat() for education image');
+              
+              // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
+              if (!photo.path) {
+                console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
+                return;
+              }
+              
+              try {
+                const stat = await Filesystem.stat({ path: photo.path });
+                const fileDate = new Date(stat.mtime);
+                
+                const now = new Date();
+                const isSameDay =
+                  fileDate.getFullYear() === now.getFullYear() &&
+                  fileDate.getMonth() === now.getMonth() &&
+                  fileDate.getDate() === now.getDate();
+                
+                if (!isSameDay) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today during education hours.`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                const imageTimeStr = fileDate.toTimeString().substring(0, 8);
+                if (imageTimeStr < educationWindow.start || imageTimeStr > educationWindow.end) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ Photo modified at ${imageTimeStr}, outside education hours (${educationWindow.start} – ${educationWindow.end}).`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                console.log('✅ Education gallery image validated via Filesystem.stat:', fileDate.toISOString());
+                onImageSelect(file, fileDate.toISOString());
+                return;
+              } catch (fsError) {
+                console.error('❌ Filesystem.stat failed:', fsError);
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
+                return;
+              }
+            }
+            
+            // Non-education native gallery: extract EXIF for accurate timestamp + validate same-day
+            let galleryTimestamp = null;
+            
+            // Try EXIF first
+            if (photo.exif) {
+              const exifDateStr =
+                photo.exif.DateTimeOriginal || photo.exif.dateTimeOriginal ||
+                photo.exif.DateTime || photo.exif.dateTime;
+              if (exifDateStr) {
+                const iso = exifDateStr.replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
+                const parsed = new Date(iso);
+                if (!isNaN(parsed.getTime())) {
+                  // Validate photo is from today
+                  const now = new Date();
+                  const isSameDay =
+                    parsed.getFullYear() === now.getFullYear() &&
+                    parsed.getMonth() === now.getMonth() &&
+                    parsed.getDate() === now.getDate();
+                  
+                  if (!isSameDay) {
+                    setAlertModal({
+                      isOpen: true,
+                      title: '🚨 PROXY ALERT',
+                      message: `⚠️ This photo was taken on ${parsed.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                      type: 'error'
+                    });
+                    return;
+                  }
+                  
+                  galleryTimestamp = parsed.toISOString();
+                  console.log('✅ Non-education gallery image validated via EXIF:', galleryTimestamp);
+                }
+              }
+            }
+            
+            // Fallback to Filesystem.stat() if EXIF is missing
+            if (!galleryTimestamp) {
+              console.log('⚠️ No EXIF metadata, checking Filesystem.stat() for non-education image');
+              
+              // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
+              if (!photo.path) {
+                console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
+                return;
+              }
+              
+              try {
+                const stat = await Filesystem.stat({ path: photo.path });
+                const fileDate = new Date(stat.mtime);
+                
+                const now = new Date();
+                const isSameDay =
+                  fileDate.getFullYear() === now.getFullYear() &&
+                  fileDate.getMonth() === now.getMonth() &&
+                  fileDate.getDate() === now.getDate();
+                
+                if (!isSameDay) {
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 PROXY ALERT',
+                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                    type: 'error'
+                  });
+                  return;
+                }
+                
+                  galleryTimestamp = fileDate.toISOString();
+                  console.log('✅ Non-education gallery image validated via Filesystem.stat:', galleryTimestamp);
+                } catch (fsError) {
+                  console.error('❌ Filesystem.stat failed:', fsError);
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 Invalid Image Source',
+                    message: 'Please use Camera to take a fresh photo.',
+                    type: 'error'
+                  });
+                  return;
+                }
+              }
+            
+            onImageSelect(file, galleryTimestamp);
           }
         } catch (err) {
           console.error("Gallery selection failed:", err);
@@ -229,9 +487,10 @@ const ImageUpload = forwardRef(
     }, [loading, taglines.length, loadingState, imageType]);
 
     return (
-      <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
-        {/* Camera input */}
-        <input
+      <>
+        <div className="bg-white rounded-xl shadow-lg border-2 border-green-200 p-4 sm:p-6 lg:p-8">
+          {/* Camera input */}
+          <input
           ref={cameraInputRef}
           type="file"
           accept="image/*"
@@ -367,7 +626,17 @@ const ImageUpload = forwardRef(
             </div>
           </div>
         )}
+        
+        {/* Custom Alert Modal */}
+        <CustomAlertModal
+          isOpen={alertModal.isOpen}
+          onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+          title={alertModal.title}
+          message={alertModal.message}
+          type={alertModal.type}
+        />
       </div>
+      </>
     );
   },
 );

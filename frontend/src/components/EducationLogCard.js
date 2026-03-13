@@ -111,7 +111,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
                 <div className="flex-1">
                   <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Logged At</p>
                   <p className="text-sm font-bold text-gray-900">
-                    {new Date().toLocaleString('en-US', { 
+                    {new Date(educationData.loggedAt || Date.now()).toLocaleString('en-US', { 
                       month: 'short', 
                       day: 'numeric', 
                       year: 'numeric',
@@ -182,7 +182,7 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
           <div className="flex-1">
             <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-0.5">Logged At</p>
             <p className="text-sm font-bold text-gray-900">
-              {new Date().toLocaleString('en-US', { 
+              {new Date(educationData.loggedAt || Date.now()).toLocaleString('en-US', { 
                 month: 'short', 
                 day: 'numeric', 
                 year: 'numeric',

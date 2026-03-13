@@ -100,7 +100,7 @@ class ImageTypeDetector {
       const unifiedPrompt = `Analyze this image and classify it into ONE category, then extract relevant data.
 
 STEP 1 - CLASSIFY:
-- "education" - Virtual meeting screenshot (Google Meet, Zoom, MS Teams, WebEx)
+- "education" - Online meeting screenshot (Zoom, Meet, Teams, WebEx) OR in-person gathering photo (group of people at club/nutrition center/classroom/wellness center)
 - "weight" - Weighing scale showing body weight
 - "food" - Food, meal, or drink (DEFAULT if neither education nor weight)
 
@@ -111,8 +111,9 @@ IF EDUCATION:
   "type": "education",
   "confidence": 0.0-1.0,
   "reason": "brief explanation",
-  "platform": "Google Meet"|"Zoom"|"MS Teams"|"WebEx"|"Online Meeting",
-  "topic": "meeting title or null"
+  "platform": "Google Meet"|"Zoom"|"MS Teams"|"WebEx"|"Online Meeting"|"Club Meeting"|"In-Person",
+  "topic": "meeting title or 'Education Meeting' or null",
+  "participantCount": number of visible people (for in-person gatherings)
 }
 
 IF WEIGHT:
@@ -147,11 +148,12 @@ IF FOOD (default):
   "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
 }
 
-CRITICAL FOOD RULES:
-- MUST return at least ONE food item - NEVER empty array
-- If unclear, describe what you see (Rice, Curry, Mixed meal)
-- Estimate portions from plate/container size
-- Use standard USDA nutrition values
+CRITICAL RULES:
+- If you see MULTIPLE PEOPLE gathered together (not eating) = "education"
+- If you see food/meals on plates/bowls = "food"
+- If you see a weighing scale with numbers = "weight"
+- For FOOD: MUST return at least ONE food item - NEVER empty array
+- For FOOD: If unclear, describe what you see (Rice, Curry, Mixed meal)
 
 Return ONLY JSON matching ONE of the above formats.`;
 

@@ -11,6 +11,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
+import { Geolocation } from "@capacitor/geolocation";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2 } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -43,9 +44,13 @@ import { educationDetectionService } from "./services/educationDetectionService"
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
+import { locationAttendanceService } from "./services/locationAttendanceService";
+import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
+import ClubSelectionModal from "./components/ClubSelectionModal";
+import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
 import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
 import CoachScoreSummary from "./components/CoachScoreSummary";
@@ -69,6 +74,10 @@ import TouchFeedbackButton from "./components/TouchFeedbackButton";
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const ClubAttendanceReport = lazy(() => import("./components/ClubAttendanceReport"));
+const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
+const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
@@ -103,6 +112,7 @@ function WellnessValleyApp() {
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
+  const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const fileInputRef = useRef(null);
@@ -118,6 +128,19 @@ function WellnessValleyApp() {
     useState(false);
   const [duplicateWeightInfo, setDuplicateWeightInfo] = useState(null);
   const [pendingWeightSaveData, setPendingWeightSaveData] = useState(null);
+
+  // Club selection state
+  const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
+  const [nearbyCenters, setNearbyCenters] = useState([]);
+  const [pendingEducationData, setPendingEducationData] = useState(null);
+  
+  // Custom alert modal state
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
@@ -136,6 +159,18 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
+
+  // Attendance report state (for coaches)
+  const [showAttendanceReport, setShowAttendanceReport] = useState(false);
+
+  // Club attendance report state (for coaches/club owners)
+  const [showClubAttendanceReport, setShowClubAttendanceReport] = useState(false);
+
+  // Nutrition centers map state (for all users)
+  const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
+
+  // Register nutrition center state (for coaches)
+  const [showRegisterCenter, setShowRegisterCenter] = useState(false);
 
   // Setup wizard state
   const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -463,7 +498,11 @@ function WellnessValleyApp() {
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      // Request push notification permissions
       await PushNotifications.requestPermissions();
+      
+      // Request location permissions for attendance tracking
+      await Geolocation.requestPermissions();
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }
@@ -1179,7 +1218,7 @@ function WellnessValleyApp() {
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
    */
-  const saveEducationLog = async (educationData, imageBase64) => {
+  const saveEducationLog = async (educationData, imageBase64, selectedClub = null) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
 
@@ -1193,18 +1232,68 @@ function WellnessValleyApp() {
         throw new Error("User not authenticated or not found in database");
       }
 
+      // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
+      // If within 100m of club → club attendance
+      // If not near club → remote attendance
+      console.log("📍 Checking GPS for nearby clubs...");
+      
+      let attendance;
+      try {
+        attendance = await locationAttendanceService.determineAttendance(
+          apiBaseUrl,
+          userId
+        );
+        console.log("✅ Attendance determined:", attendance);
+      } catch (gpsError) {
+        console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
+        // Fallback to remote attendance if GPS fails
+        attendance = {
+          attendanceType: 'remote',
+          nutritionCenterId: null,
+          centerName: null,
+          nearbyCenters: []
+        };
+      }
+
+      // If multiple clubs detected and no club selected yet, show selection modal
+      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+        console.log("🏢 Multiple clubs detected, showing selection modal");
+        setNearbyCenters(attendance.nearbyCenters);
+        setPendingEducationData({ educationData, imageBase64, attendance });
+        setShowClubSelectionModal(true);
+        setSaveLoading(false);
+        setLoadingState("idle");
+        return; // Wait for user to select club
+      }
+
+      // Determine final values
+      const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
+      const finalCenterName = selectedClub?.center_name || attendance.centerName;
+      const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+
+      // Use EXIF timestamp if available, otherwise use current time
+      const logTimestamp = imageTimestamp || new Date().toISOString();
+      console.log("📅 Education log timestamp:", logTimestamp, imageTimestamp ? "(from EXIF)" : "(current time)");
+
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId: userId,
           imageBase64: imageBase64,
-          platform: educationData.platform,
+          platform: finalPlatform,
           topic: educationData.topic,
           confidence: educationData.confidence,
+          participantCount: educationData.participantCount || null,
           deviceInfo: window.navigator.userAgent,
           clientTimestamp: new Date().toISOString(),
-          clientTimezoneOffset: new Date().getTimezoneOffset()
+          clientTimezoneOffset: new Date().getTimezoneOffset(),
+          latitude: attendance.latitude,
+          longitude: attendance.longitude,
+          attendanceType: attendance.attendanceType,
+          nutritionCenterId: finalCenterId,
+          centerName: finalCenterName,
+          imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
         }),
       });
 
@@ -1219,6 +1308,18 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
       
+      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      if (finalCenterName) {
+        console.log(`   🏢 Club: ${finalCenterName}`);
+      }
+      if (educationData.participantCount) {
+        console.log(`   👥 Participants: ${educationData.participantCount}`);
+      }
+      if (data.isOnTime !== undefined) {
+        const status = data.isOnTime ? '✅ ON-TIME (Present)' : '⚠️ LATE (Absent)';
+        console.log(`   ⏰ Timing: ${status}`);
+        console.log(`   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`);
+      }
       setSaveLoading(false);
       setLoadingState("idle");
     } catch (error) {
@@ -1228,6 +1329,23 @@ function WellnessValleyApp() {
       );
       setSaveLoading(false);
       setLoadingState("idle");
+    }
+  };
+
+  // Handle club selection from modal
+  const handleClubSelection = async (selectedCenter) => {
+    console.log("🏢 Club selected:", selectedCenter);
+    setShowClubSelectionModal(false);
+    
+    if (pendingEducationData) {
+      setSaveLoading(true);
+      setLoadingState("saving");
+      await saveEducationLog(
+        pendingEducationData.educationData,
+        pendingEducationData.imageBase64,
+        selectedCenter
+      );
+      setPendingEducationData(null);
     }
   };
 
@@ -1380,7 +1498,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const handleImageSelect = async (file) => {
+  const handleImageSelect = async (file, exifTimestamp = null) => {
     if (imageProcessingInProgress.current) {
       console.log(
         "Image processing already in progress, skipping duplicate call",
@@ -1388,6 +1506,14 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
+    
+    // Store EXIF timestamp for education logs
+    if (exifTimestamp) {
+      console.log("📸 EXIF Timestamp received:", exifTimestamp);
+      setImageTimestamp(exifTimestamp);
+    } else {
+      setImageTimestamp(null);
+    }
 
     if (!user) {
       setError("Please sign in to analyze food images");
@@ -1412,6 +1538,25 @@ function WellnessValleyApp() {
       );
       imageProcessingInProgress.current = false;
       return;
+    }
+
+    // 🚨 FRAUD PREVENTION: On web only — native handles this per-source in ImageUpload
+    // (native camera = always live; native gallery = checked via Capacitor photo.exif)
+    if (!Capacitor.isNativePlatform()) {
+      console.log('🔍 Validating image freshness (web)...');
+      const validation = await validateImageFreshness(file, 0);
+      if (!validation.isValid) {
+        console.error('❌ Image validation failed:', validation);
+        setAlertModal({
+          isOpen: true,
+          title: '🚨 Invalid Image Source',
+          message: 'Please select an image created TODAY.',
+          type: 'error'
+        });
+        imageProcessingInProgress.current = false;
+        return;
+      }
+      console.log('✅ Image validated:', validation.message);
     }
 
     setSelectedImage(file);
@@ -1533,9 +1678,10 @@ function WellnessValleyApp() {
 
             setEducationResult({
               platform: educationData.platform,
-              topic: educationData.topic, // Already has fallback to "Education Meeting"
+              topic: educationData.topic,
               confidence: educationData.confidence,
               participantCount: educationData.participantCount,
+              loggedAt: exifTimestamp || new Date().toISOString(),
             });
 
             // AUTO-SAVE to database immediately
@@ -1606,7 +1752,7 @@ function WellnessValleyApp() {
             console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
 
-          setWeightResult(weightToSave); // Store for display below upload box
+          setWeightResult({ ...weightToSave, loggedAt: exifTimestamp || new Date().toISOString() }); // Store for display below upload box
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           await saveWeightEntry(weightToSave, processedImage);
@@ -1898,7 +2044,7 @@ function WellnessValleyApp() {
           return;
         }
 
-        setNutritionData(result);
+        setNutritionData({ ...result, loggedAt: exifTimestamp || new Date().toISOString() });
 
         // Check for duplicate food before saving
         setLoadingState("saving"); // Switch to saving state
@@ -2687,6 +2833,18 @@ function WellnessValleyApp() {
             ? () => setShowWellnessReport(true)
             : null
         }
+        onShowAttendanceReport={() => setShowAttendanceReport(true)}
+        onShowClubAttendanceReport={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowClubAttendanceReport(true)
+            : null
+        }
+        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
+        onShowRegisterCenter={
+          userRole === "admin" || userRole === "coach" || userRole === "developer"
+            ? () => setShowRegisterCenter(true)
+            : null
+        }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
       />
@@ -2849,6 +3007,10 @@ function WellnessValleyApp() {
                       {weightResult.unit}
                     </span>
                   </p>
+                </div>
+
+                <div className="mt-3 text-center text-xs text-gray-500">
+                  Logged at {new Date(weightResult.loggedAt || Date.now()).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
                 </div>
 
                 {/* Share Button at Bottom - Only show if there's an image */}
@@ -3038,6 +3200,28 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Club Selection Modal */}
+      <ClubSelectionModal
+        isOpen={showClubSelectionModal}
+        onClose={() => {
+          setShowClubSelectionModal(false);
+          setPendingEducationData(null);
+          setSaveLoading(false);
+          setLoadingState("idle");
+        }}
+        nearbyCenters={nearbyCenters}
+        onSelectClub={handleClubSelection}
+      />
+
+      {/* Custom Alert Modal (for proxy alerts and other critical messages) */}
+      <CustomAlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        title={alertModal.title}
+        message={alertModal.message}
+        type={alertModal.type}
+      />
+
       {/* New User Profile Modal - shown for first-time users to complete their profile */}
       <UserProfileModal
         isOpen={showNewUserProfileModal}
@@ -3056,6 +3240,54 @@ function WellnessValleyApp() {
           <AdminDashboard
             onClose={() => setShowAdminDashboard(false)}
             user={user}
+          />
+        </Suspense>
+      )}
+
+      {/* Attendance Report */}
+      {showAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading attendance report..." />}
+        >
+          <AttendanceReport
+            user={user}
+            onBack={() => setShowAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Club Attendance Report */}
+      {showClubAttendanceReport && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading club attendance report..." />}
+        >
+          <ClubAttendanceReport
+            user={user}
+            onBack={() => setShowClubAttendanceReport(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Nutrition Centers Map */}
+      {showNutritionCentersMap && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading nutrition centers map..." />}
+        >
+          <NutritionCentersMap
+            user={user}
+            onBack={() => setShowNutritionCentersMap(false)}
+          />
+        </Suspense>
+      )}
+
+      {/* Register Nutrition Center */}
+      {showRegisterCenter && (
+        <Suspense
+          fallback={<LoadingSpinner message="Loading registration form..." />}
+        >
+          <NutritionCenterRegistration
+            user={user}
+            onBack={() => setShowRegisterCenter(false)}
           />
         </Suspense>
       )}

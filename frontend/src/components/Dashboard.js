@@ -140,7 +140,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
-            {/* Empty space for weight and education tabs to maintain layout */}
+            {/* Empty space for weight and education tabs to maintain layou//t */}
             {(activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}

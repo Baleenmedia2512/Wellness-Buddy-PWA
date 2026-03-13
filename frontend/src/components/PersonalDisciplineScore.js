@@ -134,7 +134,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     <div className="w-full bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-4xl mx-auto px-2 sm:px-3 py-1 sm:py-2">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {/* Header with Overall Score */}
+          {/* Header with Overall Score .*/}
           <div className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-blue-50 to-green-50 border-b border-gray-100">
             <div className="flex items-center justify-center gap-2">
               <div className="flex-1 text-left">
