@@ -90,8 +90,16 @@ export function addTeamMetricCounts(node, dataMap, transformFn = null, condition
   const directTeamTotal = processedChildren.length;
   const directTeamQualified = processedChildren.filter(child => defaultConditionFn(child)).length;
   
+  // Calculate direct team clubs count (for club ownership report)
+  const directTeamClubs = processedChildren.reduce((sum, child) => {
+    return sum + (child.metrics?.totalClubs || 0);
+  }, 0);
+  
   // Calculate full team stats (all descendants recursively)
   const fullTeamStats = calculateFullTeamStats(processedChildren, defaultConditionFn);
+  
+  // Calculate full team clubs count recursively
+  const fullTeamClubs = calculateFullTeamClubs(processedChildren);
   
   // Transform data using custom function or use default structure
   const metricsData = transformFn 
@@ -115,13 +123,35 @@ export function addTeamMetricCounts(node, dataMap, transformFn = null, condition
     directTeamCount: {
       total: directTeamTotal,
       qualified: directTeamQualified,
+      totalClubs: directTeamClubs,
     },
     fullTeamCount: {
       total: fullTeamStats.total,
       qualified: fullTeamStats.qualified,
+      totalClubs: fullTeamClubs,
     },
     teamMembers: processedChildren,
   };
+}
+
+/**
+ * Calculate total clubs owned by full team recursively
+ * @param {Array} children - Array of child nodes
+ * @returns {number} - Total clubs count
+ */
+function calculateFullTeamClubs(children) {
+  let totalClubs = 0;
+  
+  children.forEach(child => {
+    totalClubs += (child.metrics?.totalClubs || 0);
+    
+    // Recursively count descendant clubs
+    if (child.teamMembers && child.teamMembers.length > 0) {
+      totalClubs += calculateFullTeamClubs(child.teamMembers);
+    }
+  });
+  
+  return totalClubs;
 }
 
 /**
