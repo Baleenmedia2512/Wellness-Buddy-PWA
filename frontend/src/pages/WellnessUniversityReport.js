@@ -83,7 +83,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
-  // Group enrollments by programs and build hierarchy
+  // Group enrollments by programs and build hierarchy .
   const groupEnrollmentsByProgram = () => {
     const programGroups = {};
     
