@@ -4,65 +4,49 @@ import {
   RefreshCw,
   Calendar,
   Users,
-  MapPin,
+  ChevronDown,
+  ChevronUp,
+  Building2,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 
 const ClubAttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [clubs, setClubs] = useState([]);
-  const [selectedClubId, setSelectedClubId] = useState(null);
-  const [reportData, setReportData] = useState(null);
-  const [dateFilter, setDateFilter] = useState('today'); // today, yesterday, last-week, last-month, so-far
+  const [hierarchyData, setHierarchyData] = useState(null);
+  const [stats, setStats] = useState(null);
+  const [dateFilter, setDateFilter] = useState('today'); // today, yesterday, custom
+  const [customDate, setCustomDate] = useState(null);
+  const [showDatePicker, setShowDatePicker] = useState(false);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
-  // Calculate date range based on filter
-  const getDateRange = () => {
+  // Get target date based on filter
+  const getTargetDate = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     
-    let startDate, endDate;
+    let targetDate;
     
     switch (dateFilter) {
       case 'today':
-        startDate = today;
-        endDate = today;
+        targetDate = today;
         break;
       case 'yesterday':
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
-        startDate = yesterday;
-        endDate = yesterday;
+        targetDate = yesterday;
         break;
-      case 'last-week':
-        const weekAgo = new Date(today);
-        weekAgo.setDate(weekAgo.getDate() - 7);
-        startDate = weekAgo;
-        endDate = today;
-        break;
-      case 'last-month':
-        const monthAgo = new Date(today);
-        monthAgo.setMonth(monthAgo.getMonth() - 1);
-        startDate = monthAgo;
-        endDate = today;
-        break;
-      case 'so-far':
-        startDate = new Date(2024, 0, 1); // Jan 1, 2024
-        endDate = today;
+      case 'custom':
+        targetDate = customDate || today;
         break;
       default:
-        startDate = today;
-        endDate = today;
+        targetDate = today;
     }
 
-    return {
-      start: formatDate(startDate),
-      end: formatDate(endDate),
-    };
+    return formatDate(targetDate);
   };
 
   const formatDate = (date) => {
@@ -82,54 +66,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     return data.userId;
   };
 
-  // Fetch user's clubs
-  const fetchClubs = async () => {
-    if (!user) return;
-
-    try {
-      const userId = await getUserId(user.email);
-
-      const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&scope=team`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        }
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to fetch clubs');
-      }
-
-      // Filter to only show clubs owned by the user
-      const userIdNum = parseInt(userId);
-      const allCenters = result.data || [];
-      const ownedClubs = allCenters.filter(
-        (center) => center.owner_user_id === userIdNum
-      );
-
-      console.log('🏢 [ClubAttendanceReport] Owned clubs:', ownedClubs);
-
-      setClubs(ownedClubs);
-
-      // Auto-select first club if available
-      if (ownedClubs.length > 0 && !selectedClubId) {
-        setSelectedClubId(ownedClubs[0].id);
-      }
-    } catch (err) {
-      console.error('Error fetching clubs:', err);
-      setError(err.message);
-    }
-  };
-
-  // Fetch attendance report for selected club
-  const fetchReport = async () => {
-    if (!user || !selectedClubId) {
-      setReportData(null);
+  // Fetch hierarchical clubs overview
+  const fetchClubsHierarchy = async () => {
+    if (!user) {
       setLoading(false);
       return;
     }
@@ -139,98 +78,53 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
     try {
       const userId = await getUserId(user.email);
-      const { start, end } = getDateRange();
+      const date = getTargetDate();
 
-      const response = await fetch(
-        `${apiBaseUrl}/api/coach/club-attendance-report?userId=${userId}&clubId=${selectedClubId}&startDate=${start}&endDate=${end}`,
-        {
-          cache: 'no-store',
-          headers: {
-            'Cache-Control': 'no-cache',
-          },
-        }
-      );
+      const url = `${apiBaseUrl}/api/coach/hierarchical-clubs-overview?userId=${userId}&date=${date}`;
+
+      const response = await fetch(url, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache',
+        },
+      });
 
       const result = await response.json();
 
-      console.log('📥 [ClubAttendanceReport] API Response:', {
+      console.log('📥 [ClubAttendanceReport] Clubs Overview Response:', {
         success: result.success,
-        attendeeCount: result.data?.attendees?.length || 0,
-        clubInfo: result.data?.clubInfo,
+        date: result.data?.date,
+        totalClubs: result.data?.stats?.totalClubs,
+        membersWithClubs: result.data?.stats?.membersWithClubs,
       });
 
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to fetch attendance report');
+        throw new Error(result.message || 'Failed to fetch clubs overview');
       }
 
-      setReportData(result.data);
+      setHierarchyData(result.data.hierarchy);
+      setStats(result.data.stats);
     } catch (err) {
-      console.error('Error fetching attendance report:', err);
+      console.error('Error fetching clubs overview:', err);
       setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Initial load - fetch clubs
+  // Fetch when user or date filter changes
   useEffect(() => {
     if (user) {
-      fetchClubs();
+      fetchClubsHierarchy();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user, dateFilter, customDate]);
 
-  // Fetch report when club or date filter changes
-  useEffect(() => {
-    if (user && selectedClubId) {
-      fetchReport();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedClubId, dateFilter]);
-
-  // Generate profile avatar from email or name
-  const getAvatar = (email, userName, profileImage) => {
-    // If profile image exists, use it with lazy loading
-    if (profileImage) {
-      return (
-        <img
-          src={profileImage}
-          alt={userName || 'User'}
-          className="w-12 h-12 rounded-full object-cover shadow-md border-2 border-white"
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-        />
-      );
-    }
-
-    // Otherwise, generate initial-based avatar
-    const initial = userName
-      ? userName.charAt(0).toUpperCase()
-      : email
-      ? email.charAt(0).toUpperCase()
-      : '?';
-
-    // Generate color based on email/name
-    const colors = [
-      'bg-blue-500',
-      'bg-green-500',
-      'bg-purple-500',
-      'bg-pink-500',
-      'bg-indigo-500',
-      'bg-yellow-500',
-      'bg-red-500',
-      'bg-teal-500',
-    ];
-    const colorIndex = (userName || email || '').length % colors.length;
-
-    return (
-      <div
-        className={`w-12 h-12 rounded-full ${colors[colorIndex]} flex items-center justify-center text-white font-bold text-lg shadow-md`}
-      >
-        {initial}
-      </div>
-    );
+  // Handle club click to show attendance details
+  const handleClubClick = (club) => {
+    console.log('Club clicked:', club);
+    // TODO: Navigate to club attendance details or show modal
+    alert(`View attendance for ${club.name}\nParticipants: ${club.totalParticipants}\nToday's Attendance: ${club.todayAttendance}`);
   };
 
   return (
@@ -248,12 +142,16 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                 <ArrowLeft className="h-5 w-5 text-gray-600" />
               </TouchFeedbackButton>
               <div>
-                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-800">Club Attendance Report</h1>
-                <p className="text-[10px] sm:text-xs text-gray-500">Track attendance at your nutrition centers</p>
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-800">
+                  Team Club Ownership
+                </h1>
+                <p className="text-[10px] sm:text-xs text-gray-500">
+                  View clubs owned by your team
+                </p>
               </div>
             </div>
             <TouchFeedbackButton
-              onClick={fetchReport}
+              onClick={fetchClubsHierarchy}
               disabled={loading}
               className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
               ariaLabel="Refresh"
@@ -262,147 +160,153 @@ const ClubAttendanceReport = ({ user, onBack }) => {
             </TouchFeedbackButton>
           </div>
 
-          {/* Club Selector - Full width dropdown */}
-          {clubs.length > 0 && (
-            <div className="mt-2 sm:mt-3 mb-2">
-              <select
-                value={selectedClubId || ''}
-                onChange={(e) => setSelectedClubId(parseInt(e.target.value))}
-                className="w-full px-3 sm:px-4 py-2 sm:py-2.5 bg-white border border-gray-200 rounded-full text-xs sm:text-sm font-medium text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                {clubs.map((club) => (
-                  <option key={club.id} value={club.id}>
-                    {club.center_name}
-                  </option>
-                ))}
-              </select>
+          {/* Date Filter */}
+          <div className="mt-2 sm:mt-3">
+            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-hide items-center">
+              {[
+                { value: 'today', label: 'Today' },
+                { value: 'yesterday', label: 'Yesterday' },
+              ].map((filter) => (
+                <TouchFeedbackButton
+                  key={filter.value}
+                  onClick={() => {
+                    setDateFilter(filter.value);
+                    setShowDatePicker(false);
+                  }}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
+                    dateFilter === filter.value
+                      ? 'bg-green-600 text-white shadow-md shadow-green-200'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  {filter.label}
+                </TouchFeedbackButton>
+              ))}
+              
+              {/* Custom Date Picker */}
+              <div className="relative">
+                <TouchFeedbackButton
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 flex items-center gap-1 ${
+                    dateFilter === 'custom'
+                      ? 'bg-green-600 text-white shadow-md shadow-green-200'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <Calendar className="h-3 w-3 sm:h-4 sm:w-4" />
+                  {dateFilter === 'custom' && customDate
+                    ? formatDate(customDate)
+                    : 'Custom Date'}
+                  {showDatePicker ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </TouchFeedbackButton>
+                
+                {showDatePicker && (
+                  <div className="absolute top-full mt-2 right-0 bg-white border border-gray-200 rounded-lg shadow-lg p-3 z-20">
+                    <input
+                      type="date"
+                      max={formatDate(new Date())}
+                      value={customDate ? formatDate(customDate) : ''}
+                      onChange={(e) => {
+                        const selected = new Date(e.target.value);
+                        setCustomDate(selected);
+                        setDateFilter('custom');
+                        setShowDatePicker(false);
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                    />
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-
-          {/* Date Filter - Responsive Pills */}
-          <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-2 scrollbar-hide items-center">
-            {[
-              { value: 'today', label: 'Today' },
-              { value: 'yesterday', label: 'Yesterday' },
-              { value: 'last-week', label: 'Week' },
-              { value: 'last-month', label: 'Month' },
-            ].map((filter) => (
-              <TouchFeedbackButton
-                key={filter.value}
-                onClick={() => setDateFilter(filter.value)}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
-                  dateFilter === filter.value
-                    ? 'bg-green-600 text-white shadow-md shadow-green-200'
-                    : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                {filter.label}
-              </TouchFeedbackButton>
-            ))}
           </div>
         </div>
       </div>
       
       {/* Content */}
       <div className="max-w-4xl mx-auto p-3 sm:p-4">
-        {clubs.length === 0 && !loading ? (
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-6 text-center">
-            <MapPin className="h-12 w-12 text-yellow-600 mx-auto mb-3" />
-            <p className="text-yellow-800 font-medium mb-2">No Clubs Found</p>
-            <p className="text-yellow-600 text-sm">
-              You don't have any registered clubs yet. Register a club to track attendance.
-            </p>
-          </div>
-        ) : loading ? (
+        {loading ? (
           <div className="flex flex-col items-center justify-center h-96">
             <LoadingSpinner />
-            <p className="mt-4 text-gray-600">Loading attendance data...</p>
+            <p className="mt-4 text-gray-600">Loading club ownership data...</p>
           </div>
         ) : error ? (
           <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
             <p className="text-red-600 font-medium">{error}</p>
             <TouchFeedbackButton
-              onClick={fetchReport}
+              onClick={fetchClubsHierarchy}
               className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
             >
               Try Again
             </TouchFeedbackButton>
           </div>
-        ) : reportData ? (
+        ) : stats && hierarchyData ? (
           <>
             {/* Summary Stats */}
             <div className="bg-white rounded-lg shadow-md p-4 mb-4">
               <div className="flex items-center gap-2 mb-3">
-                <Calendar className="h-5 w-5 text-green-600" />
-                <h2 className="text-lg font-bold text-gray-800">
-                  {reportData.clubInfo?.name || 'Club Attendance'}
-                </h2>
-              </div>
-              <div className="text-sm text-gray-600 mb-4">
-                {reportData.dateRange.start === reportData.dateRange.end
-                  ? `Date: ${reportData.dateRange.start}`
-                  : `Period: ${reportData.dateRange.start} to ${reportData.dateRange.end}`}
+                <Building2 className="h-5 w-5 text-green-600" />
+                <div>
+                  <h2 className="text-lg font-bold text-gray-800">
+                    Club Ownership Overview
+                  </h2>
+                  <p className="text-xs text-gray-500">
+                    Participant counts as of {getTargetDate()}
+                  </p>
+                </div>
               </div>
               
-              {/* Total Attendees - Single Stat */}
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-lg p-6 text-center shadow-sm">
-                <Users className="h-8 w-8 text-blue-600 mx-auto mb-3" />
-                <p className="text-4xl font-bold text-blue-600 mb-2">
-                  {reportData.attendees.length}
-                </p>
-                <p className="text-sm text-gray-600 font-medium">Total Attendees</p>
+              {/* Stats Grid */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="bg-green-50 rounded-lg p-3 text-center">
+                  <Building2 className="h-5 w-5 text-green-600 mx-auto mb-1" />
+                  <p className="text-xl sm:text-2xl font-bold text-green-600">
+                    {stats.totalClubs || 0}
+                  </p>
+                  <p className="text-xs text-gray-600">Total Clubs</p>
+                </div>
+                
+                <div className="bg-blue-50 rounded-lg p-3 text-center">
+                  <Users className="h-5 w-5 text-blue-600 mx-auto mb-1" />
+                  <p className="text-xl sm:text-2xl font-bold text-blue-600">
+                    {stats.membersWithClubs || 0}
+                  </p>
+                  <p className="text-xs text-gray-600">Members with Clubs</p>
+                </div>
+                
+                <div className="bg-purple-50 rounded-lg p-3 text-center">
+                  <Users className="h-5 w-5 text-purple-600 mx-auto mb-1" />
+                  <p className="text-xl sm:text-2xl font-bold text-purple-600">
+                    {stats.totalParticipants || 0}
+                  </p>
+                  <p className="text-xs text-gray-600">Total Participants</p>
+                </div>
+                
+                <div className="bg-orange-50 rounded-lg p-3 text-center">
+                  <Calendar className="h-5 w-5 text-orange-600 mx-auto mb-1" />
+                  <p className="text-xl sm:text-2xl font-bold text-orange-600">
+                    {stats.todayAttendance || 0}
+                  </p>
+                  <p className="text-xs text-gray-600">Today's Attendance</p>
+                </div>
               </div>
             </div>
 
-            {/* Attendee List */}
-            {reportData.attendees.length === 0 ? (
-              <div className="bg-gray-50 border border-gray-200 rounded-lg p-6 text-center">
-                <Users className="h-12 w-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-600 font-medium mb-2">No Attendance Records</p>
-                <p className="text-gray-500 text-sm">
-                  No one has attended this club during the selected period.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                <h3 className="text-lg font-bold text-gray-800 mb-3">
-                  Attendees ({reportData.attendees.length})
+            {/* Team Members with Clubs */}
+            {hierarchyData && (
+              <div className="bg-white rounded-lg shadow-md p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3">
+                  Team Members with Clubs
                 </h3>
-                {reportData.attendees.map((attendee, index) => (
-                  <motion.div
-                    key={attendee.userId}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    className="bg-white rounded-lg shadow-md p-4 flex items-center gap-4"
-                  >
-                    {/* Profile Picture */}
-                    <div className="flex-shrink-0">
-                      {getAvatar(attendee.email, attendee.userName, attendee.profileImage)}
-                    </div>
-
-                    {/* User Info */}
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-bold text-gray-800 truncate">
-                        {attendee.userName}
-                      </h4>
-                      {attendee.coachName && attendee.coachName !== 'No Coach' && (
-                        <p className="text-sm text-gray-600 truncate">
-                          Coach: {attendee.coachName}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Attendance Badge - only show if > 0 days */}
-                    {attendee.attendanceDays > 0 && (
-                      <div className="flex-shrink-0 text-center">
-                        <div className="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">
-                          {attendee.attendanceDays} {attendee.attendanceDays === 1 ? 'day' : 'days'}
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                ))}
+                <div className="text-center py-8 text-gray-500">
+                  <Building2 className="h-12 w-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-sm">
+                    Club ownership data loaded successfully
+                  </p>
+                </div>
               </div>
             )}
           </>
