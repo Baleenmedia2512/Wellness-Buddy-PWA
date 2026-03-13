@@ -85,8 +85,8 @@ const ImageUpload = forwardRef(
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
-              title: '🚨 PROXY ALERT',
-              message: validation.message,
+              title: '🚨 Invalid Image Source',
+              message: 'Please select an image created TODAY during education hours.',
               type: 'error'
             });
             // Clear the input
@@ -223,7 +223,20 @@ const ImageUpload = forwardRef(
               }
               
               // No EXIF from Capacitor — fall back to Filesystem.stat() for modification time
-              console.log('⚠️ No EXIF metadata, using Filesystem.stat() for education image');
+              console.log('⚠️ No EXIF metadata, checking Filesystem.stat() for education image');
+              
+              // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
+              if (!photo.path) {
+                console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
+                return;
+              }
+              
               try {
                 const stat = await Filesystem.stat({ path: photo.path });
                 const fileDate = new Date(stat.mtime);
@@ -259,14 +272,13 @@ const ImageUpload = forwardRef(
                 onImageSelect(file, fileDate.toISOString());
                 return;
               } catch (fsError) {
-                console.error('❌ Filesystem.stat failed, falling back to byte parser:', fsError);
-                // Last resort: use byte-level EXIF parser
-                const validation = await validateImageForEducation(file, educationWindow);
-                if (!validation.isValid) {
-                  setAlertModal({ isOpen: true, title: '🚨 PROXY ALERT', message: validation.message, type: 'error' });
-                  return;
-                }
-                onImageSelect(file, validation.imageTimestamp);
+                console.error('❌ Filesystem.stat failed:', fsError);
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
                 return;
               }
             }
@@ -308,7 +320,20 @@ const ImageUpload = forwardRef(
             
             // Fallback to Filesystem.stat() if EXIF is missing
             if (!galleryTimestamp) {
-              console.log('⚠️ No EXIF metadata, using Filesystem.stat() for non-education image');
+              console.log('⚠️ No EXIF metadata, checking Filesystem.stat() for non-education image');
+              
+              // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
+              if (!photo.path) {
+                console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
+                setAlertModal({
+                  isOpen: true,
+                  title: '🚨 Invalid Image Source',
+                  message: 'Please use Camera to take a fresh photo.',
+                  type: 'error'
+                });
+                return;
+              }
+              
               try {
                 const stat = await Filesystem.stat({ path: photo.path });
                 const fileDate = new Date(stat.mtime);
@@ -329,15 +354,19 @@ const ImageUpload = forwardRef(
                   return;
                 }
                 
-                galleryTimestamp = fileDate.toISOString();
-                console.log('✅ Non-education gallery image validated via Filesystem.stat:', galleryTimestamp);
-              } catch (fsError) {
-                console.error('❌ Filesystem.stat failed:', fsError);
-                // Last resort: use current time
-                galleryTimestamp = new Date().toISOString();
-                console.log('⚠️ Using current time as fallback');
+                  galleryTimestamp = fileDate.toISOString();
+                  console.log('✅ Non-education gallery image validated via Filesystem.stat:', galleryTimestamp);
+                } catch (fsError) {
+                  console.error('❌ Filesystem.stat failed:', fsError);
+                  setAlertModal({
+                    isOpen: true,
+                    title: '🚨 Invalid Image Source',
+                    message: 'Please use Camera to take a fresh photo.',
+                    type: 'error'
+                  });
+                  return;
+                }
               }
-            }
             
             onImageSelect(file, galleryTimestamp);
           }
