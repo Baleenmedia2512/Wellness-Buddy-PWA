@@ -349,12 +349,56 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
               <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
                 {level === 0 ? 'You' : 'Self'}
               </span>
-              <span className={`text-base font-bold leading-none ${attended ? (level === 0 ? 'text-yellow-700' : 'text-green-600') : 'text-gray-400'}`}>
-                {attended ? '✓' : '✗'}
-              </span>
-              <span className={`text-[9px] font-semibold mt-0.5 ${attended ? (level === 0 ? 'text-yellow-600' : 'text-green-500') : 'text-gray-400'}`}>
-                {attended ? 'Present' : 'Absent'}
-              </span>
+              {attended ? (
+                <>
+                  {clubs.length > 0 && remoteCount > 0 ? (
+                    <>
+                      <span className="text-base font-bold leading-none text-green-600">
+                        {clubs.length + remoteCount}
+                      </span>
+                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
+                        Club + Remote
+                      </span>
+                    </>
+                  ) : clubs.length > 0 ? (
+                    <>
+                      <span className="text-base font-bold leading-none text-green-600">
+                        {clubs.length}
+                      </span>
+                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
+                        Club{clubs.length > 1 ? 's' : ''}
+                      </span>
+                    </>
+                  ) : remoteCount > 0 ? (
+                    <>
+                      <span className="text-base font-bold leading-none text-blue-600">
+                        {remoteCount}
+                      </span>
+                      <span className="text-[9px] font-semibold mt-0.5 text-blue-500">
+                        Remote
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base font-bold leading-none text-green-600">
+                        ✓
+                      </span>
+                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
+                        Attended
+                      </span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  <span className="text-base font-bold leading-none text-gray-400">
+                    ✗
+                  </span>
+                  <span className="text-[9px] font-semibold mt-0.5 text-gray-400">
+                    Not Attended
+                  </span>
+                </>
+              )}
             </div>
             {/* Direct Team */}
             <div className="flex-1 flex flex-col items-center px-2">
