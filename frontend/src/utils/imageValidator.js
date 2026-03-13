@@ -226,10 +226,24 @@ export async function validateImageForEducation(file, educationWindow = { start:
  */
 export async function validateImageFreshness(file, allowedDaysOld = 0) {
   try {
+    console.log('📸 File info:', {
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      lastModified: file.lastModified,
+      lastModifiedDate: new Date(file.lastModified).toISOString()
+    });
+    
     const metadata = await extractImageMetadata(file);
     
     // Use EXIF date if available, otherwise fall back to file modified date
     const imageDate = metadata.hasExif ? metadata.dateTime : metadata.fileModified;
+    
+    console.log('📊 Metadata extracted:', {
+      hasExif: metadata.hasExif,
+      imageDate: imageDate ? imageDate.toISOString() : 'null',
+      reason: metadata.reason
+    });
     
     if (!imageDate || isNaN(imageDate.getTime())) {
       return {
@@ -249,7 +263,9 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
     
     console.log('📅 Image Freshness Check:', {
       imageDate: imageDate.toISOString(),
+      imageDateOnly: imageDateOnly.toISOString(),
       today: todayStart.toISOString(),
+      now: now.toISOString(),
       daysDiff,
       allowedDaysOld,
       hasExif: metadata.hasExif

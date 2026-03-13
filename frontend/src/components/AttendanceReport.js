@@ -204,57 +204,15 @@ const AttendanceReport = ({ user, onBack }) => {
   );
 };
 
-/* ── Status badge component ── */
-const AttendanceBadge = ({ clubs, remoteCount, attended }) => {
-  if (!attended) {
-    return (
-      <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-500">
-        <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
-        <span className="text-[11px] font-semibold whitespace-nowrap">Not Attended</span>
-      </div>
-    );
-  }
-
-  const items = [];
-
-  clubs.forEach((club, idx) => {
-    items.push(
-      <div key={`club-${idx}`} className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
-        <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
-        <span className="text-[11px] font-semibold whitespace-nowrap max-w-[120px] truncate">{club.name}</span>
-      </div>
-    );
-  });
-
-  if (remoteCount > 0) {
-    items.push(
-      <div key="remote" className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-300 text-blue-600">
-        <Wifi className="h-3.5 w-3.5 flex-shrink-0" />
-        <span className="text-[11px] font-semibold whitespace-nowrap">Remote</span>
-      </div>
-    );
-  }
-
-  // If attended but no specific club or remote info
-  if (items.length === 0) {
-    items.push(
-      <div key="present" className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
-        <span className="text-[11px] font-semibold">Present</span>
-      </div>
-    );
-  }
-
-  return <div className="flex items-center gap-1 flex-wrap justify-end">{items}</div>;
-};
-
 /* ── Individual tree node ── */
 const AttendanceNode = ({ node, level, isLastChild }) => {
-  const [expanded, setExpanded] = useState(true);
-
+  const [showClubDetails, setShowClubDetails] = useState(false);
+  
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
   const attended = node.metrics?.attended === true;
   const clubs = node.metrics?.clubs || [];
   const remoteCount = node.metrics?.remoteCount || 0;
+  const hasMultipleLocations = attended && (clubs.length + remoteCount > 1);
 
   const attendedDirect = node.directTeamCount?.qualified || 0;
   const totalDirect = node.directTeamCount?.total || 0;
@@ -289,8 +247,11 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
               : 'bg-gray-50 border-gray-200'
           }`}
         >
-          {/* Row */}
-          <div className="flex items-center gap-2 px-3 py-2.5">
+          {/* Row - Clickable to expand clubs */}
+          <div 
+            className={`flex items-center gap-2 px-3 py-2.5 ${hasMultipleLocations ? 'cursor-pointer hover:bg-black/5' : ''}`}
+            onClick={() => hasMultipleLocations && setShowClubDetails(!showClubDetails)}
+          >
             {/* Avatar */}
             <div
               className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 flex-shrink-0 ${
@@ -322,21 +283,70 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
               </div>
             </div>
 
-            {/* Attendance badge — prominent on right */}
+            {/* Right side - Attendance status or expand icon */}
             <div className="flex-shrink-0 flex items-center gap-1">
-              <AttendanceBadge clubs={clubs} remoteCount={remoteCount} attended={attended} />
-
-              {/* Expand/collapse toggle if has children */}
-              {hasChildren && (
-                <button
-                  onClick={() => setExpanded(!expanded)}
-                  className="ml-1 p-1 rounded-full hover:bg-black/5 text-gray-400"
-                >
-                  {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-              )}
+              {!attended ? (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-500">
+                  <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
+                  <span className="text-[11px] font-semibold whitespace-nowrap">Not Attended</span>
+                </div>
+              ) : hasMultipleLocations ? (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span className="text-[11px] font-semibold">{clubs.length + remoteCount} locations</span>
+                  {showClubDetails ? (
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </div>
+              ) : clubs.length === 1 ? (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
+                  <MapPin className="h-3.5 w-3.5" />
+                  <span className="text-[11px] font-semibold">{clubs[0].name}</span>
+                </div>
+              ) : remoteCount === 1 ? (
+                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-300 text-blue-600">
+                  <Wifi className="h-3.5 w-3.5" />
+                  <span className="text-[11px] font-semibold">Remote</span>
+                </div>
+              ) : null}
             </div>
           </div>
+
+          {/* Expanded Club Details */}
+          <AnimatePresence>
+            {showClubDetails && hasMultipleLocations && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                className={`border-t overflow-hidden ${
+                  level === 0
+                    ? 'border-yellow-200 bg-yellow-50'
+                    : 'border-green-200 bg-green-50'
+                }`}
+              >
+                <div className="px-3 py-2 space-y-1.5">
+                  {clubs.map((club, idx) => (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-green-200"
+                    >
+                      <MapPin className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                      <span className="text-xs font-medium text-gray-800">{club.name}</span>
+                    </div>
+                  ))}
+                  {remoteCount > 0 && (
+                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-blue-200">
+                      <Wifi className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+                      <span className="text-xs font-medium text-gray-800">Remote</span>
+                    </div>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Stats strip — You / Direct / Full for every node */}
           <div className={`flex items-center divide-x px-3 py-2 border-t ${
@@ -350,54 +360,29 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
                 {level === 0 ? 'You' : 'Self'}
               </span>
               {attended ? (
-                <>
-                  {clubs.length > 0 && remoteCount > 0 ? (
-                    <>
-                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
-                        {clubs.length + remoteCount}
-                      </span>
-                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
-                        Club + Remote
-                      </span>
-                    </>
-                  ) : clubs.length > 0 ? (
-                    <>
-                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
-                        {clubs.length}
-                      </span>
-                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
-                        Club{clubs.length > 1 ? 's' : ''}
-                      </span>
-                    </>
-                  ) : remoteCount > 0 ? (
-                    <>
-                      <span className="text-sm sm:text-base font-bold leading-none text-blue-600">
-                        {remoteCount}
-                      </span>
-                      <span className="text-[9px] font-semibold mt-0.5 text-blue-500">
-                        Remote
-                      </span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="text-sm sm:text-base font-bold leading-none text-green-600">
-                        ✓
-                      </span>
-                      <span className="text-[9px] font-semibold mt-0.5 text-green-500">
-                        Attended
-                      </span>
-                    </>
+                <div className="flex flex-wrap gap-1 justify-center mt-0.5">
+                  {clubs.length > 0 && (
+                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <MapPin className="h-2.5 w-2.5 text-green-700" />
+                      <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
+                    </div>
                   )}
-                </>
+                  {remoteCount > 0 && (
+                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                      <Wifi className="h-2.5 w-2.5 text-blue-700" />
+                      <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
+                    </div>
+                  )}
+                  {clubs.length === 0 && remoteCount === 0 && (
+                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <span className="text-[9px] font-semibold text-green-700">✓</span>
+                    </div>
+                  )}
+                </div>
               ) : (
-                <>
-                  <span className="text-sm sm:text-base font-bold leading-none text-gray-400">
-                    ✗
-                  </span>
-                  <span className="text-[9px] font-semibold mt-0.5 text-gray-400">
-                    Not Attended
-                  </span>
-                </>
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 border border-gray-300 mt-0.5">
+                  <span className="text-[9px] font-semibold text-gray-500">✗</span>
+                </div>
               )}
             </div>
             {/* Direct Team */}
@@ -419,26 +404,19 @@ const AttendanceNode = ({ node, level, isLastChild }) => {
           </div>
         </div>
 
-        {/* Children */}
-        <AnimatePresence>
-          {hasChildren && expanded && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="mt-2 ml-4 pl-0 space-y-0"
-            >
-              {node.teamMembers.map((child, index) => (
-                <AttendanceNode
-                  key={child.userId}
-                  node={child}
-                  level={level + 1}
-                  isLastChild={index === node.teamMembers.length - 1}
-                />
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Children - Always visible */}
+        {hasChildren && (
+          <div className="mt-2 ml-4 pl-0 space-y-0">
+            {node.teamMembers.map((child, index) => (
+              <AttendanceNode
+                key={child.userId}
+                node={child}
+                level={level + 1}
+                isLastChild={index === node.teamMembers.length - 1}
+              />
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
