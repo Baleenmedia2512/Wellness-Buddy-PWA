@@ -49,7 +49,7 @@ export default async function handler(req, res) {
 
     // Fetch all sessions in the last 30 days in a single query
     const { data: rows, error } = await supabase
-      .from('AppSessions')
+      .from('screen_sessions_table')
       .select('StartTime, DurationSeconds')
       .eq('UserId', userId)
       .gte('StartTime', `${thirtyDaysAgoKey}T00:00:00`)
