@@ -467,8 +467,8 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
         stats[programName] = {
           mine,
-          directTeam: directTeamMembers.length,
-          fullTeam: fullTeamMembers.length,
+          directTeam: directEnrolled.length,
+          fullTeam: fullEnrolled.length,
           directTeamMembers,
           fullTeamMembers,
           directEnrolledCount: directEnrolled.length,
@@ -820,11 +820,6 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
     return (
       <div className="space-y-3">
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-blue-700">
-          💡 <strong>Tree View:</strong> Shows your full team hierarchy
-          including all downline members. Click arrows to expand/collapse
-          branches.
-        </div>
         {hierarchy.map((node, index) => (
           <TreeNode
             key={node.userId}
