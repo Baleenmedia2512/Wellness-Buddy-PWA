@@ -785,7 +785,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   )}
                 </div>
 
-                {/* Enrollment Status */}
+                {/* Enrollment Status. */}
                 <div className="flex-shrink-0">
                   {isEnrolled ? (
                     <div className="bg-green-100 text-green-700 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
