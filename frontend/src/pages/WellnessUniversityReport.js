@@ -22,6 +22,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [expandedProgram, setExpandedProgram] = useState(null);
   const [viewType, setViewType] = useState(null); // 'mine', 'direct', 'full'
   const [currentUserId, setCurrentUserId] = useState(null);
+  const [showNotEnrolled, setShowNotEnrolled] = useState(true); // Toggle for showing non-enrolled members
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -40,15 +41,90 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         setCurrentUserId(userProfileData.data.userId);
       }
 
-      // Fetch all team members (for showing non-enrolled members)
-      const teamResponse = await fetch(
-        `${API_BASE}/api/coach/team-hierarchy?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`
-      );
-      const teamData = await teamResponse.json();
+      // Fetch team hierarchy FIRST to get proper CoachId/CoCoachId relationships
+      let teamMembers = [];
+      let myDirectTeamIds = []; // Track who reports directly to you
       
-      if (teamData.success) {
-        console.log('All team members loaded:', teamData.allMembers?.length);
-        setAllTeamMembers(teamData.allMembers || []);
+      try {
+        // Use coachId if available, otherwise fall back to email
+        const userId = userProfileData.data?.userId;
+        const teamUrl = userId 
+          ? `${API_BASE}/api/coach/team-hierarchy?coachId=${userId}&_t=${cacheBuster}`
+          : `${API_BASE}/api/coach/team-hierarchy?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`;
+        
+        console.log('📡 Fetching team hierarchy:', teamUrl);
+        
+        const teamResponse = await fetch(teamUrl);
+        
+        if (!teamResponse.ok) {
+          const errorText = await teamResponse.text();
+          console.error('❌ Team hierarchy API failed:', teamResponse.status, errorText);
+          throw new Error(`API returned ${teamResponse.status}: ${errorText}`);
+        }
+        
+        const teamData = await teamResponse.json();
+        
+        if (teamData.success && teamData.allMembers && teamData.allMembers.length > 0) {
+          console.log('✅ Team hierarchy loaded:', teamData.allMembers?.length, 'members');
+          console.log('👥 All team members from API:', teamData.allMembers.map(m => ({
+            name: m.UserName || m.Email,
+            userId: m.UserId,
+            coachId: m.CoachId,
+            reportsTo: m.coachName
+          })));
+          
+          // Get current user ID as number for filtering
+          const currentUserIdNum = Number(userProfileData.data?.userId);
+          console.log('🔍 Current User ID:', currentUserIdNum);
+          
+          // IMPORTANT: Only show members who DIRECTLY report to YOU (not entire downline)
+          // Filter to only members where YOU are their CoachId or CoCoachId
+          teamMembers = teamData.allMembers.filter(member => {
+            const memberUserId = Number(member.UserId);
+            const memberCoachId = Number(member.CoachId);
+            const memberCoCoachId = Number(member.CoCoachId);
+            
+            // Include only if YOU are their direct coach or co-coach
+            const isDirectReport = (memberCoachId === currentUserIdNum || memberCoCoachId === currentUserIdNum) 
+                                    && memberUserId !== currentUserIdNum;
+            
+            console.log(`Checking member: ${member.UserName || member.Email}`, {
+              userId: memberUserId,
+              coachId: memberCoachId,
+              coCoachId: memberCoCoachId,
+              currentUserId: currentUserIdNum,
+              coachMatch: memberCoachId === currentUserIdNum,
+              coCoachMatch: memberCoCoachId === currentUserIdNum,
+              isDirectReport: isDirectReport
+            });
+            
+            if (!isDirectReport && memberUserId !== currentUserIdNum) {
+              console.warn('⚠️ EXCLUDING (not direct report):', member.UserName, 
+                          '| CoachId:', member.CoachId,
+                          '| CoCoachId:', member.CoCoachId,
+                          '| Coach:', member.coachName);
+            } else if (isDirectReport) {
+              console.log('✅ INCLUDING direct report:', member.UserName);
+            }
+            
+            return isDirectReport;
+          });
+          
+          console.log('✅ Final filtered team members:', teamMembers.length);
+          console.log('👥 Your direct reports:', teamMembers.map(m => m.UserName || m.Email));
+          
+          console.log('✅ Filtered team members:', teamMembers.length);
+          console.log('👥 Your team:', teamMembers.map(m => ({
+            name: m.UserName || m.Email,
+            coachId: m.CoachId
+          })));
+          
+          setAllTeamMembers(teamMembers);
+        } else {
+          console.warn('⚠️ Team hierarchy returned no members');
+        }
+      } catch (teamErr) {
+        console.error('❌ Team hierarchy API failed:', teamErr);
       }
 
       // Fetch enrollments
@@ -58,8 +134,15 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       const data = await response.json();
 
       if (data.success) {
-        console.log('Enrollments loaded:', data.enrollments);
+        console.log('✅ Enrollments loaded:', data.enrollments?.length, 'enrollments');
+        console.log('Sample enrollment data:', data.enrollments[0]);
         setEnrollments(data.enrollments || []);
+        
+        // If team hierarchy failed, use enrollments as fallback
+        if (teamMembers.length === 0) {
+          console.warn('⚠️ Using enrollments as team members (fallback)');
+          setAllTeamMembers(data.enrollments || []);
+        }
       } else {
         setError(data.message || 'Failed to load enrollments');
       }
@@ -88,82 +171,219 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         return programs.includes(programName);
       });
 
+      console.log(`[${programName}] Program enrollments:`, programEnrollments.length);
+
       // Mine: Check if current user enrolled
       const myEnrollment = programEnrollments.find(e => e.UserId === currentUserId);
       const mine = myEnrollment ? 1 : 0;
 
-      // Get all direct team members (CoachId or CoCoachId = currentUserId)
-      const allDirectMembers = allTeamMembers.filter(member => 
-        (member.CoachId === currentUserId || member.CoCoachId === currentUserId) && 
-        member.UserId !== currentUserId
-      );
+      // If we have team hierarchy data, use it
+      if (allTeamMembers.length > 0) {
+        console.log(`[${programName}] Using team members path. Total members:`, allTeamMembers.length);
+        console.log(`[${programName}] Current user ID:`, currentUserId, 'Type:', typeof currentUserId);
+        console.log(`[${programName}] Sample member:`, allTeamMembers[0]);
+        
+        // Convert currentUserId to number for comparison
+        const currentUserIdNum = Number(currentUserId);
+        
+        // Get all direct team members (CoachId or CoCoachId = currentUserId)
+        const allDirectMembers = allTeamMembers.filter(member => {
+          const memberUserId = Number(member.UserId);
+          const memberCoachId = Number(member.CoachId);
+          const memberCoCoachId = Number(member.CoCoachId);
+          
+          const coachIdMatch = memberCoachId === currentUserIdNum;
+          const coCoachIdMatch = memberCoCoachId === currentUserIdNum;
+          const notSelf = memberUserId !== currentUserIdNum;
+          const isDirect = (coachIdMatch || coCoachIdMatch) && notSelf;
+          
+          if (!notSelf || isDirect) {
+            console.log(`[${programName}] Member:`, member.UserName || member.Email, 
+                       '| UserId:', memberUserId,
+                       '| CoachId:', memberCoachId,
+                       '| CoCoachId:', memberCoCoachId,
+                       '| CoachMatch:', coachIdMatch,
+                       '| CoCoachMatch:', coCoachIdMatch,
+                       '| NotSelf:', notSelf,
+                       '| ✅ IsDirect:', isDirect);
+          }
+          
+          return isDirect;
+        });
+        
+        console.log(`[${programName}] ✅ Direct members found:`, allDirectMembers.length);
+        console.log(`[${programName}] ✅ Direct members:`, allDirectMembers.map(m => m.UserName || m.Email));
 
-      // Get all full team members (everyone except current user)
-      const allFullMembers = allTeamMembers.filter(member => member.UserId !== currentUserId);
+        // Build FULL TEAM recursively - all members in downline hierarchy
+        // IMPORTANT: Use allTeamMembers (ALL team members) not just enrolled ones
+        const buildFullTeam = (startMembers, allMembers) => {
+          const fullTeam = new Map(); // Use Map to avoid duplicates
+          const queue = [...startMembers];
+          
+          console.log(`[${programName}] 🔧 Building full team from ${startMembers.length} direct members`);
+          console.log(`[${programName}] 🔧 Using ${allMembers.length} total members for hierarchy traversal`);
+          
+          while (queue.length > 0) {
+            const current = queue.shift();
+            const currentUserId = Number(current.UserId);
+            
+            // Add current member to full team
+            if (!fullTeam.has(currentUserId)) {
+              fullTeam.set(currentUserId, current);
+              console.log(`[${programName}] ➕ Added to full team:`, current.UserName || current.Email, '(UserId:', currentUserId, ')');
+              
+              // Find all members who report to this person
+              const subTeam = allMembers.filter(m => {
+                const mCoachId = Number(m.CoachId);
+                const mCoCoachId = Number(m.CoCoachId);
+                const isSubTeamMember = (mCoachId === currentUserId || mCoCoachId === currentUserId) && 
+                       Number(m.UserId) !== currentUserId;
+                
+                if (isSubTeamMember) {
+                  console.log(`[${programName}] 👤 Found sub-team member:`, m.UserName || m.Email, 
+                             'reports to', current.UserName || current.Email);
+                }
+                
+                return isSubTeamMember;
+              });
+              
+              console.log(`[${programName}] 📋 ${current.UserName || current.Email} has ${subTeam.length} direct reports`);
+              
+              // Add sub-team members to queue for processing
+              subTeam.forEach(member => {
+                if (!fullTeam.has(Number(member.UserId))) {
+                  queue.push(member);
+                }
+              });
+            }
+          }
+          
+          return Array.from(fullTeam.values());
+        };
+        
+        // Use allTeamMembers (from team-hierarchy API) for building full hierarchy
+        // This includes ALL team members regardless of enrollment status
+        const allFullMembers = buildFullTeam(allDirectMembers, allTeamMembers);
+        
+        console.log(`[${programName}] 📊 Full team members (entire downline):`, allFullMembers.length);
+        console.log(`[${programName}] 📊 Full team:`, allFullMembers.map(m => m.UserName || m.Email));
 
-      // Split into enrolled and not enrolled for direct team
-      const directEnrolled = [];
-      const directNotEnrolled = [];
-      
-      allDirectMembers.forEach(member => {
-        const enrollment = programEnrollments.find(e => e.UserId === member.UserId);
-        if (enrollment) {
-          directEnrolled.push({ 
-            ...member, 
-            ...enrollment, 
+        // Split into enrolled and not enrolled for direct team
+        const directEnrolled = [];
+        const directNotEnrolled = [];
+        
+        allDirectMembers.forEach(member => {
+          const enrollment = programEnrollments.find(e => e.UserId === member.UserId);
+          if (enrollment) {
+            directEnrolled.push({ 
+              ...member, 
+              ...enrollment, 
+              isEnrolled: true,
+              CoachName: enrollment.CoachName || member.coachName || ''
+            });
+          } else {
+            directNotEnrolled.push({ 
+              ...member, 
+              isEnrolled: false,
+              CoachName: member.coachName || '',
+              UserName: member.UserName || 'Unknown'
+            });
+          }
+        });
+
+        // Split into enrolled and not enrolled for full team
+        const fullEnrolled = [];
+        const fullNotEnrolled = [];
+        
+        console.log(`[${programName}] 🔍 Processing full team members:`, allFullMembers.length);
+        allFullMembers.forEach(member => {
+          console.log(`[${programName}] Full team member:`, member.UserName, '| UserId:', member.UserId, '| CoachId:', member.CoachId);
+          const enrollment = programEnrollments.find(e => e.UserId === member.UserId);
+          if (enrollment) {
+            fullEnrolled.push({ 
+              ...member, 
+              ...enrollment, 
+              isEnrolled: true,
+              CoachName: enrollment.CoachName || member.coachName || ''
+            });
+          } else {
+            fullNotEnrolled.push({ 
+              ...member, 
+              isEnrolled: false,
+              CoachName: member.coachName || '',
+              UserName: member.UserName || 'Unknown'
+            });
+          }
+        });
+        
+        console.log(`[${programName}] 📊 Full enrolled:`, fullEnrolled.length, fullEnrolled.map(m => m.UserName));
+        console.log(`[${programName}] 📊 Full not enrolled:`, fullNotEnrolled.length, fullNotEnrolled.map(m => m.UserName));
+
+        // Combine: enrolled first, then not enrolled
+        const directTeamMembers = [...directEnrolled, ...directNotEnrolled];
+        const fullTeamMembers = [...fullEnrolled, ...fullNotEnrolled];
+
+        stats[programName] = {
+          mine,
+          directTeam: directEnrolled.length,
+          fullTeam: fullEnrolled.length,
+          directTeamMembers,
+          fullTeamMembers,
+          directEnrolledCount: directEnrolled.length,
+          fullEnrolledCount: fullEnrolled.length,
+        };
+      } else {
+        // Fallback: Use enrollment data with CoachId/CoCoachId to determine hierarchy
+        console.log(`[${programName}] Using fallback - CurrentUserId:`, currentUserId);
+        console.log(`[${programName}] Sample enrollment:`, programEnrollments[0]);
+        
+        // Convert to numbers for comparison
+        const currentUserIdNum = Number(currentUserId);
+        
+        const directEnrolledMembers = programEnrollments
+          .filter(e => {
+            const memberUserId = Number(e.UserId);
+            const memberCoachId = Number(e.CoachId);
+            const memberCoCoachId = Number(e.CoCoachId);
+            
+            const isDirect = memberUserId !== currentUserIdNum && 
+                           (memberCoachId === currentUserIdNum || memberCoCoachId === currentUserIdNum);
+            if (isDirect) {
+              console.log(`[${programName}] Direct member found:`, e.UserName, 'CoachId:', memberCoachId, 'CoCoachId:', memberCoCoachId);
+            }
+            return isDirect;
+          })
+          .map(e => ({
+            ...e,
             isEnrolled: true,
-            // Use enrollment's CoachName if available, otherwise use member's
-            CoachName: enrollment.CoachName || member.coachName || ''
-          });
-        } else {
-          directNotEnrolled.push({ 
-            ...member, 
-            isEnrolled: false,
-            // For non-enrolled, use member's coachName from team hierarchy
-            CoachName: member.coachName || '',
-            UserName: member.UserName || 'Unknown'
-          });
-        }
-      });
+            CoachName: e.CoachName || '',
+            UserName: e.UserName || 'Unknown'
+          }));
 
-      // Split into enrolled and not enrolled for full team
-      const fullEnrolled = [];
-      const fullNotEnrolled = [];
-      
-      allFullMembers.forEach(member => {
-        const enrollment = programEnrollments.find(e => e.UserId === member.UserId);
-        if (enrollment) {
-          fullEnrolled.push({ 
-            ...member, 
-            ...enrollment, 
+        const fullEnrolledMembers = programEnrollments
+          .filter(e => Number(e.UserId) !== currentUserIdNum)
+          .map(e => ({
+            ...e,
             isEnrolled: true,
-            CoachName: enrollment.CoachName || member.coachName || ''
-          });
-        } else {
-          fullNotEnrolled.push({ 
-            ...member, 
-            isEnrolled: false,
-            CoachName: member.coachName || '',
-            UserName: member.UserName || 'Unknown'
-          });
-        }
-      });
+            CoachName: e.CoachName || '',
+            UserName: e.UserName || 'Unknown'
+          }));
 
-      // Combine: enrolled first, then not enrolled
-      const directTeamMembers = [...directEnrolled, ...directNotEnrolled];
-      const fullTeamMembers = [...fullEnrolled, ...fullNotEnrolled];
+        console.log(`[${programName}] Direct enrolled:`, directEnrolledMembers.length, 'Full enrolled:', fullEnrolledMembers.length);
 
-      stats[programName] = {
-        mine,
-        directTeam: directEnrolled.length, // Count only enrolled
-        fullTeam: fullEnrolled.length, // Count only enrolled
-        directTeamMembers, // All members (enrolled + not enrolled)
-        fullTeamMembers, // All members (enrolled + not enrolled)
-        directEnrolledCount: directEnrolled.length,
-        fullEnrolledCount: fullEnrolled.length,
-      };
+        stats[programName] = {
+          mine,
+          directTeam: directEnrolledMembers.length,
+          fullTeam: fullEnrolledMembers.length,
+          directTeamMembers: directEnrolledMembers,
+          fullTeamMembers: fullEnrolledMembers,
+          directEnrolledCount: directEnrolledMembers.length,
+          fullEnrolledCount: fullEnrolledMembers.length,
+        };
+      }
     });
 
+    console.log('Program stats calculated:', stats);
     return stats;
   };
 
@@ -191,9 +411,22 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       );
     }
 
+    // Filter members based on showNotEnrolled toggle
+    const filteredMembers = showNotEnrolled 
+      ? members 
+      : members.filter(m => m.isEnrolled !== false);
+
+    if (filteredMembers.length === 0) {
+      return (
+        <div className="text-center py-6 sm:py-8 text-gray-500 text-sm sm:text-base">
+          No enrolled members found
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-2">
-        {members.map((member, index) => {
+        {filteredMembers.map((member, index) => {
           const isEnrolled = member.isEnrolled !== false;
           
           return (
@@ -202,7 +435,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               className={`rounded-lg p-2.5 sm:p-3 border shadow-sm transition-all ${
                 isEnrolled 
                   ? 'bg-white border-gray-200' 
-                  : 'bg-gray-100 border-gray-300 opacity-60'
+                  : 'bg-gray-50 border-gray-300 opacity-50'
               }`}
             >
               <div className="flex items-center gap-2 sm:gap-3">
@@ -494,15 +727,54 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                           className="overflow-hidden"
                         >
                           <div className="border-t border-gray-200 bg-gray-50 p-3 sm:p-4">
-                            <h4 className="text-xs sm:text-sm font-semibold text-gray-700 mb-3">
-                              {viewType === 'mine' && 'My Enrollment'}
-                              {viewType === 'direct' && `Direct Team Members (${stats.directEnrolledCount} enrolled / ${stats.directTeamMembers.length} total)`}
-                              {viewType === 'full' && `Full Team Members (${stats.fullEnrolledCount} enrolled / ${stats.fullTeamMembers.length} total)`}
-                            </h4>
+                            {/* Header with Toggle */}
+                            <div className="flex items-center justify-between mb-3 gap-2">
+                              <h4 className="text-xs sm:text-sm font-semibold text-gray-700">
+                                {viewType === 'mine' && 'My Enrollment'}
+                                {viewType === 'direct' && `Direct Team (${stats.directEnrolledCount} / ${stats.directTeamMembers.length})`}
+                                {viewType === 'full' && `Full Team (${stats.fullEnrolledCount} / ${stats.fullTeamMembers.length})`}
+                              </h4>
+                              
+                              {/* Toggle button for non-enrolled members (only show for team views) */}
+                              {viewType !== 'mine' && (
+                                <button
+                                  onClick={() => setShowNotEnrolled(!showNotEnrolled)}
+                                  className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${
+                                    showNotEnrolled
+                                      ? 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                      : 'bg-green-100 text-green-700 hover:bg-green-200'
+                                  }`}
+                                >
+                                  {showNotEnrolled ? (
+                                    <>
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                                      </svg>
+                                      <span className="hidden sm:inline">Hide</span> Not Enrolled
+                                    </>
+                                  ) : (
+                                    <>
+                                      <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                                      </svg>
+                                      <span className="hidden sm:inline">Show</span> Not Enrolled
+                                    </>
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                            
                             {viewType === 'mine' && stats.mine > 0 && (
                               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 text-center">
                                 <div className="text-3xl sm:text-4xl mb-2">✅</div>
                                 <p className="text-blue-800 font-semibold text-sm sm:text-base">You're enrolled in this program!</p>
+                              </div>
+                            )}
+                            {viewType === 'mine' && stats.mine === 0 && (
+                              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4 text-center">
+                                <div className="text-3xl sm:text-4xl mb-2">📋</div>
+                                <p className="text-gray-600 font-semibold text-sm sm:text-base">You're not enrolled in this program</p>
                               </div>
                             )}
                             {viewType === 'direct' && renderMemberList(stats.directTeamMembers)}
