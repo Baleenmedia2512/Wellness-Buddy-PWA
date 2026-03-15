@@ -306,7 +306,7 @@ const AdminDashboard = ({ user, onClose }) => {
       const filteredData = filterDemoDataByTimeRange(timeRange, customStartDate, customEndDate);
       setTokenData(filteredData);
       setLoading(false);
-      setRefreshing(false);,
+      setRefreshing(false);
       setLastUpdated(new Date());
       return;
     }
