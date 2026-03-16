@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Footprints, Timer, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -211,6 +211,40 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
                   </TouchFeedbackButton>
+
+                  {onShowStepCounter && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowStepCounter();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="View Step Counter"
+                    >
+                      <Footprints className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Step Counter</p>
+                        <p className="text-xs text-gray-500">Track your daily steps live</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {onShowScreenTime && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowScreenTime();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-indigo-50 text-left transition-colors"
+                      ariaLabel="View Screen Time"
+                    >
+                      <Timer className="h-5 w-5 text-indigo-500 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Screen Time</p>
+                        <p className="text-xs text-gray-500">View your digital wellbeing</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
 
                   {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
