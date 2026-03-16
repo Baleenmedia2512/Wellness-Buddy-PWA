@@ -1,4 +1,4 @@
-// src/components/DisciplineReport.js //
+// src/components/DisciplineReport.js, //
 import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
