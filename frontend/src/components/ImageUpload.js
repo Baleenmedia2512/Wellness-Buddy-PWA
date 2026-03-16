@@ -85,8 +85,8 @@ const ImageUpload = forwardRef(
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
-              title: '🚨 Invalid Image Source',
-              message: 'Please select an image created TODAY during education hours.',
+              title: '� Fresh Photo Required',
+              message: 'Please use a photo taken today during education hours.',
               type: 'error'
             });
             // Clear the input
@@ -200,7 +200,7 @@ const ImageUpload = forwardRef(
                   setAlertModal({
                     isOpen: true,
                     title: '🚨 PROXY ALERT',
-                    message: `⚠️ This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today during education hours.`,
+                    message: `⚠️ This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: 'error'
                   });
                   return;
@@ -211,7 +211,7 @@ const ImageUpload = forwardRef(
                   setAlertModal({
                     isOpen: true,
                     title: '🚨 PROXY ALERT',
-                    message: `⚠️ Photo taken at ${imageTimeStr}, outside education hours (${educationWindow.start} – ${educationWindow.end}).`,
+                    message: `⚠️ Photo was taken outside education hours. Please take a photo during your education session.`,
                     type: 'error'
                   });
                   return;
@@ -251,7 +251,7 @@ const ImageUpload = forwardRef(
                   setAlertModal({
                     isOpen: true,
                     title: '🚨 PROXY ALERT',
-                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today during education hours.`,
+                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: 'error'
                   });
                   return;
@@ -262,7 +262,7 @@ const ImageUpload = forwardRef(
                   setAlertModal({
                     isOpen: true,
                     title: '🚨 PROXY ALERT',
-                    message: `⚠️ Photo modified at ${imageTimeStr}, outside education hours (${educationWindow.start} – ${educationWindow.end}).`,
+                    message: `⚠️ Photo was modified outside education hours. Please take a photo during your education session.`,
                     type: 'error'
                   });
                   return;
