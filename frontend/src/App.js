@@ -82,6 +82,7 @@ const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
 const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
+const WellnessCounselling = lazy(() => import("./pages/WellnessCounselling"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -179,6 +180,9 @@ function WellnessValleyApp() {
   // Wellness University state
   const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
   const [showWellnessReport, setShowWellnessReport] = useState(false);
+
+  // Wellness Counselling state
+  const [showWellnessCounselling, setShowWellnessCounselling] = useState(false);
 
   // 🐛 Food Correction Debug Logs State
   const [correctionLogs, setCorrectionLogs] = useState([]);
@@ -2812,6 +2816,18 @@ function WellnessValleyApp() {
     );
   }
 
+  // Wellness Counselling - Full page view
+  if (showWellnessCounselling) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading wellness counselling..." />}>
+        <WellnessCounselling
+          user={user}
+          onBack={() => setShowWellnessCounselling(false)}
+        />
+      </Suspense>
+    );
+  }
+
   // Main app interface
   return (
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
@@ -2833,6 +2849,7 @@ function WellnessValleyApp() {
             ? () => setShowWellnessReport(true)
             : null
         }
+        onShowWellnessCounselling={() => setShowWellnessCounselling(true)}
         onShowAttendanceReport={() => setShowAttendanceReport(true)}
         onShowClubAttendanceReport={
           userRole === "admin" || userRole === "coach" || userRole === "developer"

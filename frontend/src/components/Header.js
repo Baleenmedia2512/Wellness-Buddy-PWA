@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap, TrendingUp, Map, Building2, FileHeart } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
+const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessCounselling, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -262,6 +262,24 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-800">Wellness University</p>
                         <p className="text-xs text-gray-500">View or enroll in programs</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {/* Wellness Counselling - shown for all users */}
+                  {onShowWellnessCounselling && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowWellnessCounselling();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-pink-50 text-left transition-colors"
+                      ariaLabel="Wellness Counselling"
+                    >
+                      <FileHeart className="h-5 w-5 text-pink-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Wellness Counselling</p>
+                        <p className="text-xs text-gray-500">Initial health assessment</p>
                       </div>
                     </TouchFeedbackButton>
                   )}
