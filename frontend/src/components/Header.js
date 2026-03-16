@@ -5,7 +5,6 @@ import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
-
 const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
