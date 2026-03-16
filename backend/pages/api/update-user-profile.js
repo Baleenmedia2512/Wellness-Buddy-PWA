@@ -148,12 +148,35 @@ export default async function handler(req, res) {
           );
           savedBmr = bmrValue;
         } else {
-          // No weight records exist - BMR will be saved with next weight entry
+          // 🔥 FIX: No weight records exist - Create a placeholder weight record with BMR
           console.log(
-            "⚠️ [update-user-profile] No weight records found, BMR will be saved with next weight entry",
+            "⚠️ [update-user-profile] No weight records found, creating placeholder with BMR:",
+            bmrValue,
           );
-          // Return the BMR value so frontend knows it was received (but not saved yet)
-          savedBmr = bmrValue;
+          const currentTime = getISTTimestamp();
+          const { error: createError } = await supabase
+            .from("weight_records_table")
+            .insert({
+              UserId: userId,
+              Weight: null, // No weight yet
+              Bmr: bmrValue,
+              CreatedAt: currentTime,
+              UpdatedAt: currentTime,
+            });
+
+          if (createError) {
+            console.error(
+              "❌ [update-user-profile] Failed to create BMR record:",
+              createError,
+            );
+            // Don't throw - still return success for profile update
+          } else {
+            console.log(
+              "✅ [update-user-profile] BMR placeholder record created:",
+              bmrValue,
+            );
+            savedBmr = bmrValue;
+          }
         }
       }
     }
