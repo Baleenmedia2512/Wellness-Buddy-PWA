@@ -4,7 +4,6 @@ import { istToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
-
 /**
  * Get platform icon based on platform name
  */
