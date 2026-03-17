@@ -212,8 +212,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                     </div>
                   </TouchFeedbackButton>
 
-                  {/* Step Counter - Temporarily Hidden */}
-                  {/* {onShowStepCounter && (
+                  {onShowStepCounter && (
                     <TouchFeedbackButton
                       onClick={() => {
                         onShowStepCounter();
@@ -228,10 +227,9 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                         <p className="text-xs text-gray-500">Track your daily steps live</p>
                       </div>
                     </TouchFeedbackButton>
-                  )} */}
+                  )}
 
-                  {/* Screen Time - Temporarily Hidden */}
-                  {/* {onShowScreenTime && (
+                  {onShowScreenTime && (
                     <TouchFeedbackButton
                       onClick={() => {
                         onShowScreenTime();
@@ -246,7 +244,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                         <p className="text-xs text-gray-500">View your digital wellbeing</p>
                       </div>
                     </TouchFeedbackButton>
-                  )} */}
+                  )}
 
                   {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
