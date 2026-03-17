@@ -95,7 +95,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         console.log("⚠️ [Enrollment] No coach name in profile data");
       }
 
-      // Check existing enrollment
+      // Check existing enrollment .
       const response = await fetch(
         `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
           user.email,
