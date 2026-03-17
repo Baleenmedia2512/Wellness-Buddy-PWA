@@ -200,8 +200,23 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       setSuccessMessage("");
       setIsSaving(true);
 
-      // Validate inputs
-      if (height && (parseFloat(height) < 50 || parseFloat(height) > 198)) {
+      // Validate name (mandatory field)
+      if (!name || name.trim() === "") {
+        setError("Name is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate height (mandatory field)
+      if (!height || height.trim() === "") {
+        setError("Height is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate height range
+      const heightValue = parseFloat(height);
+      if (isNaN(heightValue) || heightValue < 50 || heightValue > 198) {
         setError("Height must be between 50 and 198 cm (max 6.5 feet)");
         setIsSaving(false);
         return;
@@ -215,6 +230,21 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
           setIsSaving(false);
           return;
         }
+      }
+
+      // Validate phone number (mandatory field)
+      if (!phone || phone.trim() === "") {
+        setError("Phone number is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate phone number format
+      const cleanedPhone = phone.trim().replace(/[\s\-()]/g, "");
+      if (!/^\+?[0-9]{10,15}$/.test(cleanedPhone)) {
+        setError("Please enter a valid phone number (10-15 digits)");
+        setIsSaving(false);
+        return;
       }
 
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
@@ -432,7 +462,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
                   </div>
                   <div className="flex-1 min-w-0">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      Name
+                      Name <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="text"
@@ -452,7 +482,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
                   </div>
                   <div className="flex-1 min-w-0">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      Height (cm)
+                      Height (cm) <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="number"
@@ -475,7 +505,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
                   </div>
                   <div className="flex-1 min-w-0">
                     <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
-                      Phone Number
+                      Phone Number <span className="text-red-500">*</span>
                     </label>
                     <input
                       type="tel"
@@ -643,7 +673,12 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={
+                isSaving || 
+                !name || name.trim() === "" || 
+                !height || height.trim() === "" || 
+                !phone || phone.trim() === ""
+              }
               className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
               ariaLabel="Save profile"
             >
