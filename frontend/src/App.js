@@ -70,7 +70,6 @@ import {
   cleanup,
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
-import { screenTimeService } from "./services/screenTimeService";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -102,9 +101,9 @@ function WellnessValleyApp() {
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
     localStorage.getItem("currentPage") === "dashboard" ||
-      localStorage.getItem("currentPage") === "nutrition-dashboard" ||
-      localStorage.getItem("currentPage") === "weight-tracking" ||
-      localStorage.getItem("currentPage") === "weight-insights",
+    localStorage.getItem("currentPage") === "nutrition-dashboard" ||
+    localStorage.getItem("currentPage") === "weight-tracking" ||
+    localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [showStepCounter, setShowStepCounter] = useState(
@@ -152,7 +151,7 @@ function WellnessValleyApp() {
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
   const [nearbyCenters, setNearbyCenters] = useState([]);
   const [pendingEducationData, setPendingEducationData] = useState(null);
-  
+
   // Custom alert modal state
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
@@ -165,7 +164,7 @@ function WellnessValleyApp() {
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
 
   // Mandatory profile completion gate — blocks app until required fields are filled
-  const [showCompleteProfile, setShowCompleteProfile] = useState(true);
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false);
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
   const profileCompletedRef = useRef(
@@ -186,7 +185,7 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
-  
+
   // Step Counter state
   const showStepCounterPage = useCallback(() => {
     setShowStepCounter(true);
@@ -559,7 +558,7 @@ function WellnessValleyApp() {
     try {
       // Request push notification permissions
       await PushNotifications.requestPermissions();
-      
+
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
     } catch (err) {
@@ -610,53 +609,6 @@ function WellnessValleyApp() {
         });
     }
   }, []);
-
-  // ── Screen Time lifecycle tracking ─────────────────────────────────────────
-  // Starts a session when the user is authenticated and the app is in the
-  // foreground; ends it when the app goes to background / tab loses focus.
-  useEffect(() => {
-    if (!user?.id) return; // Only track authenticated users
-
-    // Start a new session as soon as the user is confirmed
-    screenTimeService.startSession(user.id);
-
-    const handlePause = () => screenTimeService.endSession();
-    const handleResume = () => screenTimeService.startSession(user.id);
-
-    let nativeListener = null;
-
-    if (Capacitor.isNativePlatform()) {
-      App.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) {
-          handleResume();
-        } else {
-          handlePause();
-        }
-      }).then((listener) => {
-        nativeListener = listener;
-      });
-    } else {
-      // Web / browser tab focus/blur
-      document.addEventListener("visibilitychange", () => {
-        if (document.visibilityState === "hidden") {
-          handlePause();
-        } else {
-          handleResume();
-        }
-      });
-      window.addEventListener("beforeunload", handlePause);
-    }
-
-    return () => {
-      screenTimeService.endSession();
-      if (nativeListener) nativeListener.remove();
-      if (!Capacitor.isNativePlatform()) {
-        document.removeEventListener("visibilitychange", handlePause);
-        window.removeEventListener("beforeunload", handlePause);
-      }
-    };
-  }, [user?.id]);
-  // ──────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const initializeGalleryMonitoring = async () => {
@@ -731,6 +683,7 @@ function WellnessValleyApp() {
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
     async (userEmail) => {
+
       if (!userEmail) return;
       // Skip if user already completed profile in this session (prevents race conditions)
       if (profileCompletedRef.current) return;
@@ -767,6 +720,7 @@ function WellnessValleyApp() {
           dietType: latestData?.dietType ?? null,
           phoneNumber: latestData?.phoneNumber ?? null,
         });
+        // setShowCompleteProfile(false);      ---------> change need----------------------------------
         setShowCompleteProfile(true);
       } catch (err) {
         console.warn("⚠️ [Profile] Failed to check profile completion:", err);
@@ -1486,7 +1440,7 @@ function WellnessValleyApp() {
       // If within 100m of club → club attendance
       // If not near club → remote attendance
       console.log("📍 Checking GPS for nearby clubs...");
-      
+
       let attendance;
       try {
         attendance = await locationAttendanceService.determineAttendance(
@@ -1554,10 +1508,10 @@ function WellnessValleyApp() {
       }
 
       console.log("✅ Education log auto-saved successfully:", data.id);
-      
+
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
-      
+
       console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
       if (finalCenterName) {
         console.log(`   🏢 Club: ${finalCenterName}`);
@@ -1586,7 +1540,7 @@ function WellnessValleyApp() {
   const handleClubSelection = async (selectedCenter) => {
     console.log("🏢 Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
-    
+
     if (pendingEducationData) {
       setSaveLoading(true);
       setLoadingState("saving");
@@ -1759,7 +1713,7 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
-    
+
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
       console.log("📸 EXIF Timestamp received:", exifTimestamp);
@@ -1870,8 +1824,7 @@ function WellnessValleyApp() {
       if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
         console.log(
-          `⏱️ [PERF] Compression: ${
-            Date.now() - compressStart
+          `⏱️ [PERF] Compression: ${Date.now() - compressStart
           }ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`,
         );
       } else {
@@ -2197,8 +2150,8 @@ function WellnessValleyApp() {
               detectedType.confidence > 0.8
                 ? "high"
                 : detectedType.confidence > 0.5
-                ? "medium"
-                : "low",
+                  ? "medium"
+                  : "low",
             detailedItems: foods.map((food) => {
               // 🎯 Extract nutrition values from the corrected food object
               const nutritionValues = {
@@ -3449,18 +3402,16 @@ function WellnessValleyApp() {
 
                 {/* Weight diff vs previous entry */}
                 {weightDiff && (
-                  <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
-                    weightDiff.change < 0 ? 'bg-green-50 border border-green-100' :
-                    weightDiff.change > 0 ? 'bg-red-50 border border-red-100' :
-                    'bg-gray-50 border border-gray-100'
-                  }`}>
+                  <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${weightDiff.change < 0 ? 'bg-green-50 border border-green-100' :
+                      weightDiff.change > 0 ? 'bg-red-50 border border-red-100' :
+                        'bg-gray-50 border border-gray-100'
+                    }`}>
                     <div>
                       <p className="text-xs text-gray-500">vs Previous entry</p>
                       <p className="text-sm font-semibold text-gray-700">{weightDiff.previous} {weightResult.unit}</p>
                     </div>
-                    <div className={`font-bold text-lg ${
-                      weightDiff.change < 0 ? 'text-green-600' : weightDiff.change > 0 ? 'text-red-500' : 'text-gray-500'
-                    }`}>
+                    <div className={`font-bold text-lg ${weightDiff.change < 0 ? 'text-green-600' : weightDiff.change > 0 ? 'text-red-500' : 'text-gray-500'
+                      }`}>
                       {weightDiff.change > 0 ? '▲' : weightDiff.change < 0 ? '▼' : '—'}
                       {' '}{weightDiff.change === 0 ? 'No change' : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
                       {weightDiff.change < 0 && <span className="text-sm ml-1">🎉</span>}
@@ -3492,11 +3443,10 @@ function WellnessValleyApp() {
                       }
                     }}
                     disabled={isWeightSharing}
-                    className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
-                      isWeightSharing
+                    className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${isWeightSharing
                         ? "opacity-50 cursor-not-allowed"
                         : "hover:shadow-lg active:scale-[0.98]"
-                    }`}
+                      }`}
                     style={{ touchAction: "manipulation" }}
                   >
                     {isWeightSharing ? (
@@ -3523,8 +3473,8 @@ function WellnessValleyApp() {
                 {imageType === "weight"
                   ? "Saving your weight progress..."
                   : imageType === "education"
-                  ? "Saving your study session..."
-                  : "Saving your nutrition analysis..."}
+                    ? "Saving your study session..."
+                    : "Saving your nutrition analysis..."}
               </div>
             </div>
           )}
@@ -3936,7 +3886,7 @@ function WellnessValleyApp() {
                       </div>
 
                       {log.aiDetected.trim().toLowerCase() ===
-                      log.userCorrected.trim().toLowerCase() ? (
+                        log.userCorrected.trim().toLowerCase() ? (
                         <div className="text-white mb-2">
                           <span className="text-gray-400">║</span> ✓{" "}
                           <span className="text-cyan-400">Status:</span>
@@ -3984,7 +3934,7 @@ function WellnessValleyApp() {
                       </div>
 
                       {log.aiDetected.trim().toLowerCase() ===
-                      log.userCorrected.trim().toLowerCase() ? (
+                        log.userCorrected.trim().toLowerCase() ? (
                         <div>
                           <span className="text-green-400">
                             ✓ [NO-CORRECTION]
