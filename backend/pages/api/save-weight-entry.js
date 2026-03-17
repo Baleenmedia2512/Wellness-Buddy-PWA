@@ -40,7 +40,8 @@ export default async function handler(req, res) {
     bmr,
     imageBase64ToSave: WeightImageBase64,
     clientTimestamp, // User's actual upload time from their device
-    clientTimezoneOffset // User's timezone offset in minutes
+    clientTimezoneOffset, // User's timezone offset in minutes
+    entryId // If provided, overwrite existing entry instead of inserting
   } = req.body;
 
   // Validate required fields
@@ -91,6 +92,7 @@ export default async function handler(req, res) {
     console.log('⚖️ Weight Upload:', {
       userId,
       weightValue,
+      entryId: entryId || 'new entry',
       clientUploaded: clientTimestamp || 'Not provided',
       clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true }) : 'N/A',
       clientTimezoneOffset,
@@ -99,23 +101,105 @@ export default async function handler(req, res) {
       timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
       note: 'Compare client upload time vs stored IST'
     });
-    
-    const { data, error } = await supabase
-      .from('weight_records_table')
-      .insert({
-        UserId: parseInt(userId),
-        Weight: weight,
-        Bmi: bmiValue,
-        BodyFat: bodyFatValue,
-        MuscleMass: muscleMassValue,
-        Bmr: bmrValue,
-        WeightImageBase64: imageBase64ToSave,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
-      })
-      .select()
-      .single();
 
+    // Derive the calendar date for this entry (client's local date preferred).
+    const entryDate = clientTimestamp
+      ? new Date(clientTimestamp).toISOString().substring(0, 10)
+      : currentTime.substring(0, 10); // fallback: IST date "YYYY-MM-DD"
+
+    // Day window in IST for duplicate detection
+    const dayStart = entryDate + 'T00:00:00';
+    const dayEnd   = entryDate + 'T23:59:59';
+
+    let data, error;
+    let wasUpdated = false;
+
+    if (entryId) {
+      // ✏️ OVERWRITE: explicit edit by ID from dashboard/modal
+      const updateFields = {
+        Weight: weight,
+        UpdatedAt: currentTime
+      };
+      if (bmiValue !== null) updateFields.Bmi = bmiValue;
+      if (bodyFatValue !== null) updateFields.BodyFat = bodyFatValue;
+      if (muscleMassValue !== null) updateFields.MuscleMass = muscleMassValue;
+      if (bmrValue !== null) updateFields.Bmr = bmrValue;
+      if (imageBase64ToSave !== null) updateFields.WeightImageBase64 = imageBase64ToSave;
+
+      ({ data, error } = await supabase
+        .from('weight_records_table')
+        .update(updateFields)
+        .eq('ID', entryId)
+        .eq('UserId', parseInt(userId))
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .select()
+        .single());
+
+      if (!data && !error) {
+        return res.status(403).json({ success: false, message: 'Entry not found or unauthorized' });
+      }
+      wasUpdated = true;
+    } else {
+      // 🔄 CHECK-THEN-INSERT/UPDATE: find existing entry for today, update if
+      // found, insert if not — works without the EntryDate column.
+      console.log(`🔄 [save-weight-entry] Check-upsert for user ${userId} on ${entryDate}`);
+
+      const { data: existing } = await supabase
+        .from('weight_records_table')
+        .select('ID')
+        .eq('UserId', parseInt(userId))
+        .gte('CreatedAt', dayStart)
+        .lte('CreatedAt', dayEnd)
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .order('CreatedAt', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.ID) {
+        // Update the existing today-entry
+        const updateFields = {
+          Weight: weight,
+          UpdatedAt: currentTime
+        };
+        if (bmiValue !== null) updateFields.Bmi = bmiValue;
+        if (bodyFatValue !== null) updateFields.BodyFat = bodyFatValue;
+        if (muscleMassValue !== null) updateFields.MuscleMass = muscleMassValue;
+        if (bmrValue !== null) updateFields.Bmr = bmrValue;
+        if (imageBase64ToSave !== null) updateFields.WeightImageBase64 = imageBase64ToSave;
+
+        ({ data, error } = await supabase
+          .from('weight_records_table')
+          .update(updateFields)
+          .eq('ID', existing.ID)
+          .select()
+          .single());
+
+        wasUpdated = true;
+        console.log(`✅ [save-weight-entry] Updated existing entry ID=${existing.ID}`);
+      } else {
+        // Insert a fresh entry
+        const insertPayload = {
+          UserId: parseInt(userId),
+          Weight: weight,
+          Bmi: bmiValue,
+          BodyFat: bodyFatValue,
+          MuscleMass: muscleMassValue,
+          Bmr: bmrValue,
+          WeightImageBase64: imageBase64ToSave,
+          CreatedAt: currentTime,
+          UpdatedAt: currentTime
+        };
+
+        ({ data, error } = await supabase
+          .from('weight_records_table')
+          .insert(insertPayload)
+          .select()
+          .single());
+
+        console.log(`✅ [save-weight-entry] Inserted new entry`);
+      }
+    }
+    
     if (error) throw error;
     
     // Get user email to clear profile cache
@@ -133,7 +217,8 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       id: data?.ID || data?.id,
-      message: 'Weight entry saved successfully',
+      updated: wasUpdated,
+      message: wasUpdated ? "Today's weight entry updated successfully" : 'Weight entry saved successfully',
       data: {
         userId,
         weightValue: weight,

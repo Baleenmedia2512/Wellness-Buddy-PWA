@@ -1,6 +1,6 @@
 // src/components/UserProfileModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Save, CheckCircle, Flame, ChevronDown, Camera } from "lucide-react";
+import { X, Save, CheckCircle, Flame, ChevronDown, Camera, Phone, User, Ruler } from "lucide-react";
 import { getUserContext } from "../services/userContextService";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 
@@ -8,10 +8,11 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
  * User Profile Modal
  * Displays user information and allows editing profile fields
  */
-const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
+const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileUpdate }) => {
   const [name, setName] = useState("");
   const [height, setHeight] = useState("");
   const [bmr, setBmr] = useState("");
+  const [phone, setPhone] = useState("");
   const [dietType, setDietType] = useState("");
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
@@ -58,6 +59,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
         setName(profile.userName || user.name || "");
         setHeight(profile.height ? String(profile.height) : "");
         setBmr(profile.latestBmr ? String(Math.round(profile.latestBmr)) : "");
+        setPhone(profile.phoneNumber || "");
         setDietType(profile.dietType || "");
         // Set existing profile image if available
         if (profile.profileImage) {
@@ -103,6 +105,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setError("");
       setProfileImage(null);
       setProfileImagePreview(null);
+      setPhone("");
       fetchUserProfile();
     }
   }, [isOpen, user?.email, fetchUserProfile]);
@@ -225,6 +228,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           height: height ? parseFloat(height) : undefined,
           bmr: bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined,
           dietType: dietType || undefined,
+          phoneNumber: phone.trim() || undefined,
           profileImage: profileImage || undefined,
         }),
       });
@@ -377,9 +381,24 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             </div>
 
             <div>
-              <h2 className="text-xl font-bold text-white">
-                {name || user?.displayName || user?.name || "User"}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-white">
+                  {name || user?.displayName || user?.name || "User"}
+                </h2>
+                {userRole === 'admin' && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Admin</span>
+                )}
+                {userRole === 'developer' && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Developer</span>
+                )}
+                {userRole === 'coach' && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Coach</span>
+                )}
+                {(!userRole || userRole === 'user') && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">User</span>
+                  
+                )}
+              </div>
               <p className="text-sm text-green-50">{user?.email}</p>
               <p className="text-xs text-green-100 mt-1">
                 Click photo to change
@@ -405,95 +424,113 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           ) : (
             <>
               {/* Editable Fields */}
-              <div className="space-y-4">
+              <div className="space-y-3">
                 {/* Name */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Name
-                  </label>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Enter your name"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
-                    style={{ fontSize: "16px" }}
-                  />
+                <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 focus-within:border-blue-300 focus-within:bg-blue-50/30 transition-all">
+                  <div className="w-10 h-10 bg-blue-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <User className="w-5 h-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                      Name
+                    </label>
+                    <input
+                      type="text"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Enter your name"
+                      className="w-full bg-transparent text-base font-medium text-gray-900 focus:outline-none placeholder:text-gray-300"
+                      style={{ fontSize: "16px" }}
+                    />
+                  </div>
                 </div>
 
                 {/* Height */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Height (cm)
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={height}
-                    onChange={(e) => setHeight(e.target.value)}
-                    placeholder="e.g., 183 (6 feet)"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
-                    style={{ fontSize: "16px" }}
-                    min="50"
-                    max="198"
-                  />
+                <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 focus-within:border-purple-300 focus-within:bg-purple-50/30 transition-all">
+                  <div className="w-10 h-10 bg-purple-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Ruler className="w-5 h-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                      Height (cm)
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      value={height}
+                      onChange={(e) => setHeight(e.target.value)}
+                      placeholder="e.g., 183 (6 feet)"
+                      className="w-full bg-transparent text-base font-medium text-gray-900 focus:outline-none placeholder:text-gray-300"
+                      style={{ fontSize: "16px" }}
+                      min="50"
+                      max="198"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone Number */}
+                <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 focus-within:border-green-300 focus-within:bg-green-50/30 transition-all">
+                  <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Phone className="w-5 h-5 text-green-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                      Phone Number
+                    </label>
+                    <input
+                      type="tel"
+                      inputMode="tel"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="+91 9876543210"
+                      className="w-full bg-transparent text-base font-medium text-gray-900 focus:outline-none placeholder:text-gray-300"
+                      style={{ fontSize: "16px" }}
+                    />
+                  </div>
                 </div>
 
                 {/* BMR */}
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    <span className="flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-orange-500" />
-                      BMR (kcal)
-                    </span>
-                  </label>
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={bmr}
-                    onChange={(e) => setBmr(e.target.value)}
-                    placeholder="e.g., 1650"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-base bg-white"
-                    style={{ fontSize: "16px" }}
-                    min="1100"
-                    max="2200"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Basal Metabolic Rate (1100 - 2200 kcal/day)
-                  </p>
+                <div className="flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 focus-within:border-orange-300 focus-within:bg-orange-50/30 transition-all">
+                  <div className="w-10 h-10 bg-orange-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Flame className="w-5 h-5 text-orange-500" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">
+                      BMR (kcal/day)
+                    </label>
+                    <input
+                      type="number"
+                      inputMode="numeric"
+                      value={bmr}
+                      onChange={(e) => setBmr(e.target.value)}
+                      placeholder="1100 – 2200"
+                      className="w-full bg-transparent text-base font-medium text-gray-900 focus:outline-none placeholder:text-gray-300"
+                      style={{ fontSize: "16px" }}
+                      min="1100"
+                      max="2200"
+                    />
+                  </div>
                 </div>
 
                 {/* Diet Preference - Custom Dropdown */}
                 <div className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Diet Preference
-                  </label>
-
                   {/* Dropdown Toggle Button */}
                   <button
                     type="button"
                     onClick={() => setIsDietDropdownOpen(!isDietDropdownOpen)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 flex items-center justify-between"
+                    className="w-full flex items-center gap-3 p-4 bg-gray-50 rounded-xl border border-gray-100 hover:border-emerald-300 hover:bg-emerald-50/30 transition-all text-left"
                   >
+                    <div className="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0 text-lg">
+                      {dietType === "Vegetarian" ? "🌱" : dietType === "Non-Vegetarian" ? "🍗" : dietType === "Vegan" ? "🥦" : dietType === "Pescatarian" ? "🐟" : "🥗"}
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 text-base truncate">
-                        {dietType ? (
-                          <>
-                            {dietType === "Vegetarian" && "🌱 Vegetarian"}
-                            {dietType === "Non-Vegetarian" &&
-                              "🍗 Non-Vegetarian"}
-                            {dietType === "Vegan" && "🥦 Vegan"}
-                            {dietType === "Pescatarian" && "🐟 Pescatarian"}
-                          </>
-                        ) : (
-                          <span className="text-gray-400">
-                            Select diet type
-                          </span>
-                        )}
+                      <div className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-0.5">Diet Preference</div>
+                      <div className="text-base font-medium text-gray-900">
+                        {dietType || <span className="text-gray-400 font-normal">Select diet type</span>}
                       </div>
                     </div>
                     <ChevronDown
-                      className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ml-2 ${
+                      className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ${
                         isDietDropdownOpen ? "rotate-180" : ""
                       }`}
                     />
@@ -503,7 +540,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                   {isDietDropdownOpen && (
                     <div
                       ref={dropdownOptionsRef}
-                      className="absolute z-50 w-full mt-2 bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden"
+                      className="absolute z-50 w-full mt-2 bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden"
                     >
                       {[
                         {
@@ -568,7 +605,7 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                     </div>
                   )}
 
-                  <p className="text-xs text-gray-500 mt-1">
+                  <p className="text-xs text-gray-500 mt-2 px-1">
                     AI will prioritize foods matching your diet preference
                   </p>
                 </div>
