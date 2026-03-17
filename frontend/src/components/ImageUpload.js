@@ -85,7 +85,7 @@ const ImageUpload = forwardRef(
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
-              title: '� Fresh Photo Required',
+              title: '🚨 PROXY ALERT',
               message: 'Please use a photo taken today during education hours.',
               type: 'error'
             });
@@ -230,7 +230,7 @@ const ImageUpload = forwardRef(
                 console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
                 setAlertModal({
                   isOpen: true,
-                  title: '🚨 Invalid Image Source',
+                  title: '🚨 Invalid Image',
                   message: 'Please use Camera to take a fresh photo.',
                   type: 'error'
                 });
@@ -275,7 +275,7 @@ const ImageUpload = forwardRef(
                 console.error('❌ Filesystem.stat failed:', fsError);
                 setAlertModal({
                   isOpen: true,
-                  title: '🚨 Invalid Image Source',
+                  title: '🚨 Invalid Image',
                   message: 'Please use Camera to take a fresh photo.',
                   type: 'error'
                 });
@@ -327,7 +327,7 @@ const ImageUpload = forwardRef(
                 console.warn('⚠️ photo.path not available - likely WhatsApp/screenshot image');
                 setAlertModal({
                   isOpen: true,
-                  title: '🚨 Invalid Image Source',
+                  title: '🚨 Invalid Image',
                   message: 'Please use Camera to take a fresh photo.',
                   type: 'error'
                 });
@@ -360,7 +360,7 @@ const ImageUpload = forwardRef(
                   console.error('❌ Filesystem.stat failed:', fsError);
                   setAlertModal({
                     isOpen: true,
-                    title: '🚨 Invalid Image Source',
+                    title: '🚨 Invalid Image',
                     message: 'Please use Camera to take a fresh photo.',
                     type: 'error'
                   });
