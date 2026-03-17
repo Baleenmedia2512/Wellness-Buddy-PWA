@@ -1639,8 +1639,8 @@ function WellnessValleyApp() {
         console.error('❌ Image validation failed:', validation);
         setAlertModal({
           isOpen: true,
-          title: '🚨 Invalid Image Source',
-          message: 'Please select an image created TODAY.',
+          title: '🚨 PROXY ALERT',
+          message: '⚠️ Please take a FRESH photo now. Using old images is not allowed.',
           type: 'error'
         });
         imageProcessingInProgress.current = false;
