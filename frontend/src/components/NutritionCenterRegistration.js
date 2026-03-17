@@ -125,34 +125,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   const getUserLocation = async () => {
     try {
-      // Check permissions first
-      const permissions = await Geolocation.checkPermissions();
-      
-      if (permissions.location === 'denied') {
-        setAlertModal({
-          isOpen: true,
-          title: 'Location Permission Denied',
-          message: 'Location permission is required to show your current position on the map. Please enable location permissions in your device settings.',
-          type: 'warning',
-        });
-        initializeMap({ lat: 0, lng: 0 });
-        return;
-      }
-      
-      if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
-        const requested = await Geolocation.requestPermissions();
-        if (requested.location === 'denied') {
-          setAlertModal({
-            isOpen: true,
-            title: 'Location Permission Required',
-            message: 'To show your location on the map and help you register nutrition centers, please enable location permissions.',
-            type: 'warning',
-          });
-          initializeMap({ lat: 0, lng: 0 });
-          return;
-        }
-      }
-
       const position = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 10000,
@@ -166,7 +138,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       initializeMap(userLocation);
     } catch (error) {
       console.warn('Failed to get location:', error);
-      // Default to generic location if geolocation fails
+      // Default to generic location if geolocation fails or permission denied
       initializeMap({ lat: 0, lng: 0 });
     }
   };
@@ -255,31 +227,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         } else {
           // Try to get current location again
           try {
-            const permissions = await Geolocation.checkPermissions();
-            
-            if (permissions.location === 'denied') {
-              setAlertModal({
-                isOpen: true,
-                title: 'Location Permission Denied',
-                message: 'Please enable location permissions in your device settings to use this feature.',
-                type: 'warning',
-              });
-              return;
-            }
-            
-            if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
-              const requested = await Geolocation.requestPermissions();
-              if (requested.location === 'denied') {
-                setAlertModal({
-                  isOpen: true,
-                  title: 'Location Permission Required',
-                  message: 'Location access is needed to show your position on the map.',
-                  type: 'warning',
-                });
-                return;
-              }
-            }
-
             const position = await Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
               timeout: 10000,
@@ -316,12 +263,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
             }
           } catch (error) {
             console.error('Failed to get location:', error);
-            setAlertModal({
-              isOpen: true,
-              title: 'Location Error',
-              message: 'Unable to get your location: ' + error.message,
-              type: 'error',
-            });
+            // Silently fail - permissions were already requested at login
           }
         }
       });
