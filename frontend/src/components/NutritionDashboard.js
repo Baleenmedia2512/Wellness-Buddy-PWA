@@ -1526,30 +1526,36 @@ const NutritionDashboard = ({
   const xAxisInterval =
     trendRangeDays <= 7 ? 0 : trendRangeDays <= 14 ? 1 : trendRangeDays <= 21 ? 2 : 4;
 
-  const visibleNutritionDotIndices = useMemo(() => {
+  const calorieChartRenderData = useMemo(() => {
     const total = calorieChartData.length;
-    if (total === 0) return new Set();
-    if (trendRangeDays <= 7) {
-      return new Set(Array.from({ length: total }, (_, i) => i));
-    }
+    if (total === 0) return [];
+    if (trendRangeDays <= 7) return calorieChartData;
 
     const targetCount = Math.min(7, total);
-    if (targetCount <= 1) return new Set([total - 1]);
+    if (targetCount <= 1) return [calorieChartData[total - 1]];
 
-    return new Set(
-      Array.from({ length: targetCount }, (_, i) =>
-        Math.round((i * (total - 1)) / (targetCount - 1)),
-      ),
+    const sampledIndices = Array.from({ length: targetCount }, (_, i) =>
+      Math.round((i * (total - 1)) / (targetCount - 1)),
     );
+
+    return Array.from(new Set(sampledIndices))
+      .sort((a, b) => a - b)
+      .map((idx) => calorieChartData[idx]);
   }, [calorieChartData, trendRangeDays]);
+
+  const visibleNutritionDotIndices = useMemo(() => {
+    const total = calorieChartRenderData.length;
+    if (total === 0) return new Set();
+    return new Set(Array.from({ length: total }, (_, i) => i));
+  }, [calorieChartRenderData]);
 
   const visibleNutritionTickLabels = useMemo(
     () =>
       Array.from(visibleNutritionDotIndices)
         .sort((a, b) => a - b)
-        .map((index) => calorieChartData[index]?.label)
+        .map((index) => calorieChartRenderData[index]?.label)
         .filter(Boolean),
-    [calorieChartData, visibleNutritionDotIndices],
+    [calorieChartRenderData, visibleNutritionDotIndices],
   );
 
   const renderCaloriePointLabel = useCallback(
@@ -1557,7 +1563,7 @@ const NutritionDashboard = ({
       if (x === undefined || y === undefined || index === undefined) return null;
       if (!visibleNutritionDotIndices.has(index)) return null;
 
-      const point = calorieChartData[index];
+      const point = calorieChartRenderData[index];
       if (!point) return null;
 
       const text = point.hasData ? `${point.calories}` : "0";
@@ -1574,7 +1580,7 @@ const NutritionDashboard = ({
         </text>
       );
     },
-    [calorieChartData, visibleNutritionDotIndices],
+    [calorieChartRenderData, visibleNutritionDotIndices],
   );
 
   /* ---------------- UI ---------------- */
@@ -2206,7 +2212,7 @@ const NutritionDashboard = ({
                           <div className="w-full h-44">
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart
-                                data={calorieChartData}
+                                data={calorieChartRenderData}
                                 margin={{ top: 30, right: 22, left: 0, bottom: 12 }}
                               >
                                 <XAxis
