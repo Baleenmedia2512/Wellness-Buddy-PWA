@@ -149,14 +149,15 @@ class LocationAttendanceService {
       // Get current location
       const location = await this.getCurrentLocation();
 
-      if (!location) {
-        // GPS denied or unavailable -> remote by default
+      if (!location || location.error) {
+        // GPS denied or unavailable -> return error info
         return {
           attendanceType: 'remote',
           latitude: null,
           longitude: null,
           nutritionCenterId: null,
           nearbyCenters: [],
+          locationError: location?.error || 'UNKNOWN',
         };
       }
 

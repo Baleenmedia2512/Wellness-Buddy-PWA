@@ -1494,6 +1494,16 @@ function WellnessValleyApp() {
           userId
         );
         console.log("✅ Attendance determined:", attendance);
+        
+        // Check if location permission was denied
+        if (attendance.locationError === 'PERMISSION_DENIED') {
+          setAlertModal({
+            isOpen: true,
+            title: 'Location Permission Required',
+            message: 'To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.',
+            type: 'warning'
+          });
+        }
       } catch (gpsError) {
         console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
         // Fallback to remote attendance if GPS fails
@@ -1501,7 +1511,8 @@ function WellnessValleyApp() {
           attendanceType: 'remote',
           nutritionCenterId: null,
           centerName: null,
-          nearbyCenters: []
+          nearbyCenters: [],
+          locationError: 'UNKNOWN'
         };
       }
 
@@ -1924,7 +1935,7 @@ function WellnessValleyApp() {
           const educationData = {
             success: true,
             platform: detectedType.details.platform || "Online Meeting",
-            topic: detectedType.details.topic || "Education Meeting",
+            topic: "Education Meeting",
             confidence: detectedType.confidence || 0,
             participantCount: detectedType.details.participantCount || null,
           };
