@@ -1549,8 +1549,8 @@ function WellnessValleyApp() {
         console.error('❌ Image validation failed:', validation);
         setAlertModal({
           isOpen: true,
-          title: '🚨 Invalid Image Source',
-          message: 'Please select an image created TODAY.',
+          title: '� Fresh Photo Required',
+          message: 'Please use a photo taken today to continue. Select or capture a new image from today.',
           type: 'error'
         });
         imageProcessingInProgress.current = false;

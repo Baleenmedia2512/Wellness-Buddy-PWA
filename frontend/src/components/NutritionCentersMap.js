@@ -8,7 +8,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [teamFilter, setTeamFilter] = useState('direct'); // 'direct' | 'full'
+  const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
@@ -438,6 +438,16 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
         {/* Team Filter */}
         <div className="max-w-4xl mx-auto px-4 pb-3 flex gap-2">
+          <TouchFeedbackButton
+            onClick={() => setTeamFilter('self')}
+            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
+              teamFilter === 'self'
+                ? 'bg-green-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+            }`}
+          >
+            My Club
+          </TouchFeedbackButton>
           <TouchFeedbackButton
             onClick={() => setTeamFilter('direct')}
             className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${

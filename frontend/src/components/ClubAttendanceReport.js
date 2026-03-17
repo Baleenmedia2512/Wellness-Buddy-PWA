@@ -6,6 +6,7 @@ import {
   ChevronDown,
   ChevronUp,
   Building2,
+  Calendar,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
@@ -52,6 +53,18 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
+  };
+
+  // Format date for display as "DD Month YYYY"
+  const getDisplayDate = () => {
+    if (dateFilter === 'today') return 'Today';
+    if (dateFilter === 'yesterday') return 'Yesterday';
+    const date = customDate || new Date();
+    const day = date.getDate();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
   };
 
   // Get user ID helper
@@ -180,7 +193,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                 </TouchFeedbackButton>
               ))}
               
-              {/* Custom Date Picker */}
+              {/* Custom Date Picker with Formatted Display */}
               <div className="relative flex-shrink-0">
                 <input
                   type="date"
@@ -194,9 +207,34 @@ const ClubAttendanceReport = ({ user, onBack }) => {
                       setDateFilter('custom');
                     }
                   }}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 border-2 cursor-pointer bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-green-500 focus:outline-none focus:border-green-500"
-                  style={{ minWidth: '140px' }}
+                  className="absolute opacity-0 w-0 h-0"
+                  style={{ pointerEvents: 'none' }}
                 />
+                <TouchFeedbackButton
+                  onClick={(e) => {
+                    // Trigger the hidden date input
+                    const dateInput = e.currentTarget.parentElement.querySelector('input[type="date"]');
+                    if (dateInput) {
+                      dateInput.style.pointerEvents = 'auto';
+                      dateInput.showPicker?.();
+                      setTimeout(() => {
+                        dateInput.style.pointerEvents = 'none';
+                      }, 100);
+                    }
+                  }}
+                  className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 border-2 cursor-pointer flex items-center gap-1.5 ${
+                    dateFilter === 'custom'
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50 hover:border-green-500'
+                  }`}
+                  style={{ minWidth: '140px' }}
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  {dateFilter === 'custom' && customDate 
+                    ? `${customDate.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][customDate.getMonth()]} ${customDate.getFullYear()}`
+                    : 'Select Date'
+                  }
+                </TouchFeedbackButton>
               </div>
             </div>
           </div>
@@ -205,6 +243,14 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       
       {/* Content */}
       <div className="max-w-4xl mx-auto p-3 sm:p-4">
+        {/* Date Display */}
+        {!loading && !error && hierarchyData && (
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="h-4 w-4 text-green-600" />
+            <span className="text-sm font-semibold text-gray-600">{getDisplayDate()}</span>
+          </div>
+        )}
+        
         {loading ? (
           <div className="flex flex-col items-center justify-center h-96">
             <LoadingSpinner />

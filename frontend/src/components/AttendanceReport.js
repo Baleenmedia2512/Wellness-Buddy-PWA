@@ -46,7 +46,13 @@ const AttendanceReport = ({ user, onBack }) => {
   const getDisplayDate = () => {
     if (dateFilter === 'today') return 'Today';
     if (dateFilter === 'yesterday') return 'Yesterday';
-    return getTargetDate();
+    // Format date as "DD Month YYYY"
+    const date = customDate || new Date();
+    const day = date.getDate();
+    const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const month = monthNames[date.getMonth()];
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
   };
 
   const getUserId = async (email) => {
@@ -141,24 +147,49 @@ const AttendanceReport = ({ user, onBack }) => {
                   {filter.label}
                 </TouchFeedbackButton>
               ))}
-              <input
-                type="date"
-                max={formatDate(new Date())}
-                value={dateFilter === 'custom' && customDate ? formatDate(customDate) : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const [year, month, day] = e.target.value.split('-').map(Number);
-                    setCustomDate(new Date(year, month - 1, day));
-                    setDateFilter('custom');
+              
+              {/* Custom Date Picker with Formatted Display */}
+              <div className="relative flex-shrink-0">
+                <input
+                  type="date"
+                  max={formatDate(new Date())}
+                  value={dateFilter === 'custom' && customDate ? formatDate(customDate) : ''}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      const [year, month, day] = e.target.value.split('-').map(Number);
+                      setCustomDate(new Date(year, month - 1, day));
+                      setDateFilter('custom');
+                    }
+                  }}
+                  className="absolute opacity-0 w-0 h-0"
+                  style={{ pointerEvents: 'none' }}
+                />
+                <TouchFeedbackButton
+                  onClick={(e) => {
+                    // Trigger the hidden date input
+                    const dateInput = e.currentTarget.parentElement.querySelector('input[type="date"]');
+                    if (dateInput) {
+                      dateInput.style.pointerEvents = 'auto';
+                      dateInput.showPicker?.();
+                      setTimeout(() => {
+                        dateInput.style.pointerEvents = 'none';
+                      }, 100);
+                    }
+                  }}
+                  className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all flex-shrink-0 border-2 cursor-pointer focus:outline-none flex items-center gap-1.5 ${
+                    dateFilter === 'custom'
+                      ? 'bg-green-600 text-white border-green-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
+                  }`}
+                  style={{ minWidth: '130px' }}
+                >
+                  <Calendar className="h-3.5 w-3.5" />
+                  {dateFilter === 'custom' && customDate 
+                    ? `${customDate.getDate()} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][customDate.getMonth()]} ${customDate.getFullYear()}`
+                    : 'Select Date'
                   }
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all flex-shrink-0 border-2 cursor-pointer focus:outline-none ${
-                  dateFilter === 'custom'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
-                }`}
-                style={{ minWidth: '130px' }}
-              />
+                </TouchFeedbackButton>
+              </div>
             </div>
           </div>
         </div>

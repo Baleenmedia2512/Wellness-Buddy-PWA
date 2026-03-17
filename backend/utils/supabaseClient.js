@@ -41,20 +41,27 @@ export function getISTTimestamp() {
 export function convertToIST(timestamp) {
   const deviceTime = new Date(timestamp);
   
-  // IST is UTC+5:30
-  const istOffset = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+  // Get the UTC time (universal)
   const utcTime = deviceTime.getTime();
-  const istTime = new Date(utcTime + istOffset - (deviceTime.getTimezoneOffset() * 60 * 1000));
   
-  // Format as PostgreSQL timestamp
+  // IST is UTC+5:30 (5.5 hours ahead of UTC)
+  const istOffsetMs = 5.5 * 60 * 60 * 1000; // 5.5 hours in milliseconds
+  
+  // Add IST offset to UTC time to get IST
+  const istTime = new Date(utcTime + istOffsetMs);
+  
+  // Format as PostgreSQL timestamp (without timezone info)
   const istTimestampStr = istTime.toISOString().replace('T', ' ').replace('Z', '').substring(0, 23);
   const istTimeOnly = istTime.toISOString().substring(11, 19); // HH:MM:SS
   
-  console.log('🌍 Timezone Conversion:', {
+  console.log('🌍 Timezone Conversion to IST:', {
+    originalInput: timestamp,
     deviceTime: deviceTime.toISOString(),
-    deviceTimezone: `UTC${deviceTime.getTimezoneOffset() / -60}`,
-    convertedIST: istTimestampStr,
-    istTimeOnly: istTimeOnly
+    utcTime: new Date(utcTime).toISOString(),
+    istTime: istTime.toISOString(),
+    istTimestamp: istTimestampStr,
+    istTimeOnly: istTimeOnly,
+    note: 'Converted to IST (UTC+5:30) for database storage'
   });
   
   return {
