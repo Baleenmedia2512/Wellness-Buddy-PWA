@@ -247,7 +247,7 @@ Return ONLY JSON matching ONE of the above formats.`;
           details: {
             isMeeting: true,
             platform: analysisData.platform || 'Online Meeting',
-            topic: analysisData.topic || 'Education Meeting',
+            topic: 'Education Meeting',
             aiAnalysis: true,
             reason: analysisData.reason
           }

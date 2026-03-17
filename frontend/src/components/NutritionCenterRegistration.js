@@ -3,6 +3,7 @@ import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Lo
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 import CustomAlertModal from './CustomAlertModal';
+import { Geolocation } from '@capacitor/geolocation';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
   const [centerName, setCenterName] = useState('');
@@ -117,26 +118,58 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   // Initialize map
   useEffect(() => {
     if (mapLoaded && mapRef.current && !googleMapRef.current) {
-      // Try to get user's current location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const userLocation = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-            };
-            initializeMap(userLocation);
-          },
-          () => {
-            // Default to a generic location if geolocation fails
-            initializeMap({ lat: 0, lng: 0 });
-          }
-        );
-      } else {
-        initializeMap({ lat: 0, lng: 0 });
-      }
+      // Try to get user's current location using Capacitor
+      getUserLocation();
     }
   }, [mapLoaded]);
+
+  const getUserLocation = async () => {
+    try {
+      // Check permissions first
+      const permissions = await Geolocation.checkPermissions();
+      
+      if (permissions.location === 'denied') {
+        setAlertModal({
+          isOpen: true,
+          title: 'Location Permission Denied',
+          message: 'Location permission is required to show your current position on the map. Please enable location permissions in your device settings.',
+          type: 'warning',
+        });
+        initializeMap({ lat: 0, lng: 0 });
+        return;
+      }
+      
+      if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
+        const requested = await Geolocation.requestPermissions();
+        if (requested.location === 'denied') {
+          setAlertModal({
+            isOpen: true,
+            title: 'Location Permission Required',
+            message: 'To show your location on the map and help you register nutrition centers, please enable location permissions.',
+            type: 'warning',
+          });
+          initializeMap({ lat: 0, lng: 0 });
+          return;
+        }
+      }
+
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+      
+      const userLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      initializeMap(userLocation);
+    } catch (error) {
+      console.warn('Failed to get location:', error);
+      // Default to generic location if geolocation fails
+      initializeMap({ lat: 0, lng: 0 });
+    }
+  };
 
   const initializeMap = (center) => {
     if (!window.google || !window.google.maps || !window.google.maps.Map) {
@@ -213,48 +246,80 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         locationButton.style.background = 'white';
       });
       
-      locationButton.addEventListener('click', () => {
+      locationButton.addEventListener('click', async () => {
         if (currentLocation) {
           map.setCenter(currentLocation);
           map.setZoom(15);
         } else {
           // Try to get current location again
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                const newLocation = {
-                  lat: position.coords.latitude,
-                  lng: position.coords.longitude,
-                };
-                setCurrentLocation(newLocation);
-                map.setCenter(newLocation);
-                map.setZoom(15);
-                
-                // Add/update current location marker
-                if (currentLocationMarkerRef.current) {
-                  currentLocationMarkerRef.current.setPosition(newLocation);
-                } else {
-                  const marker = new window.google.maps.Marker({
-                    position: newLocation,
-                    map: map,
-                    icon: {
-                      path: window.google.maps.SymbolPath.CIRCLE,
-                      scale: 8,
-                      fillColor: '#4285F4',
-                      fillOpacity: 1,
-                      strokeColor: '#ffffff',
-                      strokeWeight: 2,
-                    },
-                    title: 'Your Current Location',
-                    zIndex: 1,
-                  });
-                  currentLocationMarkerRef.current = marker;
-                }
-              },
-              (error) => {
-                alert('Unable to get your location: ' + error.message);
+          try {
+            const permissions = await Geolocation.checkPermissions();
+            
+            if (permissions.location === 'denied') {
+              setAlertModal({
+                isOpen: true,
+                title: 'Location Permission Denied',
+                message: 'Please enable location permissions in your device settings to use this feature.',
+                type: 'warning',
+              });
+              return;
+            }
+            
+            if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
+              const requested = await Geolocation.requestPermissions();
+              if (requested.location === 'denied') {
+                setAlertModal({
+                  isOpen: true,
+                  title: 'Location Permission Required',
+                  message: 'Location access is needed to show your position on the map.',
+                  type: 'warning',
+                });
+                return;
               }
-            );
+            }
+
+            const position = await Geolocation.getCurrentPosition({
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0,
+            });
+            
+            const newLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            setCurrentLocation(newLocation);
+            map.setCenter(newLocation);
+            map.setZoom(15);
+            
+            // Add/update current location marker
+            if (currentLocationMarkerRef.current) {
+              currentLocationMarkerRef.current.setPosition(newLocation);
+            } else {
+              const marker = new window.google.maps.Marker({
+                position: newLocation,
+                map: map,
+                icon: {
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: '#4285F4',
+                  fillOpacity: 1,
+                  strokeColor: '#ffffff',
+                  strokeWeight: 2,
+                },
+                title: 'Your Current Location',
+                zIndex: 1,
+              });
+              currentLocationMarkerRef.current = marker;
+            }
+          } catch (error) {
+            console.error('Failed to get location:', error);
+            setAlertModal({
+              isOpen: true,
+              title: 'Location Error',
+              message: 'Unable to get your location: ' + error.message,
+              type: 'error',
+            });
           }
         }
       });
@@ -301,8 +366,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         placeMarker(event.latLng);
       });
 
-      // Enable location controls
-      if (navigator.geolocation && center.lat !== 0) {
+      // Center map on user location if available
+      if (center.lat !== 0) {
         map.setCenter(center);
       }
     } catch (err) {
