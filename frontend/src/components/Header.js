@@ -5,7 +5,7 @@ import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
+const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -66,10 +66,13 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
     }
     if (profileData?.profileImage) {
       setSavedProfileImage(profileData.profileImage);
-      // Trigger leaderboard refresh when profile image is updated
       if (onLeaderboardRefresh) {
         onLeaderboardRefresh();
       }
+    }
+    // Re-check profile completion so the blocking gate is dismissed if now complete
+    if (onProfileSaved) {
+      onProfileSaved();
     }
   };
 
@@ -170,21 +173,35 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 />
                 
                 {/* Menu dropdown */}
-                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
+                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2 flex flex-col max-h-[85vh]">
                 {/* User info section - clickable to open profile */}
                 <TouchFeedbackButton
                   onClick={() => {
                     setShowProfileModal(true);
                     closeMenu();
                   }}
-                  className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left rounded-lg"
+                  className="w-full px-4 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left rounded-lg"
                 >
                   <div className="flex items-center space-x-3">
-                    <User className="h-5 w-5 text-gray-400" />
+                    <User className="h-6 w-5 text-gray-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">
-                        {userName}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          {userName}
+                        </p>
+                        {userRole === 'admin' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Admin</span>
+                        )}
+                        {userRole === 'developer' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Developer</span>
+                        )}
+                        {userRole === 'coach' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Coach</span>
+                        )}
+                        {(!userRole || userRole === 'user') && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">User</span>
+                        )}
+                      </div>
                       {userEmail && (
                         <p className="text-xs text-gray-500 truncate">
                           {userEmail}
@@ -195,7 +212,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 </TouchFeedbackButton>
 
                 {/* Menu items */}
-                <div className="py-2">
+                <div className="py-2 overflow-y-auto flex-1">
                   <TouchFeedbackButton
                     onClick={() => {
                       onShowBackgroundHistory();
@@ -423,6 +440,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
+        userRole={userRole}
         onProfileUpdate={handleProfileUpdate}
       />
     </header>
