@@ -5,7 +5,8 @@ import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
-const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
+const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
+// const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -227,7 +228,7 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                       <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
                   </TouchFeedbackButton>
-
+{/* 
                   {onShowStepCounter && (
                     <TouchFeedbackButton
                       onClick={() => {
@@ -260,7 +261,7 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                         <p className="text-xs text-gray-500">View your digital wellbeing</p>
                       </div>
                     </TouchFeedbackButton>
-                  )}
+                  )} */}
 
                   {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
