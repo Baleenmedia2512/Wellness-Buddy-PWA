@@ -1092,7 +1092,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                         : "text-gray-400"
                                     }`}
                                   >
-                                    {stats.mine}
+                                    {stats.mine > 0 ? "✓" : "✗"}
                                   </div>
                                   <div className="text-[10px] text-gray-600 font-medium leading-tight">
                                     SELF
@@ -1204,7 +1204,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                         : "text-gray-400"
                                     }`}
                                   >
-                                    {stats.mine}
+                                    {stats.mine > 0 ? "✓" : "✗"}
                                   </div>
                                   <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
                                     SELF
