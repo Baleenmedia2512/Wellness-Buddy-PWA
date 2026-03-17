@@ -6,7 +6,7 @@ const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 const PROGRAMS = [
   {
     id: "family-breakfast",
-    name: "Family Healthy Breakfast Program",
+    name: "Family Healthy Breakfast Programme",
     icon: "🥗",
   },
   { id: "weight-loss", name: "Weight Loss", icon: "📉" },
@@ -388,7 +388,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           allFullMembers.map((m) => m.UserName || m.Email),
         );
 
-        // Split into enrolled and not enrolled for direct team
+        // Split into enrolled and unenrolled for direct team
         const directEnrolled = [];
         const directNotEnrolled = [];
 
@@ -413,7 +413,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           }
         });
 
-        // Split into enrolled and not enrolled for full team
+        // Split into enrolled and unenrolled for full team
         const fullEnrolled = [];
         const fullNotEnrolled = [];
 
@@ -456,12 +456,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           fullEnrolled.map((m) => m.UserName),
         );
         console.log(
-          `[${programName}] 📊 Full not enrolled:`,
+          `[${programName}] 📊 Full unenrolled:`,
           fullNotEnrolled.length,
           fullNotEnrolled.map((m) => m.UserName),
         );
 
-        // Combine: enrolled first, then not enrolled
+        // Combine: enrolled first, then unenrolled
         const directTeamMembers = [...directEnrolled, ...directNotEnrolled];
         const fullTeamMembers = [...fullEnrolled, ...fullNotEnrolled];
 
@@ -793,7 +793,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                     </div>
                   ) : (
                     <div className="bg-gray-200 text-gray-500 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
-                      Not enrolled
+                      Unenrolled
                     </div>
                   )}
                 </div>
@@ -917,7 +917,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   )}
                   {!isEnrolled && (
                     <div className="text-[10px] sm:text-xs text-gray-400 font-medium px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-200 rounded whitespace-nowrap">
-                      Not enrolled
+                      Unenrolled
                     </div>
                   )}
                 </div>
@@ -955,7 +955,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             </button>
             <div className="flex-1 min-w-0">
               <h1 className="text-base sm:text-lg font-bold text-gray-800 truncate">
-                Wellness University Enrollments
+                Wellness University Reprorts
               </h1>
               <p className="text-gray-700 text-xs hidden sm:block">
                 Track program enrollments across your team
@@ -1095,7 +1095,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     {stats.mine}
                                   </div>
                                   <div className="text-[10px] text-gray-600 font-medium leading-tight">
-                                    MY SCORE
+                                    SELF
                                   </div>
                                 </div>
                               </div>
@@ -1207,7 +1207,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     {stats.mine}
                                   </div>
                                   <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
-                                    MY SCORE
+                                    SELF
                                   </div>
                                 </div>
                               </div>
@@ -1330,7 +1330,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                           <span className="hidden sm:inline">
                                             Hide
                                           </span>{" "}
-                                          Not Enrolled
+                                          Unenrolled
                                         </>
                                       ) : (
                                         <>
@@ -1356,7 +1356,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                           <span className="hidden sm:inline">
                                             Show
                                           </span>{" "}
-                                          Not Enrolled
+                                          Unenrolled
                                         </>
                                       )}
                                     </button>
@@ -1379,7 +1379,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                       📋
                                     </div>
                                     <p className="text-gray-600 font-semibold text-sm sm:text-base">
-                                      You're not enrolled in this program
+                                      You're unenrolled in this program
                                     </p>
                                   </div>
                                 )}
