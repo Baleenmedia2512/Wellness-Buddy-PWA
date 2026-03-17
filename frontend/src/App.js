@@ -12,6 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Geolocation } from "@capacitor/geolocation";
+import { Camera } from "@capacitor/camera";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -557,11 +558,18 @@ function WellnessValleyApp() {
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      console.log("📱 Requesting all permissions at once...");
+      
+      // Request camera/gallery permissions
+      await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+      
       // Request push notification permissions
       await PushNotifications.requestPermissions();
       
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
+      
+      console.log("✅ All permissions requested");
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }

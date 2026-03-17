@@ -125,34 +125,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   const getUserLocation = async () => {
     try {
-      // Check permissions first
-      const permissions = await Geolocation.checkPermissions();
-      
-      if (permissions.location === 'denied') {
-        setAlertModal({
-          isOpen: true,
-          title: 'Location Permission Denied',
-          message: 'Location permission is required to show your current position on the map. Please enable location permissions in your device settings.',
-          type: 'warning',
-        });
-        initializeMap({ lat: 0, lng: 0 });
-        return;
-      }
-      
-      if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
-        const requested = await Geolocation.requestPermissions();
-        if (requested.location === 'denied') {
-          setAlertModal({
-            isOpen: true,
-            title: 'Location Permission Required',
-            message: 'To show your location on the map and help you register nutrition centers, please enable location permissions.',
-            type: 'warning',
-          });
-          initializeMap({ lat: 0, lng: 0 });
-          return;
-        }
-      }
-
       const position = await Geolocation.getCurrentPosition({
         enableHighAccuracy: true,
         timeout: 10000,
@@ -166,7 +138,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       initializeMap(userLocation);
     } catch (error) {
       console.warn('Failed to get location:', error);
-      // Default to generic location if geolocation fails
+      // Default to generic location if geolocation fails or permission denied
       initializeMap({ lat: 0, lng: 0 });
     }
   };
@@ -184,6 +156,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         mapTypeControl: true,
         streetViewControl: true,
         fullscreenControl: true,
+        gestureHandling: 'greedy', // Better mobile touch handling
+        clickableIcons: false, // Prevent POI clicks from interfering
       });
 
       googleMapRef.current = map;
@@ -253,31 +227,6 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         } else {
           // Try to get current location again
           try {
-            const permissions = await Geolocation.checkPermissions();
-            
-            if (permissions.location === 'denied') {
-              setAlertModal({
-                isOpen: true,
-                title: 'Location Permission Denied',
-                message: 'Please enable location permissions in your device settings to use this feature.',
-                type: 'warning',
-              });
-              return;
-            }
-            
-            if (permissions.location === 'prompt' || permissions.location === 'prompt-with-rationale') {
-              const requested = await Geolocation.requestPermissions();
-              if (requested.location === 'denied') {
-                setAlertModal({
-                  isOpen: true,
-                  title: 'Location Permission Required',
-                  message: 'Location access is needed to show your position on the map.',
-                  type: 'warning',
-                });
-                return;
-              }
-            }
-
             const position = await Geolocation.getCurrentPosition({
               enableHighAccuracy: true,
               timeout: 10000,
@@ -314,12 +263,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
             }
           } catch (error) {
             console.error('Failed to get location:', error);
-            setAlertModal({
-              isOpen: true,
-              title: 'Location Error',
-              message: 'Unable to get your location: ' + error.message,
-              type: 'error',
-            });
+            // Silently fail - permissions were already requested at login
           }
         }
       });
@@ -361,9 +305,13 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         });
       }
 
-      // Add click listener to place marker
+      // Add click/tap listener to place marker
+      // Using 'click' event which Google Maps handles for both mouse clicks and touch taps
       map.addListener('click', (event) => {
-        placeMarker(event.latLng);
+        console.log('📍 Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
+        if (event.latLng) {
+          placeMarker(event.latLng);
+        }
       });
 
       // Center map on user location if available
@@ -377,7 +325,12 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   };
 
   const placeMarker = (location) => {
-    if (!window.google || !window.google.maps) return;
+    if (!window.google || !window.google.maps) {
+      console.error('❌ Google Maps not available');
+      return;
+    }
+
+    console.log('✅ Placing marker at:', location.lat(), location.lng());
 
     // Remove existing marker
     if (markerRef.current && markerRef.current.setMap) {
@@ -400,13 +353,19 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     markerRef.current = marker;
 
     // Update coordinates
-    setLatitude(location.lat().toFixed(8));
-    setLongitude(location.lng().toFixed(8));
+    const lat = location.lat().toFixed(8);
+    const lng = location.lng().toFixed(8);
+    setLatitude(lat);
+    setLongitude(lng);
+    console.log('📍 Coordinates updated:', lat, lng);
 
     // Add drag listener
     marker.addListener('dragend', (event) => {
-      setLatitude(event.latLng.lat().toFixed(8));
-      setLongitude(event.latLng.lng().toFixed(8));
+      const newLat = event.latLng.lat().toFixed(8);
+      const newLng = event.latLng.lng().toFixed(8);
+      setLatitude(newLat);
+      setLongitude(newLng);
+      console.log('📍 Marker dragged to:', newLat, newLng);
     });
   };
 
@@ -801,6 +760,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                 <div
                   ref={mapRef}
                   className="w-full h-80 rounded-lg border border-gray-300"
+                  style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                 />
               ) : (
                 <div className="w-full h-80 rounded-lg border border-gray-300 flex items-center justify-center bg-gray-50">
@@ -809,7 +769,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               )}
               <div className="mt-2 text-xs text-gray-500 space-y-1">
                 <p>Blue dot = Your current location</p>
-                <p>Red marker = Selected centre location (click map or search to place)</p>
+                <p>Red marker = Selected centre location (tap/click map or search to place)</p>
+                <p className="text-blue-600 font-medium">Tip: Tap once on the map to place a marker at that location</p>
               </div>
             </div>
 
