@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, User, LayoutDashboard, Shield, FileBarChart, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Footprints, Timer, GraduationCap, TrendingUp, Map, Building2 } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
-
-const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh }) => {
+const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
+// const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowScreenTime, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -67,10 +67,13 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
     }
     if (profileData?.profileImage) {
       setSavedProfileImage(profileData.profileImage);
-      // Trigger leaderboard refresh when profile image is updated
       if (onLeaderboardRefresh) {
         onLeaderboardRefresh();
       }
+    }
+    // Re-check profile completion so the blocking gate is dismissed if now complete
+    if (onProfileSaved) {
+      onProfileSaved();
     }
   };
 
@@ -171,21 +174,35 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 />
                 
                 {/* Menu dropdown */}
-                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2">
+                <div className="absolute right-0 w-64 sm:w-72 bg-white rounded-xl shadow-xl ring-1 ring-black/5 z-50 mt-2 flex flex-col max-h-[85vh]">
                 {/* User info section - clickable to open profile */}
                 <TouchFeedbackButton
                   onClick={() => {
                     setShowProfileModal(true);
                     closeMenu();
                   }}
-                  className="w-full px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left rounded-lg"
+                  className="w-full px-4 py-5 border-b border-gray-100 hover:bg-gray-50 transition-colors text-left rounded-lg"
                 >
                   <div className="flex items-center space-x-3">
-                    <User className="h-5 w-5 text-gray-400" />
+                    <User className="h-6 w-5 text-gray-400" />
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-gray-800 truncate">
-                        {userName}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-gray-800 truncate">
+                          {userName}
+                        </p>
+                        {userRole === 'admin' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Admin</span>
+                        )}
+                        {userRole === 'developer' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Developer</span>
+                        )}
+                        {userRole === 'coach' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">Coach</span>
+                        )}
+                        {(!userRole || userRole === 'user') && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">User</span>
+                        )}
+                      </div>
                       {userEmail && (
                         <p className="text-xs text-gray-500 truncate">
                           {userEmail}
@@ -196,7 +213,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                 </TouchFeedbackButton>
 
                 {/* Menu items */}
-                <div className="py-2">
+                <div className="py-2 overflow-y-auto flex-1">
                   <TouchFeedbackButton
                     onClick={() => {
                       onShowBackgroundHistory();
@@ -211,6 +228,40 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
                       <p className="text-xs text-gray-500">View nutrition & weight insights</p>
                     </div>
                   </TouchFeedbackButton>
+{/* 
+                  {onShowStepCounter && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowStepCounter();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-teal-50 text-left transition-colors"
+                      ariaLabel="View Step Counter"
+                    >
+                      <Footprints className="h-5 w-5 text-teal-600 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Step Counter</p>
+                        <p className="text-xs text-gray-500">Track your daily steps live</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )}
+
+                  {onShowScreenTime && (
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        onShowScreenTime();
+                        closeMenu();
+                      }}
+                      className="w-full px-4 py-3 flex items-start space-x-3 hover:bg-indigo-50 text-left transition-colors"
+                      ariaLabel="View Screen Time"
+                    >
+                      <Timer className="h-5 w-5 text-indigo-500 mt-1 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-800">Screen Time</p>
+                        <p className="text-xs text-gray-500">View your digital wellbeing</p>
+                      </div>
+                    </TouchFeedbackButton>
+                  )} */}
 
                   {/* Admin Dashboard - shown for admin/developer roles only */}
                   {onShowAdminDashboard && (
@@ -390,6 +441,7 @@ const Header = ({ user, onSignOut, onShowBackgroundHistory, onShowAdminDashboard
         isOpen={showProfileModal}
         onClose={() => setShowProfileModal(false)}
         user={user}
+        userRole={userRole}
         onProfileUpdate={handleProfileUpdate}
       />
     </header>

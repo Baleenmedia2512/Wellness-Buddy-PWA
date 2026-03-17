@@ -1,19 +1,20 @@
 // src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Scale } from 'lucide-react';
-import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
+import { istToLocalDate } from '../utils/timezoneUtils';
 
 /**
  * WeightCard Component
- * Compact horizontal card similar to MealCard in NutritionDashboard
- * Includes swipe-to-delete functionality
+ * Modern card with profile photo, name, grams diff, and swipe-to-delete
  */
 const WeightCard = React.memo(({ 
   data, 
   onDelete, 
   onView,
   previousWeight = null,
-  index = 0
+  index = 0,
+  userName = 'User',
+  profileImage = null,
 }) => {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
@@ -29,7 +30,6 @@ const WeightCard = React.memo(({
   const SWIPE_DELETE_THRESHOLD = 100;
   const SWIPE_MAX = 140;
 
-  // Define cancelRAF before useEffect that uses it
   const cancelRAF = () => {
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
@@ -37,60 +37,28 @@ const WeightCard = React.memo(({
     }
   };
 
-  // Cleanup effect - must be called before any conditional returns
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => cancelRAF(), []);
 
-  // Validate data after hooks (hooks must be called unconditionally)
   if (!data || !data.Weight || !data.CreatedAt) {
     console.warn('WeightCard received invalid data:', data);
     return null;
   }
 
-  // Calculate weight change
-  const weightChange = previousWeight 
-    ? (parseFloat(data.Weight) - parseFloat(previousWeight)).toFixed(1)
-    : null;
-
-  // 🔍 DEBUG: Log what WeightCard receives
-  // console.log('📊 WeightCard Debug:', {
-  //   entryID: data.ID,
-  //   currentWeight: data.Weight,
-  //   previousWeight: previousWeight,
-  //   weightChange: weightChange,
-  //   date: data.CreatedAt
-  // });
-
-  /**
-   * Format date with day and time
-   * Converts IST timestamp from database to user's local timezone
-   */
   const formatDate = (dateString) => {
-    // Convert IST to user's local time
     const date = istToLocalDate(dateString);
     if (!date) return '';
-    
     const today = new Date();
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
-    
-    // Check if it's today
     if (date.toDateString() === today.toDateString()) {
-      return `Today ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return `Today · ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     }
-    
-    // Check if it's yesterday
     if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return `Yesterday · ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     }
-    
-    // For other dates, show the date
-    return date.toLocaleDateString('en-US', { 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
+      ' · ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
   const onPointerDown = (e) => {
@@ -126,30 +94,21 @@ const WeightCard = React.memo(({
     setDragging(false);
     cancelRAF();
     elRef.current?.releasePointerCapture?.(e?.pointerId);
-
     if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
       if (deletedOnce) return;
       setDeletedOnce(true);
       setLeaving(true);
       setAnimating(true);
-
       requestAnimationFrame(() => {
         setDx(-window.innerWidth);
-        setTimeout(() => {
-          onDelete(data);
-        }, 180);
+        setTimeout(() => { onDelete(data); }, 180);
       });
-
       return;
     }
-
     setAnimating(true);
     requestAnimationFrame(() => {
       setDx(0);
-      setTimeout(() => {
-        setAnimating(false);
-        setArmed(false);
-      }, 220);
+      setTimeout(() => { setAnimating(false); setArmed(false); }, 220);
     });
   };
 
@@ -160,18 +119,15 @@ const WeightCard = React.memo(({
   const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
   const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
 
+  const initials = userName.charAt(0).toUpperCase();
+
   return (
-    <div 
-        className="relative w-full"
-        style={{ 
-          touchAction: 'pan-y',
-          minHeight: 60,
-          // ✅ PERFORMANCE: Removed staggered animation delay for faster render
-          animation: 'slideInUp 0.2s ease-out both'
-        }}
-      >
-      {/* Background delete reveal */}
-      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-xl">
+    <div
+      className="relative w-full"
+      style={{ touchAction: 'pan-y', minHeight: 80, animation: 'slideInUp 0.2s ease-out both' }}
+    >
+      {/* Swipe delete background */}
+      <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-2xl">
         <div
           className="flex items-center justify-center w-12 h-12 bg-red-500 rounded-full"
           style={{
@@ -180,23 +136,14 @@ const WeightCard = React.memo(({
             transition: dragging ? 'none' : 'transform 160ms ease, opacity 160ms ease',
           }}
         >
-          <svg
-            className="w-6 h-6 text-white"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            style={{
-              transform: `rotate(${armed ? 10 : 0}deg)`,
-              transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)',
-              strokeWidth: armed ? 2.2 : 2,
-            }}
-          >
+          <svg className="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            style={{ transform: `rotate(${armed ? 10 : 0}deg)`, transition: 'transform 160ms cubic-bezier(.2,.8,.2,1.2)', strokeWidth: armed ? 2.2 : 2 }}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3M4 7h16" />
           </svg>
         </div>
       </div>
 
-      {/* Foreground card */}
+      {/* Card */}
       <div
         ref={elRef}
         role="button"
@@ -212,32 +159,23 @@ const WeightCard = React.memo(({
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
         onPointerLeave={onPointerLeave}
-        onClick={() => {
-          if (!dragging && Math.abs(dx) < 5 && !leaving) onView(data);
-        }}
-        className={`relative z-10 bg-white border border-gray-100 rounded-2xl select-none cursor-pointer overflow-hidden
-          ${leaving ? 'pointer-events-none' : ''}`}
+        onClick={() => { if (!dragging && Math.abs(dx) < 5 && !leaving) onView(data); }}
+        className={`relative z-10 bg-white rounded-2xl select-none cursor-pointer overflow-hidden ${leaving ? 'pointer-events-none' : ''}`}
         style={{
           transform: `translateX(${dx}px) scale(${scale})`,
-          transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1), box-shadow 180ms ease' : 'none',
-          minHeight: 72,
+          transition: animating ? 'transform 180ms cubic-bezier(.2,.8,.2,1.1)' : 'none',
           willChange: 'transform',
-          boxShadow: `0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04)`,
+          boxShadow: '0 1px 4px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05)',
+          border: '1px solid rgba(0,0,0,0.06)',
         }}
       >
-        {/* Bottom progress bar */}
-        <div
-          className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-xl"
-          style={{
-            width: `${progress * 100}%`,
-            transition: dragging ? 'none' : 'width 180ms ease',
-            opacity: progress > 0 ? 1 : 0,
-          }}
-        />
+        {/* Swipe progress bar */}
+        <div className="absolute bottom-0 left-0 h-0.5 bg-red-500 rounded-b-2xl"
+          style={{ width: `${progress * 100}%`, transition: dragging ? 'none' : 'width 180ms ease', opacity: progress > 0 ? 1 : 0 }} />
 
-        <div className="p-3 sm:p-4 flex items-center gap-3 sm:gap-4">
-          {/* Thumbnail */}
-          <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-gray-100 to-gray-200 rounded-xl flex items-center justify-center overflow-hidden shrink-0 shadow-sm">
+        <div className="p-3 flex items-center gap-3">
+          {/* Scale image or icon */}
+          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center shadow-sm">
             {data.WeightImageBase64 && data.WeightImageBase64.trim() !== '' ? (
               <img
                 src={data.WeightImageBase64.startsWith('data:image') ? data.WeightImageBase64 : `data:image/jpeg;base64,${data.WeightImageBase64}`}
@@ -247,45 +185,33 @@ const WeightCard = React.memo(({
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
               />
             ) : (
-              <Scale className="w-6 h-6 sm:w-7 sm:h-7 text-gray-400" />
+              <Scale className="w-7 h-7 text-emerald-500" />
             )}
           </div>
 
-          {/* Content */}
+          {/* Middle: weight + date + diff badge */}
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <h3 className="text-base sm:text-lg font-semibold text-gray-900">
-                {parseFloat(data.Weight).toFixed(2)}
-                <span className="text-sm sm:text-base font-normal text-gray-500 ml-1">kg</span>
-              </h3>
-              {weightChange !== null && (
-                <span className={`inline-flex items-center text-xs font-medium ${
-                  parseFloat(weightChange) > 0 
-                    ? 'text-red-500' 
-                    : parseFloat(weightChange) < 0 
-                      ? 'text-green-500' 
-                      : 'text-gray-500'
-                }`}>
-                  {parseFloat(weightChange) > 0 ? '↑' : parseFloat(weightChange) < 0 ? '↓' : ''} {Math.abs(parseFloat(weightChange)).toFixed(1)} kg
-                </span>
-              )}
+            {/* Weight value */}
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-lg font-bold text-gray-900 leading-none">
+                {parseFloat(data.Weight).toFixed(1)}
+              </span>
+              <span className="text-xs text-gray-400 font-medium">kg</span>
             </div>
-            <p className="text-xs sm:text-sm text-gray-500 mt-1">{formatDate(data.CreatedAt)}</p>
+            {/* Date */}
+            <p className="text-[11px] text-gray-400 mt-0.5 truncate">{formatDate(data.CreatedAt)}</p>
+            
           </div>
 
-          {/* Right side: Large Weight display */}
-          <div className="flex items-center gap-2 shrink-0 pl-2">
-            {/* Large Weight Display */}
-            <div className="text-right">
-              <p className="text-xl sm:text-2xl font-bold text-emerald-600">
-                {parseFloat(data.Weight).toFixed(2)}
-              </p>
-              <p className="text-xs text-gray-400">kg</p>
-            </div>
+          {/* Right: big weight badge */}
+          <div className="shrink-0 flex flex-col items-center justify-center bg-emerald-50 rounded-xl px-3 py-2 min-w-[52px]">
+            <span className="text-lg font-extrabold text-emerald-600 leading-none">
+              {parseFloat(data.Weight).toFixed(1)}
+            </span>
+            <span className="text-[10px] text-emerald-400 font-medium mt-0.5">kg</span>
           </div>
         </div>
       </div>
-      {/* ✅ PERFORMANCE: CSS keyframes moved to WeightDashboard parent to avoid per-card injection */}
     </div>
   );
 });
