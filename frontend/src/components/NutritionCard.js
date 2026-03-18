@@ -15,7 +15,7 @@ const NutritionCard = ({
   savedMealId,
   onClose,
 }) => {
-  // Local state for editable food items (must be before early return)
+  // Local state for editable food items (must be before early return))
   const [localDetailedItems, setLocalDetailedItems] = useState(
     data?.detailedItems || [],
   );

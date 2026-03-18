@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { LogOut, LayoutDashboard, Shield, FileBarChart, Footprints, GraduationCap, TrendingUp, Map, Building2, X } from 'lucide-react';
+import { LogOut, User, LayoutDashboard, Shield, FileBarChart, Footprints, GraduationCap, TrendingUp, Map, Building2, Smartphone, X } from 'lucide-react';
 import APP_VERSION from '../config/version';
 import UserProfileModal from './UserProfileModal';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 // const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
-const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowStepCounter, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
+const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowStepCounter, onShowScreenTime, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
@@ -258,6 +258,20 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                             <Footprints className="h-5 w-5 text-teal-700" />
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Step Counter</span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Screen Time */}
+                      {onShowScreenTime && (
+                        <TouchFeedbackButton
+                          onClick={() => { onShowScreenTime(); closeMenu(); }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Screen Time"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
+                            <Smartphone className="h-5 w-5 text-blue-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
                         </TouchFeedbackButton>
                       )}
 

@@ -96,7 +96,7 @@ const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
 const StepCounter = lazy(() => import("./components/StepCounter"));
-const ScreenTime = lazy(() => import("./components/ScreenTime"));
+const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -116,9 +116,7 @@ function WellnessValleyApp() {
     localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
-  const [showStepCounter, setShowStepCounter] = useState(
-    localStorage.getItem("currentPage") === "step-counter",
-  );
+  const [showStepCounter, setShowStepCounter] = useState(false);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
@@ -203,16 +201,12 @@ function WellnessValleyApp() {
   // Step Counter state
   const showStepCounterPage = useCallback(() => {
     setShowStepCounter(true);
-    localStorage.setItem("currentPage", "step-counter");
   }, []);
 
   // Screen Time state
-  const [showScreenTime, setShowScreenTime] = useState(
-    localStorage.getItem("currentPage") === "screen-time",
-  );
+  const [showScreenTime, setShowScreenTime] = useState(false);
   const showScreenTimePage = useCallback(() => {
     setShowScreenTime(true);
-    localStorage.setItem("currentPage", "screen-time");
   }, []);
 
   // Attendance report state (for coaches)
@@ -562,6 +556,8 @@ function WellnessValleyApp() {
   const showMainPage = () => {
     setShowDashboard(false);
     setShowDisciplineReport(false);
+    setShowStepCounter(false);
+    setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
 
     // Clear weight result, education result, and images when going back to main page
@@ -658,6 +654,14 @@ function WellnessValleyApp() {
         App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
+          } else {
+            // App going to background — reset sub-pages so reopening shows dashboard
+            const page = localStorage.getItem("currentPage");
+            if (page === "step-counter" || page === "screen-time") {
+              localStorage.setItem("currentPage", "main");
+              setShowStepCounter(false);
+              setShowScreenTime(false);
+            }
           }
         });
 
@@ -3153,7 +3157,6 @@ function WellnessValleyApp() {
           userId={user?.id}
           onBack={() => {
             setShowStepCounter(false);
-            localStorage.setItem("currentPage", "main");
           }}
         />
       </Suspense>
@@ -3164,11 +3167,10 @@ function WellnessValleyApp() {
   if (showScreenTime) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
-        <ScreenTime
+        <ScreenTimePage
           userId={user?.id}
           onBack={() => {
             setShowScreenTime(false);
-            localStorage.setItem("currentPage", "main");
           }}
         />
       </Suspense>

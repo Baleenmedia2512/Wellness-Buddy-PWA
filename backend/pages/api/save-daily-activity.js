@@ -26,7 +26,7 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
 
   const { data: existing, error: lookupError } = await supabase
     .from('daily_step_activity')
-    .select('Id')
+    .select('Id, Steps')
     .eq('UserId', userId)
     .gte('CreatedAt', dayStart)
     .lte('CreatedAt', dayEnd)
@@ -37,16 +37,26 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
 
   if (lookupError) throw lookupError;
 
+  // Never overwrite a higher step count with a lower one (protects against app reinstall/reset)
+  const effectiveSteps = existing ? Math.max(steps, existing.Steps || 0) : steps;
+  const effectiveCalories = existing && effectiveSteps !== steps
+    ? Number((effectiveSteps * 0.04).toFixed(2))
+    : caloriesBurned;
+
   const payload = {
     UserId: userId,
-    Steps: steps,
+    Steps: effectiveSteps,
     ActivityType: activityType,
-    CaloriesBurned: caloriesBurned,
+    CaloriesBurned: effectiveCalories,
     UpdatedAt: now
   };
 
   if (existing) {
-    console.log(`[save-daily-activity] ♻️ Updating existing row Id=${existing.Id} with steps=${payload.Steps}`);
+    if (effectiveSteps === existing.Steps) {
+      console.log(`[save-daily-activity] ⏭️ Skipping update — incoming steps (${steps}) not higher than existing (${existing.Steps})`);
+      return existing;
+    }
+    console.log(`[save-daily-activity] ♻️ Updating existing row Id=${existing.Id} with steps=${payload.Steps} (was ${existing.Steps})`);
     const { data, error } = await supabase
       .from('daily_step_activity')
       .update(payload)

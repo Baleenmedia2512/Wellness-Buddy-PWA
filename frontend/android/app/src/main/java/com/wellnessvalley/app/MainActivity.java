@@ -14,9 +14,9 @@ import android.webkit.WebViewClient;
 import android.graphics.Bitmap;
 
 import com.getcapacitor.BridgeActivity;
-import com.wellnessvalley.app.plugins.DeviceUsageStatsPlugin;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
+import com.wellnessvalley.app.plugins.ScreenTimePlugin;
 import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
@@ -40,9 +40,9 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
-
-        // ✅ Register DeviceUsageStatsPlugin for device-wide screen time comparison
-        registerPlugin(DeviceUsageStatsPlugin.class);
+        
+        // ✅ Register ScreenTimePlugin for device screen time tracking
+        registerPlugin(ScreenTimePlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
