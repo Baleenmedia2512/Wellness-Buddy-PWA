@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from "react";
 import {
   ArrowLeft,
   RefreshCw,
@@ -17,9 +17,9 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import TouchFeedbackButton from '../TouchFeedbackButton';
+} from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import TouchFeedbackButton from "../TouchFeedbackButton";
 
 // --- DateRangePicker Component ---
 const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
@@ -144,13 +144,13 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
         </button>
         <div className="text-center">
           <h3 className="font-semibold text-gray-800">
-            {currentMonth.toLocaleDateString('en-US', {
-              month: 'long',
-              year: 'numeric',
+            {currentMonth.toLocaleDateString("en-US", {
+              month: "long",
+              year: "numeric",
             })}
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            {selectingStart ? 'Select start date' : 'Select end date'}
+            {selectingStart ? "Select start date" : "Select end date"}
           </p>
         </div>
         <button
@@ -163,7 +163,7 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
 
       {/* Weekday Headers */}
       <div className="grid grid-cols-7 gap-1 mb-2">
-        {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
+        {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
           <div
             key={day}
             className="text-center text-xs font-medium text-gray-500 py-2"
@@ -191,12 +191,12 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
               disabled={isFuture}
               className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all ${
                 isFuture
-                  ? 'text-gray-300 cursor-not-allowed'
+                  ? "text-gray-300 cursor-not-allowed"
                   : isStart || isEnd
-                  ? 'bg-green-600 text-white font-bold shadow-md'
+                  ? "bg-green-600 text-white font-bold shadow-md"
                   : inRange
-                  ? 'bg-green-100 text-green-700'
-                  : 'hover:bg-gray-100 text-gray-700'
+                  ? "bg-green-100 text-green-700"
+                  : "hover:bg-gray-100 text-gray-700"
               }`}
             >
               {day}
@@ -221,12 +221,15 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
 // --- Loading Skeleton ---
 export const LoadingSkeleton = () => {
   return (
-    <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
+    <div
+      className="fixed inset-0 z-50 overflow-auto pb-20"
+      style={{ backgroundColor: "#e8f5e9" }}
+    >
       <div
         className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
         style={{
-          backgroundColor: '#a8dbb5',
-          borderBottom: '1px solid #93c9a1',
+          backgroundColor: "#a8dbb5",
+          borderBottom: "1px solid #93c9a1",
         }}
       >
         <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
@@ -292,7 +295,7 @@ export const LoadingSkeleton = () => {
 /**
  * Common Hierarchical Report Layout
  * Reusable component for all hierarchy-based reports
- * 
+ *
  * @param {Object} props
  * @param {string} props.title - Report title (e.g., "Discipline Report", "Attendance Report")
  * @param {string} props.subtitle - Subtitle showing counts (e.g., "4 Members • 11:19")
@@ -340,6 +343,7 @@ const HierarchicalReportLayout = ({
   filterOptions,
   onFilterChange,
   summaryStats,
+  onStatClick,
   children,
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -353,21 +357,21 @@ const HierarchicalReportLayout = ({
         setIsFilterOpen(false);
       }
     }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const getDateRangeLabel = () => {
-    if (dateRange === 'custom' && customStartDate && customEndDate) {
-      return `${customStartDate.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      })} - ${customEndDate.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
+    if (dateRange === "custom" && customStartDate && customEndDate) {
+      return `${customStartDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })} - ${customEndDate.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
       })}`;
     }
-    return 'Custom';
+    return "Custom";
   };
 
   const handleDateRangeSelect = (start, end) => {
@@ -382,13 +386,16 @@ const HierarchicalReportLayout = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
+    <div
+      className="fixed inset-0 z-50 overflow-auto pb-20"
+      style={{ backgroundColor: "#e8f5e9" }}
+    >
       {/* Header */}
       <div
         className="sticky top-0 z-40 backdrop-blur-sm shadow-md"
         style={{
-          backgroundColor: '#a8dbb5',
-          borderBottom: '1px solid #93c9a1',
+          backgroundColor: "#a8dbb5",
+          borderBottom: "1px solid #93c9a1",
         }}
       >
         <div className="max-w-sm sm:max-w-xl md:max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-3 sm:px-4 md:px-6 py-2 sm:py-3">
@@ -403,17 +410,29 @@ const HierarchicalReportLayout = ({
                 <ArrowLeft className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
               </TouchFeedbackButton>
               <div>
-                <h1 className="text-base sm:text-lg md:text-xl font-bold text-green-900">
+                <h1 className="text-base sm:text-lg md:text-xl font-bold text-gray-900">
                   {title}
                 </h1>
                 {subtitle && (
-                  <p className="text-[10px] sm:text-xs text-green-800">
+                  <p className="text-[10px] sm:text-xs text-gray-900">
                     {subtitle}
                   </p>
                 )}
               </div>
             </div>
             <div className="flex gap-1 sm:gap-2">
+              <TouchFeedbackButton
+                onClick={onRefresh}
+                disabled={refreshing}
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
+                ariaLabel="Refresh"
+              >
+                <RefreshCw
+                  className={`h-5 w-5 sm:h-6 sm:w-6 text-green-900 ${
+                    refreshing ? "animate-spin" : ""
+                  }`}
+                />
+              </TouchFeedbackButton>
               {onSettings && (
                 <TouchFeedbackButton
                   onClick={onSettings}
@@ -432,18 +451,6 @@ const HierarchicalReportLayout = ({
                   <Download className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
                 </TouchFeedbackButton>
               )}
-              <TouchFeedbackButton
-                onClick={onRefresh}
-                disabled={refreshing}
-                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
-                ariaLabel="Refresh"
-              >
-                <RefreshCw
-                  className={`h-5 w-5 sm:h-6 sm:w-6 text-green-900 ${
-                    refreshing ? 'animate-spin' : ''
-                  }`}
-                />
-              </TouchFeedbackButton>
             </div>
           </div>
 
@@ -452,15 +459,15 @@ const HierarchicalReportLayout = ({
             <div
               className="flex gap-1.5 sm:gap-2 overflow-x-scroll pb-2 scrollbar-hide"
               style={{
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'thin',
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "thin",
               }}
             >
               {[
-                { value: 'today', label: 'Today' },
-                { value: 'yesterday', label: 'Yesterday' },
-                { value: 'week', label: 'Week' },
-                { value: 'month', label: 'Month' },
+                { value: "today", label: "Today" },
+                { value: "yesterday", label: "Yesterday" },
+                { value: "week", label: "Week" },
+                { value: "month", label: "Month" },
               ].map((range) => (
                 <TouchFeedbackButton
                   key={range.value}
@@ -468,8 +475,8 @@ const HierarchicalReportLayout = ({
                   onClick={() => onDateRangeChange(range.value)}
                   className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
                     dateRange === range.value
-                      ? 'bg-green-700 text-white border-green-700 shadow-md'
-                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                      ? "bg-green-700 text-white border-green-700 shadow-md"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                   }`}
                 >
                   {range.label}
@@ -477,18 +484,20 @@ const HierarchicalReportLayout = ({
               ))}
 
               {/* Custom Date Range Button */}
-              <TouchFeedbackButton
-                id="date-range-custom"
-                onClick={() => setShowDatePicker(!showDatePicker)}
-                className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
-                  dateRange === 'custom'
-                    ? 'bg-green-700 text-white border-green-700 shadow-md'
-                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                }`}
-              >
-                <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                {getDateRangeLabel()}
-              </TouchFeedbackButton>
+              <div className="relative">
+                <TouchFeedbackButton
+                  id="date-range-custom"
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                    dateRange === "custom"
+                      ? "bg-green-700 text-white border-green-700 shadow-md"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  {getDateRangeLabel()}
+                </TouchFeedbackButton>
+              </div>
             </div>
 
             {/* Date Picker Dropdown - Outside scrollable container */}
@@ -526,24 +535,36 @@ const HierarchicalReportLayout = ({
           <>
             {/* Summary Stats */}
             {summaryStats && (
-              <div className="bg-white rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-sm border border-gray-100">
-                <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-3 sm:mb-4">
-                  {summaryStats.title || 'Team Hierarchy'}
+              <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100">
+                <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
+                  {summaryStats.title || "Team Hierarchy"}
                 </h2>
                 {summaryStats.description && (
-                  <div className="text-xs sm:text-sm text-gray-600 mb-3">
+                  <div className="text-xs sm:text-sm text-gray-600 mb-3 text-center">
                     <p>{summaryStats.description}</p>
                   </div>
                 )}
-                <div className="flex items-center gap-4 sm:gap-6 flex-wrap">
+                <div className="grid grid-cols-3 gap-3 sm:gap-4">
                   {summaryStats.items?.map((item, index) => (
-                    <div key={index} className="flex items-center gap-2">
-                      {item.icon}
-                      <div>
-                        <div className="text-lg sm:text-xl font-bold text-gray-900">
+                    <div
+                      key={index}
+                      onClick={() => item.onClick && item.onClick()}
+                      className={`rounded-lg sm:rounded-xl p-3 sm:p-4 border shadow-sm transition-all ${
+                        item.isActive
+                          ? "bg-gradient-to-br from-green-100 to-blue-100 border-green-500 shadow-md scale-105"
+                          : "bg-gradient-to-br from-green-50 to-blue-50 border-gray-200"
+                      } ${
+                        item.onClick
+                          ? "cursor-pointer hover:shadow-md hover:scale-105 active:scale-95"
+                          : ""
+                      }`}
+                    >
+                      <div className="flex flex-col items-center justify-center text-center h-full">
+                        {item.icon}
+                        <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-1 sm:mb-2">
                           {item.value}
                         </div>
-                        <div className="text-[10px] sm:text-xs text-gray-500">
+                        <div className="text-[10px] sm:text-xs md:text-sm text-gray-600 font-medium">
                           {item.label}
                         </div>
                       </div>
@@ -554,7 +575,8 @@ const HierarchicalReportLayout = ({
             )}
 
             {/* Search and Filter */}
-            {(onSearchChange || filterOptions) && (
+            {(onSearchChange ||
+              (filterOptions && filterOptions.length > 0)) && (
               <div className="flex gap-2 sm:gap-3">
                 {/* Search */}
                 {onSearchChange && (
@@ -571,23 +593,23 @@ const HierarchicalReportLayout = ({
                 )}
 
                 {/* Filter Dropdown */}
-                {filterOptions && (
+                {filterOptions && filterOptions.length > 0 && (
                   <div className="relative" ref={filterRef}>
                     <TouchFeedbackButton
                       onClick={() => setIsFilterOpen(!isFilterOpen)}
                       className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border transition-all flex items-center gap-2 ${
                         filter !== filterOptions[0]?.value
-                          ? 'bg-green-700 text-white border-green-700'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                          ? "bg-green-700 text-white border-green-700"
+                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                       }`}
                     >
                       <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
+                      <span className="text-xs sm:text-sm font-medium">
                         Filter
                       </span>
                       <ChevronDown
                         className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${
-                          isFilterOpen ? 'rotate-180' : ''
+                          isFilterOpen ? "rotate-180" : ""
                         }`}
                       />
                     </TouchFeedbackButton>
@@ -609,7 +631,11 @@ const HierarchicalReportLayout = ({
                               }}
                               className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
                             >
-                              <span className={`font-medium ${option.color || 'text-gray-700'}`}>
+                              <span
+                                className={`font-medium ${
+                                  option.color || "text-gray-700"
+                                }`}
+                              >
                                 {option.label}
                               </span>
                               {filter === option.value && (
@@ -627,13 +653,13 @@ const HierarchicalReportLayout = ({
                 {onSortChange && (
                   <TouchFeedbackButton
                     onClick={onSortChange}
-                    className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-all flex items-center justify-center"
+                    className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
                     ariaLabel="Toggle sort order"
                   >
-                    {sortOrder === 'desc' ? (
-                      <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-700" />
+                    {sortOrder === "desc" ? (
+                      <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5" />
                     ) : (
-                      <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-700" />
+                      <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5" />
                     )}
                   </TouchFeedbackButton>
                 )}
