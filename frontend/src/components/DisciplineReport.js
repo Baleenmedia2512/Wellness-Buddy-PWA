@@ -530,6 +530,36 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     };
   })() : null;
 
+  // Team Hierarchy summary tiles (My Score / Direct Team / Full Team)
+  const hierarchySummaryStats = hierarchyData
+    ? {
+        title: "Team Hierarchy",
+        items: [
+          {
+            label: "My Score",
+            value: `${Math.round(hierarchyData.periodDiscipline?.percentage || 0)}%`,
+            icon: null,
+            onClick: null,
+            isActive: false,
+          },
+          {
+            label: "Direct Team",
+            value: `${Math.round(hierarchyData.directTeamDiscipline?.percentage || 0)}%`,
+            icon: null,
+            onClick: () => setTeamView("direct"),
+            isActive: teamView === "direct",
+          },
+          {
+            label: "Full Team",
+            value: `${Math.round(hierarchyData.fullTeamDiscipline?.percentage || 0)}%`,
+            icon: null,
+            onClick: () => setTeamView(teamView === "full" ? "direct" : "full"),
+            isActive: teamView === "full",
+          },
+        ],
+      }
+    : null;
+
   // Filter hierarchy data based on team view
   const getFilteredHierarchy = () => {
     if (!hierarchyData) return null;
@@ -625,6 +655,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       filter={filter}
       onFilterChange={setFilter}
       filterOptions={filterOptions}
+      summaryStats={hierarchySummaryStats}
     >
       {/* Summary Stats Card */}
       {summaryStats && (
