@@ -1,12 +1,12 @@
-import React, { useState } from 'react';
-import { ChevronDown, ChevronUp, Users } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import TouchFeedbackButton from '../TouchFeedbackButton';
+import React, { useState } from "react";
+import { ChevronDown, ChevronUp, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import TouchFeedbackButton from "../TouchFeedbackButton";
 
 /**
  * Common Hierarchical Node Component
  * Reusable tree node for all hierarchy-based reports
- * 
+ *
  * @param {Object} props
  * @param {Object} props.node - Node data
  * @param {number} props.level - Tree depth level
@@ -43,15 +43,21 @@ const HierarchicalNode = ({
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
 
   // Check if this node matches filters
-  const nodeMatchesSearch = matchesSearch ? matchesSearch(node, searchQuery) : true;
+  const nodeMatchesSearch = matchesSearch
+    ? matchesSearch(node, searchQuery)
+    : true;
   const nodeMatchesFilter = matchesFilter ? matchesFilter(node, filter) : true;
 
   if (!nodeMatchesSearch || !nodeMatchesFilter) {
     // Check if any children match
     if (hasChildren) {
       const matchingChildren = node.teamMembers.filter((child) => {
-        const childMatchesSearch = matchesSearch ? matchesSearch(child, searchQuery) : true;
-        const childMatchesFilter = matchesFilter ? matchesFilter(child, filter) : true;
+        const childMatchesSearch = matchesSearch
+          ? matchesSearch(child, searchQuery)
+          : true;
+        const childMatchesFilter = matchesFilter
+          ? matchesFilter(child, filter)
+          : true;
         return childMatchesSearch && childMatchesFilter;
       });
       if (matchingChildren.length === 0) {
@@ -63,23 +69,25 @@ const HierarchicalNode = ({
   }
 
   // Get styling based on status
-  const statusStyle = getStatusStyle ? getStatusStyle(node, level, isCurrentUser) : {};
+  const statusStyle = getStatusStyle
+    ? getStatusStyle(node, level, isCurrentUser)
+    : {};
   const {
-    containerClass = 'bg-white border-gray-200',
-    avatarClass = 'bg-gray-200 border-gray-300 text-gray-500',
-    nameClass = 'text-gray-900',
-    statsBorderClass = 'border-gray-100 divide-gray-100',
+    containerClass = "bg-white border-gray-200",
+    avatarClass = "bg-gray-200 border-gray-300 text-gray-500",
+    nameClass = "text-gray-900",
+    statsBorderClass = "border-gray-100 divide-gray-100",
   } = statusStyle;
 
   return (
     <div className="relative flex" style={{ marginLeft: level > 0 ? 0 : 0 }}>
       {/* Tree lines */}
       {level > 0 && (
-        <div className="relative flex-shrink-0" style={{ width: '28px' }}>
+        <div className="relative flex-shrink-0" style={{ width: "28px" }}>
           <div className="absolute top-[22px] left-0 h-[2px] bg-gray-200 w-full" />
           <div
             className="absolute left-0 top-0 w-[2px] bg-gray-200"
-            style={{ height: isLastChild ? '22px' : 'calc(100% + 12px)' }}
+            style={{ height: isLastChild ? "22px" : "calc(100% + 12px)" }}
           />
         </div>
       )}
@@ -92,7 +100,7 @@ const HierarchicalNode = ({
           {/* Main Row */}
           <div
             className={`flex items-center gap-2 px-3 py-2.5 ${
-              renderExpandedDetails && showDetails ? '' : ''
+              renderExpandedDetails && showDetails ? "" : ""
             }`}
             onClick={() => {
               if (renderExpandedDetails) {
@@ -108,24 +116,30 @@ const HierarchicalNode = ({
                     src={node.profileImage || node.photoURL}
                     alt={node.userName || node.name}
                     className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass}`}
-                    style={{ display: 'block' }}
+                    style={{ display: "block" }}
                     onError={(e) => {
-                      e.target.style.display = 'none';
+                      e.target.style.display = "none";
                       if (e.target.nextSibling) {
-                        e.target.nextSibling.style.display = 'flex';
+                        e.target.nextSibling.style.display = "flex";
                       }
                     }}
                   />
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
-                    style={{ display: 'none' }}
+                    style={{ display: "none" }}
                   >
-                    {node.userName?.charAt(0).toUpperCase() || node.name?.charAt(0).toUpperCase() || '?'}
+                    {node.userName?.charAt(0).toUpperCase() ||
+                      node.name?.charAt(0).toUpperCase() ||
+                      "?"}
                   </div>
                 </>
               ) : (
-                <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}>
-                  {node.userName?.charAt(0).toUpperCase() || node.name?.charAt(0).toUpperCase() || '?'}
+                <div
+                  className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
+                >
+                  {node.userName?.charAt(0).toUpperCase() ||
+                    node.name?.charAt(0).toUpperCase() ||
+                    "?"}
                 </div>
               )}
             </div>
@@ -133,7 +147,7 @@ const HierarchicalNode = ({
             {/* Name + Info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
-                <span className={`text-sm font-bold truncate ${nameClass}`}>
+                <span className={`text-sm font-bold break-words ${nameClass}`}>
                   {node.userName || node.name}
                 </span>
                 {isCurrentUser && (
@@ -151,15 +165,19 @@ const HierarchicalNode = ({
               {/* Reports to - Coach and Co-Coach */}
               {(node.uplineCoachName || node.uplineCoCoachName) && (
                 <div className="text-[10px] text-gray-500 mt-0.5">
-                  Reports to:{' '}
+                  Reports to:{" "}
                   {node.uplineCoachName && (
-                    <span className="font-medium text-gray-700">{node.uplineCoachName}</span>
+                    <span className="font-medium text-gray-700">
+                      {node.uplineCoachName}
+                    </span>
                   )}
                   {node.uplineCoachName && node.uplineCoCoachName && (
                     <span className="text-gray-400"> & </span>
                   )}
                   {node.uplineCoCoachName && (
-                    <span className="font-medium text-gray-700">{node.uplineCoCoachName}</span>
+                    <span className="font-medium text-gray-700">
+                      {node.uplineCoCoachName}
+                    </span>
                   )}
                 </div>
               )}
@@ -169,7 +187,7 @@ const HierarchicalNode = ({
                   <Users className="h-3 w-3 text-blue-600" />
                   <span className="text-[10px] text-blue-600 font-medium">
                     {node.teamMembers.length} team member
-                    {node.teamMembers.length !== 1 ? 's' : ''}
+                    {node.teamMembers.length !== 1 ? "s" : ""}
                   </span>
                 </div>
               )}
@@ -177,7 +195,9 @@ const HierarchicalNode = ({
 
             {/* Status Badge */}
             {renderStatus && (
-              <div className="flex-shrink-0">{renderStatus(node, showDetails)}</div>
+              <div className="flex-shrink-0">
+                {renderStatus(node, showDetails)}
+              </div>
             )}
           </div>
 
@@ -187,7 +207,7 @@ const HierarchicalNode = ({
               {showDetails && (
                 <motion.div
                   initial={{ height: 0, opacity: 0 }}
-                  animate={{ height: 'auto', opacity: 1 }}
+                  animate={{ height: "auto", opacity: 1 }}
                   exit={{ height: 0, opacity: 0 }}
                   className="border-t overflow-hidden"
                 >
@@ -199,7 +219,9 @@ const HierarchicalNode = ({
 
           {/* Stats Strip */}
           {renderStats && (
-            <div className={`flex items-center divide-x px-3 py-2 border-t ${statsBorderClass}`}>
+            <div
+              className={`flex items-center divide-x px-3 py-2 border-t ${statsBorderClass}`}
+            >
               {renderStats(node, level, isCurrentUser)}
             </div>
           )}
@@ -212,8 +234,9 @@ const HierarchicalNode = ({
                 className="w-full py-2 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
               >
                 <span className="text-xs font-medium text-gray-600">
-                  {expanded ? 'Hide' : 'Show'} {node.teamMembers.length} team member
-                  {node.teamMembers.length !== 1 ? 's' : ''}
+                  {expanded ? "Hide" : "Show"} {node.teamMembers.length} team
+                  member
+                  {node.teamMembers.length !== 1 ? "s" : ""}
                 </span>
                 {expanded ? (
                   <ChevronUp className="h-3.5 w-3.5 text-gray-600" />
