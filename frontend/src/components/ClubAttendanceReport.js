@@ -172,6 +172,26 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     return false;
   };
 
+  // Check if hierarchy has any visible nodes after filtering
+  const hasVisibleNodes = (node) => {
+    if (!node) return false;
+
+    // Check if current node matches
+    const nodeMatchesSearch = matchesSearch(node, searchQuery);
+    const nodeMatchesFilter = matchesFilter(node, filter);
+
+    if (nodeMatchesSearch && nodeMatchesFilter) {
+      return true;
+    }
+
+    // Check children recursively
+    if (node.teamMembers && node.teamMembers.length > 0) {
+      return node.teamMembers.some((child) => hasVisibleNodes(child));
+    }
+
+    return false;
+  };
+
   // Render status badge
   const renderStatus = (node, showDetails) => {
     const clubs = node.metrics?.clubs || [];
@@ -473,7 +493,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       summaryStats={summaryStats}
       allowedDateRanges={["today", "yesterday"]}
     >
-      {filteredHierarchy && (
+      {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           node={filteredHierarchy}
           level={0}
@@ -489,6 +509,22 @@ const ClubAttendanceReport = ({ user, onBack }) => {
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
         />
+      ) : (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            No members found
+          </h3>
+          <p className="text-sm text-gray-500 max-w-sm">
+            {filter !== "all"
+              ? `No members match the "${filterOptions.find(f => f.value === filter)?.label}" filter.`
+              : searchQuery
+              ? `No members match "${searchQuery}".`
+              : "No team members to display."}
+          </p>
+        </div>
       )}
     </HierarchicalReportLayout>
   );

@@ -42,30 +42,33 @@ const HierarchicalNode = ({
 
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
 
-  // Check if this node matches filters
-  const nodeMatchesSearch = matchesSearch
-    ? matchesSearch(node, searchQuery)
-    : true;
-  const nodeMatchesFilter = matchesFilter ? matchesFilter(node, filter) : true;
+  // Recursive function to check if this node or ANY descendant matches filters
+  const hasMatchingDescendant = (currentNode) => {
+    // Check current node
+    const nodeMatchesSearch = matchesSearch
+      ? matchesSearch(currentNode, searchQuery)
+      : true;
+    const nodeMatchesFilter = matchesFilter
+      ? matchesFilter(currentNode, filter)
+      : true;
 
-  if (!nodeMatchesSearch || !nodeMatchesFilter) {
-    // Check if any children match
-    if (hasChildren) {
-      const matchingChildren = node.teamMembers.filter((child) => {
-        const childMatchesSearch = matchesSearch
-          ? matchesSearch(child, searchQuery)
-          : true;
-        const childMatchesFilter = matchesFilter
-          ? matchesFilter(child, filter)
-          : true;
-        return childMatchesSearch && childMatchesFilter;
-      });
-      if (matchingChildren.length === 0) {
-        return null;
-      }
-    } else {
-      return null;
+    if (nodeMatchesSearch && nodeMatchesFilter) {
+      return true;
     }
+
+    // Check children recursively
+    if (currentNode.teamMembers && currentNode.teamMembers.length > 0) {
+      return currentNode.teamMembers.some((child) =>
+        hasMatchingDescendant(child)
+      );
+    }
+
+    return false;
+  };
+
+  // If this node or any descendant matches, show this node
+  if (!hasMatchingDescendant(node)) {
+    return null;
   }
 
   // Get styling based on status
