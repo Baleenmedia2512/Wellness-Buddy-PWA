@@ -261,34 +261,20 @@ const AttendanceReport = ({ user, onBack }) => {
               )}
             </div>
           ) : (
-            <span className="text-lg font-bold text-red-500">0%</span>
+            <span className="text-lg font-bold text-red-500">0</span>
           )}
         </div>
 
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-base font-bold text-gray-900">
-              {totalDirect > 0
-                ? Math.round((attendedDirect / totalDirect) * 100)
-                : 0}
-              %
-            </span>
-          </div>
-          <span className="text-[9px] text-gray-500">
+          <span className="text-base font-bold text-gray-900">
             {attendedDirect}/{totalDirect}
           </span>
         </div>
 
         {/* Full Team */}
         <div className="flex-1 flex flex-col items-center pl-2">
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-base font-bold text-gray-900">
-              {totalFull > 0 ? Math.round((attendedFull / totalFull) * 100) : 0}
-              %
-            </span>
-          </div>
-          <span className="text-[9px] text-gray-500">
+          <span className="text-base font-bold text-gray-900">
             {attendedFull}/{totalFull}
           </span>
         </div>
@@ -371,15 +357,9 @@ const AttendanceReport = ({ user, onBack }) => {
 
   const summaryStats = hierarchyData
     ? {
-        note: `Self: ${mySelfAttended ? "✓" : "✗"} | Direct: ${
-          directTotal > 0
-            ? Math.round((directAttended / directTotal) * 100) + "%"
-            : "0%"
-        } | Full: ${
-          fullTotal > 0
-            ? Math.round((fullAttended / fullTotal) * 100) + "%"
-            : "0%"
-        }`,
+        note: `Self: ${
+          mySelfAttended ? "✓" : "✗"
+        } | Direct: ${directAttended}/${directTotal} | Full: ${fullAttended}/${fullTotal}`,
       }
     : null;
 

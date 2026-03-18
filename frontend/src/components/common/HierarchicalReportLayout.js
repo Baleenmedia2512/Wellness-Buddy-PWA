@@ -588,21 +588,15 @@ const HierarchicalReportLayout = ({
 
             {/* Notes Card */}
             {summaryStats?.note && (
-              <div className="flex justify-center px-1">
-                <div
-                  className="w-full max-w-sm rounded-xl p-1.5 sm:p-3"
-                  style={{
-                    background: "#ffffff",
-                    boxShadow:
-                      "0 2px 12px rgba(0,0,0,0.07), 0 1px 3px rgba(0,0,0,0.04)",
-                  }}
-                >
-                  <div className="flex items-center gap-1 mb-1 sm:mb-2">
-                    <span className="text-[10px] sm:text-xs font-bold text-gray-800">
+              <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+                {/* Header */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-bold text-gray-900">
                       Notes
                     </span>
                     <svg
-                      className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400"
+                      className="w-4 h-4 text-gray-400"
                       fill="currentColor"
                       viewBox="0 0 20 20"
                     >
@@ -613,81 +607,68 @@ const HierarchicalReportLayout = ({
                       />
                     </svg>
                   </div>
-                  <div className="flex flex-col gap-1 sm:gap-1.5">
-                    {summaryStats.note.split(" | ").map((s, i) => {
-                      const [label, val] = s.split(": ");
-                      const meta =
-                        [
-                          {
-                            desc: "Your own score",
-                            icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",
-                            bg: "linear-gradient(135deg, #4ade80, #16a34a)",
-                            rowBg: "linear-gradient(135deg, #f0fdf4, #dcfce7)",
-                            border: "#bbf7d0",
-                            color: "#16a34a",
-                          },
-                          {
-                            desc: "Your direct members avg",
-                            icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z",
-                            bg: "linear-gradient(135deg, #60a5fa, #2563eb)",
-                            rowBg: "linear-gradient(135deg, #eff6ff, #dbeafe)",
-                            border: "#bfdbfe",
-                            color: "#2563eb",
-                          },
-                          {
-                            desc: "Entire team hierarchy avg",
-                            icon: "M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064",
-                            bg: "linear-gradient(135deg, #a78bfa, #7c3aed)",
-                            rowBg: "linear-gradient(135deg, #faf5ff, #ede9fe)",
-                            border: "#ddd6fe",
-                            color: "#7c3aed",
-                          },
-                        ][i] || {};
-                      return (
+                  <button className="text-gray-400 hover:text-gray-600 p-1">
+                    <svg
+                      className="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Three columns */}
+                <div className="grid grid-cols-3 gap-2">
+                  {summaryStats.note.split(" | ").map((s, i) => {
+                    const [label, val] = s.split(": ");
+                    const meta =
+                      [
+                        {
+                          pill: "You",
+                          subtitle: "Your own data",
+                          active: true,
+                        },
+                        {
+                          pill: "Direct Team",
+                          subtitle: "Your direct members",
+                          active: false,
+                        },
+                        {
+                          pill: "Full Team",
+                          subtitle: "Entire team hierarchy",
+                          active: false,
+                        },
+                      ][i] || {};
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-col items-center gap-1.5"
+                      >
                         <div
-                          key={i}
-                          className="rounded-lg p-1 sm:p-2 flex items-center gap-1.5 sm:gap-2"
-                          style={{
-                            background: meta.rowBg,
-                            border: `1px solid ${meta.border}`,
-                          }}
+                          className={`w-full flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl font-semibold text-sm ${
+                            meta.active
+                              ? "bg-green-500 text-white shadow-sm"
+                              : "bg-white border border-gray-200 text-gray-800"
+                          }`}
                         >
-                          <div
-                            className="w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center flex-shrink-0"
-                            style={{ background: meta.bg }}
-                          >
-                            <svg
-                              className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-white"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d={meta.icon}
-                              />
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[10px] sm:text-[11px] font-bold text-gray-800">
-                              {label}
-                            </p>
-                            <p className="text-[9px] sm:text-[10px] text-gray-500">
-                              {meta.desc}
-                            </p>
-                          </div>
-                          <div
-                            className="text-xs sm:text-sm font-extrabold"
-                            style={{ color: meta.color }}
+                          <span>{meta.pill}</span>
+                          <span
+                            className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                              meta.active
+                                ? "bg-white bg-opacity-25 text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
                           >
                             {val}
-                          </div>
+                          </span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <span className="text-[10px] text-gray-400 text-center leading-tight">
+                          {meta.subtitle}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
