@@ -167,6 +167,17 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                 >
                   {categoryIcons[key]}
                 </div>
+                <span
+                  className={`text-[11px] font-bold mt-0.5 ${
+                    data.percentage >= 80
+                      ? "text-green-600"
+                      : data.percentage >= 60
+                      ? "text-yellow-600"
+                      : "text-red-500"
+                  }`}
+                >
+                  {data.percentage}%
+                </span>
               </div>
             ))}
           </div>

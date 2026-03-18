@@ -15,7 +15,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [sortOrder, setSortOrder] = useState('desc');
+  const [sortOrder, setSortOrder] = useState("desc");
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -241,9 +241,6 @@ const AttendanceReport = ({ user, onBack }) => {
       <>
         {/* Self */}
         <div className="flex-1 flex flex-col items-center pr-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            {isCurrentUser ? "You" : "Self"}
-          </span>
           {attended ? (
             <div className="flex flex-wrap gap-1 justify-center mt-0.5">
               {clubs.length > 0 && (
@@ -270,9 +267,6 @@ const AttendanceReport = ({ user, onBack }) => {
 
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            Direct
-          </span>
           <div className="flex items-baseline gap-0.5">
             <span className="text-base font-bold text-gray-900">
               {totalDirect > 0
@@ -288,9 +282,6 @@ const AttendanceReport = ({ user, onBack }) => {
 
         {/* Full Team */}
         <div className="flex-1 flex flex-col items-center pl-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            Full Team
-          </span>
           <div className="flex items-baseline gap-0.5">
             <span className="text-base font-bold text-gray-900">
               {totalFull > 0 ? Math.round((attendedFull / totalFull) * 100) : 0}
@@ -380,36 +371,15 @@ const AttendanceReport = ({ user, onBack }) => {
 
   const summaryStats = hierarchyData
     ? {
-        title: "Team Hierarchy",
-        items: [
-          {
-            label: "My Score",
-            value: mySelfAttended ? "✓" : "✗",
-            icon: null,
-            onClick: null,
-            isActive: false,
-          },
-          {
-            label: "Direct Team",
-            value:
-              directTotal > 0
-                ? `${Math.round((directAttended / directTotal) * 100)}%`
-                : "0%",
-            icon: null,
-            onClick: () => setTeamView("direct"),
-            isActive: teamView === "direct",
-          },
-          {
-            label: "Full Team",
-            value:
-              fullTotal > 0
-                ? `${Math.round((fullAttended / fullTotal) * 100)}%`
-                : "0%",
-            icon: null,
-            onClick: () => setTeamView("full"),
-            isActive: teamView === "full",
-          },
-        ],
+        note: `Self: ${mySelfAttended ? "✓" : "✗"} | Direct: ${
+          directTotal > 0
+            ? Math.round((directAttended / directTotal) * 100) + "%"
+            : "0%"
+        } | Full: ${
+          fullTotal > 0
+            ? Math.round((fullAttended / fullTotal) * 100) + "%"
+            : "0%"
+        }`,
       }
     : null;
 
@@ -472,7 +442,7 @@ const AttendanceReport = ({ user, onBack }) => {
   };
 
   const handleSortToggle = () => {
-    setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
   };
 
   if (loading) {
@@ -508,6 +478,7 @@ const AttendanceReport = ({ user, onBack }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       allowedDateRanges={["today", "yesterday"]}
+      summaryStats={summaryStats}
     >
       {/* Team View Toggle */}
       {hierarchyData && (
@@ -563,7 +534,9 @@ const AttendanceReport = ({ user, onBack }) => {
           </h3>
           <p className="text-sm text-gray-500 max-w-sm">
             {filter !== "all"
-              ? `No members match the "${filterOptions.find(f => f.value === filter)?.label}" filter.`
+              ? `No members match the "${
+                  filterOptions.find((f) => f.value === filter)?.label
+                }" filter.`
               : searchQuery
               ? `No members match "${searchQuery}".`
               : "No team members to display."}

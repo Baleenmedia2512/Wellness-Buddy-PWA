@@ -366,25 +366,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     return (
       <>
         <div className="flex-1 flex flex-col items-center pr-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            {isCurrentUser ? "You" : "Self"}
-          </span>
           <span className="text-base font-bold text-gray-900">
             {selfScore}%
           </span>
         </div>
         <div className="flex-1 flex flex-col items-center px-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            Direct
-          </span>
           <span className="text-base font-bold text-gray-900">
             {directScore}%
           </span>
         </div>
         <div className="flex-1 flex flex-col items-center pl-2">
-          <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            Full Team
-          </span>
           <span className="text-base font-bold text-gray-900">
             {fullScore}%
           </span>
@@ -597,7 +588,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   // Team Hierarchy summary tiles (My Score / Direct Team / Full Team)
   const hierarchySummaryStats = hierarchyData
     ? {
-        title: "Team Hierarchy",
         note: `Self: ${Math.round(
           hierarchyData.periodDiscipline?.percentage || 0,
         )}% | Direct: ${Math.round(
@@ -605,35 +595,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         )}% | Full: ${Math.round(
           hierarchyData.fullTeamDiscipline?.percentage || 0,
         )}%`,
-        items: [
-          {
-            label: "My Score",
-            value: `${Math.round(
-              hierarchyData.periodDiscipline?.percentage || 0,
-            )}%`,
-            icon: null,
-            onClick: null,
-            isActive: false,
-          },
-          {
-            label: "Direct Team",
-            value: `${Math.round(
-              hierarchyData.directTeamDiscipline?.percentage || 0,
-            )}%`,
-            icon: null,
-            onClick: () => setTeamView("direct"),
-            isActive: teamView === "direct",
-          },
-          {
-            label: "Full Team",
-            value: `${Math.round(
-              hierarchyData.fullTeamDiscipline?.percentage || 0,
-            )}%`,
-            icon: null,
-            onClick: () => setTeamView(teamView === "full" ? "direct" : "full"),
-            isActive: teamView === "full",
-          },
-        ],
       }
     : null;
 
@@ -732,6 +693,82 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       filter={filter}
       onFilterChange={setFilter}
       filterOptions={filterOptions}
+      summaryStats={hierarchySummaryStats}
+      topContent={
+        <>
+          {/* Summary Stats Card */}
+          {summaryStats && (
+            <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3 sm:mb-4">
+              <div className="grid grid-cols-3 divide-x divide-gray-50">
+                {/* Average & Posts */}
+                <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+                  <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    Avg Score
+                  </div>
+                  <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                    <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {summaryStats.avgScore}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-gray-400">
+                      %
+                    </span>
+                  </div>
+                  <div className="text-[8px] sm:text-[10px] md:text-xs text-green-600 font-medium bg-green-50 px-1.5 sm:px-2 py-0.5 rounded-full">
+                    {summaryStats.onTimePercentage}% Posts
+                  </div>
+                </div>
+
+                {/* Top Performer */}
+                <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+                  <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-green-600 uppercase tracking-wider">
+                    Top Star
+                  </div>
+                  {summaryStats.topPerformer ? (
+                    <>
+                      <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                        <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                          {summaryStats.topPerformer.score}
+                        </span>
+                        <span className="text-[10px] sm:text-xs text-gray-400">
+                          %
+                        </span>
+                      </div>
+                      <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                        {summaryStats.topPerformer.name.split(" ")[0]}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-gray-300">-</div>
+                  )}
+                </div>
+
+                {/* At Risk */}
+                <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+                  <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-red-400 uppercase tracking-wider">
+                    At Risk
+                  </div>
+                  <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                    <span className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">
+                      {summaryStats.atRiskCount}
+                    </span>
+                  </div>
+                  <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-400 font-medium">
+                    of {summaryStats.totalMembers} Members
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="h-1 w-full bg-gray-50">
+                <div
+                  className="h-full bg-green-500 transition-all duration-500"
+                  style={{ width: `${summaryStats.avgScore}%` }}
+                />
+              </div>
+            </div>
+          )}
+        </>
+      }
     >
       {/* Team View Toggle */}
       {hierarchyData && (
@@ -757,76 +794,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             >
               Full
             </button>
-          </div>
-        </div>
-      )}
-
-      {/* Summary Stats Card */}
-      {summaryStats && (
-        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3 sm:mb-4">
-          <div className="grid grid-cols-3 divide-x divide-gray-50">
-            {/* Average & Posts */}
-            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
-              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">
-                Avg Score
-              </div>
-              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
-                <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                  {summaryStats.avgScore}
-                </span>
-                <span className="text-[10px] sm:text-xs text-gray-400">%</span>
-              </div>
-              <div className="text-[8px] sm:text-[10px] md:text-xs text-green-600 font-medium bg-green-50 px-1.5 sm:px-2 py-0.5 rounded-full">
-                {summaryStats.onTimePercentage}% Posts
-              </div>
-            </div>
-
-            {/* Top Performer */}
-            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
-              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-green-600 uppercase tracking-wider">
-                Top Star
-              </div>
-              {summaryStats.topPerformer ? (
-                <>
-                  <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
-                    <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
-                      {summaryStats.topPerformer.score}
-                    </span>
-                    <span className="text-[10px] sm:text-xs text-gray-400">
-                      %
-                    </span>
-                  </div>
-                  <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
-                    {summaryStats.topPerformer.name.split(" ")[0]}
-                  </div>
-                </>
-              ) : (
-                <div className="text-gray-300">-</div>
-              )}
-            </div>
-
-            {/* At Risk */}
-            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
-              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-red-400 uppercase tracking-wider">
-                At Risk
-              </div>
-              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
-                <span className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">
-                  {summaryStats.atRiskCount}
-                </span>
-              </div>
-              <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-400 font-medium">
-                of {summaryStats.totalMembers} Members
-              </div>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="h-1 w-full bg-gray-50">
-            <div
-              className="h-full bg-green-500 transition-all duration-500"
-              style={{ width: `${summaryStats.avgScore}%` }}
-            />
           </div>
         </div>
       )}
