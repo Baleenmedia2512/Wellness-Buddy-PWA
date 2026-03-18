@@ -106,9 +106,7 @@ function WellnessValleyApp() {
     localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
-  const [showStepCounter, setShowStepCounter] = useState(
-    localStorage.getItem("currentPage") === "step-counter",
-  );
+  const [showStepCounter, setShowStepCounter] = useState(false);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
@@ -189,16 +187,12 @@ function WellnessValleyApp() {
   // Step Counter state
   const showStepCounterPage = useCallback(() => {
     setShowStepCounter(true);
-    localStorage.setItem("currentPage", "step-counter");
   }, []);
 
   // Screen Time state
-  const [showScreenTime, setShowScreenTime] = useState(
-    localStorage.getItem("currentPage") === "screen-time",
-  );
+  const [showScreenTime, setShowScreenTime] = useState(false);
   const showScreenTimePage = useCallback(() => {
     setShowScreenTime(true);
-    localStorage.setItem("currentPage", "screen-time");
   }, []);
 
   // Attendance report state (for coaches)
@@ -620,6 +614,14 @@ function WellnessValleyApp() {
         App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
+          } else {
+            // App going to background — reset sub-pages so reopening shows dashboard
+            const page = localStorage.getItem("currentPage");
+            if (page === "step-counter" || page === "screen-time") {
+              localStorage.setItem("currentPage", "main");
+              setShowStepCounter(false);
+              setShowScreenTime(false);
+            }
           }
         });
 
@@ -3034,7 +3036,6 @@ function WellnessValleyApp() {
           userId={user?.id}
           onBack={() => {
             setShowStepCounter(false);
-            localStorage.setItem("currentPage", "main");
           }}
         />
       </Suspense>
@@ -3049,7 +3050,6 @@ function WellnessValleyApp() {
           userId={user?.id}
           onBack={() => {
             setShowScreenTime(false);
-            localStorage.setItem("currentPage", "main");
           }}
         />
       </Suspense>

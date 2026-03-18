@@ -149,18 +149,19 @@ public class ScreenTimePlugin extends Plugin {
                 long usageMs = entry.getValue();
                 long usageSeconds = usageMs / 1000;
 
-                // Skip apps with less than 1 minute usage
-                if (usageSeconds < 60) continue;
-
                 boolean isExcluded = isExcludedPackage(packageName);
                 boolean isTracked = TRACKED_APPS.containsKey(packageName);
-                String appName = getAppName(pm, packageName);
 
-                // Only count non-excluded apps in the total
+                // Count ALL non-excluded apps in total (including brief sessions < 60s)
+                // This matches Digital Wellbeing's calculation
                 if (!isExcluded) {
                     totalScreenTimeMs += usageMs;
                 }
 
+                // Only show apps with >= 5 seconds in the per-app list (filter noise)
+                if (usageSeconds < 5) continue;
+
+                String appName = getAppName(pm, packageName);
                 JSObject appObj = new JSObject();
                 appObj.put("packageName", packageName);
                 appObj.put("appName", appName);

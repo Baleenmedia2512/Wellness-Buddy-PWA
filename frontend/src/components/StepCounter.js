@@ -3,6 +3,7 @@ import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
+import LoadingSpinner from './LoadingSpinner';
 
 // Constants
 const CALORIES_PER_STEP = 0.04; // Walking: 1 step = 0.04 kcal
@@ -168,6 +169,8 @@ const StepCounter = ({ onBack, userId }) => {
   const todayStepsRef = useRef(0);       // Req 8: always-current step count for resume saves
   const lastSavedStepsRef = useRef(null); // Req 8: prevent duplicate saves
   const dbStepsFloorRef = useRef(0);     // Floor from DB to protect against reinstall data loss
+  const dbFloorCheckedRef = useRef(false); // Whether DB floor check has completed
+  const sensorReadyRef = useRef(false);    // Whether first sensor reading arrived
   
   /**
    * Process sensor value and calculate daily steps
@@ -223,7 +226,12 @@ const StepCounter = ({ onBack, userId }) => {
       setTodaySteps(dailySteps);
       setTodayCalories(calories);
       setLastUpdated(new Date());
-      setLoading(false); // Ensure loading is false once we have data
+      sensorReadyRef.current = true;
+      // Only clear loading if DB floor check is done OR steps > 0
+      // (avoids flashing 0 on reinstall while DB fetch is pending)
+      if (dailySteps > 0 || dbFloorCheckedRef.current) {
+        setLoading(false);
+      }
       console.log('✅ UI updated with new step count:', dailySteps);
     }
   }, []);
@@ -314,16 +322,38 @@ const StepCounter = ({ onBack, userId }) => {
       fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE)
         .then((response) => {
           const trend = response.trend || response.data;
+          dbFloorCheckedRef.current = true;
           if (response.success && Array.isArray(trend)) {
             const todayKey = toDateKey();
             const todayEntry = trend.find((d) => d.date === todayKey);
             if (todayEntry && todayEntry.steps > 0) {
               dbStepsFloorRef.current = todayEntry.steps;
               console.log('🛡️ DB steps floor set:', todayEntry.steps);
+              // Immediately update UI if current steps are below the DB floor
+              // (e.g. after reinstall when baseline was lost)
+              if (todayEntry.steps > todayStepsRef.current) {
+                const floorCalories = calcCalories(todayEntry.steps);
+                todayStepsRef.current = todayEntry.steps;
+                setTodaySteps(todayEntry.steps);
+                setTodayCalories(floorCalories);
+                setLastUpdated(new Date());
+                console.log('🛡️ UI updated from DB floor:', todayEntry.steps);
+              }
+            }
+            // DB check done — clear loading if sensor already came back with 0
+            if (sensorReadyRef.current) {
+              setLoading(false);
             }
           }
         })
-        .catch((err) => console.warn('⚠️ Failed to fetch DB step floor:', err));
+        .catch((err) => {
+          console.warn('⚠️ Failed to fetch DB step floor:', err);
+          dbFloorCheckedRef.current = true;
+          // DB failed — clear loading if sensor is ready
+          if (sensorReadyRef.current) {
+            setLoading(false);
+          }
+        });
     }
   }, [resolvedUserId, loadDailyHistory]);
 
@@ -398,13 +428,10 @@ const StepCounter = ({ onBack, userId }) => {
         setLoading(false);
       }
       
-      // Ensure loading is cleared after a short delay if sensor is slow
+      // Safety timeout: clear loading after 3s regardless (prevents infinite spinner)
       setTimeout(() => {
-        if (currentValue === null || !Number.isFinite(currentValue)) {
-          console.log('⏱️ Timeout: clearing loading state');
-          setLoading(false);
-        }
-      }, 1000);
+        setLoading(false);
+      }, 3000);
       
       // Start polling for step updates every 5 seconds as a fallback
       // This ensures UI updates even if the event listener doesn't fire
@@ -636,24 +663,7 @@ const StepCounter = ({ onBack, userId }) => {
   );
 
   if (loading && !ready) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40 flex items-center justify-center p-4">
-        <div className="flex flex-col items-center gap-4">
-          <div className="relative w-24 h-24 sm:w-28 sm:h-28">
-            <svg viewBox="0 0 200 200" className="w-full h-full animate-spin">
-              <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#d1fae5" strokeWidth="10" />
-              <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#10b981" strokeWidth="10"
-                strokeDasharray={RING_CIRCUMFERENCE} strokeDashoffset={RING_CIRCUMFERENCE * 0.75}
-                strokeLinecap="round" transform="rotate(-90 100 100)" />
-            </svg>
-            <div className="absolute inset-0 flex items-center justify-center">
-              <Footprints className="w-8 h-8 text-emerald-400 animate-pulse" />
-            </div>
-          </div>
-          <p className="text-gray-500 text-sm font-medium">Initializing Step Counter...</p>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner context="steps" />;
   }
 
   return (
