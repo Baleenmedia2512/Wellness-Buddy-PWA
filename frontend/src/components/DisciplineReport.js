@@ -433,13 +433,47 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   // Calculate summary stats
-  const summaryStats = hierarchyData
-    ? {
-        total: hierarchyData.fullTeamDiscipline?.count || 0,
-        qualified: 0, // Not applicable for discipline
-        percentage: hierarchyData.fullTeamDiscipline?.percentage || 0,
+  const summaryStats = hierarchyData ? (() => {
+    // Collect all team members
+    const allTeamMembers = [];
+    const collectMembers = (node) => {
+      allTeamMembers.push(node);
+      if (node.teamMembers && node.teamMembers.length > 0) {
+        node.teamMembers.forEach(collectMembers);
       }
-    : null;
+    };
+    collectMembers(hierarchyData);
+
+    // Calculate average score
+    const totalScore = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.percentage || 0), 0);
+    const avgScore = allTeamMembers.length > 0 ? Math.round(totalScore / allTeamMembers.length) : 0;
+
+    // Find top performer
+    const topPerformer = allTeamMembers.reduce((top, member) => {
+      const score = member.periodDiscipline?.percentage || 0;
+      const topScore = top.periodDiscipline?.percentage || 0;
+      return score > topScore ? member : top;
+    }, allTeamMembers[0]);
+
+    // Count at-risk members (< 60%)
+    const atRiskCount = allTeamMembers.filter(m => (m.periodDiscipline?.percentage || 0) < 60).length;
+
+    // Calculate on-time posts percentage
+    const totalOnTime = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.onTimePosts || 0), 0);
+    const totalExpected = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.expectedPosts || 0), 0);
+    const onTimePercentage = totalExpected > 0 ? Math.round((totalOnTime / totalExpected) * 100) : 0;
+
+    return {
+      avgScore,
+      onTimePercentage,
+      topPerformer: topPerformer ? {
+        name: topPerformer.userName,
+        score: topPerformer.periodDiscipline?.percentage || 0
+      } : null,
+      atRiskCount,
+      totalMembers: allTeamMembers.length
+    };
+  })() : null;
 
   // Get team counts
   const getTeamCounts = (node) => {
@@ -511,8 +545,75 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       filter={filter}
       onFilterChange={setFilter}
       filterOptions={filterOptions}
-      summaryStats={summaryStats}
     >
+      {/* Summary Stats Card */}
+      {summaryStats && (
+        <div className="bg-white rounded-xl sm:rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-3 sm:mb-4">
+          <div className="grid grid-cols-3 divide-x divide-gray-50">
+            {/* Average & Posts */}
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-gray-400 uppercase tracking-wider">
+                Avg Score
+              </div>
+              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                  {summaryStats.avgScore}
+                </span>
+                <span className="text-[10px] sm:text-xs text-gray-400">%</span>
+              </div>
+              <div className="text-[8px] sm:text-[10px] md:text-xs text-green-600 font-medium bg-green-50 px-1.5 sm:px-2 py-0.5 rounded-full">
+                {summaryStats.onTimePercentage}% Posts
+              </div>
+            </div>
+
+            {/* Top Performer */}
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-green-600 uppercase tracking-wider">
+                Top Star
+              </div>
+              {summaryStats.topPerformer ? (
+                <>
+                  <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                    <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
+                      {summaryStats.topPerformer.score}
+                    </span>
+                    <span className="text-[10px] sm:text-xs text-gray-400">%</span>
+                  </div>
+                  <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
+                    {summaryStats.topPerformer.name.split(' ')[0]}
+                  </div>
+                </>
+              ) : (
+                <div className="text-gray-300">-</div>
+              )}
+            </div>
+
+            {/* At Risk */}
+            <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-between text-center min-h-[90px] sm:min-h-[110px]">
+              <div className="text-[8px] sm:text-[10px] md:text-xs font-bold text-red-400 uppercase tracking-wider">
+                At Risk
+              </div>
+              <div className="flex items-baseline justify-center gap-0.5 my-0.5 sm:my-1">
+                <span className="text-lg sm:text-xl md:text-2xl font-bold text-red-600">
+                  {summaryStats.atRiskCount}
+                </span>
+              </div>
+              <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-400 font-medium">
+                of {summaryStats.totalMembers} Members
+              </div>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="h-1 w-full bg-gray-50">
+            <div
+              className="h-full bg-green-500 transition-all duration-500"
+              style={{ width: `${summaryStats.avgScore}%` }}
+            />
+          </div>
+        </div>
+      )}
+      
       {hierarchyData && (
         <HierarchicalNode
           node={hierarchyData}

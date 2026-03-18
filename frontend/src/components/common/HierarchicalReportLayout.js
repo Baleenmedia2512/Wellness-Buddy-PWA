@@ -132,7 +132,7 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -20 }}
-      className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-2xl border border-gray-100 p-4 z-50"
+      className="absolute top-2 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 p-4 z-[60] max-w-sm mx-auto"
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
@@ -414,19 +414,6 @@ const HierarchicalReportLayout = ({
               </div>
             </div>
             <div className="flex gap-1 sm:gap-2">
-              {onSortChange && (
-                <TouchFeedbackButton
-                  onClick={onSortChange}
-                  className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-colors"
-                  ariaLabel="Toggle sort order"
-                >
-                  {sortOrder === 'desc' ? (
-                    <ArrowDown className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
-                  ) : (
-                    <ArrowUp className="h-5 w-5 sm:h-6 sm:w-6 text-green-900" />
-                  )}
-                </TouchFeedbackButton>
-              )}
               {onSettings && (
                 <TouchFeedbackButton
                   onClick={onSettings}
@@ -490,32 +477,33 @@ const HierarchicalReportLayout = ({
               ))}
 
               {/* Custom Date Range Button */}
-              <div className="relative">
-                <TouchFeedbackButton
-                  id="date-range-custom"
-                  onClick={() => setShowDatePicker(!showDatePicker)}
-                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
-                    dateRange === 'custom'
-                      ? 'bg-green-700 text-white border-green-700 shadow-md'
-                      : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  {getDateRangeLabel()}
-                </TouchFeedbackButton>
-
-                <AnimatePresence>
-                  {showDatePicker && (
-                    <DateRangePicker
-                      startDate={customStartDate}
-                      endDate={customEndDate}
-                      onSelect={handleDateRangeSelect}
-                      onClose={() => setShowDatePicker(false)}
-                    />
-                  )}
-                </AnimatePresence>
-              </div>
+              <TouchFeedbackButton
+                id="date-range-custom"
+                onClick={() => setShowDatePicker(!showDatePicker)}
+                className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                  dateRange === 'custom'
+                    ? 'bg-green-700 text-white border-green-700 shadow-md'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                {getDateRangeLabel()}
+              </TouchFeedbackButton>
             </div>
+
+            {/* Date Picker Dropdown - Outside scrollable container */}
+            <AnimatePresence>
+              {showDatePicker && (
+                <div className="relative">
+                  <DateRangePicker
+                    startDate={customStartDate}
+                    endDate={customEndDate}
+                    onSelect={handleDateRangeSelect}
+                    onClose={() => setShowDatePicker(false)}
+                  />
+                </div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </div>
@@ -633,6 +621,21 @@ const HierarchicalReportLayout = ({
                       )}
                     </AnimatePresence>
                   </div>
+                )}
+
+                {/* Sort Button */}
+                {onSortChange && (
+                  <TouchFeedbackButton
+                    onClick={onSortChange}
+                    className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-all flex items-center justify-center"
+                    ariaLabel="Toggle sort order"
+                  >
+                    {sortOrder === 'desc' ? (
+                      <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-700" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-700" />
+                    )}
+                  </TouchFeedbackButton>
                 )}
               </div>
             )}
