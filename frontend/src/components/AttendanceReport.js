@@ -13,6 +13,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc');
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -91,7 +92,22 @@ const AttendanceReport = ({ user, onBack }) => {
         return mapped;
       };
       
-      setHierarchyData(mapFields(result.data.hierarchy));
+      // Apply sorting to hierarchy
+      const sortHierarchy = (node) => {
+        const sorted = { ...node };
+        if (sorted.teamMembers && sorted.teamMembers.length > 0) {
+          sorted.teamMembers = [...sorted.teamMembers]
+            .map(sortHierarchy)
+            .sort((a, b) => {
+              const attendedA = a.metrics?.attended ? 1 : 0;
+              const attendedB = b.metrics?.attended ? 1 : 0;
+              return sortOrder === 'desc' ? attendedB - attendedA : attendedA - attendedB;
+            });
+        }
+        return sorted;
+      };
+      
+      setHierarchyData(sortHierarchy(mapFields(result.data.hierarchy)));
     } catch (err) {
       console.error('Error fetching attendance:', err);
       setError(err.message);
@@ -106,7 +122,7 @@ const AttendanceReport = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate]);
+  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
 
   // Filter options
   const filterOptions = [
@@ -379,6 +395,10 @@ const AttendanceReport = ({ user, onBack }) => {
     // Implement download logic here
   };
 
+  const handleSortToggle = () => {
+    setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+  };
+
   if (loading) {
     return <LoadingSkeleton />;
   }
@@ -395,6 +415,8 @@ const AttendanceReport = ({ user, onBack }) => {
       onBack={onBack}
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
+      sortOrder={sortOrder}
+      onSortChange={handleSortToggle}
       loading={refreshing}
       error={error}
       dateRange={dateRange}

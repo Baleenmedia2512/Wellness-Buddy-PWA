@@ -13,6 +13,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filter, setFilter] = useState('all');
   const [refreshing, setRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState('desc');
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -91,7 +92,22 @@ const ClubAttendanceReport = ({ user, onBack }) => {
         return mapped;
       };
       
-      setHierarchyData(mapFields(result.data.hierarchy));
+      // Apply sorting to hierarchy
+      const sortHierarchy = (node) => {
+        const sorted = { ...node };
+        if (sorted.teamMembers && sorted.teamMembers.length > 0) {
+          sorted.teamMembers = [...sorted.teamMembers]
+            .map(sortHierarchy)
+            .sort((a, b) => {
+              const clubsA = a.metrics?.totalClubs || 0;
+              const clubsB = b.metrics?.totalClubs || 0;
+              return sortOrder === 'desc' ? clubsB - clubsA : clubsA - clubsB;
+            });
+        }
+        return sorted;
+      };
+      
+      setHierarchyData(sortHierarchy(mapFields(result.data.hierarchy)));
     } catch (err) {
       console.error('Error fetching club ownership:', err);
       setError(err.message);
@@ -106,7 +122,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate]);
+  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
 
   // Filter options
   const filterOptions = [
@@ -341,6 +357,10 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     // Implement download logic here
   };
 
+  const handleSortToggle = () => {
+    setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+  };
+
   if (loading) {
     return <LoadingSkeleton />;
   }
@@ -359,6 +379,8 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       onBack={onBack}
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
+      sortOrder={sortOrder}
+      onSortChange={handleSortToggle}
       loading={refreshing}
       error={error}
       dateRange={dateRange}
