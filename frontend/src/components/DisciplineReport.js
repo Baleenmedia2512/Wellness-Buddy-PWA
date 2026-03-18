@@ -169,11 +169,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         const acts =
           activities[node.userId] || activities[String(node.userId)] || {};
 
-        enrichedNode.periodDiscipline = { 
+        enrichedNode.periodDiscipline = {
           percentage: score,
           activities: acts,
           onTimePosts: acts.onTimePosts || 0,
-          expectedPosts: acts.expectedPosts || 0
+          expectedPosts: acts.expectedPosts || 0,
         };
         // Map field names for HierarchicalNode component
         enrichedNode.userEmail = node.email || node.userEmail;
@@ -401,8 +401,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     const breakfast = activities.breakfast || 0;
     const lunch = activities.lunch || 0;
     const dinner = activities.dinner || 0;
-    const onTimePosts = node.periodDiscipline?.onTimePosts || activities.onTimePosts || 0;
-    const expectedPosts = node.periodDiscipline?.expectedPosts || activities.expectedPosts || 0;
+    const onTimePosts =
+      node.periodDiscipline?.onTimePosts || activities.onTimePosts || 0;
+    const expectedPosts =
+      node.periodDiscipline?.expectedPosts || activities.expectedPosts || 0;
 
     // Get color class based on percentage
     const getScoreColor = (percentage) => {
@@ -414,17 +416,17 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     // Get activity box styling based on completion
     const getActivityBoxStyle = (percentage) => {
       if (percentage > 0) {
-        return 'bg-green-50 border-green-300';
+        return "bg-green-50 border-green-300";
       }
-      return 'bg-white border-gray-100';
+      return "bg-white border-gray-100";
     };
 
     // Get icon color based on completion
     const getIconColor = (percentage) => {
       if (percentage > 0) {
-        return 'text-green-600';
+        return "text-green-600";
       }
-      return 'text-gray-400';
+      return "text-gray-400";
     };
 
     return (
@@ -434,35 +436,55 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             Activity Breakdown
           </h4>
           <div className="grid grid-cols-5 gap-2">
-            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(weight)}`}>
+            <div
+              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
+                weight,
+              )}`}
+            >
               <Scale className={`h-4 w-4 mb-1 ${getIconColor(weight)}`} />
               <span className={`text-sm font-bold ${getScoreColor(weight)}`}>
                 {weight}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">WEI</span>
             </div>
-            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(education)}`}>
+            <div
+              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
+                education,
+              )}`}
+            >
               <BookOpen className={`h-4 w-4 mb-1 ${getIconColor(education)}`} />
               <span className={`text-sm font-bold ${getScoreColor(education)}`}>
                 {education}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">EDU</span>
             </div>
-            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(breakfast)}`}>
+            <div
+              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
+                breakfast,
+              )}`}
+            >
               <Coffee className={`h-4 w-4 mb-1 ${getIconColor(breakfast)}`} />
               <span className={`text-sm font-bold ${getScoreColor(breakfast)}`}>
                 {breakfast}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">BRE</span>
             </div>
-            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(lunch)}`}>
+            <div
+              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
+                lunch,
+              )}`}
+            >
               <Utensils className={`h-4 w-4 mb-1 ${getIconColor(lunch)}`} />
               <span className={`text-sm font-bold ${getScoreColor(lunch)}`}>
                 {lunch}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">LUN</span>
             </div>
-            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(dinner)}`}>
+            <div
+              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
+                dinner,
+              )}`}
+            >
               <Moon className={`h-4 w-4 mb-1 ${getIconColor(dinner)}`} />
               <span className={`text-sm font-bold ${getScoreColor(dinner)}`}>
                 {dinner}%
@@ -509,70 +531,104 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   // Calculate summary stats
-  const summaryStats = hierarchyData ? (() => {
-    // Collect all team members
-    const allTeamMembers = [];
-    const collectMembers = (node) => {
-      allTeamMembers.push(node);
-      if (node.teamMembers && node.teamMembers.length > 0) {
-        node.teamMembers.forEach(collectMembers);
-      }
-    };
-    collectMembers(hierarchyData);
+  const summaryStats = hierarchyData
+    ? (() => {
+        // Collect all team members
+        const allTeamMembers = [];
+        const collectMembers = (node) => {
+          allTeamMembers.push(node);
+          if (node.teamMembers && node.teamMembers.length > 0) {
+            node.teamMembers.forEach(collectMembers);
+          }
+        };
+        collectMembers(hierarchyData);
 
-    // Calculate average score
-    const totalScore = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.percentage || 0), 0);
-    const avgScore = allTeamMembers.length > 0 ? Math.round(totalScore / allTeamMembers.length) : 0;
+        // Calculate average score
+        const totalScore = allTeamMembers.reduce(
+          (sum, m) => sum + (m.periodDiscipline?.percentage || 0),
+          0,
+        );
+        const avgScore =
+          allTeamMembers.length > 0
+            ? Math.round(totalScore / allTeamMembers.length)
+            : 0;
 
-    // Find top performer
-    const topPerformer = allTeamMembers.reduce((top, member) => {
-      const score = member.periodDiscipline?.percentage || 0;
-      const topScore = top.periodDiscipline?.percentage || 0;
-      return score > topScore ? member : top;
-    }, allTeamMembers[0]);
+        // Find top performer
+        const topPerformer = allTeamMembers.reduce((top, member) => {
+          const score = member.periodDiscipline?.percentage || 0;
+          const topScore = top.periodDiscipline?.percentage || 0;
+          return score > topScore ? member : top;
+        }, allTeamMembers[0]);
 
-    // Count at-risk members (< 60%)
-    const atRiskCount = allTeamMembers.filter(m => (m.periodDiscipline?.percentage || 0) < 60).length;
+        // Count at-risk members (< 60%)
+        const atRiskCount = allTeamMembers.filter(
+          (m) => (m.periodDiscipline?.percentage || 0) < 60,
+        ).length;
 
-    // Calculate on-time posts percentage
-    const totalOnTime = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.onTimePosts || 0), 0);
-    const totalExpected = allTeamMembers.reduce((sum, m) => sum + (m.periodDiscipline?.expectedPosts || 0), 0);
-    const onTimePercentage = totalExpected > 0 ? Math.round((totalOnTime / totalExpected) * 100) : 0;
+        // Calculate on-time posts percentage
+        const totalOnTime = allTeamMembers.reduce(
+          (sum, m) => sum + (m.periodDiscipline?.onTimePosts || 0),
+          0,
+        );
+        const totalExpected = allTeamMembers.reduce(
+          (sum, m) => sum + (m.periodDiscipline?.expectedPosts || 0),
+          0,
+        );
+        const onTimePercentage =
+          totalExpected > 0
+            ? Math.round((totalOnTime / totalExpected) * 100)
+            : 0;
 
-    return {
-      avgScore,
-      onTimePercentage,
-      topPerformer: topPerformer ? {
-        name: topPerformer.userName,
-        score: topPerformer.periodDiscipline?.percentage || 0
-      } : null,
-      atRiskCount,
-      totalMembers: allTeamMembers.length
-    };
-  })() : null;
+        return {
+          avgScore,
+          onTimePercentage,
+          topPerformer: topPerformer
+            ? {
+                name: topPerformer.userName,
+                score: topPerformer.periodDiscipline?.percentage || 0,
+              }
+            : null,
+          atRiskCount,
+          totalMembers: allTeamMembers.length,
+        };
+      })()
+    : null;
 
   // Team Hierarchy summary tiles (My Score / Direct Team / Full Team)
   const hierarchySummaryStats = hierarchyData
     ? {
         title: "Team Hierarchy",
+        note: `Self: ${Math.round(
+          hierarchyData.periodDiscipline?.percentage || 0,
+        )}% | Direct: ${Math.round(
+          hierarchyData.directTeamDiscipline?.percentage || 0,
+        )}% | Full: ${Math.round(
+          hierarchyData.fullTeamDiscipline?.percentage || 0,
+        )}%`,
         items: [
           {
             label: "My Score",
-            value: `${Math.round(hierarchyData.periodDiscipline?.percentage || 0)}%`,
+            value: `${Math.round(
+              hierarchyData.periodDiscipline?.percentage || 0,
+            )}%`,
             icon: null,
             onClick: null,
             isActive: false,
           },
           {
             label: "Direct Team",
-            value: `${Math.round(hierarchyData.directTeamDiscipline?.percentage || 0)}%`,
+            value: `${Math.round(
+              hierarchyData.directTeamDiscipline?.percentage || 0,
+            )}%`,
             icon: null,
             onClick: () => setTeamView("direct"),
             isActive: teamView === "direct",
           },
           {
             label: "Full Team",
-            value: `${Math.round(hierarchyData.fullTeamDiscipline?.percentage || 0)}%`,
+            value: `${Math.round(
+              hierarchyData.fullTeamDiscipline?.percentage || 0,
+            )}%`,
             icon: null,
             onClick: () => setTeamView(teamView === "full" ? "direct" : "full"),
             isActive: teamView === "full",
@@ -709,10 +765,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                     <span className="text-lg sm:text-xl md:text-2xl font-bold text-gray-900">
                       {summaryStats.topPerformer.score}
                     </span>
-                    <span className="text-[10px] sm:text-xs text-gray-400">%</span>
+                    <span className="text-[10px] sm:text-xs text-gray-400">
+                      %
+                    </span>
                   </div>
                   <div className="text-[8px] sm:text-[10px] md:text-xs text-gray-500 font-medium truncate max-w-[90%]">
-                    {summaryStats.topPerformer.name.split(' ')[0]}
+                    {summaryStats.topPerformer.name.split(" ")[0]}
                   </div>
                 </>
               ) : (
@@ -745,7 +803,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </div>
         </div>
       )}
-      
+
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           node={filteredHierarchy}
@@ -772,7 +830,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           </h3>
           <p className="text-sm text-gray-500 max-w-sm">
             {filter !== "all"
-              ? `No members match the "${filterOptions.find(f => f.value === filter)?.label}" filter.`
+              ? `No members match the "${
+                  filterOptions.find((f) => f.value === filter)?.label
+                }" filter.`
               : searchQuery
               ? `No members match "${searchQuery}".`
               : "No team members to display."}

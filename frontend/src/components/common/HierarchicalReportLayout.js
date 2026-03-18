@@ -458,10 +458,11 @@ const HierarchicalReportLayout = ({
           {/* Date Range Pills */}
           <div className="relative">
             <div
-              className="flex gap-1.5 sm:gap-2 overflow-x-scroll pb-2 scrollbar-hide"
+              className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-0 scrollbar-hide justify-center flex-wrap"
               style={{
                 WebkitOverflowScrolling: "touch",
-                scrollbarWidth: "thin",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
               }}
             >
               {[
@@ -470,21 +471,25 @@ const HierarchicalReportLayout = ({
                 { value: "week", label: "Week" },
                 { value: "month", label: "Month" },
               ]
-                .filter((range) => !allowedDateRanges || allowedDateRanges.includes(range.value))
+                .filter(
+                  (range) =>
+                    !allowedDateRanges ||
+                    allowedDateRanges.includes(range.value),
+                )
                 .map((range) => (
-                <TouchFeedbackButton
-                  key={range.value}
-                  id={`date-range-${range.value}`}
-                  onClick={() => onDateRangeChange(range.value)}
-                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
-                    dateRange === range.value
-                      ? "bg-green-700 text-white border-green-700 shadow-md"
-                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  {range.label}
-                </TouchFeedbackButton>
-              ))}
+                  <TouchFeedbackButton
+                    key={range.value}
+                    id={`date-range-${range.value}`}
+                    onClick={() => onDateRangeChange(range.value)}
+                    className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                      dateRange === range.value
+                        ? "bg-green-700 text-white border-green-700 shadow-md"
+                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                    }`}
+                  >
+                    {range.label}
+                  </TouchFeedbackButton>
+                ))}
 
               {/* Custom Date Range Button */}
               <div className="relative">
@@ -573,6 +578,37 @@ const HierarchicalReportLayout = ({
                       </div>
                     </div>
                   ))}
+                </div>
+              </div>
+            )}
+
+            {/* Note Pills - below the card */}
+            {summaryStats?.note && (
+              <div className="flex items-center justify-center">
+                <div className="bg-white border border-gray-200 rounded-xl shadow-sm px-4 py-2.5 flex items-center gap-3">
+                  <span className="text-[11px] sm:text-xs font-bold text-gray-700 border-r border-gray-200 pr-3">
+                    Notes
+                  </span>
+                  <div className="flex items-center gap-2">
+                    {summaryStats.note.split(" | ").map((segment, i, arr) => {
+                      const [label, val] = segment.split(": ");
+                      return (
+                        <React.Fragment key={i}>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[11px] sm:text-xs text-gray-500 font-medium">
+                              {label}:
+                            </span>
+                            <span className="text-[11px] sm:text-xs font-bold text-gray-800">
+                              {val}
+                            </span>
+                          </div>
+                          {i < arr.length - 1 && (
+                            <span className="text-gray-300 text-xs">|</span>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
             )}
