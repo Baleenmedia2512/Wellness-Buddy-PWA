@@ -130,8 +130,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         const score = scores[node.userId] || scores[String(node.userId)] || 0;
         const acts = activities[node.userId] || activities[String(node.userId)] || {};
 
-        enrichedNode.periodDiscipline = { percentage: score };
-        enrichedNode.mealActivities = acts;
+        enrichedNode.periodDiscipline = { 
+          percentage: score,
+          activities: acts,
+          onTimePosts: acts.onTimePosts || 0,
+          expectedPosts: acts.expectedPosts || 0
+        };
         
         // Map field names for HierarchicalNode component
         enrichedNode.userEmail = node.email || node.userEmail;
@@ -321,14 +325,30 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     const breakfast = activities.breakfast || 0;
     const lunch = activities.lunch || 0;
     const dinner = activities.dinner || 0;
-    const onTimePosts = activities.onTimePosts || 0;
-    const expectedPosts = activities.expectedPosts || 0;
+    const onTimePosts = node.periodDiscipline?.onTimePosts || activities.onTimePosts || 0;
+    const expectedPosts = node.periodDiscipline?.expectedPosts || activities.expectedPosts || 0;
 
     // Get color class based on percentage
     const getScoreColor = (percentage) => {
       if (percentage >= 80) return 'text-green-600';
       if (percentage >= 50) return 'text-yellow-600';
       return 'text-red-600';
+    };
+
+    // Get activity box styling based on completion
+    const getActivityBoxStyle = (percentage) => {
+      if (percentage > 0) {
+        return 'bg-green-50 border-green-300';
+      }
+      return 'bg-white border-gray-100';
+    };
+
+    // Get icon color based on completion
+    const getIconColor = (percentage) => {
+      if (percentage > 0) {
+        return 'text-green-600';
+      }
+      return 'text-gray-400';
     };
 
     return (
@@ -338,36 +358,36 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             Activity Breakdown
           </h4>
           <div className="grid grid-cols-5 gap-2">
-            <div className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100">
-              <Scale className="h-4 w-4 text-gray-500 mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(weight)}`}>
+              <Scale className={`h-4 w-4 mb-1 ${getIconColor(weight)}`} />
               <span className={`text-sm font-bold ${getScoreColor(weight)}`}>
                 {weight}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">WEI</span>
             </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100">
-              <BookOpen className="h-4 w-4 text-gray-500 mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(education)}`}>
+              <BookOpen className={`h-4 w-4 mb-1 ${getIconColor(education)}`} />
               <span className={`text-sm font-bold ${getScoreColor(education)}`}>
                 {education}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">EDU</span>
             </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100">
-              <Coffee className="h-4 w-4 text-gray-500 mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(breakfast)}`}>
+              <Coffee className={`h-4 w-4 mb-1 ${getIconColor(breakfast)}`} />
               <span className={`text-sm font-bold ${getScoreColor(breakfast)}`}>
                 {breakfast}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">BRE</span>
             </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100">
-              <Utensils className="h-4 w-4 text-gray-500 mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(lunch)}`}>
+              <Utensils className={`h-4 w-4 mb-1 ${getIconColor(lunch)}`} />
               <span className={`text-sm font-bold ${getScoreColor(lunch)}`}>
                 {lunch}%
               </span>
               <span className="text-[9px] text-gray-400 capitalize">LUN</span>
             </div>
-            <div className="flex flex-col items-center p-2 rounded-lg bg-white border border-gray-100">
-              <Moon className="h-4 w-4 text-gray-500 mb-1" />
+            <div className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(dinner)}`}>
+              <Moon className={`h-4 w-4 mb-1 ${getIconColor(dinner)}`} />
               <span className={`text-sm font-bold ${getScoreColor(dinner)}`}>
                 {dinner}%
               </span>
