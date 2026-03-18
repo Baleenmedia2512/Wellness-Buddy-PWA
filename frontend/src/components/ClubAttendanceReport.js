@@ -1,25 +1,28 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, Users, Check, XCircle } from 'lucide-react';
-import HierarchicalReportLayout, { LoadingSkeleton } from './common/HierarchicalReportLayout';
-import HierarchicalNode from './common/HierarchicalNode';
+import React, { useState, useEffect } from "react";
+import { Building2, Users, Check, XCircle } from "lucide-react";
+import HierarchicalReportLayout, {
+  LoadingSkeleton,
+} from "./common/HierarchicalReportLayout";
+import HierarchicalNode from "./common/HierarchicalNode";
 
 const ClubAttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hierarchyData, setHierarchyData] = useState(null);
-  const [dateRange, setDateRange] = useState('today');
+  const [dateRange, setDateRange] = useState("today");
   const [customStartDate, setCustomStartDate] = useState(null);
   const [customEndDate, setCustomEndDate] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filter, setFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
+  const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
   const formatDate = (date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
@@ -27,22 +30,22 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
-    if (dateRange === 'yesterday') {
+    if (dateRange === "yesterday") {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       return formatDate(yesterday);
     }
-    if (dateRange === 'week') {
+    if (dateRange === "week") {
       const weekAgo = new Date(today);
       weekAgo.setDate(weekAgo.getDate() - 7);
       return formatDate(weekAgo);
     }
-    if (dateRange === 'month') {
+    if (dateRange === "month") {
       const monthAgo = new Date(today);
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       return formatDate(monthAgo);
     }
-    if (dateRange === 'custom' && customStartDate) {
+    if (dateRange === "custom" && customStartDate) {
       return formatDate(customStartDate);
     }
     return formatDate(today);
@@ -50,10 +53,10 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   const getUserId = async (email) => {
     const response = await fetch(
-      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
     );
     const data = await response.json();
-    if (!data.success) throw new Error('User not found');
+    if (!data.success) throw new Error("User not found");
     return data.userId;
   };
 
@@ -72,13 +75,15 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       const date = getTargetDate();
       const response = await fetch(
         `${apiBaseUrl}/api/coach/hierarchical-clubs-overview?userId=${userId}&date=${date}`,
-        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to fetch club ownership data');
+        throw new Error(
+          result.message || "Failed to fetch club ownership data",
+        );
       }
-      
+
       // Map field names for HierarchicalNode component
       const mapFields = (node) => {
         const mapped = { ...node };
@@ -90,10 +95,10 @@ const ClubAttendanceReport = ({ user, onBack }) => {
         }
         return mapped;
       };
-      
+
       setHierarchyData(mapFields(result.data.hierarchy));
     } catch (err) {
-      console.error('Error fetching club ownership:', err);
+      console.error("Error fetching club ownership:", err);
       setError(err.message);
     } finally {
       if (!isBackground) {
@@ -110,18 +115,18 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   // Filter options
   const filterOptions = [
-    { value: 'all', label: 'All Members', icon: null },
-    { value: 'hasClubs', label: 'Has Clubs', icon: Building2 },
-    { value: 'noClubs', label: 'No Clubs', icon: XCircle },
+    { value: "all", label: "All Members", icon: null },
+    { value: "hasClubs", label: "Has Clubs", icon: Building2 },
+    { value: "noClubs", label: "No Clubs", icon: XCircle },
   ];
 
   // Match filter logic
   const matchesFilter = (node, filterValue) => {
-    if (filterValue === 'all') return true;
+    if (filterValue === "all") return true;
     const clubs = node.metrics?.clubs || [];
     const hasClubs = clubs.length > 0;
-    if (filterValue === 'hasClubs') return hasClubs;
-    if (filterValue === 'noClubs') return !hasClubs;
+    if (filterValue === "hasClubs") return hasClubs;
+    if (filterValue === "noClubs") return !hasClubs;
     return true;
   };
 
@@ -156,18 +161,20 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
     if (!hasClubs) {
       return (
-        <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-50 border border-gray-200 text-gray-500">
-          <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
-          <span className="text-[11px] font-semibold whitespace-nowrap">No Clubs</span>
+        <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-500">
+          <XCircle className="h-2.5 w-2.5 flex-shrink-0" />
+          <span className="text-[9px] font-semibold whitespace-nowrap">
+            No Clubs
+          </span>
         </div>
       );
     }
 
     return (
-      <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-green-100 border border-green-300 text-green-700 shadow-sm">
-        <Building2 className="h-4 w-4" />
-        <span className="text-sm font-bold">
-          {clubs.length} {clubs.length === 1 ? 'Club' : 'Clubs'}
+      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 border border-green-300 text-green-700 shadow-sm">
+        <Building2 className="h-3.5 w-3.5" />
+        <span className="text-xs font-bold">
+          {clubs.length} {clubs.length === 1 ? "Club" : "Clubs"}
         </span>
       </div>
     );
@@ -191,15 +198,23 @@ const ClubAttendanceReport = ({ user, onBack }) => {
         {/* Self */}
         <div className="flex-1 flex flex-col items-center pr-2">
           <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-            {isCurrentUser ? 'You' : 'Self'}
+            {isCurrentUser ? "You" : "Self"}
           </span>
           <div className="flex items-center gap-1">
-            <span className={`text-base font-bold ${hasClubs ? 'text-green-600' : 'text-gray-400'}`}>
+            <span
+              className={`text-base font-bold ${
+                hasClubs ? "text-green-600" : "text-gray-400"
+              }`}
+            >
               {hasClubs ? 1 : 0}
             </span>
             <Users className="h-3 w-3 text-gray-400" />
             <span className="text-gray-400">/</span>
-            <span className={`text-base font-bold ${hasClubs ? 'text-green-600' : 'text-gray-400'}`}>
+            <span
+              className={`text-base font-bold ${
+                hasClubs ? "text-green-600" : "text-gray-400"
+              }`}
+            >
               {clubs.length}
             </span>
             <Building2 className="h-3 w-3 text-gray-400" />
@@ -212,10 +227,14 @@ const ClubAttendanceReport = ({ user, onBack }) => {
             Direct
           </span>
           <div className="flex items-center gap-1">
-            <span className="text-base font-bold text-gray-900">{directQualified}</span>
+            <span className="text-base font-bold text-gray-900">
+              {directQualified}
+            </span>
             <Users className="h-3 w-3 text-gray-400" />
             <span className="text-gray-400 text-sm">/</span>
-            <span className="text-base font-bold text-gray-900">{directClubs}</span>
+            <span className="text-base font-bold text-gray-900">
+              {directClubs}
+            </span>
             <Building2 className="h-3 w-3 text-gray-400" />
           </div>
           <span className="text-[9px] text-gray-500">of {directTotal}</span>
@@ -227,10 +246,14 @@ const ClubAttendanceReport = ({ user, onBack }) => {
             Full Team
           </span>
           <div className="flex items-center gap-1">
-            <span className="text-base font-bold text-gray-900">{fullQualified}</span>
+            <span className="text-base font-bold text-gray-900">
+              {fullQualified}
+            </span>
             <Users className="h-3 w-3 text-gray-400" />
             <span className="text-gray-400 text-sm">/</span>
-            <span className="text-base font-bold text-gray-900">{fullClubs}</span>
+            <span className="text-base font-bold text-gray-900">
+              {fullClubs}
+            </span>
             <Building2 className="h-3 w-3 text-gray-400" />
           </div>
           <span className="text-[9px] text-gray-500">of {fullTotal}</span>
@@ -247,7 +270,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     return (
       <div
         className={`px-3 py-2 space-y-1.5 ${
-          isCurrentUser ? 'bg-yellow-50' : 'bg-green-50'
+          isCurrentUser ? "bg-yellow-50" : "bg-green-50"
         }`}
       >
         {clubs.map((club, idx) => (
@@ -256,7 +279,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
             className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-green-200"
           >
             <Building2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-            <span className="text-xs font-medium text-gray-800">{club.name}</span>
+            <span className="text-xs font-medium text-gray-800">
+              {club.name}
+            </span>
           </div>
         ))}
       </div>
@@ -270,39 +295,84 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
     if (isCurrentUser && hasClubs) {
       return {
-        containerClass: 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 shadow-md',
-        avatarClass: 'bg-yellow-400 border-yellow-500 text-white',
-        nameClass: 'text-yellow-900',
-        statsBorderClass: 'border-yellow-200 divide-yellow-200',
+        containerClass:
+          "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 shadow-md",
+        avatarClass: "bg-yellow-400 border-yellow-500 text-white",
+        nameClass: "text-yellow-900",
+        statsBorderClass: "border-yellow-200 divide-yellow-200",
       };
     }
 
     if (hasClubs) {
       return {
-        containerClass: 'bg-white border-green-200 shadow-sm',
-        avatarClass: 'bg-green-50 border-green-400 text-green-700',
-        nameClass: 'text-gray-900',
-        statsBorderClass: 'border-green-100 divide-green-100',
+        containerClass: "bg-white border-green-200 shadow-sm",
+        avatarClass: "bg-green-50 border-green-400 text-green-700",
+        nameClass: "text-gray-900",
+        statsBorderClass: "border-green-100 divide-green-100",
       };
     }
 
     return {
-      containerClass: 'bg-gray-50 border-gray-200',
-      avatarClass: 'bg-gray-200 border-gray-400 text-gray-500',
-      nameClass: 'text-gray-500',
-      statsBorderClass: 'border-gray-100 divide-gray-100',
+      containerClass: "bg-gray-50 border-gray-200",
+      avatarClass: "bg-gray-200 border-gray-400 text-gray-500",
+      nameClass: "text-gray-500",
+      statsBorderClass: "border-gray-100 divide-gray-100",
     };
   };
 
   // Calculate summary stats
+  const myClubs = hierarchyData?.metrics?.clubs?.length || 0;
+  const directClubsCount = hierarchyData?.directTeamCount?.totalClubs || 0;
+  const fullClubsCount = hierarchyData?.fullTeamCount?.totalClubs || 0;
+  const totalClubsForSubtitle = hierarchyData?.fullTeamCount?.totalClubs || 0;
+
   const summaryStats = hierarchyData
     ? {
-        total: hierarchyData.fullTeamCount?.total || 0,
-        qualified: hierarchyData.fullTeamCount?.qualified || 0,
-        totalClubs: hierarchyData.fullTeamCount?.totalClubs || 0,
-        percentage: 0, // Not applicable for club ownership
+        title: "Team Hierarchy",
+        items: [
+          {
+            label: "My Clubs",
+            value: myClubs,
+            icon: null,
+            onClick: null,
+            isActive: false,
+          },
+          {
+            label: "Direct Team",
+            value: directClubsCount,
+            icon: null,
+            onClick: null,
+            isActive: teamView === "direct",
+          },
+          {
+            label: "Full Team",
+            value: fullClubsCount,
+            icon: null,
+            onClick: () => setTeamView(teamView === "full" ? "direct" : "full"),
+            isActive: teamView === "full",
+          },
+        ],
       }
     : null;
+
+  // Filter hierarchy based on teamView
+  const getFilteredHierarchy = () => {
+    if (!hierarchyData) return null;
+    if (teamView === "full") return hierarchyData;
+    // Direct view - remove nested teams
+    if (hierarchyData.teamMembers) {
+      return {
+        ...hierarchyData,
+        teamMembers: hierarchyData.teamMembers.map((member) => ({
+          ...member,
+          teamMembers: [],
+        })),
+      };
+    }
+    return hierarchyData;
+  };
+
+  const filteredHierarchy = getFilteredHierarchy();
 
   // Get team counts
   const getTeamCounts = (node) => {
@@ -324,12 +394,14 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     return { coaches, members };
   };
 
-  const teamCounts = hierarchyData ? getTeamCounts(hierarchyData) : { coaches: 0, members: 0 };
+  const teamCounts = hierarchyData
+    ? getTeamCounts(hierarchyData)
+    : { coaches: 0, members: 0 };
 
   const handleDateRangeSelect = (start, end) => {
     setCustomStartDate(start);
     setCustomEndDate(end);
-    setDateRange('custom');
+    setDateRange("custom");
   };
 
   const handleManualRefresh = () => {
@@ -337,7 +409,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   };
 
   const handleDownload = () => {
-    console.log('Download club ownership report');
+    console.log("Download club ownership report");
     // Implement download logic here
   };
 
@@ -348,14 +420,17 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   return (
     <HierarchicalReportLayout
       title="Club Ownership Report"
-      subtitle={`${teamCounts.coaches + teamCounts.members} Members • ${
-        summaryStats?.totalClubs || 0
-      } Total Clubs • Last updated ${new Date().toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-      })}`}
+      subtitle={`${
+        teamCounts.coaches + teamCounts.members
+      } Members • ${totalClubsForSubtitle} Total Clubs • Last updated ${new Date().toLocaleString(
+        "en-US",
+        {
+          month: "short",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        },
+      )}`}
       onBack={onBack}
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
@@ -373,9 +448,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       filterOptions={filterOptions}
       summaryStats={summaryStats}
     >
-      {hierarchyData && (
+      {filteredHierarchy && (
         <HierarchicalNode
-          node={hierarchyData}
+          node={filteredHierarchy}
           level={0}
           isLastChild={true}
           renderStatus={renderStatus}

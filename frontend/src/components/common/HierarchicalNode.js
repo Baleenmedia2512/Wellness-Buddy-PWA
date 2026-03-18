@@ -99,106 +99,112 @@ const HierarchicalNode = ({
         >
           {/* Main Row */}
           <div
-            className={`flex items-center gap-2 px-3 py-2.5 ${
-              renderExpandedDetails && showDetails ? "" : ""
-            }`}
+            className={`flex flex-col px-3 pt-2.5 pb-1`}
             onClick={() => {
               if (renderExpandedDetails) {
                 setShowDetails(!showDetails);
               }
             }}
           >
-            {/* Avatar */}
-            <div className="relative w-9 h-9 flex-shrink-0">
-              {node.profileImage || node.photoURL ? (
-                <>
-                  <img
-                    src={node.profileImage || node.photoURL}
-                    alt={node.userName || node.name}
-                    className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass}`}
-                    style={{ display: "block" }}
-                    onError={(e) => {
-                      e.target.style.display = "none";
-                      if (e.target.nextSibling) {
-                        e.target.nextSibling.style.display = "flex";
-                      }
-                    }}
-                  />
+            {/* Top row: Avatar + Name/Info + Status Badge */}
+            <div className="flex items-start gap-2">
+              {/* Avatar */}
+              <div className="relative w-9 h-9 flex-shrink-0 mt-0.5">
+                {node.profileImage || node.photoURL ? (
+                  <>
+                    <img
+                      src={node.profileImage || node.photoURL}
+                      alt={node.userName || node.name}
+                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass}`}
+                      style={{ display: "block" }}
+                      onError={(e) => {
+                        e.target.style.display = "none";
+                        if (e.target.nextSibling) {
+                          e.target.nextSibling.style.display = "flex";
+                        }
+                      }}
+                    />
+                    <div
+                      className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
+                      style={{ display: "none" }}
+                    >
+                      {node.userName?.charAt(0).toUpperCase() ||
+                        node.name?.charAt(0).toUpperCase() ||
+                        "?"}
+                    </div>
+                  </>
+                ) : (
                   <div
                     className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
-                    style={{ display: "none" }}
                   >
                     {node.userName?.charAt(0).toUpperCase() ||
                       node.name?.charAt(0).toUpperCase() ||
                       "?"}
                   </div>
-                </>
-              ) : (
-                <div
-                  className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
-                >
-                  {node.userName?.charAt(0).toUpperCase() ||
-                    node.name?.charAt(0).toUpperCase() ||
-                    "?"}
-                </div>
-              )}
-            </div>
-
-            {/* Name + Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className={`text-sm font-bold break-words ${nameClass}`}>
-                  {node.userName || node.name}
-                </span>
-                {isCurrentUser && (
-                  <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
-                    YOU
-                  </span>
                 )}
               </div>
-              {/* Email */}
-              {node.userEmail && (
-                <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-                  {node.userEmail}
-                </div>
-              )}
-              {/* Reports to - Coach and Co-Coach */}
-              {(node.uplineCoachName || node.uplineCoCoachName) && (
-                <div className="text-[10px] text-gray-500 mt-0.5">
-                  Reports to:{" "}
-                  {node.uplineCoachName && (
-                    <span className="font-medium text-gray-700">
-                      {node.uplineCoachName}
-                    </span>
-                  )}
-                  {node.uplineCoachName && node.uplineCoCoachName && (
-                    <span className="text-gray-400"> & </span>
-                  )}
-                  {node.uplineCoCoachName && (
-                    <span className="font-medium text-gray-700">
-                      {node.uplineCoCoachName}
-                    </span>
-                  )}
-                </div>
-              )}
-              {/* Team member count */}
-              {hasChildren && showTeamCount && (
-                <div className="flex items-center gap-1 mt-1">
-                  <Users className="h-3 w-3 text-blue-600" />
-                  <span className="text-[10px] text-blue-600 font-medium">
-                    {node.teamMembers.length} team member
-                    {node.teamMembers.length !== 1 ? "s" : ""}
-                  </span>
-                </div>
-              )}
-            </div>
 
-            {/* Status Badge */}
-            {renderStatus && (
-              <div className="flex-shrink-0">
-                {renderStatus(node, showDetails)}
+              {/* Name + Info */}
+              <div className="flex-1 min-w-0">
+                {/* Name row with status badge on right */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex-1 min-w-0">
+                    {/* Name and YOU badge */}
+                    <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                      <span className={`text-sm font-bold break-words ${nameClass}`}>
+                        {node.userName || node.name}
+                      </span>
+                      {isCurrentUser && (
+                        <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
+                          YOU
+                        </span>
+                      )}
+                    </div>
+                    {/* Email */}
+                    {node.userEmail && (
+                      <div className="text-[10px] text-gray-500 mt-0.5 truncate">
+                        {node.userEmail}
+                      </div>
+                    )}
+                    {/* Reports to - Coach and Co-Coach */}
+                    {(node.uplineCoachName || node.uplineCoCoachName) && (
+                      <div className="text-[10px] text-gray-500 mt-0.5">
+                        Reports to:{" "}
+                        {node.uplineCoachName && (
+                          <span className="font-medium text-gray-700">
+                            {node.uplineCoachName}
+                          </span>
+                        )}
+                        {node.uplineCoachName && node.uplineCoCoachName && (
+                          <span className="text-gray-400"> & </span>
+                        )}
+                        {node.uplineCoCoachName && (
+                          <span className="font-medium text-gray-700">
+                            {node.uplineCoCoachName}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* Team member count */}
+                    {hasChildren && showTeamCount && (
+                      <div className="flex items-center gap-1 mt-1">
+                        <Users className="h-3 w-3 text-blue-600" />
+                        <span className="text-[10px] text-blue-600 font-medium">
+                          {node.teamMembers.length} team member
+                          {node.teamMembers.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  {/* Status Badge - right side */}
+                  {renderStatus && (
+                    <div className="flex-shrink-0 mt-0.5">
+                      {renderStatus(node, showDetails)}
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+            </div>
           </div>
 
           {/* Expanded Details Section */}
