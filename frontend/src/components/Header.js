@@ -355,7 +355,7 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                           <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
                             <FileBarChart className="h-5 w-5 text-blue-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Club Report</span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Virtual Club</span>
                         </TouchFeedbackButton>
                       )}
 
