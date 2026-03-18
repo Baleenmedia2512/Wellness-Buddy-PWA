@@ -18,7 +18,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
         </div>
       </div>
 
-      {/* Content */}
+      {/* Content... */}
       <div className="max-w-md mx-auto px-4 py-4">
         <ScreenTimeCard userId={userId} />
       </div>
