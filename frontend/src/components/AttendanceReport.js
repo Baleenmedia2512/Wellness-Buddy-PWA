@@ -357,15 +357,9 @@ const AttendanceReport = ({ user, onBack }) => {
 
   const summaryStats = hierarchyData
     ? {
-        note: `Self: ${mySelfAttended ? "✓" : "✗"} | Direct: ${
-          directTotal > 0
-            ? Math.round((directAttended / directTotal) * 100) + "%"
-            : "0%"
-        } | Full: ${
-          fullTotal > 0
-            ? Math.round((fullAttended / fullTotal) * 100) + "%"
-            : "0%"
-        }`,
+        note: `Self: ${
+          mySelfAttended ? "✓" : "✗"
+        } | Direct: ${directAttended}/${directTotal} | Full: ${fullAttended}/${fullTotal}`,
       }
     : null;
 
