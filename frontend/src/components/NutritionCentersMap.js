@@ -1,14 +1,83 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, Eye, X } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, Eye, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
+
+// --- Single Day Picker ---
+const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
+  const [currentMonth, setCurrentMonth] = useState(selectedDate || new Date());
+
+  const daysInMonth = (date) => new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  const getFirstDay = (date) => new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+
+  const isFuture = (day) => {
+    const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return d > new Date();
+  };
+
+  const isSelected = (day) => {
+    if (!selectedDate) return false;
+    const d = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return d.toDateString() === selectedDate.toDateString();
+  };
+
+  const blanks = Array(getFirstDay(currentMonth)).fill(null);
+  const days = Array.from({ length: daysInMonth(currentMonth) }, (_, i) => i + 1);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+      className="absolute top-2 left-0 right-0 bg-white rounded-xl shadow-2xl border border-gray-100 p-4 z-[60] max-w-sm mx-auto"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1))} className="p-2 hover:bg-gray-100 rounded-lg">
+          <ChevronLeft className="w-5 h-5 text-gray-600" />
+        </button>
+        <h3 className="font-semibold text-gray-800 text-sm">
+          {currentMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+        </h3>
+        <button onClick={() => setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1))} className="p-2 hover:bg-gray-100 rounded-lg">
+          <ChevronRight className="w-5 h-5 text-gray-600" />
+        </button>
+      </div>
+      <div className="grid grid-cols-7 gap-1 mb-2">
+        {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
+          <div key={d} className="text-center text-xs font-medium text-gray-500 py-1">{d}</div>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {blanks.map((_, i) => <div key={`b${i}`} className="aspect-square" />)}
+        {days.map(day => (
+          <button
+            key={day}
+            onClick={() => !isFuture(day) && onSelect(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day))}
+            disabled={isFuture(day)}
+            className={`aspect-square flex items-center justify-center text-sm rounded-lg transition-all ${
+              isFuture(day) ? 'text-gray-300 cursor-not-allowed'
+              : isSelected(day) ? 'bg-green-600 text-white font-bold shadow-md'
+              : 'hover:bg-gray-100 text-gray-700'
+            }`}
+          >
+            {day}
+          </button>
+        ))}
+      </div>
+    </motion.div>
+  );
+};
 
 const NutritionCentersMap = ({ user, onBack }) => {
   const [centers, setCenters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [teamFilter, setTeamFilter] = useState('self'); // 'self' | 'direct' | 'full' | 'all'
+  const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
+  const [customDate, setCustomDate] = useState(null); // single Date object for custom
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
@@ -110,8 +179,31 @@ const NutritionCentersMap = ({ user, onBack }) => {
       const userId = await getUserId(user.email);
       // Use scope=all for 'all' filter to fetch all system centers globally
       const scope = teamFilter === 'all' ? 'all' : 'team';
+      // Always compute dates from local timezone to avoid UTC shift issues
+      const pad = n => String(n).padStart(2, '0');
+      const localDate = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+      const now = new Date();
+      const todayStr = localDate(now);
+      const yesterdayDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+      const yesterdayStr = localDate(yesterdayDate);
+
+      let dateParam = dateRange;
+      let startParam = '';
+      let endParam = '';
+      if (dateRange === 'custom' && customDate) {
+        dateParam = 'custom';
+        startParam = localDate(customDate);
+        endParam = localDate(customDate);
+      } else if (dateRange === 'yesterday') {
+        startParam = yesterdayStr;
+        endParam = yesterdayStr;
+      } else {
+        // today (default)
+        startParam = todayStr;
+        endParam = todayStr;
+      }
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}`,
+        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
         {
           cache: 'no-store',
           headers: {
@@ -127,7 +219,10 @@ const NutritionCentersMap = ({ user, onBack }) => {
       }
 
       setCenters(result.data || []);
-      renderMarkers(result.data || []);
+      const label = dateRange === 'yesterday' ? 'Yesterday' : dateRange === 'custom' && customDate
+        ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        : 'Today';
+      renderMarkers(result.data || [], label);
     } catch (err) {
       console.error('Error fetching centers:', err);
       setError(err.message);
@@ -290,7 +385,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   };
 
   // Render markers on map
-  const renderMarkers = (centersData) => {
+  const renderMarkers = (centersData, dateLabel = 'Today') => {
     if (!googleMapRef.current || !window.google || !window.google.maps) return;
 
     // Clear existing markers
@@ -341,7 +436,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
             <strong>Owner:</strong> ${center.ownerName}
           </p>
           <p style="margin: 4px 0; font-size: 13px; color: #6b7280;">
-            <strong>Attendance:</strong> ${center.todayAttendance || 0}
+            <strong>${dateLabel} Attendance:</strong> ${center.todayAttendance || 0}
           </p>
           <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
             <button 
@@ -385,7 +480,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
       fetchCenters();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapLoaded, user, teamFilter]);
+  }, [mapLoaded, user, teamFilter, dateRange, customDate]);
 
   // Set up global functions for info window buttons
   useEffect(() => {
@@ -479,6 +574,57 @@ const NutritionCentersMap = ({ user, onBack }) => {
             All System
           </TouchFeedbackButton>
         </div>
+
+        {/* Date Range Filter */}
+        <div className="max-w-4xl mx-auto px-4 pb-3 relative">
+          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
+            {[
+              { value: 'today', label: 'Today' },
+              { value: 'yesterday', label: 'Yesterday' },
+            ].map((range) => (
+              <TouchFeedbackButton
+                key={range.value}
+                onClick={() => { setDateRange(range.value); setShowDatePicker(false); }}
+                className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                  dateRange === range.value
+                    ? 'bg-green-700 text-white border-green-700 shadow-md'
+                    : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+                }`}
+              >
+                {range.label}
+              </TouchFeedbackButton>
+            ))}
+            {/* Custom single-day picker */}
+            <TouchFeedbackButton
+              onClick={() => setShowDatePicker(!showDatePicker)}
+              className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                dateRange === 'custom'
+                  ? 'bg-green-700 text-white border-green-700 shadow-md'
+                  : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+              }`}
+            >
+              <CalendarIcon className="h-3.5 w-3.5" />
+              {dateRange === 'custom' && customDate
+                ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                : 'Custom'}
+            </TouchFeedbackButton>
+          </div>
+
+          {/* Single-day Calendar Picker */}
+          <AnimatePresence>
+            {showDatePicker && (
+              <SingleDayPicker
+                selectedDate={customDate}
+                onSelect={(date) => {
+                  setCustomDate(date);
+                  setDateRange('custom');
+                  setShowDatePicker(false);
+                }}
+                onClose={() => setShowDatePicker(false)}
+              />
+            )}
+          </AnimatePresence>
+        </div>
       </div>
 
       {/* Map Container */}
@@ -512,11 +658,14 @@ const NutritionCentersMap = ({ user, onBack }) => {
                   Centres ({centers.length})
                 </h2>
                 {centers.length > 0 && (() => {
-                  const totalParticipants = centers.reduce((sum, c) => sum + (c.totalParticipants || 0), 0);
-                  const totalToday = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                  const totalAttendance = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                  const label = dateRange === 'yesterday' ? 'Yesterday'
+                    : dateRange === 'custom' && customDate
+                    ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                    : 'Today';
                   return (
                     <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
-                      {centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0)} attended today
+                      {totalAttendance} attended {label}
                     </span>
                   );
                 })()}
@@ -538,7 +687,12 @@ const NutritionCentersMap = ({ user, onBack }) => {
                         <h3 className="font-bold text-gray-800">{center.center_name}</h3>
                         <p className="text-sm text-gray-600 mt-1">Owner: {center.ownerName}</p>
                         <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                          <span>Attendance: <span className="font-semibold text-gray-700">{center.todayAttendance || 0}</span></span>
+                          <span>
+                            {dateRange === 'yesterday' ? 'Yesterday' : dateRange === 'custom' && customDate
+                              ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                              : 'Today'} Attendance:{' '}
+                            <span className="font-semibold text-gray-700">{center.todayAttendance || 0}</span>
+                          </span>
                         </div>
                       </div>
 
