@@ -77,9 +77,11 @@ const AttendanceReport = ({ user, onBack }) => {
       const response = await fetch(
         `${apiBaseUrl}/api/coach/hierarchical-club-attendance?userId=${userId}&date=${date}`,
         { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to fetch attendance data");
         throw new Error(result.message || "Failed to fetch attendance data");
       }
 
