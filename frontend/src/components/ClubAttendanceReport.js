@@ -429,7 +429,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   return (
     <HierarchicalReportLayout
-      title="Club Ownership Report"
+      title="Virtual Club Report"
       subtitle={`${
         teamCounts.coaches + teamCounts.members
       } Members • ${totalClubsForSubtitle} Total Clubs • Last updated ${new Date().toLocaleString(

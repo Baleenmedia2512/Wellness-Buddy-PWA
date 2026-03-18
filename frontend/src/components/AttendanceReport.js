@@ -261,34 +261,20 @@ const AttendanceReport = ({ user, onBack }) => {
               )}
             </div>
           ) : (
-            <span className="text-lg font-bold text-red-500">0%</span>
+            <span className="text-lg font-bold text-red-500">0</span>
           )}
         </div>
 
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-base font-bold text-gray-900">
-              {totalDirect > 0
-                ? Math.round((attendedDirect / totalDirect) * 100)
-                : 0}
-              %
-            </span>
-          </div>
-          <span className="text-[9px] text-gray-500">
+          <span className="text-base font-bold text-gray-900">
             {attendedDirect}/{totalDirect}
           </span>
         </div>
 
         {/* Full Team */}
         <div className="flex-1 flex flex-col items-center pl-2">
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-base font-bold text-gray-900">
-              {totalFull > 0 ? Math.round((attendedFull / totalFull) * 100) : 0}
-              %
-            </span>
-          </div>
-          <span className="text-[9px] text-gray-500">
+          <span className="text-base font-bold text-gray-900">
             {attendedFull}/{totalFull}
           </span>
         </div>
