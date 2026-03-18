@@ -369,7 +369,7 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                           <div className="h-10 w-10 rounded-2xl bg-emerald-100 flex items-center justify-center">
                             <Map className="h-5 w-5 text-emerald-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Nutrition Map</span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Physical Club</span>
                         </TouchFeedbackButton>
                       )}
 

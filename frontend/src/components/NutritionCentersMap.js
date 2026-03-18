@@ -422,7 +422,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Nutrition Centres Map</h1>
+              <h1 className="text-xl font-bold text-gray-800">Physical Club Report</h1>
               <p className="text-xs text-gray-500">View club locations & attendance</p>
             </div>
           </div>
