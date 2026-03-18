@@ -77,17 +77,26 @@ const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
-const ClubAttendanceReport = lazy(() => import("./components/ClubAttendanceReport"));
-const NutritionCentersMap = lazy(() => import("./components/NutritionCentersMap"));
-const NutritionCenterRegistration = lazy(() => import("./components/NutritionCenterRegistration"));
+const ClubAttendanceReport = lazy(() =>
+  import("./components/ClubAttendanceReport"),
+);
+const NutritionCentersMap = lazy(() =>
+  import("./components/NutritionCentersMap"),
+);
+const NutritionCenterRegistration = lazy(() =>
+  import("./components/NutritionCenterRegistration"),
+);
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 
-const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
-const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
+const WellnessUniversityEnrollment = lazy(() =>
+  import("./pages/WellnessUniversityEnrollment"),
+);
+const WellnessUniversityReport = lazy(() =>
+  import("./pages/WellnessUniversityReport"),
+);
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTime = lazy(() => import("./components/ScreenTime"));
-
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -126,9 +135,9 @@ function WellnessValleyApp() {
   const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
   const savedWeightIdRef = useRef(null); // Ref mirror — always current inside async handlers
   const [isEditingWeight, setIsEditingWeight] = useState(false); // Inline edit mode
-  const [editWeightValue, setEditWeightValue] = useState(''); // Value being edited
+  const [editWeightValue, setEditWeightValue] = useState(""); // Value being edited
   const [isSavingWeightEdit, setIsSavingWeightEdit] = useState(false); // Loading for edit save
-  const [weightEditError, setWeightEditError] = useState(''); // Edit validation error
+  const [weightEditError, setWeightEditError] = useState(""); // Edit validation error
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
@@ -152,24 +161,29 @@ function WellnessValleyApp() {
   const [showClubSelectionModal, setShowClubSelectionModal] = useState(false);
   const [nearbyCenters, setNearbyCenters] = useState([]);
   const [pendingEducationData, setPendingEducationData] = useState(null);
-  
+
   // Custom alert modal state
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
-    title: '',
-    message: '',
-    type: 'info'
+    title: "",
+    message: "",
+    type: "info",
   });
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
 
   // Mandatory profile completion gate — blocks app until required fields are filled
-  const [showCompleteProfile, setShowCompleteProfile] = useState(true);
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
+  const storedEmail = localStorage.getItem("userEmail") || "";
   const profileCompletedRef = useRef(
-    localStorage.getItem("profileComplete_v2_" + (localStorage.getItem("userEmail") || "")) === "true"
+    storedEmail !== "" &&
+      localStorage.getItem("profileComplete_v2_" + storedEmail) === "true",
+  );
+  // Initialize showCompleteProfile based on localStorage check to prevent flashing
+  const [showCompleteProfile, setShowCompleteProfile] = useState(
+    !profileCompletedRef.current,
   );
 
   // User context state - stored and reused for AI personalization
@@ -186,7 +200,7 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
   );
-  
+
   // Step Counter state
   const showStepCounterPage = useCallback(() => {
     setShowStepCounter(true);
@@ -206,7 +220,8 @@ function WellnessValleyApp() {
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
 
   // Club attendance report state (for coaches/club owners)
-  const [showClubAttendanceReport, setShowClubAttendanceReport] = useState(false);
+  const [showClubAttendanceReport, setShowClubAttendanceReport] =
+    useState(false);
 
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
@@ -388,10 +403,19 @@ function WellnessValleyApp() {
     initializeBackButton(
       goBack,
       showToast,
-      !showDashboard && !showDisciplineReport && !showStepCounter && !showScreenTime,
+      !showDashboard &&
+        !showDisciplineReport &&
+        !showStepCounter &&
+        !showScreenTime,
     );
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard, showDisciplineReport, showStepCounter, showScreenTime]);
+  }, [
+    ionRouter,
+    showDashboard,
+    showDisciplineReport,
+    showStepCounter,
+    showScreenTime,
+  ]);
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -496,42 +520,45 @@ function WellnessValleyApp() {
     }
   }, []);
 
-  const showDashboardPage = useCallback(async (preferredTab = null) => {
-    // Re-check user status in real-time before opening dashboard
-    if (user) {
-      const isActive = await checkUserStatus(user);
-      if (!isActive) {
-        setError(
-          "Your account is inactive. Please contact support to reactivate.",
-        );
-        return;
+  const showDashboardPage = useCallback(
+    async (preferredTab = null) => {
+      // Re-check user status in real-time before opening dashboard
+      if (user) {
+        const isActive = await checkUserStatus(user);
+        if (!isActive) {
+          setError(
+            "Your account is inactive. Please contact support to reactivate.",
+          );
+          return;
+        }
       }
-    }
 
-    // Clear nutrition data and image preview when switching to dashboard
-    if (nutritionData) setNutritionData(null);
-    if (imagePreview) setImagePreview(null);
+      // Clear nutrition data and image preview when switching to dashboard
+      if (nutritionData) setNutritionData(null);
+      if (imagePreview) setImagePreview(null);
 
-    // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
-    if (
-      preferredTab === "weight" ||
-      preferredTab === "nutrition" ||
-      preferredTab === "education"
-    ) {
-      setDashboardInitialTab(preferredTab);
-    } else if (imageType === "weight") {
-      // Set the initial tab based on the last analyzed image type
-      setDashboardInitialTab("weight");
-    } else if (imageType === "food") {
-      setDashboardInitialTab("nutrition");
-    } else if (imageType === "education") {
-      setDashboardInitialTab("education");
-    } else {
-      setDashboardInitialTab(null); // Use default/last used tab
-    }
-    setShowDashboard(true);
-    localStorage.setItem("currentPage", "dashboard");
-  }, [user, checkUserStatus, nutritionData, imagePreview, imageType]);
+      // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
+      if (
+        preferredTab === "weight" ||
+        preferredTab === "nutrition" ||
+        preferredTab === "education"
+      ) {
+        setDashboardInitialTab(preferredTab);
+      } else if (imageType === "weight") {
+        // Set the initial tab based on the last analyzed image type
+        setDashboardInitialTab("weight");
+      } else if (imageType === "food") {
+        setDashboardInitialTab("nutrition");
+      } else if (imageType === "education") {
+        setDashboardInitialTab("education");
+      } else {
+        setDashboardInitialTab(null); // Use default/last used tab
+      }
+      setShowDashboard(true);
+      localStorage.setItem("currentPage", "dashboard");
+    },
+    [user, checkUserStatus, nutritionData, imagePreview, imageType],
+  );
 
   const showMainPage = () => {
     setShowDashboard(false);
@@ -539,7 +566,13 @@ function WellnessValleyApp() {
     setDashboardInitialTab(null); // Clear initial tab when going back
 
     // Clear weight result, education result, and images when going back to main page
-    if (weightResult) { setWeightResult(null); setPendingWeightImage(null); setWeightEntrySaved(false); setSavedWeightId(null); savedWeightIdRef.current = null; }
+    if (weightResult) {
+      setWeightResult(null);
+      setPendingWeightImage(null);
+      setWeightEntrySaved(false);
+      setSavedWeightId(null);
+      savedWeightIdRef.current = null;
+    }
     if (educationResult) setEducationResult(null);
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
@@ -559,7 +592,7 @@ function WellnessValleyApp() {
     try {
       // Request push notification permissions
       await PushNotifications.requestPermissions();
-      
+
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
     } catch (err) {
@@ -708,7 +741,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(resultUser);
           if (dbUserId) {
             resultUser.id = dbUserId;
-            localStorage.setItem('dbUserId', String(dbUserId));
+            localStorage.setItem("dbUserId", String(dbUserId));
             console.log(
               "✅ [Redirect] Attached database UserId to user object:",
               resultUser.id,
@@ -741,7 +774,9 @@ function WellnessValleyApp() {
         // Retry a few times because profile writes can be briefly stale right after save.
         for (let attempt = 0; attempt < 3; attempt++) {
           const res = await fetch(
-            `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}_${attempt}`,
+            `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
+              userEmail,
+            )}&_t=${Date.now()}_${attempt}`,
             { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
           );
           if (!res.ok) continue;
@@ -762,11 +797,14 @@ function WellnessValleyApp() {
           }
         }
 
-        console.log("⚠️ [Profile] Mandatory fields missing — showing CompleteProfilePage", {
-          height: latestData?.height ?? null,
-          dietType: latestData?.dietType ?? null,
-          phoneNumber: latestData?.phoneNumber ?? null,
-        });
+        console.log(
+          "⚠️ [Profile] Mandatory fields missing — showing CompleteProfilePage",
+          {
+            height: latestData?.height ?? null,
+            dietType: latestData?.dietType ?? null,
+            phoneNumber: latestData?.phoneNumber ?? null,
+          },
+        );
         setShowCompleteProfile(true);
       } catch (err) {
         console.warn("⚠️ [Profile] Failed to check profile completion:", err);
@@ -790,7 +828,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(user);
           if (dbUserId) {
             user.id = dbUserId;
-            localStorage.setItem('dbUserId', String(dbUserId));
+            localStorage.setItem("dbUserId", String(dbUserId));
             console.log(
               "✅ [Auth State] Attached database UserId to user object:",
               user.id,
@@ -974,7 +1012,7 @@ function WellnessValleyApp() {
               const dbUserId = await getUserId(parsedUser);
               if (dbUserId) {
                 parsedUser.id = dbUserId;
-                localStorage.setItem('dbUserId', String(dbUserId));
+                localStorage.setItem("dbUserId", String(dbUserId));
                 console.log(
                   "✅ [OTP Restore] Attached database UserId to user object:",
                   parsedUser.id,
@@ -1155,19 +1193,31 @@ function WellnessValleyApp() {
   // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards
   useEffect(() => {
     const photoUrl = user?.photoURL;
-    if (!photoUrl) { setSharePhotoBase64(null); return; }
+    if (!photoUrl) {
+      setSharePhotoBase64(null);
+      return;
+    }
     let cancelled = false;
     fetch(photoUrl)
       .then((res) => res.blob())
-      .then((blob) => new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-      }))
-      .then((dataUrl) => { if (!cancelled) setSharePhotoBase64(dataUrl); })
-      .catch(() => { if (!cancelled) setSharePhotoBase64(null); });
-    return () => { cancelled = true; };
+      .then(
+        (blob) =>
+          new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+          }),
+      )
+      .then((dataUrl) => {
+        if (!cancelled) setSharePhotoBase64(dataUrl);
+      })
+      .catch(() => {
+        if (!cancelled) setSharePhotoBase64(null);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [user?.photoURL]);
 
   // Cleanup on unmount
@@ -1269,13 +1319,16 @@ function WellnessValleyApp() {
         bmr: weightData.bmr,
         imageBase64ToSave: imageBase64,
         clientTimestamp: new Date().toISOString(), // User's actual upload time
-        clientTimezoneOffset: new Date().getTimezoneOffset() // User's timezone offset
+        clientTimezoneOffset: new Date().getTimezoneOffset(), // User's timezone offset
       };
 
       // If we already saved a weight entry today, always update that exact row
       if (savedWeightIdRef.current) {
         payload.entryId = savedWeightIdRef.current;
-        console.log('🔄 Reusing existing weight entry ID:', savedWeightIdRef.current);
+        console.log(
+          "🔄 Reusing existing weight entry ID:",
+          savedWeightIdRef.current,
+        );
       }
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
@@ -1295,7 +1348,10 @@ function WellnessValleyApp() {
       console.log("✅ Weight entry saved successfully");
 
       // Store the saved entry ID for potential editing
-      if (data?.id) { setSavedWeightId(data.id); savedWeightIdRef.current = data.id; }
+      if (data?.id) {
+        setSavedWeightId(data.id);
+        savedWeightIdRef.current = data.id;
+      }
 
       // Hide saving overlay
       setSaveLoading(false);
@@ -1328,11 +1384,11 @@ function WellnessValleyApp() {
   const handleWeightEditSave = async () => {
     const val = parseFloat(editWeightValue);
     if (isNaN(val) || val < 20 || val > 300) {
-      setWeightEditError('Weight must be between 20 and 300 kg');
+      setWeightEditError("Weight must be between 20 and 300 kg");
       return;
     }
     setIsSavingWeightEdit(true);
-    setWeightEditError('');
+    setWeightEditError("");
     try {
       let userId = user?.id;
       if (!userId) userId = await getUserId(user);
@@ -1343,39 +1399,51 @@ function WellnessValleyApp() {
       const payload = {
         userId,
         weightValue: val,
-        unit: weightResult?.unit || 'kg',
+        unit: weightResult?.unit || "kg",
       };
       const currentEntryId = savedWeightIdRef.current;
       if (currentEntryId) payload.entryId = currentEntryId;
 
       const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const result = await response.json();
-      if (!response.ok || !result.success) throw new Error(result.message || 'Failed to update');
+      if (!response.ok || !result.success)
+        throw new Error(result.message || "Failed to update");
 
       // Keep the ref in sync with whichever row was actually updated
-      if (result?.id) { setSavedWeightId(result.id); savedWeightIdRef.current = result.id; }
+      if (result?.id) {
+        setSavedWeightId(result.id);
+        savedWeightIdRef.current = result.id;
+      }
 
-      setWeightResult(prev => ({ ...prev, weightValue: val }));
+      setWeightResult((prev) => ({ ...prev, weightValue: val }));
       setIsEditingWeight(false);
       // Refresh diff after manual edit
       try {
-        let diffUserId = user?.id || await getUserId(user);
-        const diffRes = await fetch(`${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`);
+        let diffUserId = user?.id || (await getUserId(user));
+        const diffRes = await fetch(
+          `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
+        );
         const diffData = await diffRes.json();
         if (diffData.success && diffData.stats?.previousWeight) {
           setWeightDiff({
             previous: parseFloat(diffData.stats.previousWeight.value),
             previousDate: diffData.stats.previousWeight.date,
-            change: parseFloat((val - parseFloat(diffData.stats.previousWeight.value)).toFixed(2)),
+            change: parseFloat(
+              (val - parseFloat(diffData.stats.previousWeight.value)).toFixed(
+                2,
+              ),
+            ),
           });
         }
-      } catch (_) { /* non-critical */ }
+      } catch (_) {
+        /* non-critical */
+      }
     } catch (err) {
-      setWeightEditError(err.message || 'Failed to save');
+      setWeightEditError(err.message || "Failed to save");
     } finally {
       setIsSavingWeightEdit(false);
     }
@@ -1468,7 +1536,11 @@ function WellnessValleyApp() {
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
    */
-  const saveEducationLog = async (educationData, imageBase64, selectedClub = null) => {
+  const saveEducationLog = async (
+    educationData,
+    imageBase64,
+    selectedClub = null,
+  ) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
 
@@ -1486,27 +1558,34 @@ function WellnessValleyApp() {
       // If within 100m of club → club attendance
       // If not near club → remote attendance
       console.log("📍 Checking GPS for nearby clubs...");
-      
+
       let attendance;
       try {
         attendance = await locationAttendanceService.determineAttendance(
           apiBaseUrl,
-          userId
+          userId,
         );
         console.log("✅ Attendance determined:", attendance);
       } catch (gpsError) {
-        console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
+        console.warn(
+          "⚠️ GPS check failed, defaulting to remote attendance:",
+          gpsError,
+        );
         // Fallback to remote attendance if GPS fails
         attendance = {
-          attendanceType: 'remote',
+          attendanceType: "remote",
           nutritionCenterId: null,
           centerName: null,
-          nearbyCenters: []
+          nearbyCenters: [],
         };
       }
 
       // If multiple clubs detected and no club selected yet, show selection modal
-      if (attendance.nearbyCenters && attendance.nearbyCenters.length > 1 && !selectedClub) {
+      if (
+        attendance.nearbyCenters &&
+        attendance.nearbyCenters.length > 1 &&
+        !selectedClub
+      ) {
         console.log("🏢 Multiple clubs detected, showing selection modal");
         setNearbyCenters(attendance.nearbyCenters);
         setPendingEducationData({ educationData, imageBase64, attendance });
@@ -1518,12 +1597,18 @@ function WellnessValleyApp() {
 
       // Determine final values
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
-      const finalCenterName = selectedClub?.center_name || attendance.centerName;
-      const finalPlatform = attendance.attendanceType === 'club' ? 'Club' : educationData.platform;
+      const finalCenterName =
+        selectedClub?.center_name || attendance.centerName;
+      const finalPlatform =
+        attendance.attendanceType === "club" ? "Club" : educationData.platform;
 
       // Use EXIF timestamp if available, otherwise use current time
       const logTimestamp = imageTimestamp || new Date().toISOString();
-      console.log("📅 Education log timestamp:", logTimestamp, imageTimestamp ? "(from EXIF)" : "(current time)");
+      console.log(
+        "📅 Education log timestamp:",
+        logTimestamp,
+        imageTimestamp ? "(from EXIF)" : "(current time)",
+      );
 
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
         method: "POST",
@@ -1554,11 +1639,13 @@ function WellnessValleyApp() {
       }
 
       console.log("✅ Education log auto-saved successfully:", data.id);
-      
+
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
-      
-      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+
+      console.log(
+        `   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`,
+      );
       if (finalCenterName) {
         console.log(`   🏢 Club: ${finalCenterName}`);
       }
@@ -1566,9 +1653,13 @@ function WellnessValleyApp() {
         console.log(`   👥 Participants: ${educationData.participantCount}`);
       }
       if (data.isOnTime !== undefined) {
-        const status = data.isOnTime ? '✅ ON-TIME (Present)' : '⚠️ LATE (Absent)';
+        const status = data.isOnTime
+          ? "✅ ON-TIME (Present)"
+          : "⚠️ LATE (Absent)";
         console.log(`   ⏰ Timing: ${status}`);
-        console.log(`   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`);
+        console.log(
+          `   🕐 Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
+        );
       }
       setSaveLoading(false);
       setLoadingState("idle");
@@ -1586,14 +1677,14 @@ function WellnessValleyApp() {
   const handleClubSelection = async (selectedCenter) => {
     console.log("🏢 Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
-    
+
     if (pendingEducationData) {
       setSaveLoading(true);
       setLoadingState("saving");
       await saveEducationLog(
         pendingEducationData.educationData,
         pendingEducationData.imageBase64,
-        selectedCenter
+        selectedCenter,
       );
       setPendingEducationData(null);
     }
@@ -1741,7 +1832,8 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setPendingWeightImage(null);
     setWeightEntrySaved(false);
-    setSavedWeightId(null); savedWeightIdRef.current = null;
+    setSavedWeightId(null);
+    savedWeightIdRef.current = null;
     setImagePreview(null);
     setSelectedImage(null);
 
@@ -1759,7 +1851,7 @@ function WellnessValleyApp() {
       return;
     }
     imageProcessingInProgress.current = true;
-    
+
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
       console.log("📸 EXIF Timestamp received:", exifTimestamp);
@@ -1796,20 +1888,21 @@ function WellnessValleyApp() {
     // 🚨 FRAUD PREVENTION: On web only — native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
-      console.log('🔍 Validating image freshness (web)...');
+      console.log("🔍 Validating image freshness (web)...");
       const validation = await validateImageFreshness(file, 0);
       if (!validation.isValid) {
-        console.error('❌ Image validation failed:', validation);
+        console.error("❌ Image validation failed:", validation);
         setAlertModal({
           isOpen: true,
-          title: '� Fresh Photo Required',
-          message: 'Please use a photo taken today to continue. Select or capture a new image from today.',
-          type: 'error'
+          title: "� Fresh Photo Required",
+          message:
+            "Please use a photo taken today to continue. Select or capture a new image from today.",
+          type: "error",
         });
         imageProcessingInProgress.current = false;
         return;
       }
-      console.log('✅ Image validated:', validation.message);
+      console.log("✅ Image validated:", validation.message);
     }
 
     setSelectedImage(file);
@@ -1818,7 +1911,8 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setPendingWeightImage(null);
     setWeightEntrySaved(false);
-    setSavedWeightId(null); savedWeightIdRef.current = null;
+    setSavedWeightId(null);
+    savedWeightIdRef.current = null;
     setImageType(null);
     setSaveError(null);
     setDetectedFoodNames([]); // Clear previous detection
@@ -2008,17 +2102,22 @@ function WellnessValleyApp() {
             console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
 
-          setWeightResult({ ...weightToSave, loggedAt: exifTimestamp || new Date().toISOString() }); // Store for display below upload box
+          setWeightResult({
+            ...weightToSave,
+            loggedAt: exifTimestamp || new Date().toISOString(),
+          }); // Store for display below upload box
           setWeightEntrySaved(false);
           setWeightDiff(null);
-          setLoadingState('saving');
+          setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           await saveWeightEntry(weightToSave, processedImage);
           setWeightEntrySaved(true);
           // Fetch weight diff (previous vs today) for the share card
           try {
-            const diffUserId = user?.id || await getUserId(user);
-            const diffRes = await fetch(`${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`);
+            const diffUserId = user?.id || (await getUserId(user));
+            const diffRes = await fetch(
+              `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
+            );
             const diffData = await diffRes.json();
             if (diffData.success && diffData.stats?.previousWeight) {
               setWeightDiff({
@@ -2027,7 +2126,9 @@ function WellnessValleyApp() {
                 change: parseFloat(diffData.stats.weightChange),
               });
             }
-          } catch (_) { /* non-critical — share card just won't show diff */ }
+          } catch (_) {
+            /* non-critical — share card just won't show diff */
+          }
           // Don't clear imagePreview or return - let it show like food images
         } else {
           // Weight detection failed - show manual entry modal
@@ -2316,7 +2417,10 @@ function WellnessValleyApp() {
           return;
         }
 
-        setNutritionData({ ...result, loggedAt: exifTimestamp || new Date().toISOString() });
+        setNutritionData({
+          ...result,
+          loggedAt: exifTimestamp || new Date().toISOString(),
+        });
 
         // Check for duplicate food before saving
         setLoadingState("saving"); // Switch to saving state
@@ -2568,7 +2672,8 @@ function WellnessValleyApp() {
     setWeightResult(null);
     setPendingWeightImage(null);
     setWeightEntrySaved(false);
-    setSavedWeightId(null); savedWeightIdRef.current = null;
+    setSavedWeightId(null);
+    savedWeightIdRef.current = null;
     setEducationResult(null); // Clear education results
     setImageType(null);
     setCurrentWeightImage(null);
@@ -2911,7 +3016,7 @@ function WellnessValleyApp() {
 
       // Clear userId session cache
       clearUserIdCache();
-      localStorage.removeItem('dbUserId');
+      localStorage.removeItem("dbUserId");
       // Clear profile-complete flag so a new/different user sees the gate if needed
       const emailKey = localStorage.getItem("userEmail") || "";
       if (emailKey) localStorage.removeItem("profileComplete_v2_" + emailKey);
@@ -3140,19 +3245,25 @@ function WellnessValleyApp() {
         }}
         onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
         onShowWellnessReport={
-          userRole === "admin" || userRole === "coach" || userRole === "developer"
+          userRole === "admin" ||
+          userRole === "coach" ||
+          userRole === "developer"
             ? () => setShowWellnessReport(true)
             : null
         }
         onShowAttendanceReport={() => setShowAttendanceReport(true)}
         onShowClubAttendanceReport={
-          userRole === "admin" || userRole === "coach" || userRole === "developer"
+          userRole === "admin" ||
+          userRole === "coach" ||
+          userRole === "developer"
             ? () => setShowClubAttendanceReport(true)
             : null
         }
         onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
         onShowRegisterCenter={
-          userRole === "admin" || userRole === "coach" || userRole === "developer"
+          userRole === "admin" ||
+          userRole === "coach" ||
+          userRole === "developer"
             ? () => setShowRegisterCenter(true)
             : null
         }
@@ -3166,7 +3277,13 @@ function WellnessValleyApp() {
       />
 
       {/* Personal Discipline Score - Shows individual category breakdown (WEI, EDU, BRE, LUN, DIN) */}
-      {user && <PersonalDisciplineScore ref={personalDisciplineRef} apiBaseUrl={apiBaseUrl} userId={user.id} />}
+      {user && (
+        <PersonalDisciplineScore
+          ref={personalDisciplineRef}
+          apiBaseUrl={apiBaseUrl}
+          userId={user.id}
+        />
+      )}
 
       {/* Weight Loss Leaderboard Strip - Configure in src/config/leaderboardConfig.js */}
       <WeightLossLeaderboard
@@ -3273,66 +3390,207 @@ function WellnessValleyApp() {
                 className="fixed -left-[9999px] top-0"
                 style={{ position: "fixed", left: "-9999px", width: 460 }}
               >
-                <div style={{ background: 'white', borderRadius: 20, boxShadow: '0 10px 40px rgba(0,0,0,0.15)', border: '2px solid #2dd4bf' }}>
+                <div
+                  style={{
+                    background: "white",
+                    borderRadius: 20,
+                    boxShadow: "0 10px 40px rgba(0,0,0,0.15)",
+                    border: "2px solid #2dd4bf",
+                  }}
+                >
                   {/* User header strip */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '32px 28px', background: 'linear-gradient(135deg, #0d9488 0%, #059669 100%)', borderRadius: '18px 18px 0 0', minHeight: 110 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 16,
+                      padding: "32px 28px",
+                      background:
+                        "linear-gradient(135deg, #0d9488 0%, #059669 100%)",
+                      borderRadius: "18px 18px 0 0",
+                      minHeight: 110,
+                    }}
+                  >
                     {/* Profile photo — div+backgroundImage for reliable html2canvas rendering */}
-                    {(sharePhotoBase64 || user?.photoURL) ? (
-                      <div style={{
-                        width: 64, height: 64,
-                        borderRadius: '50%',
-                        border: '3px solid rgba(255,255,255,0.95)',
-                        backgroundImage: `url(${sharePhotoBase64 || user.photoURL})`,
-                        backgroundSize: 'cover',
-                        backgroundPosition: 'center',
-                        flexShrink: 0,
-                        boxShadow: '0 2px 8px rgba(0,0,0,0.2)'
-                      }} />
+                    {sharePhotoBase64 || user?.photoURL ? (
+                      <div
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: "50%",
+                          border: "3px solid rgba(255,255,255,0.95)",
+                          backgroundImage: `url(${
+                            sharePhotoBase64 || user.photoURL
+                          })`,
+                          backgroundSize: "cover",
+                          backgroundPosition: "center",
+                          flexShrink: 0,
+                          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+                        }}
+                      />
                     ) : (
-                      <div style={{ width: 64, height: 64, borderRadius: '50%', border: '3px solid rgba(255,255,255,0.9)', background: 'rgba(255,255,255,0.25)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                        <span style={{ color: 'white', fontWeight: 800, fontSize: 26, lineHeight: 1 }}>
-                          {(user?.displayName || user?.email || "U").charAt(0).toUpperCase()}
+                      <div
+                        style={{
+                          width: 64,
+                          height: 64,
+                          borderRadius: "50%",
+                          border: "3px solid rgba(255,255,255,0.9)",
+                          background: "rgba(255,255,255,0.25)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <span
+                          style={{
+                            color: "white",
+                            fontWeight: 800,
+                            fontSize: 26,
+                            lineHeight: 1,
+                          }}
+                        >
+                          {(user?.displayName || user?.email || "U")
+                            .charAt(0)
+                            .toUpperCase()}
                         </span>
                       </div>
                     )}
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <p style={{ color: 'white', fontWeight: 800, fontSize: 19, lineHeight: 1.2, margin: '0 0 6px 0' }}>
-                        {user?.displayName || user?.name || user?.email?.split("@")[0] || "Wellness User"}
+                      <p
+                        style={{
+                          color: "white",
+                          fontWeight: 800,
+                          fontSize: 19,
+                          lineHeight: 1.2,
+                          margin: "0 0 6px 0",
+                        }}
+                      >
+                        {user?.displayName ||
+                          user?.name ||
+                          user?.email?.split("@")[0] ||
+                          "Wellness User"}
                       </p>
-                      <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 13, margin: 0, lineHeight: 1 }}>
-                        {new Date().toLocaleDateString(undefined, { dateStyle: "medium" })}
+                      <p
+                        style={{
+                          color: "rgba(187,247,236,0.95)",
+                          fontSize: 13,
+                          margin: 0,
+                          lineHeight: 1,
+                        }}
+                      >
+                        {new Date().toLocaleDateString(undefined, {
+                          dateStyle: "medium",
+                        })}
                       </p>
                     </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 8 }}>
-                      <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 14, fontWeight: 800, margin: '0 0 2px 0', lineHeight: 1.3, letterSpacing: '0.02em' }}>Wellness</p>
-                      <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 14, fontWeight: 800, margin: 0, lineHeight: 1.3, letterSpacing: '0.02em' }}>Buddy</p>
+                    <div
+                      style={{
+                        textAlign: "right",
+                        flexShrink: 0,
+                        paddingLeft: 8,
+                      }}
+                    >
+                      <p
+                        style={{
+                          color: "rgba(187,247,236,0.95)",
+                          fontSize: 14,
+                          fontWeight: 800,
+                          margin: "0 0 2px 0",
+                          lineHeight: 1.3,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Wellness
+                      </p>
+                      <p
+                        style={{
+                          color: "rgba(187,247,236,0.95)",
+                          fontSize: 14,
+                          fontWeight: 800,
+                          margin: 0,
+                          lineHeight: 1.3,
+                          letterSpacing: "0.02em",
+                        }}
+                      >
+                        Buddy
+                      </p>
                     </div>
                   </div>
 
                   {/* Weight Image for sharing */}
                   {imagePreview && (
-                    <div style={{ background: 'black', overflow: 'hidden' }}>
+                    <div style={{ background: "black", overflow: "hidden" }}>
                       <img
                         src={imagePreview}
                         alt="Weight Scale"
-                        style={{ width: '100%', height: 256, objectFit: 'contain', display: 'block' }}
+                        style={{
+                          width: "100%",
+                          height: 256,
+                          objectFit: "contain",
+                          display: "block",
+                        }}
                       />
                     </div>
                   )}
 
                   {/* Card content for sharing - Simple and Clean */}
-                  <div style={{ background: 'white', padding: 32, borderRadius: '0 0 18px 18px' }}>
-                    <h2 style={{ fontSize: 24, fontWeight: 700, color: '#059669', textAlign: 'center', margin: '0 0 24px 0' }}>
+                  <div
+                    style={{
+                      background: "white",
+                      padding: 32,
+                      borderRadius: "0 0 18px 18px",
+                    }}
+                  >
+                    <h2
+                      style={{
+                        fontSize: 24,
+                        fontWeight: 700,
+                        color: "#059669",
+                        textAlign: "center",
+                        margin: "0 0 24px 0",
+                      }}
+                    >
                       Weight Analysis
                     </h2>
 
-                    <div style={{ background: '#f5f3ff', borderRadius: 16, padding: 24, textAlign: 'center' }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: '#7c3aed', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 8px 0' }}>
+                    <div
+                      style={{
+                        background: "#f5f3ff",
+                        borderRadius: 16,
+                        padding: 24,
+                        textAlign: "center",
+                      }}
+                    >
+                      <p
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: "#7c3aed",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          margin: "0 0 8px 0",
+                        }}
+                      >
                         Weight
                       </p>
-                      <p style={{ fontSize: 48, fontWeight: 700, color: '#6d28d9', margin: 0, lineHeight: 1.1 }}>
+                      <p
+                        style={{
+                          fontSize: 48,
+                          fontWeight: 700,
+                          color: "#6d28d9",
+                          margin: 0,
+                          lineHeight: 1.1,
+                        }}
+                      >
                         {weightResult.weightValue}
-                        <span style={{ fontSize: 22, fontWeight: 400, marginLeft: 8 }}>
+                        <span
+                          style={{
+                            fontSize: 22,
+                            fontWeight: 400,
+                            marginLeft: 8,
+                          }}
+                        >
                           {weightResult.unit}
                         </span>
                       </p>
@@ -3340,26 +3598,103 @@ function WellnessValleyApp() {
 
                     {/* Weight Diff Strip */}
                     {weightDiff && (
-                      <div style={{
-                        marginTop: 20, borderRadius: 16, padding: '14px 18px',
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        background: weightDiff.change < 0 ? '#f0fdf4' : weightDiff.change > 0 ? '#fff1f2' : '#f9fafb',
-                        border: `1px solid ${weightDiff.change < 0 ? '#bbf7d0' : weightDiff.change > 0 ? '#fecdd3' : '#e5e7eb'}`
-                      }}>
+                      <div
+                        style={{
+                          marginTop: 20,
+                          borderRadius: 16,
+                          padding: "14px 18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          background:
+                            weightDiff.change < 0
+                              ? "#f0fdf4"
+                              : weightDiff.change > 0
+                              ? "#fff1f2"
+                              : "#f9fafb",
+                          border: `1px solid ${
+                            weightDiff.change < 0
+                              ? "#bbf7d0"
+                              : weightDiff.change > 0
+                              ? "#fecdd3"
+                              : "#e5e7eb"
+                          }`,
+                        }}
+                      >
                         <div>
-                          <p style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', margin: '0 0 4px 0' }}>vs Previous</p>
-                          <p style={{ fontSize: 16, fontWeight: 700, color: '#374151', margin: '0 0 2px 0' }}>{weightDiff.previous} {weightResult.unit}</p>
-                          <p style={{ fontSize: 11, color: '#9ca3af', margin: 0 }}>
-                            {new Date(weightDiff.previousDate).toLocaleDateString(undefined, { dateStyle: 'medium' })}
+                          <p
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#6b7280",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              margin: "0 0 4px 0",
+                            }}
+                          >
+                            vs Previous
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 16,
+                              fontWeight: 700,
+                              color: "#374151",
+                              margin: "0 0 2px 0",
+                            }}
+                          >
+                            {weightDiff.previous} {weightResult.unit}
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              color: "#9ca3af",
+                              margin: 0,
+                            }}
+                          >
+                            {new Date(
+                              weightDiff.previousDate,
+                            ).toLocaleDateString(undefined, {
+                              dateStyle: "medium",
+                            })}
                           </p>
                         </div>
-                        <div style={{ textAlign: 'right', color: weightDiff.change < 0 ? '#16a34a' : weightDiff.change > 0 ? '#ef4444' : '#6b7280' }}>
-                          <p style={{ fontSize: 22, fontWeight: 700, margin: '0 0 2px 0' }}>
-                            {weightDiff.change > 0 ? '▲' : weightDiff.change < 0 ? '▼' : '—'}
-                            {' '}{weightDiff.change === 0 ? 'No change' : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
+                        <div
+                          style={{
+                            textAlign: "right",
+                            color:
+                              weightDiff.change < 0
+                                ? "#16a34a"
+                                : weightDiff.change > 0
+                                ? "#ef4444"
+                                : "#6b7280",
+                          }}
+                        >
+                          <p
+                            style={{
+                              fontSize: 22,
+                              fontWeight: 700,
+                              margin: "0 0 2px 0",
+                            }}
+                          >
+                            {weightDiff.change > 0
+                              ? "▲"
+                              : weightDiff.change < 0
+                              ? "▼"
+                              : "—"}{" "}
+                            {weightDiff.change === 0
+                              ? "No change"
+                              : `${Math.abs(weightDiff.change)} ${
+                                  weightResult.unit
+                                }`}
                           </p>
-                          <p style={{ fontSize: 13, fontWeight: 600, margin: 0 }}>
-                            {weightDiff.change < 0 ? 'Lost' : weightDiff.change > 0 ? 'Gained' : ''}
+                          <p
+                            style={{ fontSize: 13, fontWeight: 600, margin: 0 }}
+                          >
+                            {weightDiff.change < 0
+                              ? "Lost"
+                              : weightDiff.change > 0
+                              ? "Gained"
+                              : ""}
                           </p>
                         </div>
                       </div>
@@ -3376,12 +3711,14 @@ function WellnessValleyApp() {
 
                 <div className="bg-purple-50 rounded-lg p-4 border border-purple-100 text-center flex flex-col items-center">
                   <div className="flex items-center justify-between w-full mb-1">
-                    <p className="text-sm text-purple-600 font-medium">Weight</p>
+                    <p className="text-sm text-purple-600 font-medium">
+                      Weight
+                    </p>
                     {!isEditingWeight && (
                       <button
                         onClick={() => {
                           setEditWeightValue(String(weightResult.weightValue));
-                          setWeightEditError('');
+                          setWeightEditError("");
                           setIsEditingWeight(true);
                         }}
                         className="flex items-center gap-1 text-xs text-purple-500 hover:text-purple-700 transition-colors"
@@ -3407,10 +3744,14 @@ function WellnessValleyApp() {
                           max="300"
                           autoFocus
                         />
-                        <span className="text-sm text-purple-600">{weightResult.unit}</span>
+                        <span className="text-sm text-purple-600">
+                          {weightResult.unit}
+                        </span>
                       </div>
                       {weightEditError && (
-                        <p className="text-xs text-red-500 mt-1 text-center">{weightEditError}</p>
+                        <p className="text-xs text-red-500 mt-1 text-center">
+                          {weightEditError}
+                        </p>
                       )}
                       <div className="flex gap-2 mt-2">
                         <button
@@ -3423,10 +3764,13 @@ function WellnessValleyApp() {
                           ) : (
                             <Check className="w-4 h-4" />
                           )}
-                          {isSavingWeightEdit ? 'Saving…' : 'Save'}
+                          {isSavingWeightEdit ? "Saving…" : "Save"}
                         </button>
                         <button
-                          onClick={() => { setIsEditingWeight(false); setWeightEditError(''); }}
+                          onClick={() => {
+                            setIsEditingWeight(false);
+                            setWeightEditError("");
+                          }}
                           disabled={isSavingWeightEdit}
                           className="flex-1 flex items-center justify-center gap-1 py-2 bg-gray-100 text-gray-700 text-sm font-semibold rounded-lg hover:bg-gray-200 transition-colors disabled:opacity-50"
                         >
@@ -3438,32 +3782,58 @@ function WellnessValleyApp() {
                   ) : (
                     <p className="text-3xl font-bold text-purple-700">
                       {weightResult.weightValue}
-                      <span className="text-lg font-normal ml-1">{weightResult.unit}</span>
+                      <span className="text-lg font-normal ml-1">
+                        {weightResult.unit}
+                      </span>
                     </p>
                   )}
                 </div>
 
                 <div className="mt-3 text-center text-xs text-gray-500">
-                  Logged at {new Date(weightResult.loggedAt || Date.now()).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })}
+                  Logged at{" "}
+                  {new Date(weightResult.loggedAt || Date.now()).toLocaleString(
+                    undefined,
+                    { dateStyle: "medium", timeStyle: "short" },
+                  )}
                 </div>
 
                 {/* Weight diff vs previous entry */}
                 {weightDiff && (
-                  <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
-                    weightDiff.change < 0 ? 'bg-green-50 border border-green-100' :
-                    weightDiff.change > 0 ? 'bg-red-50 border border-red-100' :
-                    'bg-gray-50 border border-gray-100'
-                  }`}>
+                  <div
+                    className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
+                      weightDiff.change < 0
+                        ? "bg-green-50 border border-green-100"
+                        : weightDiff.change > 0
+                        ? "bg-red-50 border border-red-100"
+                        : "bg-gray-50 border border-gray-100"
+                    }`}
+                  >
                     <div>
                       <p className="text-xs text-gray-500">vs Previous entry</p>
-                      <p className="text-sm font-semibold text-gray-700">{weightDiff.previous} {weightResult.unit}</p>
+                      <p className="text-sm font-semibold text-gray-700">
+                        {weightDiff.previous} {weightResult.unit}
+                      </p>
                     </div>
-                    <div className={`font-bold text-lg ${
-                      weightDiff.change < 0 ? 'text-green-600' : weightDiff.change > 0 ? 'text-red-500' : 'text-gray-500'
-                    }`}>
-                      {weightDiff.change > 0 ? '▲' : weightDiff.change < 0 ? '▼' : '—'}
-                      {' '}{weightDiff.change === 0 ? 'No change' : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
-                      {weightDiff.change < 0 && <span className="text-sm ml-1">🎉</span>}
+                    <div
+                      className={`font-bold text-lg ${
+                        weightDiff.change < 0
+                          ? "text-green-600"
+                          : weightDiff.change > 0
+                          ? "text-red-500"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {weightDiff.change > 0
+                        ? "▲"
+                        : weightDiff.change < 0
+                        ? "▼"
+                        : "—"}{" "}
+                      {weightDiff.change === 0
+                        ? "No change"
+                        : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
+                      {weightDiff.change < 0 && (
+                        <span className="text-sm ml-1">🎉</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3697,7 +4067,11 @@ function WellnessValleyApp() {
           user={user}
           apiBaseUrl={apiBaseUrl}
           onComplete={async () => {
-            const email = user?.email || user?.Email || localStorage.getItem("userEmail") || "";
+            const email =
+              user?.email ||
+              user?.Email ||
+              localStorage.getItem("userEmail") ||
+              "";
             profileCompletedRef.current = false;
             await checkProfileCompletion(email);
           }}
@@ -3731,7 +4105,9 @@ function WellnessValleyApp() {
       {/* Club Attendance Report */}
       {showClubAttendanceReport && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading club attendance report..." />}
+          fallback={
+            <LoadingSpinner message="Loading club attendance report..." />
+          }
         >
           <ClubAttendanceReport
             user={user}
@@ -3743,7 +4119,9 @@ function WellnessValleyApp() {
       {/* Nutrition Centers Map */}
       {showNutritionCentersMap && (
         <Suspense
-          fallback={<LoadingSpinner message="Loading nutrition centers map..." />}
+          fallback={
+            <LoadingSpinner message="Loading nutrition centers map..." />
+          }
         >
           <NutritionCentersMap
             user={user}
