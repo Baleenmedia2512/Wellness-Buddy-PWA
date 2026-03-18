@@ -471,6 +471,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       summaryStats={summaryStats}
+      allowedDateRanges={["today", "yesterday"]}
     >
       {filteredHierarchy && (
         <HierarchicalNode

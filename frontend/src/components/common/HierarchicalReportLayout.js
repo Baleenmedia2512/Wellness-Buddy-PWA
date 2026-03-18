@@ -345,6 +345,7 @@ const HierarchicalReportLayout = ({
   summaryStats,
   onStatClick,
   children,
+  allowedDateRanges, // Optional array to filter date range options (e.g., ["today", "yesterday"])
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -468,7 +469,9 @@ const HierarchicalReportLayout = ({
                 { value: "yesterday", label: "Yesterday" },
                 { value: "week", label: "Week" },
                 { value: "month", label: "Month" },
-              ].map((range) => (
+              ]
+                .filter((range) => !allowedDateRanges || allowedDateRanges.includes(range.value))
+                .map((range) => (
                 <TouchFeedbackButton
                   key={range.value}
                   id={`date-range-${range.value}`}
