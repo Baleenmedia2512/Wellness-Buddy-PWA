@@ -341,7 +341,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
             <strong>Owner:</strong> ${center.ownerName}
           </p>
           <p style="margin: 4px 0; font-size: 13px; color: #6b7280;">
-            <strong>Participants:</strong> ${center.totalParticipants}
+            <strong>Attendance:</strong> ${center.todayAttendance || 0}
           </p>
           <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 8px;">
             <button 
@@ -422,7 +422,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               <ArrowLeft className="h-5 w-5 text-gray-600" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Nutrition Centres Map</h1>
+              <h1 className="text-xl font-bold text-gray-800">Physical Club Report</h1>
               <p className="text-xs text-gray-500">View club locations & attendance</p>
             </div>
           </div>
@@ -507,9 +507,20 @@ const NutritionCentersMap = ({ user, onBack }) => {
             
             {/* Centres List */}
             <div className="mt-4 space-y-2">
-              <h2 className="text-lg font-bold text-gray-800 mb-2">
-                Centres ({centers.length})
-              </h2>
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
+                <h2 className="text-lg font-bold text-gray-800">
+                  Centres ({centers.length})
+                </h2>
+                {centers.length > 0 && (() => {
+                  const totalParticipants = centers.reduce((sum, c) => sum + (c.totalParticipants || 0), 0);
+                  const totalToday = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                  return (
+                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                      {centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0)} attended today
+                    </span>
+                  );
+                })()}
+              </div>
               {centers.length === 0 ? (
                 <div className="bg-white rounded-lg p-6 text-center shadow-sm">
                   <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-2" />
@@ -527,7 +538,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                         <h3 className="font-bold text-gray-800">{center.center_name}</h3>
                         <p className="text-sm text-gray-600 mt-1">Owner: {center.ownerName}</p>
                         <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                          <span>👥 {center.totalParticipants} participants</span>
+                          <span>Attendance: <span className="font-semibold text-gray-700">{center.todayAttendance || 0}</span></span>
                         </div>
                       </div>
 
