@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Building2, Users, Check, XCircle } from "lucide-react";
+import { Monitor, Users, XCircle } from "lucide-react";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -75,13 +75,13 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       const userId = await getUserId(user.email);
       const date = getTargetDate();
       const response = await fetch(
-        `${apiBaseUrl}/api/coach/hierarchical-clubs-overview?userId=${userId}&date=${date}`,
+        `${apiBaseUrl}/api/coach/hierarchical-club-attendance?userId=${userId}&date=${date}&type=remote`,
         { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
         throw new Error(
-          result.message || "Failed to fetch club ownership data",
+          result.message || "Failed to fetch remote attendance data",
         );
       }
 
@@ -104,17 +104,15 @@ const ClubAttendanceReport = ({ user, onBack }) => {
           sorted.teamMembers = [...sorted.teamMembers]
             .map(sortHierarchy)
             .sort((a, b) => {
-              const clubsA = a.metrics?.totalClubs || 0;
-              const clubsB = b.metrics?.totalClubs || 0;
-              return sortOrder === "desc" ? clubsB - clubsA : clubsA - clubsB;
+              const remoteA = a.metrics?.remoteCount || 0;
+              const remoteB = b.metrics?.remoteCount || 0;
+              return sortOrder === "desc" ? remoteB - remoteA : remoteA - remoteB;
             });
         }
         return sorted;
       };
 
       setHierarchyData(sortHierarchy(mapFields(result.data.hierarchy)));
-
-      setHierarchyData(mapFields(result.data.hierarchy));
     } catch (err) {
       console.error("Error fetching club ownership:", err);
       setError(err.message);
@@ -134,17 +132,16 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   // Filter options
   const filterOptions = [
     { value: "all", label: "All Members", icon: null },
-    { value: "hasClubs", label: "Has Clubs", icon: Building2 },
-    { value: "noClubs", label: "No Clubs", icon: XCircle },
+    { value: "hasRemote", label: "Has Remote", icon: Monitor },
+    { value: "noRemote", label: "No Remote", icon: XCircle },
   ];
 
   // Match filter logic
   const matchesFilter = (node, filterValue) => {
     if (filterValue === "all") return true;
-    const clubs = node.metrics?.clubs || [];
-    const hasClubs = clubs.length > 0;
-    if (filterValue === "hasClubs") return hasClubs;
-    if (filterValue === "noClubs") return !hasClubs;
+    const hasRemote = (node.metrics?.remoteCount || 0) > 0;
+    if (filterValue === "hasRemote") return hasRemote;
+    if (filterValue === "noRemote") return !hasRemote;
     return true;
   };
 
@@ -152,23 +149,15 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   const matchesSearch = (node, query) => {
     if (!query) return true;
     const lowerQuery = query.toLowerCase();
-
     if (
       node.userName?.toLowerCase().includes(lowerQuery) ||
       node.userEmail?.toLowerCase().includes(lowerQuery)
     ) {
       return true;
     }
-
-    const clubs = node.metrics?.clubs || [];
-    if (clubs.some((club) => club.name?.toLowerCase().includes(lowerQuery))) {
-      return true;
-    }
-
     if (node.teamMembers && node.teamMembers.length > 0) {
       return node.teamMembers.some((child) => matchesSearch(child, query));
     }
-
     return false;
   };
 
@@ -194,25 +183,22 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   // Render status badge
   const renderStatus = (node, showDetails) => {
-    const clubs = node.metrics?.clubs || [];
-    const hasClubs = clubs.length > 0;
-
-    if (!hasClubs) {
+    const remoteCount = node.metrics?.remoteCount || 0;
+    if (remoteCount === 0) {
       return (
         <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-50 border border-gray-200 text-gray-500">
           <XCircle className="h-2.5 w-2.5 flex-shrink-0" />
           <span className="text-[9px] font-semibold whitespace-nowrap">
-            No Clubs
+            No Remote
           </span>
         </div>
       );
     }
-
     return (
-      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-green-100 border border-green-300 text-green-700 shadow-sm">
-        <Building2 className="h-3.5 w-3.5" />
+      <div className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-blue-100 border border-blue-300 text-blue-700 shadow-sm">
+        <Monitor className="h-3.5 w-3.5" />
         <span className="text-xs font-bold">
-          {clubs.length} {clubs.length === 1 ? "Club" : "Clubs"}
+          {remoteCount} Remote
         </span>
       </div>
     );
@@ -220,16 +206,11 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   // Render stats strip
   const renderStats = (node, level, isCurrentUser) => {
-    const clubs = node.metrics?.clubs || [];
-    const hasClubs = clubs.length > 0;
-
+    const remoteCount = node.metrics?.remoteCount || 0;
     const directQualified = node.directTeamCount?.qualified || 0;
     const directTotal = node.directTeamCount?.total || 0;
-    const directClubs = node.directTeamCount?.totalClubs || 0;
-
     const fullQualified = node.fullTeamCount?.qualified || 0;
     const fullTotal = node.fullTeamCount?.total || 0;
-    const fullClubs = node.fullTeamCount?.totalClubs || 0;
 
     return (
       <>
@@ -238,22 +219,14 @@ const ClubAttendanceReport = ({ user, onBack }) => {
           <div className="flex items-center gap-1">
             <span
               className={`text-base font-bold ${
-                hasClubs ? "text-green-600" : "text-gray-400"
+                remoteCount > 0 ? "text-blue-600" : "text-gray-400"
               }`}
             >
-              {hasClubs ? 1 : 0}
+              {remoteCount}
             </span>
-            <Users className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400">/</span>
-            <span
-              className={`text-base font-bold ${
-                hasClubs ? "text-green-600" : "text-gray-400"
-              }`}
-            >
-              {clubs.length}
-            </span>
-            <Building2 className="h-3 w-3 text-gray-400" />
+            <Monitor className="h-3 w-3 text-gray-400" />
           </div>
+          <span className="text-[9px] text-gray-500">sessions</span>
         </div>
 
         {/* Direct Team */}
@@ -263,11 +236,6 @@ const ClubAttendanceReport = ({ user, onBack }) => {
               {directQualified}
             </span>
             <Users className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400 text-sm">/</span>
-            <span className="text-base font-bold text-gray-900">
-              {directClubs}
-            </span>
-            <Building2 className="h-3 w-3 text-gray-400" />
           </div>
           <span className="text-[9px] text-gray-500">of {directTotal}</span>
         </div>
@@ -279,11 +247,6 @@ const ClubAttendanceReport = ({ user, onBack }) => {
               {fullQualified}
             </span>
             <Users className="h-3 w-3 text-gray-400" />
-            <span className="text-gray-400 text-sm">/</span>
-            <span className="text-base font-bold text-gray-900">
-              {fullClubs}
-            </span>
-            <Building2 className="h-3 w-3 text-gray-400" />
           </div>
           <span className="text-[9px] text-gray-500">of {fullTotal}</span>
         </div>
@@ -291,38 +254,16 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     );
   };
 
-  // Render expanded details section
+  // Render expanded details section — nothing extra to show for remote attendance
   const renderExpandedDetails = (node, level, isCurrentUser) => {
-    const clubs = node.metrics?.clubs || [];
-    if (clubs.length === 0) return null;
-
-    return (
-      <div
-        className={`px-3 py-2 space-y-1.5 ${
-          isCurrentUser ? "bg-yellow-50" : "bg-green-50"
-        }`}
-      >
-        {clubs.map((club, idx) => (
-          <div
-            key={idx}
-            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-green-200"
-          >
-            <Building2 className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-            <span className="text-xs font-medium text-gray-800">
-              {club.name}
-            </span>
-          </div>
-        ))}
-      </div>
-    );
+    return null;
   };
 
   // Get status-based styling
   const getStatusStyle = (node, level, isCurrentUser) => {
-    const clubs = node.metrics?.clubs || [];
-    const hasClubs = clubs.length > 0;
+    const hasRemote = (node.metrics?.remoteCount || 0) > 0;
 
-    if (isCurrentUser && hasClubs) {
+    if (isCurrentUser && hasRemote) {
       return {
         containerClass:
           "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 shadow-md",
@@ -332,12 +273,12 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       };
     }
 
-    if (hasClubs) {
+    if (hasRemote) {
       return {
-        containerClass: "bg-white border-green-200 shadow-sm",
-        avatarClass: "bg-green-50 border-green-400 text-green-700",
+        containerClass: "bg-white border-blue-200 shadow-sm",
+        avatarClass: "bg-blue-50 border-blue-400 text-blue-700",
         nameClass: "text-gray-900",
-        statsBorderClass: "border-green-100 divide-green-100",
+        statsBorderClass: "border-blue-100 divide-blue-100",
       };
     }
 
@@ -350,14 +291,13 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   };
 
   // Calculate summary stats
-  const myClubs = hierarchyData?.metrics?.clubs?.length || 0;
-  const directClubsCount = hierarchyData?.directTeamCount?.totalClubs || 0;
-  const fullClubsCount = hierarchyData?.fullTeamCount?.totalClubs || 0;
-  const totalClubsForSubtitle = hierarchyData?.fullTeamCount?.totalClubs || 0;
+  const myRemoteCount = hierarchyData?.metrics?.remoteCount || 0;
+  const directRemoteCount = hierarchyData?.directTeamCount?.qualified || 0;
+  const fullRemoteCount = hierarchyData?.fullTeamCount?.qualified || 0;
 
   const summaryStats = hierarchyData
     ? {
-        note: `Self: ${myClubs} | Direct: ${directClubsCount} | Full: ${fullClubsCount}`,
+        note: `Self: ${myRemoteCount} | Direct: ${directRemoteCount} | Full: ${fullRemoteCount}`,
       }
     : null;
 
@@ -432,7 +372,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       title="Virtual Club Report"
       subtitle={`${
         teamCounts.coaches + teamCounts.members
-      } Members • ${totalClubsForSubtitle} Total Clubs • Last updated ${new Date().toLocaleString(
+      } Members • ${directRemoteCount} Attended Remote • Last updated ${new Date().toLocaleString(
         "en-US",
         {
           month: "short",
