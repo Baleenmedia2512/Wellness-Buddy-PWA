@@ -173,8 +173,6 @@ function WellnessValleyApp() {
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
 
-  // Mandatory profile completion gate — blocks app until required fields are filled
-  const [showCompleteProfile, setShowCompleteProfile] = useState(false);
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
   const storedEmail = localStorage.getItem("userEmail") || "";
