@@ -374,7 +374,7 @@ const AttendanceReport = ({ user, onBack }) => {
                 ? `${Math.round((directAttended / directTotal) * 100)}%`
                 : "0%",
             icon: null,
-            onClick: null,
+            onClick: () => setTeamView("direct"),
             isActive: teamView === "direct",
           },
           {
@@ -384,7 +384,7 @@ const AttendanceReport = ({ user, onBack }) => {
                 ? `${Math.round((fullAttended / fullTotal) * 100)}%`
                 : "0%",
             icon: null,
-            onClick: () => setTeamView(teamView === "full" ? "direct" : "full"),
+            onClick: () => setTeamView("full"),
             isActive: teamView === "full",
           },
         ],
