@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
 
@@ -9,6 +9,9 @@ const CALORIES_PER_STEP = 0.04; // Walking: 1 step = 0.04 kcal
 const UPDATE_THROTTLE_MS = 1000; // Update UI max once per second
 const ACTIVITY_TYPE = 'walking'; // Only walking activity
 const AUTO_SAVE_INTERVAL_MS = 60 * 1000; // Auto-save every 1 minute
+const STEP_GOAL = 10000; // Daily step goal
+const RING_RADIUS = 80;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
 /**
  * Get date key in YYYY-MM-DD format
@@ -79,9 +82,7 @@ const StepCounter = ({ onBack, userId }) => {
   const [dailyHistory, setDailyHistory] = useState([]);
   const [saving, setSaving] = useState(false);
   const [lastSaved, setLastSaved] = useState(null);
-  const [currentSlide, setCurrentSlide] = useState(0); // 0: Today, 1: History
   const [historyView, setHistoryView] = useState('week'); // 'week', 'month'
-  const [panelHeight, setPanelHeight] = useState(null);
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
     // Try initializing from prop or localStorage immediately (synchronous)
@@ -162,13 +163,11 @@ const StepCounter = ({ onBack, userId }) => {
   const lastUIUpdateRef = useRef(0);
   const midnightTimerRef = useRef(null);
   const autoSaveTimerRef = useRef(null);
-  const todayPanelRef = useRef(null);
-  const historyPanelRef = useRef(null);
   const resolveIntervalRef = useRef(null);
-  const swipeRef = useRef({ active: false, startX: 0, lastX: 0 });
   const pollIntervalRef = useRef(null);
   const todayStepsRef = useRef(0);       // Req 8: always-current step count for resume saves
   const lastSavedStepsRef = useRef(null); // Req 8: prevent duplicate saves
+  const dbStepsFloorRef = useRef(0);     // Floor from DB to protect against reinstall data loss
   
   /**
    * Process sensor value and calculate daily steps
@@ -203,8 +202,9 @@ const StepCounter = ({ onBack, userId }) => {
       writeBaseline(todayKey, totalSteps);
     }
     
-    // Calculate today's steps
-    const dailySteps = Math.max(0, Math.floor(totalSteps - baseline.sensorTotal));
+    // Calculate today's steps (use DB floor to prevent losing data after reinstall)
+    const sensorSteps = Math.max(0, Math.floor(totalSteps - baseline.sensorTotal));
+    const dailySteps = Math.max(sensorSteps, dbStepsFloorRef.current);
     const calories = calcCalories(dailySteps);
     
     console.log('🚶 Daily steps calculated:', {
@@ -310,6 +310,20 @@ const StepCounter = ({ onBack, userId }) => {
   useEffect(() => {
     if (resolvedUserId) {
       loadDailyHistory();
+      // Fetch today's steps from DB to protect against reinstall data loss
+      fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE)
+        .then((response) => {
+          const trend = response.trend || response.data;
+          if (response.success && Array.isArray(trend)) {
+            const todayKey = toDateKey();
+            const todayEntry = trend.find((d) => d.date === todayKey);
+            if (todayEntry && todayEntry.steps > 0) {
+              dbStepsFloorRef.current = todayEntry.steps;
+              console.log('🛡️ DB steps floor set:', todayEntry.steps);
+            }
+          }
+        })
+        .catch((err) => console.warn('⚠️ Failed to fetch DB step floor:', err));
     }
   }, [resolvedUserId, loadDailyHistory]);
 
@@ -606,374 +620,262 @@ const StepCounter = ({ onBack, userId }) => {
     };
   // saveStepsToDatabase added so resume handler always uses the freshest closure
   }, [isNativePlatform, permissionGranted, sensorAvailable, processSensorValue, saveStepsToDatabase]);
+
   
-  /**
-   * Pointer event handlers for swipe gestures
-   */
-  const handlePointerDown = useCallback((e) => {
-    swipeRef.current = {
-      active: true,
-      startX: e.clientX,
-      lastX: e.clientX,
-    };
-  }, []);
-  
-  const handlePointerMove = useCallback((e) => {
-    if (!swipeRef.current.active) return;
-    swipeRef.current.lastX = e.clientX;
-  }, []);
-  
-  const handlePointerEnd = useCallback(() => {
-    if (!swipeRef.current.active) return;
-    
-    const deltaX = swipeRef.current.startX - swipeRef.current.lastX;
-    const threshold = 36; // Match NutritionDashboard threshold
-    
-    if (deltaX > threshold && currentSlide === 0) {
-      setCurrentSlide(1); // Swipe left to go to History
-    } else if (deltaX < -threshold && currentSlide === 1) {
-      setCurrentSlide(0); // Swipe right to go to Today
-    }
-    
-    swipeRef.current = { active: false, startX: 0, lastX: 0 };
-  }, [currentSlide]);
-  
-  /**
-   * Dynamic height measurement for smooth panel transitions
-   */
-  useEffect(() => {
-    const updateHeight = () => {
-      requestAnimationFrame(() => {
-        const activePanel = currentSlide === 0 ? todayPanelRef.current : historyPanelRef.current;
-        if (activePanel?.scrollHeight) {
-          const newHeight = activePanel.scrollHeight;
-          setPanelHeight(newHeight);
-        }
-      });
-    };
-    
-    // Update height on slide change
-    updateHeight();
-    
-    // Update on window resize
-    window.addEventListener('resize', updateHeight);
-    
-    return () => {
-      window.removeEventListener('resize', updateHeight);
-    };
-  }, [currentSlide, dailyHistory, historyView, todaySteps, todayCalories, loading]);
-  
-  /**
-   * Render loading state
-   */
+  // Progress ring calculations
+  const stepProgress = Math.min(todaySteps / STEP_GOAL, 1);
+  const ringOffset = RING_CIRCUMFERENCE * (1 - stepProgress);
+
+  // History data
+  const historyData = historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory;
+  const maxStepsInHistory = Math.max(
+    ...historyData.map(d => {
+      const isToday = toDateKey(new Date(d.date)) === toDateKey();
+      return isToday ? todaySteps : (d.steps || 0);
+    }), 1
+  );
+
   if (loading && !ready) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-green-100 flex items-center justify-center p-4">
-        <div className="bg-white/85 backdrop-blur-xl rounded-2xl border border-gray-100 shadow-lg p-6 sm:p-8 max-w-md w-full">
-          <div className="flex flex-col items-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-500 mb-4"></div>
-            <p className="text-gray-600 text-sm">Initializing Step Counter...</p>
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40 flex items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4">
+          <div className="relative w-24 h-24 sm:w-28 sm:h-28">
+            <svg viewBox="0 0 200 200" className="w-full h-full animate-spin">
+              <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#d1fae5" strokeWidth="10" />
+              <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#10b981" strokeWidth="10"
+                strokeDasharray={RING_CIRCUMFERENCE} strokeDashoffset={RING_CIRCUMFERENCE * 0.75}
+                strokeLinecap="round" transform="rotate(-90 100 100)" />
+            </svg>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Footprints className="w-8 h-8 text-emerald-400 animate-pulse" />
+            </div>
           </div>
+          <p className="text-gray-500 text-sm font-medium">Initializing Step Counter...</p>
         </div>
       </div>
     );
   }
-  
-  /**
-   * Main render
-   */
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-green-50 to-teal-50">
-      {/* Header */}
-      <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            {onBack && (
-              <button
-                onClick={onBack}
-                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                aria-label="Go back"
-              >
-                <ArrowLeft className="w-5 h-5 text-gray-700" />
-              </button>
-            )}
-            <div className="flex items-center gap-2">
-              <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 p-2 rounded-xl">
-                <Activity className="w-6 h-6 text-white" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Step Counter</h1>
-                <p className="text-xs text-gray-500">Track your walking activity</p>
-              </div>
-            </div>
-          </div>
 
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40">
+      {/* ──── Header ──── */}
+      <div className="bg-white/90 backdrop-blur-lg border-b border-emerald-100/50 sticky top-0 z-10">
+        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
+          {onBack && (
+            <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition-colors" aria-label="Go back">
+              <ArrowLeft className="w-5 h-5 text-gray-700" />
+            </button>
+          )}
+          <div className="flex items-center gap-2.5 flex-1">
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 p-2 rounded-xl shadow-sm">
+              <Footprints className="w-5 h-5 text-white" />
+            </div>
+            <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
+          </div>
+          {saving && <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Saving..." />}
         </div>
       </div>
-      
-      {/* Content */}
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 space-y-4">
-        
-        {/* Error Alert */}
+
+      {/* ──── Content ──── */}
+      <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
+
+        {/* Error */}
         {error && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 text-sm text-rose-800">
-            <strong>Error:</strong> {error}
+          <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
-        
-        {/* Permission Request */}
+
+        {/* Permission */}
         {isNativePlatform && sensorAvailable && !permissionGranted && (
-          <div className="bg-orange-50 border border-orange-200 rounded-xl p-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
-              <ShieldAlert className="w-5 h-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
-                <p className="text-sm font-medium text-orange-800 mb-1">Permission Required</p>
-                <p className="text-xs text-orange-700 mb-3">
-                  Allow activity recognition to track your steps automatically.
-                </p>
-                <button
-                  onClick={requestPermission}
-                  className="px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white text-sm font-medium rounded-lg transition-colors shadow-sm"
-                >
+                <p className="text-sm font-semibold text-amber-900 mb-1">Permission Required</p>
+                <p className="text-xs text-amber-700 mb-3">Allow activity recognition to track your steps.</p>
+                <button onClick={requestPermission} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-colors">
                   Grant Permission
                 </button>
               </div>
             </div>
           </div>
         )}
-        
-        {/* Sliding Container */}
-        <div 
-          className="bg-white/90 backdrop-blur-xl rounded-xl sm:rounded-2xl border border-gray-100 shadow-lg overflow-hidden"
-          onPointerDown={handlePointerDown}
-          onPointerMove={handlePointerMove}
-          onPointerUp={handlePointerEnd}
-          onPointerCancel={handlePointerEnd}
-          onPointerLeave={handlePointerEnd}
-        >
-          {/* Navigation with Side Buttons */}
-          <div className="flex items-stretch">
-            {/* Left Navigation Button */}
-            {currentSlide === 1 && (
-              <button
-                onClick={() => setCurrentSlide(0)}
-                className="flex-shrink-0 p-2 sm:p-3 hover:bg-emerald-50 transition-all duration-300 border-r border-gray-100"
-                aria-label="Previous slide"
-              >
-                <ChevronLeft className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
-              </button>
-            )}
-            
-            {/* Slides Container with Dynamic Height */}
-            <div 
-              className="flex-1 overflow-hidden transition-[height] duration-400 ease-out"
-              style={panelHeight ? { height: `${panelHeight}px` } : undefined}
-            >
-              <div 
-                className="flex items-start w-[200%] transition-transform duration-500 ease-out"
-                style={{ transform: `translateX(${currentSlide === 0 ? '0%' : '-50%'})` }}
-              >
-            {/* Slide 1: Today */}
-            <div ref={todayPanelRef} className="w-1/2 flex-shrink-0 p-4 sm:p-6 md:p-8">
-              <div className="text-center">
-                <h3 className="text-xs sm:text-sm md:text-base font-medium text-gray-600 mb-3 sm:mb-4">Daily Summary</h3>
-                
-                {/* Steps Card */}
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100/50 rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 mb-3 sm:mb-4">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Footprints className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600" />
-                    <p className="text-xs sm:text-sm md:text-base font-semibold text-emerald-700">Steps Today</p>
+
+        {/* ──── Circular Progress Ring + Stats ──── */}
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
+          <div className="flex flex-col items-center">
+            {/* Ring */}
+            <div className="relative w-44 h-44 sm:w-52 sm:h-52 mb-4">
+              {loading ? (
+                <div className="w-full h-full rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 animate-pulse" />
+              ) : (
+                <>
+                  <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
+                    <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#e5e7eb" strokeWidth="10" />
+                    <circle cx="100" cy="100" r={RING_RADIUS} fill="none"
+                      stroke="url(#stepGradient)" strokeWidth="10" strokeLinecap="round"
+                      strokeDasharray={RING_CIRCUMFERENCE} strokeDashoffset={ringOffset}
+                      className="transition-all duration-700 ease-out"
+                    />
+                    <defs>
+                      <linearGradient id="stepGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                        <stop offset="0%" stopColor="#10b981" />
+                        <stop offset="100%" stopColor="#14b8a6" />
+                      </linearGradient>
+                    </defs>
+                  </svg>
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <Footprints className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 mb-1" />
+                    <p className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-none">
+                      {todaySteps.toLocaleString()}
+                    </p>
+                    <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium">
+                      / {STEP_GOAL.toLocaleString()}
+                    </p>
                   </div>
-                  {loading ? (
-                    <div className="flex flex-col items-center gap-2 py-2">
-                      <div className="h-14 sm:h-16 md:h-20 lg:h-24 w-40 sm:w-48 md:w-56 lg:w-64 bg-gradient-to-r from-emerald-300/60 via-emerald-200/40 to-emerald-300/60 rounded-xl animate-pulse"></div>
-                      <div className="h-3 sm:h-4 w-24 sm:w-28 bg-emerald-300/40 rounded-full animate-pulse"></div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-emerald-900 mb-1 sm:mb-2">{todaySteps.toLocaleString()}</p>
-                      <p className="text-xs sm:text-sm text-emerald-600">Keep walking!</p>
-                    </>
-                  )}
-                </div>
-                
-                {/* Calories Card */}
-                <div className="bg-gradient-to-br from-rose-50 to-rose-100/50 rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6">
-                  <div className="flex items-center justify-center gap-2 mb-2">
-                    <Flame className="w-4 h-4 sm:w-5 sm:h-5 text-rose-600" />
-                    <p className="text-xs sm:text-sm md:text-base font-semibold text-rose-700">Calories Burned</p>
-                  </div>
-                  {loading ? (
-                    <div className="flex flex-col items-center gap-2 py-2">
-                      <div className="h-14 sm:h-16 md:h-20 lg:h-24 w-40 sm:w-48 md:w-56 lg:w-64 bg-gradient-to-r from-rose-300/60 via-rose-200/40 to-rose-300/60 rounded-xl animate-pulse"></div>
-                      <div className="h-3 sm:h-4 w-20 sm:w-24 bg-rose-300/40 rounded-full animate-pulse"></div>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-rose-900 mb-1 sm:mb-2">{todayCalories}</p>
-                      <p className="text-xs sm:text-sm text-rose-600">kcal burned</p>
-                    </>
-                  )}
-                </div>
-                
-                {/* Stats */}
-                <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-200 grid grid-cols-2 gap-3 sm:gap-4 mb-0">
-                  <div className="text-center">
-                    <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{CALORIES_PER_STEP}</p>
-                    <p className="text-xs sm:text-sm text-gray-500 mt-1">kcal per step</p>
-                  </div>
-                  <div className="text-center">
-                    {loading ? (
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="h-9 sm:h-10 md:h-12 w-20 sm:w-24 bg-gradient-to-r from-gray-400/70 via-gray-300/50 to-gray-400/70 rounded-lg animate-pulse"></div>
-                      </div>
-                    ) : (
-                      <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">{(todaySteps / 1000).toFixed(1)}k</p>
-                    )}
-                    <p className="text-xs sm:text-sm text-gray-500 mt-1">steps in thousands</p>
-                  </div>
-                </div>
-              </div>
+                </>
+              )}
             </div>
-            
-            {/* Slide 2: History */}
-            <div ref={historyPanelRef} className="w-1/2 flex-shrink-0 p-4 sm:p-6 md:p-8">
-              <div>
-                <h3 className="text-xs sm:text-sm md:text-base font-medium text-gray-600 mb-3 sm:mb-4">Activity History</h3>
-                
-                {/* Toggle Week/Month */}
-                <div className="flex gap-2 mb-3 sm:mb-4">
-                  <button
-                    onClick={() => setHistoryView('week')}
-                    className={`flex-1 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                      historyView === 'week'
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    This Week
-                  </button>
-                  <button
-                    onClick={() => setHistoryView('month')}
-                    className={`flex-1 py-2 px-3 sm:px-4 rounded-lg text-xs sm:text-sm font-semibold transition-colors ${
-                      historyView === 'month'
-                        ? 'bg-emerald-500 text-white'
-                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                    }`}
-                  >
-                    This Month
-                  </button>
-                </div>
-                
-                {/* History List */}
-                {dailyHistory.length > 0 && (
-                  <>
-                    <div className="space-y-2 max-h-64 sm:max-h-80 md:max-h-96 overflow-y-auto mb-3 sm:mb-4">
-                      {(historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory).map((day, index) => {
-                        const date = new Date(day.date);
-                        const isToday = toDateKey(date) === toDateKey();
-                        const displaySteps = isToday ? todaySteps : (day.steps || 0);
-                        const displayCalories = isToday ? todayCalories : (day.calories || 0);
-                        
-                        return (
-                          <div
-                            key={day.date}
-                            className={`flex items-center justify-between p-2 sm:p-3 rounded-lg border ${
-                              isToday
-                                ? 'bg-emerald-50 border-emerald-200'
-                                : 'bg-gray-50 border-gray-200'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 sm:gap-3">
-                              <div className={`w-8 h-8 sm:w-10 sm:h-10 rounded-lg flex items-center justify-center ${
-                                isToday ? 'bg-emerald-500' : 'bg-gray-300'
-                              }`}>
-                                <span className="text-white font-bold text-xs sm:text-sm">
-                                  {date.toLocaleDateString('en-US', { weekday: 'short' })[0]}
-                                </span>
-                              </div>
-                              <div>
-                                <p className={`font-semibold text-xs sm:text-sm ${isToday ? 'text-emerald-900' : 'text-gray-900'}`}>
-                                  {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-                                  {isToday && <span className="ml-1 sm:ml-2 text-xs text-emerald-600">Today</span>}
-                                </p>
-                                <p className="text-xs sm:text-xs text-gray-500 hidden sm:block">{date.toLocaleDateString('en-US', { weekday: 'long' })}</p>
-                              </div>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-bold text-sm sm:text-base text-gray-900">{displaySteps.toLocaleString()}</p>
-                              <p className="text-xs text-gray-500">{displayCalories} kcal</p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    
-                    {/* Summary */}
-                    <div className="pt-3 sm:pt-4 border-t border-gray-200 grid grid-cols-2 gap-3 sm:gap-4">
-                      <div className="text-center">
-                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Average</p>
-                        <p className="text-xl sm:text-2xl md:text-3xl font-bold text-gray-900">
-                          {Math.round(
-                            (historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory).reduce((sum, day) => {
-                              const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                              return sum + (isToday ? todaySteps : (day.steps || 0));
-                            }, 0) / (historyView === 'week' ? Math.min(7, dailyHistory.length) : dailyHistory.length)
-                          ).toLocaleString()}
-                        </p>
-                        <p className="text-xs sm:text-sm text-gray-500">steps/day</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs sm:text-sm text-gray-600 mb-1">Total</p>
-                        <p className="text-xl sm:text-2xl md:text-3xl font-bold text-rose-900">
-                          {Math.round(
-                            (historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory).reduce((sum, day) => {
-                              const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                              return sum + (isToday ? todayCalories : (day.calories || 0));
-                            }, 0)
-                          ).toLocaleString()}
-                        </p>
-                        <p className="text-xs sm:text-sm text-gray-500">kcal</p>
-                      </div>
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-              </div>
-            </div>
-            
-            {/* Right Navigation Button */}
-            {currentSlide === 0 && (
-              <button
-                onClick={() => setCurrentSlide(1)}
-                className="flex-shrink-0 p-2 sm:p-3 hover:bg-emerald-50 transition-all duration-300 border-l border-gray-100"
-                aria-label="Next slide"
-              >
-                <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6 text-gray-600" />
-              </button>
+
+            {/* Goal progress text */}
+            {!loading && (
+              <p className="text-sm text-gray-500 font-medium mb-1">
+                {stepProgress >= 1
+                  ? '\ud83c\udf89 Goal reached!'
+                  : `${Math.round(stepProgress * 100)}% of daily goal`}
+              </p>
             )}
           </div>
-          
-          {/* Slide Indicators */}
-          <div className="flex justify-center gap-2 py-3 sm:py-4 border-t border-gray-100">
-            <button
-              onClick={() => setCurrentSlide(0)}
-              className={`h-1.5 sm:h-2 rounded-full transition-all ${
-                currentSlide === 0 ? 'w-6 sm:w-8 bg-emerald-500' : 'w-1.5 sm:w-2 bg-gray-300'
-              }`}
-              aria-label="Go to Today view"
-            />
-            <button
-              onClick={() => setCurrentSlide(1)}
-              className={`h-1.5 sm:h-2 rounded-full transition-all ${
-                currentSlide === 1 ? 'w-6 sm:w-8 bg-emerald-500' : 'w-1.5 sm:w-2 bg-gray-300'
-              }`}
-              aria-label="Go to History view"
-            />
+
+          {/* Stat cards */}
+          <div className="grid grid-cols-2 gap-3 mt-5">
+            <div className="bg-emerald-50 rounded-2xl p-3.5 sm:p-4 text-center">
+              <Footprints className="w-4 h-4 text-emerald-600 mx-auto mb-1.5" />
+              {loading ? (
+                <div className="h-6 w-16 bg-emerald-200/60 rounded-lg animate-pulse mx-auto" />
+              ) : (
+                <p className="text-lg sm:text-xl font-bold text-emerald-900">{todaySteps.toLocaleString()}</p>
+              )}
+              <p className="text-xs text-emerald-600 mt-0.5 font-medium">Steps</p>
+            </div>
+            <div className="bg-rose-50 rounded-2xl p-3.5 sm:p-4 text-center">
+              <Flame className="w-4 h-4 text-rose-500 mx-auto mb-1.5" />
+              {loading ? (
+                <div className="h-6 w-16 bg-rose-200/60 rounded-lg animate-pulse mx-auto" />
+              ) : (
+                <p className="text-lg sm:text-xl font-bold text-rose-900">{todayCalories}</p>
+              )}
+              <p className="text-xs text-rose-500 mt-0.5 font-medium">Calories</p>
+            </div>
           </div>
         </div>
-        
+
+        {/* ──── History Section ──── */}
+        <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
+          {/* Header + Toggle */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-emerald-500" />
+              History
+            </h2>
+            <div className="flex bg-gray-100 rounded-xl p-0.5">
+              <button
+                onClick={() => setHistoryView('week')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  historyView === 'week' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'
+                }`}
+              >Week</button>
+              <button
+                onClick={() => setHistoryView('month')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  historyView === 'month' ? 'bg-white text-emerald-700 shadow-sm' : 'text-gray-500'
+                }`}
+              >Month</button>
+            </div>
+          </div>
+
+          {historyData.length > 0 ? (
+            <>
+              {/* Summary Row */}
+              <div className="grid grid-cols-2 gap-3 pt-1 border-t border-gray-100">
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <TrendingUp className="w-3.5 h-3.5 text-emerald-500" />
+                    <p className="text-xs text-gray-500 font-medium">Avg Steps</p>
+                  </div>
+                  <p className="text-lg sm:text-xl font-bold text-gray-900">
+                    {Math.round(
+                      historyData.reduce((sum, day) => {
+                        const isToday = toDateKey(new Date(day.date)) === toDateKey();
+                        return sum + (isToday ? todaySteps : (day.steps || 0));
+                      }, 0) / historyData.length
+                    ).toLocaleString()}
+                  </p>
+                </div>
+                <div className="bg-gray-50 rounded-xl p-3 text-center">
+                  <div className="flex items-center justify-center gap-1 mb-1">
+                    <Flame className="w-3.5 h-3.5 text-rose-400" />
+                    <p className="text-xs text-gray-500 font-medium">Total Calories</p>
+                  </div>
+                  <p className="text-lg sm:text-xl font-bold text-rose-600">
+                    {Math.round(
+                      historyData.reduce((sum, day) => {
+                        const isToday = toDateKey(new Date(day.date)) === toDateKey();
+                        return sum + (isToday ? todayCalories : (day.calories || 0));
+                      }, 0)
+                    ).toLocaleString()}
+                  </p>
+                </div>
+              </div>
+
+              {/* Daily List */}
+              <div className="mt-4 space-y-2 max-h-64 sm:max-h-80 overflow-y-auto">
+                {[...historyData].reverse().map((day) => {
+                  const date = new Date(day.date);
+                  const isToday = toDateKey(date) === toDateKey();
+                  const displaySteps = isToday ? todaySteps : (day.steps || 0);
+                  const displayCalories = isToday ? todayCalories : (day.calories || 0);
+
+                  return (
+                    <div
+                      key={day.date}
+                      className={`flex items-center justify-between p-3 rounded-xl transition-colors ${
+                        isToday ? 'bg-emerald-50 ring-1 ring-emerald-200' : 'bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center text-white font-bold text-xs ${
+                          isToday ? 'bg-gradient-to-br from-emerald-500 to-teal-500' : 'bg-gray-300'
+                        }`}>
+                          {date.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 2)}
+                        </div>
+                        <div>
+                          <p className={`text-sm font-semibold ${isToday ? 'text-emerald-900' : 'text-gray-800'}`}>
+                            {date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            {isToday && <span className="ml-1.5 text-xs text-emerald-500 font-medium">Today</span>}
+                          </p>
+                          <p className="text-xs text-gray-400">{date.toLocaleDateString('en-US', { weekday: 'long' })}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm font-bold text-gray-900">{displaySteps.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{displayCalories} kcal</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-10">
+              <Activity className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-sm text-gray-400 font-medium">No activity data yet</p>
+              <p className="text-xs text-gray-300 mt-1">Start walking to see your history</p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

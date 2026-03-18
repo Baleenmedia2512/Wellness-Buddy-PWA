@@ -85,7 +85,7 @@ const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
 const WellnessUniversityEnrollment = lazy(() => import("./pages/WellnessUniversityEnrollment"));
 const WellnessUniversityReport = lazy(() => import("./pages/WellnessUniversityReport"));
 const StepCounter = lazy(() => import("./components/StepCounter"));
-const ScreenTime = lazy(() => import("./components/ScreenTime"));
+const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
 
 
 function WellnessValleyApp() {
@@ -390,7 +390,7 @@ function WellnessValleyApp() {
       !showDashboard && !showDisciplineReport && !showStepCounter && !showScreenTime,
     );
     return () => cleanupBackButton();
-  }, [ionRouter, showDashboard, showDisciplineReport, showStepCounter, showScreenTime]);
+  }, [ionRouter, showDashboard, showDisciplineReport, showStepCounter]);
 
   const [saveLoading, setSaveLoading] = useState(false);
   const [saveError, setSaveError] = useState(null);
@@ -535,6 +535,8 @@ function WellnessValleyApp() {
   const showMainPage = () => {
     setShowDashboard(false);
     setShowDisciplineReport(false);
+    setShowStepCounter(false);
+    setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
 
     // Clear weight result, education result, and images when going back to main page
@@ -3043,7 +3045,7 @@ function WellnessValleyApp() {
   if (showScreenTime) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
-        <ScreenTime
+        <ScreenTimePage
           userId={user?.id}
           onBack={() => {
             setShowScreenTime(false);
