@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, Eye, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, Eye, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
@@ -78,6 +78,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [dateRange, setDateRange] = useState('today'); // 'today' | 'yesterday' | 'custom'
   const [customDate, setCustomDate] = useState(null); // single Date object for custom
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const [mapLoaded, setMapLoaded] = useState(false);
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
@@ -625,6 +626,28 @@ const NutritionCentersMap = ({ user, onBack }) => {
             )}
           </AnimatePresence>
         </div>
+
+        {/* Search Bar */}
+        <div className="max-w-4xl mx-auto px-4 pb-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search club or owner name..."
+              className="w-full pl-9 pr-9 py-2 rounded-full border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+            />
+            {searchQuery.length > 0 && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Map Container */}
@@ -653,30 +676,38 @@ const NutritionCentersMap = ({ user, onBack }) => {
             
             {/* Centres List */}
             <div className="mt-4 space-y-2">
-              <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h2 className="text-lg font-bold text-gray-800">
-                  Centres ({centers.length})
-                </h2>
-                {centers.length > 0 && (() => {
-                  const totalAttendance = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
-                  const label = dateRange === 'yesterday' ? 'Yesterday'
-                    : dateRange === 'custom' && customDate
-                    ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                    : 'Today';
-                  return (
-                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
-                      {totalAttendance} attended {label}
-                    </span>
-                  );
-                })()}
-              </div>
-              {centers.length === 0 ? (
-                <div className="bg-white rounded-lg p-6 text-center shadow-sm">
-                  <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-2" />
-                  <p className="text-gray-500">No nutrition centres registered yet</p>
-                </div>
-              ) : (
-                centers.map((center) => (
+              {(() => {
+                const q = searchQuery.trim().toLowerCase();
+                const filteredCenters = q
+                  ? centers.filter(c =>
+                      c.center_name?.toLowerCase().includes(q) ||
+                      c.ownerName?.toLowerCase().includes(q)
+                    )
+                  : centers;
+                const totalAttendance = centers.reduce((sum, c) => sum + (c.todayAttendance || 0), 0);
+                const dateLabel = dateRange === 'yesterday' ? 'Yesterday'
+                  : dateRange === 'custom' && customDate
+                  ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                  : 'Today';
+                return (
+                  <>
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <h2 className="text-lg font-bold text-gray-800">
+                        Centres ({q ? `${filteredCenters.length}/` : ''}{centers.length})
+                      </h2>
+                      {centers.length > 0 && (
+                        <span className="text-xs font-semibold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                          {totalAttendance} attended {dateLabel}
+                        </span>
+                      )}
+                    </div>
+                    {filteredCenters.length === 0 ? (
+                      <div className="bg-white rounded-lg p-6 text-center shadow-sm">
+                        <MapPin className="h-12 w-12 text-gray-300 mx-auto mb-2" />
+                        <p className="text-gray-500">{centers.length === 0 ? 'No nutrition centres registered yet' : 'No clubs match your search'}</p>
+                      </div>
+                    ) : (
+                      filteredCenters.map((center) => (
                   <div
                     key={center.id}
                     onClick={() => viewCenterOnMap(center)}
@@ -694,6 +725,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                             <span className="font-semibold text-gray-700">{center.todayAttendance || 0}</span>
                           </span>
                         </div>
+                      
                       </div>
 
                       <div className="flex flex-col gap-2 ml-4">
@@ -732,8 +764,11 @@ const NutritionCentersMap = ({ user, onBack }) => {
                       </div>
                     </div>
                   </div>
-                ))
-              )}
+                      ))
+                    )}
+                  </>
+                );
+              })()}
             </div>
           </>
         )}
