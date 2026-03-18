@@ -84,12 +84,15 @@ const HierarchicalNode = ({
 
   return (
     <div className="relative flex" style={{ marginLeft: level > 0 ? 0 : 0 }}>
-      {/* Tree lines */}
+      {/* Tree lines - width shrinks with depth to prevent card squishing */}
       {level > 0 && (
-        <div className="relative flex-shrink-0" style={{ width: "28px" }}>
-          <div className="absolute top-[22px] left-0 h-[2px] bg-gray-200 w-full" />
+        <div
+          className="relative flex-shrink-0"
+          style={{ width: `${Math.max(10, 24 - (level - 1) * 3)}px` }}
+        >
+          <div className="absolute top-[22px] left-0 h-[2px] bg-gray-400 w-full" />
           <div
-            className="absolute left-0 top-0 w-[2px] bg-gray-200"
+            className="absolute left-0 top-0 w-[2px] bg-gray-400"
             style={{ height: isLastChild ? "22px" : "calc(100% + 12px)" }}
           />
         </div>
@@ -163,12 +166,6 @@ const HierarchicalNode = ({
                         </span>
                       )}
                     </div>
-                    {/* Email */}
-                    {node.userEmail && (
-                      <div className="text-[10px] text-gray-500 mt-0.5 truncate">
-                        {node.userEmail}
-                      </div>
-                    )}
                     {/* Reports to - Coach and Co-Coach */}
                     {(node.uplineCoachName || node.uplineCoCoachName) && (
                       <div className="text-[10px] text-gray-500 mt-0.5">
