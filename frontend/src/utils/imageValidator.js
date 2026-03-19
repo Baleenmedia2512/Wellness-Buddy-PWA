@@ -367,7 +367,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
       return {
         isValid: false,
         reason: 'proxy',
-        message: '🚨 PROXY ALERT: Unable to verify image date. Please take a fresh photo.',
+        message: '🚨 Unable to verify image date. Please take a fresh photo.',
         details: 'Image metadata is missing or corrupted.',
         imageTimestamp: null
       };
@@ -398,8 +398,8 @@ export async function validateImageForEducation(file, educationWindow = { start:
         isValid: false,
         reason: 'proxy',
         message: daysDiff < 0 
-          ? '🚨 PROXY ALERT: Image date is in the future. Please check your device clock.'
-          : `🚨 PROXY ALERT: This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY during education hours.`,
+          ? '🚨 Image date is in the future. Please check your device clock.'
+          : `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY during education hours.`,
         details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY during education timing (${educationWindow.start} - ${educationWindow.end}) are allowed.`,
         imageDate,
         imageTimestamp: imageDate.toISOString(),
@@ -412,7 +412,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
       return {
         isValid: false,
         reason: 'proxy',
-        message: `🚨 PROXY ALERT: Image was taken at ${imageTimeStr}, outside education hours (${educationWindow.start} - ${educationWindow.end}).`,
+        message: `🚨 Image was taken at ${imageTimeStr}, outside education hours (${educationWindow.start} - ${educationWindow.end}).`,
         details: `Education timing validation failed. Please take a photo during valid education hours only.`,
         imageDate,
         imageTimestamp: imageDate.toISOString(),
@@ -437,7 +437,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
     return {
       isValid: false,
       reason: 'error',
-      message: '🚨 PROXY ALERT: Unable to validate image. Please try again.',
+      message: '🚨 Unable to validate image. Please try again.',
       details: error.message,
       imageTimestamp: null
     };
@@ -475,8 +475,8 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: '🚨 PROXY ALERT: Unable to verify image date. Please take a fresh photo.',
-        details: 'Image metadata is missing or corrupted.'
+        message: 'Unable to verify image date. Please take a fresh photo.',
+        details: 'Image is missing or corrupted.'
       };
     }
     
@@ -501,7 +501,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: `🚨 PROXY ALERT: This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
+        message: `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
         details: `Image date: ${imageDate.toLocaleDateString()}. Using old images is not allowed.`,
         imageDate,
         daysDiff
@@ -513,7 +513,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: '🚨 PROXY ALERT: Image date is in the future. Please check your device clock.',
+        message: '🚨 Image date is in the future. Please check your device clock.',
         details: 'This may indicate device clock tampering or incorrect settings.',
         imageDate,
         daysDiff

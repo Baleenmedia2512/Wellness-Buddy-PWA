@@ -94,7 +94,7 @@ const ImageUpload = forwardRef(
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
-              title: "🚨 PROXY ALERT",
+              title: validation.message || "🚨 Invalid Image",
               message: "Please use a photo taken today during education hours.",
               type: "error",
             });
@@ -215,7 +215,7 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 PROXY ALERT",
+                    title: "🚨 Photo Not From Today",
                     message: `⚠️ This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: "error",
                   });
@@ -229,7 +229,7 @@ const ImageUpload = forwardRef(
                 ) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 PROXY ALERT",
+                    title: "🚨 Outside Education Hours",
                     message: `⚠️ Photo was taken outside education hours. Please take a photo during your education session.`,
                     type: "error",
                   });
@@ -256,7 +256,7 @@ const ImageUpload = forwardRef(
                 );
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Invalid Image",
+                  title: "🚨 WhatsApp/Screenshot Not Allowed",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -276,7 +276,7 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 PROXY ALERT",
+                    title: "🚨 Photo Not From Today",
                     message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: "error",
                   });
@@ -290,7 +290,7 @@ const ImageUpload = forwardRef(
                 ) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 PROXY ALERT",
+                    title: "🚨 Outside Education Hours",
                     message: `⚠️ Photo was modified outside education hours. Please take a photo during your education session.`,
                     type: "error",
                   });
@@ -307,7 +307,7 @@ const ImageUpload = forwardRef(
                 console.error("❌ Filesystem.stat failed:", fsError);
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Invalid Image",
+                  title: "🚨 Cannot Verify Image Date",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -342,7 +342,7 @@ const ImageUpload = forwardRef(
                   if (!isSameDay) {
                     setAlertModal({
                       isOpen: true,
-                      title: "🚨 PROXY ALERT",
+                      title: "🚨 Photo Not From Today",
                       message: `⚠️ This photo was taken on ${parsed.toLocaleDateString()}. Please use a FRESH photo taken today.`,
                       type: "error",
                     });
@@ -371,7 +371,7 @@ const ImageUpload = forwardRef(
                 );
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Invalid Image",
+                  title: "🚨 WhatsApp/Screenshot Not Allowed",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -391,7 +391,7 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 PROXY ALERT",
+                    title: "🚨 Photo Not From Today",
                     message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please use a FRESH photo taken today.`,
                     type: "error",
                   });
@@ -407,7 +407,7 @@ const ImageUpload = forwardRef(
                 console.error("❌ Filesystem.stat failed:", fsError);
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Invalid Image",
+                  title: "🚨 Cannot Verify Image Date",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
