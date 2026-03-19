@@ -548,9 +548,11 @@ const HierarchicalReportLayout = ({
             {/* Summary Stats */}
             {summaryStats && summaryStats.items?.length > 0 && (
               <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 mb-2 sm:mb-4">
-                <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
-                  {summaryStats.title || "Team Hierarchy"}
-                </h2>
+                {(summaryStats.title !== "" && summaryStats.title !== null && summaryStats.title !== undefined) && (
+                  <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
+                    {summaryStats.title}
+                  </h2>
+                )}
                 {summaryStats.description && (
                   <div className="text-xs sm:text-sm text-gray-600 mb-3 text-center">
                     <p>{summaryStats.description}</p>
