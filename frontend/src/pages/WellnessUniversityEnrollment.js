@@ -1,67 +1,70 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from "react";
+import { motion } from "framer-motion";
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
 const PROGRAMS = [
-  { 
-    id: 'family-breakfast', 
-    name: 'Family Healthy Breakfast Program', 
-    description: '(Family / Friends 3 Days Trial)',
-    icon: '🥗' 
+  {
+    id: "family-breakfast",
+    name: "Family Healthy Breakfast Programme",
+    description: "(Family / Friends 3 Days Trial)",
+    icon: "🥗",
   },
-  { 
-    id: 'weight-loss', 
-    name: 'Weight Loss', 
-    description: '(30-Days Weight Loss Challenge / Weight Loss Marathon / Fitness Camp / Personal Coaching / Diet Chart)',
-    icon: '📉' 
+  {
+    id: "weight-loss",
+    name: "Weight Loss",
+    description:
+      "(30-Days Weight Loss Challenge / Weight Loss Marathon / Fitness Camp / Personal Coaching / Diet Chart)",
+    icon: "📉",
   },
-  { 
-    id: 'weight-gain', 
-    name: 'Weight Gain', 
-    description: '(30-Days Weight Gain Challenge / Healthy Snack Ideas / Diet Chart / Recognition)',
-    icon: '📈' 
+  {
+    id: "weight-gain",
+    name: "Weight Gain",
+    description:
+      "(30-Days Weight Gain Challenge / Healthy Snack Ideas / Diet Chart / Recognition)",
+    icon: "📈",
   },
-  { 
-    id: 'kids-nutrition', 
-    name: 'Kids Nutrition', 
-    description: '(Healthy Snacks Ideas / Kids Wellness Evaluation)',
-    icon: '🧒' 
+  {
+    id: "kids-nutrition",
+    name: "Kids Nutrition",
+    description: "(Healthy Snacks Ideas / Kids Wellness Evaluation)",
+    icon: "🧒",
   },
-  { 
-    id: 'sports-nutrition', 
-    name: 'Sports Nutrition', 
-    description: '(Pre & Post Workout Nutrition)',
-    icon: '🏃' 
+  {
+    id: "sports-nutrition",
+    name: "Sports Nutrition",
+    description: "(Pre & Post Workout Nutrition)",
+    icon: "🏃",
   },
-  { 
-    id: 'targeted-nutrition', 
-    name: 'Targeted Nutrition', 
-    description: '(Heart Health / Digestive Health / Joint Health / Skin Health)',
-    icon: '🎯' 
+  {
+    id: "targeted-nutrition",
+    name: "Targeted Nutrition",
+    description:
+      "(Heart Health / Digestive Health / Joint Health / Skin Health)",
+    icon: "🎯",
   },
-  { 
-    id: 'earn-product-cost', 
-    name: 'How to Earn My Product Cost', 
-    description: '',
-    icon: '💰' 
+  {
+    id: "earn-product-cost",
+    name: "How to Earn My Product Cost",
+    description: "",
+    icon: "💰",
   },
-  { 
-    id: 'extra-income', 
-    name: 'Extra Income Opportunity', 
-    description: '(Part Time / Full Time)',
-    icon: '💼' 
+  {
+    id: "extra-income",
+    name: "Extra Income Opportunity",
+    description: "(Part Time / Full Time)",
+    icon: "💼",
   },
 ];
 
 const WellnessUniversityEnrollment = ({ onClose, user }) => {
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [existingEnrollment, setExistingEnrollment] = useState(null);
   const [checkingEnrollment, setCheckingEnrollment] = useState(true);
-  const [coachName, setCoachName] = useState('');
+  const [coachName, setCoachName] = useState("");
   const [isEditMode, setIsEditMode] = useState(false);
 
   const checkExistingEnrollment = useCallback(async () => {
@@ -74,22 +77,29 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
       // Fetch user profile to get coach name
       const cacheBuster = Date.now();
       const profileResponse = await fetch(
-        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`
+        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(
+          user.email,
+        )}&_t=${cacheBuster}`,
       );
       const profileData = await profileResponse.json();
-      
-      console.log('🎓 [Enrollment] Profile data:', profileData);
-      
+
+      console.log("🎓 [Enrollment] Profile data:", profileData);
+
       if (profileData.success && profileData.data?.coachName) {
-        console.log('✅ [Enrollment] Coach name found:', profileData.data.coachName);
+        console.log(
+          "✅ [Enrollment] Coach name found:",
+          profileData.data.coachName,
+        );
         setCoachName(profileData.data.coachName);
       } else {
-        console.log('⚠️ [Enrollment] No coach name in profile data');
+        console.log("⚠️ [Enrollment] No coach name in profile data");
       }
 
-      // Check existing enrollment
+      // Check existing enrollment .
       const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}&userOnly=true&_t=${cacheBuster}`
+        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
+          user.email,
+        )}&userOnly=true&_t=${cacheBuster}`,
       );
       const data = await response.json();
 
@@ -97,11 +107,13 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         const enrollment = data.enrollments[0];
         setExistingEnrollment(enrollment);
         // Load existing programs for editing
-        const enrolledPrograms = JSON.parse(enrollment.EnrolledPrograms || '[]');
+        const enrolledPrograms = JSON.parse(
+          enrollment.EnrolledPrograms || "[]",
+        );
         setSelectedPrograms(enrolledPrograms);
       }
     } catch (err) {
-      console.error('Error checking enrollment:', err);
+      console.error("Error checking enrollment:", err);
     } finally {
       setCheckingEnrollment(false);
     }
@@ -115,27 +127,27 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
     setSelectedPrograms((prev) =>
       prev.includes(programName)
         ? prev.filter((p) => p !== programName)
-        : [...prev, programName]
+        : [...prev, programName],
     );
   };
 
   const handleSubmit = async () => {
     if (selectedPrograms.length === 0) {
-      setError('Please select at least one program');
+      setError("Please select at least one program");
       return;
     }
 
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const endpoint = existingEnrollment 
+      const endpoint = existingEnrollment
         ? `${API_BASE}/api/wellness-university/update-enrollment`
         : `${API_BASE}/api/wellness-university/enroll`;
-      
+
       const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: user.email,
           programs: selectedPrograms,
@@ -153,7 +165,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             setExistingEnrollment(null);
             setSelectedPrograms([]);
             // Small delay to ensure backend has committed changes
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
             // Refresh enrollment data with fresh fetch
             await checkExistingEnrollment();
             setIsEditMode(false);
@@ -163,11 +175,11 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           }
         }, 1500);
       } else {
-        setError(data.message || 'Failed to submit enrollment');
+        setError(data.message || "Failed to submit enrollment");
       }
     } catch (err) {
-      console.error('Enrollment error:', err);
-      setError('Network error. Please try again.');
+      console.error("Enrollment error:", err);
+      setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -186,11 +198,15 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
   // Show existing enrollment (view or edit mode)
   if (existingEnrollment && !isEditMode) {
-    const enrolledPrograms = JSON.parse(existingEnrollment.EnrolledPrograms || '[]');
-    const enrollmentDate = new Date(existingEnrollment.EnrollmentDate).toLocaleDateString('en-US', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
+    const enrolledPrograms = JSON.parse(
+      existingEnrollment.EnrolledPrograms || "[]",
+    );
+    const enrollmentDate = new Date(
+      existingEnrollment.EnrollmentDate,
+    ).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
     });
 
     return (
@@ -205,7 +221,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                   Your Enrollment
+                  Your Enrollment
                 </h2>
                 {/* <p className="text-white text-sm mt-1">Wellness University Program</p> */}
               </div>
@@ -213,8 +229,18 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                 onClick={onClose}
                 className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <svg
+                  className="w-6 h-6"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M6 18L18 6M6 6l12 12"
+                  />
                 </svg>
               </button>
             </div>
@@ -224,18 +250,24 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           <div className="p-6 space-y-4">
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <p className="text-sm text-gray-600 mb-1">Enrolled on</p>
-              <p className="text-lg font-semibold text-gray-800">{enrollmentDate}</p>
+              <p className="text-lg font-semibold text-gray-800">
+                {enrollmentDate}
+              </p>
             </div>
 
             {coachName && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <p className="text-sm text-gray-600 mb-1">Invited By</p>
-                <p className="text-lg font-semibold text-gray-800">{coachName}</p>
+                <p className="text-lg font-semibold text-gray-800">
+                  {coachName}
+                </p>
               </div>
             )}
 
             <div>
-              <p className="text-sm text-gray-600 mb-3 font-semibold">Your Programs:</p>
+              <p className="text-sm text-gray-600 mb-3 font-semibold">
+                Your Programs:
+              </p>
               <div className="space-y-2">
                 {enrolledPrograms.map((program, index) => {
                   const programData = PROGRAMS.find((p) => p.name === program);
@@ -244,8 +276,12 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                       key={index}
                       className="flex items-center gap-3 bg-gradient-to-r from-green-50 to-teal-50 p-3 rounded-lg border border-green-200"
                     >
-                      <span className="text-2xl">{programData?.icon || '✓'}</span>
-                      <span className="text-gray-800 font-medium">{program}</span>
+                      <span className="text-2xl">
+                        {programData?.icon || "✓"}
+                      </span>
+                      <span className="text-gray-800 font-medium">
+                        {program}
+                      </span>
                     </div>
                   );
                 })}
@@ -288,10 +324,12 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           <div className="flex justify-between items-center">
             <div>
               <h2 className="text-2xl font-bold text-white flex items-center gap-2">
-                🎓 {isEditMode ? 'Edit Enrollment' : 'Wellness University'}
+                🎓 {isEditMode ? "Edit Enrollment" : "Wellness University"}
               </h2>
               <p className="text-white text-sm mt-1">
-                {isEditMode ? 'Update your selected programs' : 'Select programs you\'re interested in'}
+                {isEditMode
+                  ? "Update your selected programs"
+                  : "Select programs you're interested in"}
               </p>
             </div>
             <button
@@ -304,8 +342,18 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
               }}
               className="text-white hover:bg-white hover:bg-opacity-20 rounded-full p-2 transition-colors"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-6 h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -317,21 +365,25 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <div className="flex items-center gap-2 mb-2">
               <span className="text-sm text-gray-600 font-semibold">Name:</span>
-              <span className="text-gray-800">{user?.displayName || user?.email?.split('@')[0]}</span>
+              <span className="text-gray-800">
+                {user?.displayName || user?.email?.split("@")[0]}
+              </span>
             </div>
             {coachName && (
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-600 font-semibold">Invited By:</span>
+                <span className="text-sm text-gray-600 font-semibold">
+                  Invited By:
+                </span>
                 <span className="text-gray-800">{coachName}</span>
               </div>
             )}
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600 font-semibold">Date:</span>
               <span className="text-gray-800">
-                {new Date().toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric',
+                {new Date().toLocaleDateString("en-US", {
+                  year: "numeric",
+                  month: "long",
+                  day: "numeric",
                 })}
               </span>
             </div>
@@ -339,35 +391,51 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
           {/* Programs Grid */}
           <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">I would like more information about:</h3>
+            <h3 className="text-lg font-semibold text-gray-800 mb-3">
+              I would like more information about:
+            </h3>
             {PROGRAMS.map((program) => (
               <div
                 key={program.id}
                 onClick={() => handleProgramToggle(program.name)}
                 className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
                   selectedPrograms.includes(program.name)
-                    ? 'border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md'
-                    : 'border-gray-200 hover:border-green-300 hover:bg-gray-50'
+                    ? "border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md"
+                    : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
                 }`}
               >
                 <div
                   className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
                     selectedPrograms.includes(program.name)
-                      ? 'border-green-500 bg-green-500'
-                      : 'border-gray-300'
+                      ? "border-green-500 bg-green-500"
+                      : "border-gray-300"
                   }`}
                 >
                   {selectedPrograms.includes(program.name) && (
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                    <svg
+                      className="w-4 h-4 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={3}
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   )}
                 </div>
                 <span className="text-2xl">{program.icon}</span>
                 <div className="flex-1">
-                  <div className="text-gray-800 font-medium">{program.name}</div>
+                  <div className="text-gray-800 font-medium">
+                    {program.name}
+                  </div>
                   {program.description && (
-                    <div className="text-xs text-gray-500 mt-0.5">{program.description}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {program.description}
+                    </div>
                   )}
                 </div>
               </div>
@@ -390,10 +458,12 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             >
               <div className="text-4xl mb-2">🎉</div>
               <p className="text-green-800 font-semibold">
-                {isEditMode ? 'Enrollment Updated!' : 'Enrollment Successful!'}
+                {isEditMode ? "Enrollment Updated!" : "Enrollment Successful!"}
               </p>
               <p className="text-green-700 text-sm mt-1">
-                {isEditMode ? 'Your programs have been updated.' : 'Your coach will be notified.'}
+                {isEditMode
+                  ? "Your programs have been updated."
+                  : "Your coach will be notified."}
               </p>
             </motion.div>
           )}
@@ -423,12 +493,12 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                  {isEditMode ? 'Updating...' : 'Submitting...'}
+                  {isEditMode ? "Updating..." : "Submitting..."}
                 </span>
+              ) : isEditMode ? (
+                `✓ Update (${selectedPrograms.length} selected)`
               ) : (
-                isEditMode 
-                  ? `✓ Update (${selectedPrograms.length} selected)`
-                  : `Enroll (${selectedPrograms.length} selected)`
+                `Enroll (${selectedPrograms.length} selected)`
               )}
             </button>
           </div>

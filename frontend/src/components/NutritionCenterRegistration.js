@@ -3,6 +3,7 @@ import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Lo
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
 import CustomAlertModal from './CustomAlertModal';
+import { Geolocation } from '@capacitor/geolocation';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
   const [centerName, setCenterName] = useState('');
@@ -117,26 +118,30 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   // Initialize map
   useEffect(() => {
     if (mapLoaded && mapRef.current && !googleMapRef.current) {
-      // Try to get user's current location
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            const userLocation = {
-              lat: position.coords.latitude,
-              lng: position.coords.longitude,
-            };
-            initializeMap(userLocation);
-          },
-          () => {
-            // Default to a generic location if geolocation fails
-            initializeMap({ lat: 0, lng: 0 });
-          }
-        );
-      } else {
-        initializeMap({ lat: 0, lng: 0 });
-      }
+      // Try to get user's current location using Capacitor
+      getUserLocation();
     }
   }, [mapLoaded]);
+
+  const getUserLocation = async () => {
+    try {
+      const position = await Geolocation.getCurrentPosition({
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0,
+      });
+      
+      const userLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude,
+      };
+      initializeMap(userLocation);
+    } catch (error) {
+      console.warn('Failed to get location:', error);
+      // Default to generic location if geolocation fails or permission denied
+      initializeMap({ lat: 0, lng: 0 });
+    }
+  };
 
   const initializeMap = (center) => {
     if (!window.google || !window.google.maps || !window.google.maps.Map) {
@@ -151,6 +156,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         mapTypeControl: true,
         streetViewControl: true,
         fullscreenControl: true,
+        gestureHandling: 'greedy', // Better mobile touch handling
+        clickableIcons: false, // Prevent POI clicks from interfering
       });
 
       googleMapRef.current = map;
@@ -213,48 +220,50 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         locationButton.style.background = 'white';
       });
       
-      locationButton.addEventListener('click', () => {
+      locationButton.addEventListener('click', async () => {
         if (currentLocation) {
           map.setCenter(currentLocation);
           map.setZoom(15);
         } else {
           // Try to get current location again
-          if (navigator.geolocation) {
-            navigator.geolocation.getCurrentPosition(
-              (position) => {
-                const newLocation = {
-                  lat: position.coords.latitude,
-                  lng: position.coords.longitude,
-                };
-                setCurrentLocation(newLocation);
-                map.setCenter(newLocation);
-                map.setZoom(15);
-                
-                // Add/update current location marker
-                if (currentLocationMarkerRef.current) {
-                  currentLocationMarkerRef.current.setPosition(newLocation);
-                } else {
-                  const marker = new window.google.maps.Marker({
-                    position: newLocation,
-                    map: map,
-                    icon: {
-                      path: window.google.maps.SymbolPath.CIRCLE,
-                      scale: 8,
-                      fillColor: '#4285F4',
-                      fillOpacity: 1,
-                      strokeColor: '#ffffff',
-                      strokeWeight: 2,
-                    },
-                    title: 'Your Current Location',
-                    zIndex: 1,
-                  });
-                  currentLocationMarkerRef.current = marker;
-                }
-              },
-              (error) => {
-                alert('Unable to get your location: ' + error.message);
-              }
-            );
+          try {
+            const position = await Geolocation.getCurrentPosition({
+              enableHighAccuracy: true,
+              timeout: 10000,
+              maximumAge: 0,
+            });
+            
+            const newLocation = {
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            };
+            setCurrentLocation(newLocation);
+            map.setCenter(newLocation);
+            map.setZoom(15);
+            
+            // Add/update current location marker
+            if (currentLocationMarkerRef.current) {
+              currentLocationMarkerRef.current.setPosition(newLocation);
+            } else {
+              const marker = new window.google.maps.Marker({
+                position: newLocation,
+                map: map,
+                icon: {
+                  path: window.google.maps.SymbolPath.CIRCLE,
+                  scale: 8,
+                  fillColor: '#4285F4',
+                  fillOpacity: 1,
+                  strokeColor: '#ffffff',
+                  strokeWeight: 2,
+                },
+                title: 'Your Current Location',
+                zIndex: 1,
+              });
+              currentLocationMarkerRef.current = marker;
+            }
+          } catch (error) {
+            console.error('Failed to get location:', error);
+            // Silently fail - permissions were already requested at login
           }
         }
       });
@@ -296,13 +305,17 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
         });
       }
 
-      // Add click listener to place marker
+      // Add click/tap listener to place marker
+      // Using 'click' event which Google Maps handles for both mouse clicks and touch taps
       map.addListener('click', (event) => {
-        placeMarker(event.latLng);
+        console.log('📍 Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
+        if (event.latLng) {
+          placeMarker(event.latLng);
+        }
       });
 
-      // Enable location controls
-      if (navigator.geolocation && center.lat !== 0) {
+      // Center map on user location if available
+      if (center.lat !== 0) {
         map.setCenter(center);
       }
     } catch (err) {
@@ -312,7 +325,12 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   };
 
   const placeMarker = (location) => {
-    if (!window.google || !window.google.maps) return;
+    if (!window.google || !window.google.maps) {
+      console.error('❌ Google Maps not available');
+      return;
+    }
+
+    console.log('✅ Placing marker at:', location.lat(), location.lng());
 
     // Remove existing marker
     if (markerRef.current && markerRef.current.setMap) {
@@ -335,13 +353,19 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     markerRef.current = marker;
 
     // Update coordinates
-    setLatitude(location.lat().toFixed(8));
-    setLongitude(location.lng().toFixed(8));
+    const lat = location.lat().toFixed(8);
+    const lng = location.lng().toFixed(8);
+    setLatitude(lat);
+    setLongitude(lng);
+    console.log('📍 Coordinates updated:', lat, lng);
 
     // Add drag listener
     marker.addListener('dragend', (event) => {
-      setLatitude(event.latLng.lat().toFixed(8));
-      setLongitude(event.latLng.lng().toFixed(8));
+      const newLat = event.latLng.lat().toFixed(8);
+      const newLng = event.latLng.lng().toFixed(8);
+      setLatitude(newLat);
+      setLongitude(newLng);
+      console.log('📍 Marker dragged to:', newLat, newLng);
     });
   };
 
@@ -736,6 +760,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                 <div
                   ref={mapRef}
                   className="w-full h-80 rounded-lg border border-gray-300"
+                  style={{ touchAction: 'pan-x pan-y pinch-zoom' }}
                 />
               ) : (
                 <div className="w-full h-80 rounded-lg border border-gray-300 flex items-center justify-center bg-gray-50">
@@ -744,7 +769,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
               )}
               <div className="mt-2 text-xs text-gray-500 space-y-1">
                 <p>Blue dot = Your current location</p>
-                <p>Red marker = Selected centre location (click map or search to place)</p>
+                <p>Red marker = Selected centre location (tap/click map or search to place)</p>
+                <p className="text-blue-600 font-medium">Tip: Tap once on the map to place a marker at that location</p>
               </div>
             </div>
 

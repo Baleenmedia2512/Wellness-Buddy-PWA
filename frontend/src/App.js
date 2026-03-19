@@ -12,6 +12,7 @@ import { Capacitor } from "@capacitor/core";
 import { App } from "@capacitor/app";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { Geolocation } from "@capacitor/geolocation";
+import { Camera } from "@capacitor/camera";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
@@ -553,11 +554,18 @@ function WellnessValleyApp() {
   const requestAllPermissions = async () => {
     if (!Capacitor.isNativePlatform()) return;
     try {
+      console.log("📱 Requesting all permissions at once...");
+      
+      // Request camera/gallery permissions
+      await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
+      
       // Request push notification permissions
       await PushNotifications.requestPermissions();
 
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
+      
+      console.log("✅ All permissions requested");
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
     }
@@ -1467,6 +1475,16 @@ function WellnessValleyApp() {
           userId
         );
         console.log("✅ Attendance determined:", attendance);
+        
+        // Check if location permission was denied
+        if (attendance.locationError === 'PERMISSION_DENIED') {
+          setAlertModal({
+            isOpen: true,
+            title: 'Location Permission Required',
+            message: 'To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.',
+            type: 'warning'
+          });
+        }
       } catch (gpsError) {
         console.warn("⚠️ GPS check failed, defaulting to remote attendance:", gpsError);
         // Fallback to remote attendance if GPS fails
@@ -1474,7 +1492,8 @@ function WellnessValleyApp() {
           attendanceType: 'remote',
           nutritionCenterId: null,
           centerName: null,
-          nearbyCenters: []
+          nearbyCenters: [],
+          locationError: 'UNKNOWN'
         };
       }
 
@@ -1775,8 +1794,8 @@ function WellnessValleyApp() {
         console.error('❌ Image validation failed:', validation);
         setAlertModal({
           isOpen: true,
-          title: '🚨 Invalid Image Source',
-          message: 'Please select an image created TODAY.',
+          title: '� Fresh Photo Required',
+          message: 'Please use a photo taken today to continue. Select or capture a new image from today.',
           type: 'error'
         });
         imageProcessingInProgress.current = false;
@@ -1896,7 +1915,7 @@ function WellnessValleyApp() {
           const educationData = {
             success: true,
             platform: detectedType.details.platform || "Online Meeting",
-            topic: detectedType.details.topic || "Education Meeting",
+            topic: "Education Meeting",
             confidence: detectedType.confidence || 0,
             participantCount: detectedType.details.participantCount || null,
           };

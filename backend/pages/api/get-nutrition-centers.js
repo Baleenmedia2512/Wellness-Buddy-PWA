@@ -42,10 +42,17 @@ export default async function handler(req, res) {
 
     // Get team hierarchy using DUAL COACHING MODEL
     let teamMembers = [];
-    if (teamFilter === 'full') {
+    let teamUserIds = [];
+    
+    if (teamFilter === 'self') {
+      // Only show the logged-in user's own clubs
+      console.log('👤 [get-nutrition-centers] Fetching SELF only...');
+      teamUserIds = [userIdNum];
+    } else if (teamFilter === 'full') {
       // Get full team hierarchy with dual-coaching support
       console.log('📊 [get-nutrition-centers] Fetching FULL team hierarchy...');
       teamMembers = await getDualCoachingTeamHierarchy(userIdNum, false);
+      teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
     } else {
       // Get direct team only (dual-coaching model: CoachId OR CoCoachId)
       console.log('📊 [get-nutrition-centers] Fetching DIRECT team...');
@@ -56,10 +63,8 @@ export default async function handler(req, res) {
         .eq('Status', 'Active');
       
       teamMembers = directTeam || [];
+      teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
     }
-
-    // Include the logged-in user
-    const teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
 
     console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length, 'members');
 

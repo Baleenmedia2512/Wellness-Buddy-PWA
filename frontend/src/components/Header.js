@@ -349,7 +349,7 @@ const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, o
                     >
                       <TrendingUp className="h-5 w-5 text-indigo-600 mt-1 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">My Club Attendance</p>
+                        <p className="text-sm font-medium text-gray-800">My Attendance</p>
                         <p className="text-xs text-gray-500">Your attendance history</p>
                       </div>
                     </TouchFeedbackButton>

@@ -26,6 +26,7 @@ import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
 const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
@@ -222,17 +223,24 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
       <div className="py-2 sm:py-2.5 px-3 sm:px-4">
         {/* Title */}
-        <div className="text-center mb-1.5">
-          <span className="text-xs sm:text-sm font-semibold text-purple-700">
-            🌟 Discipline Champions (Last 10 Days)
+        <div className="flex items-center justify-between mb-1.5">
+          {/* <span className="text-xs sm:text-sm font-semibold text-purple-700">
+            🌟 Discipline Champions
+          </span> */}
+          <span className="text-[10px] sm:text-xs text-purple-600">
+            (Last 10 Days)
           </span>
         </div>
 
-        <div className="overflow-x-auto overflow-y-hidden scrollbar-hide">
+        <div
+          className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
+          onClick={() => setIsPaused(!isPaused)}
+        >
           <div
             className="animate-smooth-marquee whitespace-nowrap inline-flex"
             style={{
               animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+              animationPlayState: isPaused ? "paused" : "running",
             }}
           >
             {/* First set of items */}

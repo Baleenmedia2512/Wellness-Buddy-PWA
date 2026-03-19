@@ -376,6 +376,8 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     );
     if (currentUserId) {
       console.log(`   👤 User ID: ${currentUserId} (will include user-specific corrections)`);
+    } else {
+      console.warn(`   ⚠️ WARNING: No userId provided - only global Herbalife corrections will apply!`);
     }
 
     // Fetch hybrid corrections map (cached) - pass userId for user-specific corrections
@@ -391,7 +393,13 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       }));
     }
 
-    // Apply corrections with DIRECT LOOKUP ONLY
+    // 🔍 DEBUG: Show what's in the correction map
+    console.log(`📋 [HYBRID-AUTO] Correction map contains ${correctionMap.size} entries:`);
+    correctionMap.forEach((correction, key) => {
+      console.log(`   "${key}" → "${correction.correctedName}" (${correction.isGlobal ? '🌍 Global' : '👤 User'})`);
+    });
+
+    // Apply corrections with DIRECT LOOKUP FIRST, then FUZZY MATCH
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
@@ -400,9 +408,53 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       // If food already has originalAiName, keep it; otherwise use current name
       const trueOriginalAiName = food.originalAiName || originalName;
       
-      // Direct lookup - backend already followed chains
+      let correction = null;
+      let matchType = null;
+      
+      // 🎯 STEP 1: Direct exact lookup (ALWAYS PREFERRED)
       if (correctionMap.has(normalizedOriginal)) {
-        const correction = correctionMap.get(normalizedOriginal);
+        correction = correctionMap.get(normalizedOriginal);
+        matchType = 'exact';
+        console.log(`✅ [EXACT-MATCH] Found correction for "${originalName}"`);
+      } 
+      
+      // 🔍 STEP 2: Fuzzy/Partial matching (ONLY if no exact match)
+      // Handles cases where AI detects "coconut" one time and "coconut water" another time
+      // BUT: Only applies if there's NO more specific exact match
+      if (!correction) {
+        console.log(`🔍 [FUZZY-MATCH] Trying partial match for "${originalName}" (normalized: "${normalizedOriginal}")`);
+        
+        let bestMatch = null;
+        let bestMatchLength = 0;
+        
+        for (const [correctionKey, correctionValue] of correctionMap.entries()) {
+          // RULE 1: Only do reverse fuzzy match (AI detected is SHORTER than correction key)
+          // Example: AI detects "coconut", correction exists for "coconut water"
+          // This means: "coconut" should match "coconut water" correction
+          if (correctionKey.includes(normalizedOriginal) && normalizedOriginal.length >= 3) {
+            // Choose the LONGEST match (most specific)
+            if (correctionKey.length > bestMatchLength) {
+              bestMatch = { correction: correctionValue, key: correctionKey, type: 'fuzzy-contained-in' };
+              bestMatchLength = correctionKey.length;
+            }
+          }
+          
+          // RULE 2: DISABLED forward fuzzy match to prevent conflicts
+          // We do NOT want "coconut water" to match "coconut" correction
+          // because "coconut water" should have its own exact match
+          // Only enable if NO better match exists and the matched key is significantly long
+          // Disabled to prevent: "coconut water" matching "coconut" correction
+        }
+        
+        if (bestMatch) {
+          correction = bestMatch.correction;
+          matchType = bestMatch.type;
+          console.log(`✅ [FUZZY-MATCH] "${originalName}" matches "${bestMatch.key}" → will apply correction to "${correction.correctedName}"`);
+        }
+      }
+      
+      // Apply correction if found (exact or fuzzy)
+      if (correction) {
         
         // Determine if this is a global (Herbalife) or user-specific correction
         const correctionType = correction.isGlobal ? '🌍 Global' : '👤 User';
@@ -424,8 +476,8 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         }
         
         console.log(
-          `✅ [${correctionType}] "${originalName}" → "${correction.correctedName}" ` +
-            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""})`
+          `✅ [${correctionType}${matchType ? '-' + matchType.toUpperCase() : ''}] "${originalName}" → "${correction.correctedName}" ` +
+            `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, match: ${matchType})`
         );
 
         // 🎯 Apply EXACT corrected values from database (name, quantity, nutrition)
@@ -538,6 +590,10 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       }
 
       // No correction found - return with explicit flags
+      console.log(`❌ [NO-MATCH] No correction found for "${originalName}" (normalized: "${normalizedOriginal}")`);
+      console.log(`   🔍 Checked against ${correctionMap.size} corrections in map (exact + fuzzy matching)`);
+      console.log(`   👤 Current userId: ${currentUserId || 'NOT PROVIDED'}`);
+      
       return {
         ...food,
         originalAiName: trueOriginalAiName,  // Use preserved original AI name
