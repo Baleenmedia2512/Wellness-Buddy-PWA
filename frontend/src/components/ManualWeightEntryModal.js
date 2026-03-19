@@ -206,7 +206,8 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
             <div>
               <label className="flex items-center gap-1 text-sm font-semibold text-gray-700 mb-2">
                 <Flame className="w-4 h-4 text-orange-500" />
-                BMR (kcal) <span className="text-gray-400 font-normal">— optional</span>
+                BMR (kcal){" "}
+                <span className="text-gray-400 font-normal">— optional</span>
               </label>
               <input
                 type="number"
