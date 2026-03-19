@@ -505,80 +505,41 @@ const NutritionCentersMap = ({ user, onBack }) => {
   }, [centers]);
 
   return (
-    <div className="fixed inset-0 bg-gradient-to-br from-green-50 to-blue-50 z-50 overflow-auto">
+    <div className="fixed inset-0 z-50 overflow-auto pb-20" style={{ backgroundColor: '#e8f5e9' }}>
       {/* Header */}
-      <div className="sticky top-0 z-10 bg-white shadow-md">
-        <div className="max-w-4xl mx-auto px-4 py-3 flex items-center justify-between">
+      <div className="sticky top-0 z-40 shadow-md" style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}>
+
+        {/* Row 1: Back + Title + Refresh */}
+        <div className="max-w-4xl mx-auto px-4 pt-3 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <TouchFeedbackButton
               onClick={onBack}
-              className="p-2 hover:bg-gray-100 rounded-full"
+              className="p-2 hover:bg-white/20 rounded-full transition-colors"
               ariaLabel="Go back"
             >
-              <ArrowLeft className="h-5 w-5 text-gray-600" />
+              <ArrowLeft className="h-5 w-5 text-green-900" />
             </TouchFeedbackButton>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Physical Club Report</h1>
-              <p className="text-xs text-gray-500">View club locations & attendance</p>
+              <h1 className="text-base font-bold text-gray-900">Physical Club Report</h1>
+              <p className="text-xs text-green-900/70">View club locations & attendance</p>
             </div>
           </div>
           <TouchFeedbackButton
             onClick={fetchCenters}
             disabled={loading}
-            className="p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
+            className="p-2 hover:bg-white/20 rounded-full disabled:opacity-50 transition-colors"
             ariaLabel="Refresh"
           >
-            <RefreshCw className={`h-5 w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+            <RefreshCw className={`h-5 w-5 text-green-900 ${loading ? 'animate-spin' : ''}`} />
           </TouchFeedbackButton>
         </div>
 
-        {/* Team Filter */}
-        <div className="max-w-4xl mx-auto px-4 pb-3 flex gap-2">
-          <TouchFeedbackButton
-            onClick={() => setTeamFilter('self')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              teamFilter === 'self'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
+        {/* Row 2: Date filter pills (same as all pages) */}
+        <div className="max-w-4xl mx-auto px-4 pb-2 relative">
+          <div
+            className="flex gap-1.5 overflow-x-auto scrollbar-hide justify-center flex-wrap"
+            style={{ WebkitOverflowScrolling: 'touch', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            My Club
-          </TouchFeedbackButton>
-          <TouchFeedbackButton
-            onClick={() => setTeamFilter('direct')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              teamFilter === 'direct'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            My Direct Team
-          </TouchFeedbackButton>
-          <TouchFeedbackButton
-            onClick={() => setTeamFilter('full')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              teamFilter === 'full'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            My Full Team
-          </TouchFeedbackButton>
-          <TouchFeedbackButton
-            onClick={() => setTeamFilter('all')}
-            className={`flex-1 py-2 px-4 rounded-lg text-sm font-medium transition-colors ${
-              teamFilter === 'all'
-                ? 'bg-green-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-            }`}
-          >
-            All System
-          </TouchFeedbackButton>
-        </div>
-
-        {/* Date Range Filter */}
-        <div className="max-w-4xl mx-auto px-4 pb-3 relative">
-          <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-hide" style={{ WebkitOverflowScrolling: 'touch' }}>
             {[
               { value: 'today', label: 'Today' },
               { value: 'yesterday', label: 'Yesterday' },
@@ -586,7 +547,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               <TouchFeedbackButton
                 key={range.value}
                 onClick={() => { setDateRange(range.value); setShowDatePicker(false); }}
-                className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-medium transition-all border ${
                   dateRange === range.value
                     ? 'bg-green-700 text-white border-green-700 shadow-md'
                     : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -595,10 +556,9 @@ const NutritionCentersMap = ({ user, onBack }) => {
                 {range.label}
               </TouchFeedbackButton>
             ))}
-            {/* Custom single-day picker */}
             <TouchFeedbackButton
               onClick={() => setShowDatePicker(!showDatePicker)}
-              className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+              className={`whitespace-nowrap px-4 py-1.5 rounded-full text-xs font-medium transition-all border flex items-center gap-1.5 ${
                 dateRange === 'custom'
                   ? 'bg-green-700 text-white border-green-700 shadow-md'
                   : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
@@ -627,7 +587,26 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </AnimatePresence>
         </div>
 
-        {/* Search Bar */}
+        {/* Row 3: Team tabs — white pill segment */}
+        <div className="max-w-4xl mx-auto px-4 pb-2">
+          <div className="bg-white rounded-xl px-2 py-1.5 flex gap-1">
+            {[['self','My Club'],['direct','Direct Team'],['full','Full Team'],['all','All']].map(([val, label]) => (
+              <TouchFeedbackButton
+                key={val}
+                onClick={() => setTeamFilter(val)}
+                className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  teamFilter === val
+                    ? 'bg-green-600 text-white shadow-sm'
+                    : 'text-green-800 hover:bg-green-50'
+                }`}
+              >
+                {label}
+              </TouchFeedbackButton>
+            ))}
+          </div>
+        </div>
+
+        {/* Row 4: Search bar */}
         <div className="max-w-4xl mx-auto px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -636,7 +615,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search club or owner name..."
-              className="w-full pl-9 pr-9 py-2 rounded-full border border-gray-200 bg-white text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-green-400 focus:ring-1 focus:ring-green-400"
+              className="w-full pl-9 pr-9 py-2 rounded-full border border-white/60 bg-white text-sm text-gray-700 placeholder-gray-400 focus:outline-none focus:border-green-500 focus:ring-1 focus:ring-green-500"
             />
             {searchQuery.length > 0 && (
               <button
@@ -651,7 +630,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
       </div>
 
       {/* Map Container */}
-      <div className="max-w-4xl mx-auto p-4">
+      <div className="max-w-4xl mx-auto p-4 pt-4">
         {loading && !mapLoaded ? (
           <div className="flex flex-col items-center justify-center h-96 bg-white rounded-lg shadow-md">
             <LoadingSpinner />
@@ -671,7 +650,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           <>
             <div
               ref={mapRef}
-              className="w-full h-[500px] rounded-lg shadow-lg border border-gray-200"
+              className="w-full h-[500px] rounded-xl shadow-lg border border-green-200"
             />
             
             {/* Centres List */}
@@ -711,7 +690,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                   <div
                     key={center.id}
                     onClick={() => viewCenterOnMap(center)}
-                    className="bg-white rounded-lg p-4 shadow-sm border border-gray-200 hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
+                    className="bg-white rounded-xl p-4 shadow-sm border border-green-100 hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
                   >
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
