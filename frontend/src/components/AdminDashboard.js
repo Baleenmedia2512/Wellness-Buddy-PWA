@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   DollarSign,
@@ -25,9 +25,7 @@ import { clearUserPricingCache } from "../services/tokenCost/userPricingManager"
 import { clearPricingCache } from "../services/tokenCost/tokenCostConfig";
 import { App as CapacitorApp } from "@capacitor/app";
 import TouchFeedbackButton from "./TouchFeedbackButton";
-import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
-
-
+import { istToLocalDate, formatISTToLocalDate } from "../utils/timezoneUtils";
 
 const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
@@ -253,6 +251,39 @@ const AdminDashboard = ({ user, onClose }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage, setItemsPerPage] = useState(10);
   const [expandedUserId, setExpandedUserId] = useState(null);
+  const [summaryTab, setSummaryTab] = useState("cost"); // 'cost' | 'tokens'
+  const summarySwipeStartX = useRef(null);
+  const summaryCardRef = useRef(null);
+
+  useEffect(() => {
+    const el = summaryCardRef.current;
+    if (!el) return;
+    const onStart = (e) => {
+      summarySwipeStartX.current = e.touches[0].clientX;
+    };
+    const onMove = (e) => {
+      if (summarySwipeStartX.current == null) return;
+      const dx = Math.abs(summarySwipeStartX.current - e.touches[0].clientX);
+      const dy = Math.abs(e.touches[0].clientY - e.touches[0].clientY); // always 0, just prevent horizontal scroll
+      if (dx > 5) e.preventDefault(); // stop page scroll on horizontal swipe
+    };
+    const onEnd = (e) => {
+      if (summarySwipeStartX.current == null) return;
+      const diff = summarySwipeStartX.current - e.changedTouches[0].clientX;
+      summarySwipeStartX.current = null;
+      if (Math.abs(diff) > 40) {
+        setSummaryTab((prev) => (diff > 0 ? "tokens" : "cost"));
+      }
+    };
+    el.addEventListener("touchstart", onStart, { passive: true });
+    el.addEventListener("touchmove", onMove, { passive: false });
+    el.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove", onMove);
+      el.removeEventListener("touchend", onEnd);
+    };
+  }, [loading]);
   const [showItemsDropdown, setShowItemsDropdown] = useState(false);
   const [showEditPopup, setShowEditPopup] = useState(false);
   const [tokenCosts, setTokenCosts] = useState({ inputCost: 0, outputCost: 0 });
@@ -496,14 +527,19 @@ const AdminDashboard = ({ user, onClose }) => {
             email: user?.email,
             timeRange: timeRange,
           });
-          
+
           if (timeRange === "custom" && customStartDate && customEndDate) {
-            correctionParams.append("startDate", formatLocalDate(customStartDate));
+            correctionParams.append(
+              "startDate",
+              formatLocalDate(customStartDate),
+            );
             correctionParams.append("endDate", formatLocalDate(customEndDate));
           }
-          
-          console.log(`🔍 Checking for saved correction (timeRange: ${timeRange})`);
-          
+
+          console.log(
+            `🔍 Checking for saved correction (timeRange: ${timeRange})`,
+          );
+
           // Check if there's a saved correction in the database for this time range
           const correctionResponse = await fetch(
             `${apiBaseUrl}/api/get-token-correction?${correctionParams.toString()}`,
@@ -520,16 +556,20 @@ const AdminDashboard = ({ user, onClose }) => {
           if (correctionResponse.ok) {
             const correctionData = await correctionResponse.json();
             if (correctionData.success && correctionData.data) {
-              const { inputCost, outputCost, correctionTimestamp } = correctionData.data;
+              const { inputCost, outputCost, correctionTimestamp } =
+                correctionData.data;
               const { latestUsageTimestamp } = correctionData;
 
               // Use saved correction (always use it for this timeRange if it exists)
-              console.log("✅ Found saved correction for timeRange:", timeRange);
+              console.log(
+                "✅ Found saved correction for timeRange:",
+                timeRange,
+              );
               const costs = {
                 inputCost: parseFloat(inputCost || 0),
                 outputCost: parseFloat(outputCost || 0),
               };
-              
+
               // Store total token counts for recalculation (from current dashboard if available)
               if (tokenData && tokenData.summary) {
                 setTotalTokenCounts({
@@ -537,11 +577,13 @@ const AdminDashboard = ({ user, onClose }) => {
                   outputTokens: tokenData.summary.totalOutputTokens || 0,
                 });
               }
-              
+
               setTokenCosts(costs);
               setTokenCostInputs({
-                inputCost: costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
-                outputCost: costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
+                inputCost:
+                  costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
+                outputCost:
+                  costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
               });
               setOriginalTokenCosts(costs);
               setOriginalINRCosts({
@@ -551,15 +593,23 @@ const AdminDashboard = ({ user, onClose }) => {
               useSavedCorrection = true;
               return; // Exit early - we found saved correction
             } else {
-              console.log("⚠️ No saved correction found for timeRange:", timeRange);
+              console.log(
+                "⚠️ No saved correction found for timeRange:",
+                timeRange,
+              );
             }
           } else {
-            console.log("⚠️ Failed to fetch correction:", correctionResponse.status);
+            console.log(
+              "⚠️ Failed to fetch correction:",
+              correctionResponse.status,
+            );
           }
-          
+
           // No saved correction found - use dashboard summary data if available
           if (tokenData && tokenData.summary) {
-            console.log("📊 Using current dashboard summary data (no saved correction)");
+            console.log(
+              "📊 Using current dashboard summary data (no saved correction)",
+            );
             const summaryData = tokenData.summary;
             const costs = {
               inputCost: parseFloat(summaryData.totalInputCost || 0),
@@ -574,8 +624,10 @@ const AdminDashboard = ({ user, onClose }) => {
 
             setTokenCosts(costs);
             setTokenCostInputs({
-              inputCost: costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
-              outputCost: costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
+              inputCost:
+                costs.inputCost === 0 ? "0" : costs.inputCost.toFixed(4),
+              outputCost:
+                costs.outputCost === 0 ? "0" : costs.outputCost.toFixed(4),
             });
             setOriginalTokenCosts(costs);
             setOriginalINRCosts({
@@ -587,7 +639,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
           // No saved correction and no dashboard summary - fetch calculated totals
           console.log("📊 Fetching calculated totals from API");
-          
+
           // Helper function for formatting dates
           const formatLocalDate = (date) => {
             const year = date.getFullYear();
@@ -670,22 +722,35 @@ const AdminDashboard = ({ user, onClose }) => {
   }, [showEditPopup, user?.email, timeRange, customStartDate, customEndDate]);
 
   // Recalculate Input INR cost only
-  const recalculateInputINRCost = (inputPerMillion, exchangeRate, force = false) => {
+  const recalculateInputINRCost = (
+    inputPerMillion,
+    exchangeRate,
+    force = false,
+  ) => {
     if (!exchangeRate || exchangeRate <= 0) return;
     // Skip auto-recalculation if user manually edited INR (unless forced)
     if (manuallyEditedINR.input && !force) return;
 
     // Check if USD cost matches original - if so, restore original INR to avoid drift
-    if (Math.abs(inputPerMillion - originalPerMillionCosts.inputPerMillion) < 0.00001) {
+    if (
+      Math.abs(inputPerMillion - originalPerMillionCosts.inputPerMillion) <
+      0.00001
+    ) {
       setTokenCosts((prev) => ({
         ...prev,
         inputCost: originalINRCosts.inputCost,
       }));
       setTokenCostInputs((prev) => ({
         ...prev,
-        inputCost: originalINRCosts.inputCost === 0 ? "0" : originalINRCosts.inputCost.toFixed(4),
+        inputCost:
+          originalINRCosts.inputCost === 0
+            ? "0"
+            : originalINRCosts.inputCost.toFixed(4),
       }));
-      console.log("🔄 Restored original Input INR cost:", originalINRCosts.inputCost.toFixed(4));
+      console.log(
+        "🔄 Restored original Input INR cost:",
+        originalINRCosts.inputCost.toFixed(4),
+      );
       return;
     }
 
@@ -712,28 +777,43 @@ const AdminDashboard = ({ user, onClose }) => {
   };
 
   // Recalculate Output INR cost only
-  const recalculateOutputINRCost = (outputPerMillion, exchangeRate, force = false) => {
+  const recalculateOutputINRCost = (
+    outputPerMillion,
+    exchangeRate,
+    force = false,
+  ) => {
     if (!exchangeRate || exchangeRate <= 0) return;
     // Skip auto-recalculation if user manually edited INR (unless forced)
     if (manuallyEditedINR.output && !force) return;
 
     // Check if USD cost matches original - if so, restore original INR to avoid drift
-    if (Math.abs(outputPerMillion - originalPerMillionCosts.outputPerMillion) < 0.00001) {
+    if (
+      Math.abs(outputPerMillion - originalPerMillionCosts.outputPerMillion) <
+      0.00001
+    ) {
       setTokenCosts((prev) => ({
         ...prev,
         outputCost: originalINRCosts.outputCost,
       }));
       setTokenCostInputs((prev) => ({
         ...prev,
-        outputCost: originalINRCosts.outputCost === 0 ? "0" : originalINRCosts.outputCost.toFixed(4),
+        outputCost:
+          originalINRCosts.outputCost === 0
+            ? "0"
+            : originalINRCosts.outputCost.toFixed(4),
       }));
-      console.log("🔄 Restored original Output INR cost:", originalINRCosts.outputCost.toFixed(4));
+      console.log(
+        "🔄 Restored original Output INR cost:",
+        originalINRCosts.outputCost.toFixed(4),
+      );
       return;
     }
 
     // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newOutputCost =
-      (totalTokenCounts.outputTokens / 1000000) * outputPerMillion * exchangeRate;
+      (totalTokenCounts.outputTokens / 1000000) *
+      outputPerMillion *
+      exchangeRate;
 
     setTokenCosts((prev) => ({
       ...prev,
@@ -758,7 +838,7 @@ const AdminDashboard = ({ user, onClose }) => {
     setSavingCorrection(true);
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      
+
       // Format dates for API
       const formatLocalDate = (date) => {
         if (!date) return null;
@@ -777,12 +857,13 @@ const AdminDashboard = ({ user, onClose }) => {
         inputPerMillion: perMillionCosts.inputPerMillion,
         outputPerMillion: perMillionCosts.outputPerMillion,
         timeRange: timeRange,
-        startDate: timeRange === "custom" ? formatLocalDate(customStartDate) : null,
+        startDate:
+          timeRange === "custom" ? formatLocalDate(customStartDate) : null,
         endDate: timeRange === "custom" ? formatLocalDate(customEndDate) : null,
       };
 
       console.log("💾 Saving correction for time range:", timeRange);
-      
+
       const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
         method: "POST",
         cache: "no-store",
@@ -871,7 +952,9 @@ const AdminDashboard = ({ user, onClose }) => {
         // Handle error response
         console.error("Failed to save token correction:", data);
         alert(
-          `Failed to save token costs: ${data.message || "Unknown error"}. Please try again.`,
+          `Failed to save token costs: ${
+            data.message || "Unknown error"
+          }. Please try again.`,
         );
       }
     } catch (error) {
@@ -1003,7 +1086,13 @@ const AdminDashboard = ({ user, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 bg-green-50 overflow-y-auto">
       {/* Header */}
-      <div className="sticky top-0 z-10 px-4 py-4" style={{ backgroundColor: '#a8dbb5', borderBottom: '1px solid #93c9a1' }}>
+      <div
+        className="sticky top-0 z-10 px-4 py-4"
+        style={{
+          backgroundColor: "#a8dbb5",
+          borderBottom: "1px solid #93c9a1",
+        }}
+      >
         <div className="flex items-center justify-between">
           <TouchFeedbackButton
             onClick={onClose}
@@ -1014,12 +1103,13 @@ const AdminDashboard = ({ user, onClose }) => {
           </TouchFeedbackButton>
 
           <div className="flex-1 text-center">
-            <h1 className="text-lg font-bold text-gray-800">AI Monitor</h1>
+            <h1 className="text-lg font-bold text-gray-800">
+              AI Token Monitor
+            </h1>
             <p className="text-xs text-gray-500 mt-0.5">
               Track token usage and spending
             </p>
           </div>
-
 
           <div className="flex items-center gap-1">
             <TouchFeedbackButton
@@ -1047,12 +1137,12 @@ const AdminDashboard = ({ user, onClose }) => {
 
       <div className="max-w-lg mx-auto p-4 space-y-6 pb-20">
         {/* Date Range Filter */}
-        <div 
-          className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide" 
-          style={{ 
-            WebkitOverflowScrolling: 'touch',
-            scrollBehavior: 'smooth',
-            overscrollBehaviorX: 'contain'
+        <div
+          className="flex gap-2 overflow-x-auto pb-3 scrollbar-hide"
+          style={{
+            WebkitOverflowScrolling: "touch",
+            scrollBehavior: "smooth",
+            overscrollBehaviorX: "contain",
           }}
         >
           {["today", "yesterday", "week", "month", "all"].map((range) => {
@@ -1061,9 +1151,9 @@ const AdminDashboard = ({ user, onClose }) => {
               yesterday: "Yesterday",
               week: "Last 7 Days",
               month: "Last 30 Days",
-              all: "All"
+              all: "All",
             };
-            
+
             return (
               <TouchFeedbackButton
                 key={range}
@@ -1209,50 +1299,128 @@ const AdminDashboard = ({ user, onClose }) => {
             )}
 
             {/* Stats Box */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
+            <div
+              ref={summaryCardRef}
               className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100"
+              style={{ touchAction: "pan-y", userSelect: "none" }}
             >
-              <h2 className="text-sm font-medium text-gray-500 mb-4 uppercase tracking-wider">
-                Usage Summary
-              </h2>
-              <div className="grid grid-cols-3 gap-2">
-                <div className="text-center">
-                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
-                    {formatCurrency(summary.totalCost || 0)}
-                  </p>
-                  <div className="flex items-center justify-center space-x-1">
-                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
-                    <span className="text-xs text-gray-400 whitespace-nowrap">
-                      Total Cost
-                    </span>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
-                    {formatCurrency(summary.totalInputCost || 0)}
-                  </p>
-                  <div className="flex items-center justify-center space-x-1">
-                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
-                    <span className="text-xs text-gray-400 whitespace-nowrap">
-                      Input Cost
-                    </span>
-                  </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
-                    {formatCurrency(summary.totalOutputCost || 0)}
-                  </p>
-                  <div className="flex items-center justify-center space-x-1">
-                    <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
-                    <span className="text-xs text-gray-400 whitespace-nowrap">
-                      Output Cost
-                    </span>
-                  </div>
-                </div>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wider">
+                  {summaryTab === "cost" ? "Usage Summary" : "Token Usage"}
+                </h2>
               </div>
-            </motion.div>
+
+              <AnimatePresence mode="wait">
+                {summaryTab === "cost" ? (
+                  <motion.div
+                    key="cost"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: -20 }}
+                    transition={{ duration: 0.2 }}
+                    className="grid grid-cols-3 gap-2"
+                  >
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatCurrency(summary.totalCost || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Total Cost
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatCurrency(summary.totalInputCost || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Input Cost
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatCurrency(summary.totalOutputCost || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <IndianRupee className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Output Cost
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="tokens"
+                    initial={{ opacity: 0, x: 20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0, x: 20 }}
+                    transition={{ duration: 0.2 }}
+                    className="grid grid-cols-3 gap-2"
+                  >
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatNumber(summary.totalTokens || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-green-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Total Tokens
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatNumber(summary.totalInputTokens || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-blue-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Input Tokens
+                        </span>
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-lg sm:text-2xl font-bold text-gray-800 mb-1">
+                        {formatNumber(summary.totalOutputTokens || 0)}
+                      </p>
+                      <div className="flex items-center justify-center space-x-1">
+                        <Zap className="w-3 h-3 sm:w-4 sm:h-4 text-purple-500" />
+                        <span className="text-xs text-gray-400 whitespace-nowrap">
+                          Output Tokens
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Dots indicator - centered at bottom */}
+              <div className="flex items-center justify-center gap-1.5 mt-3">
+                <button
+                  onClick={() => setSummaryTab("cost")}
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    summaryTab === "cost"
+                      ? "bg-green-500 w-4"
+                      : "bg-gray-300 w-2"
+                  }`}
+                />
+                <button
+                  onClick={() => setSummaryTab("tokens")}
+                  className={`h-2 rounded-full transition-all duration-300 ${
+                    summaryTab === "tokens"
+                      ? "bg-green-500 w-4"
+                      : "bg-gray-300 w-2"
+                  }`}
+                />
+              </div>
+            </div>
 
             {/* User Spending Cards */}
             <motion.div
@@ -1297,7 +1465,11 @@ const AdminDashboard = ({ user, onClose }) => {
                     ariaLabel="Toggle sort direction"
                   >
                     <ArrowUpDown className="w-4 h-4" />
-                    {sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                    {sortDirection === "asc" ? (
+                      <ArrowUp className="w-3 h-3" />
+                    ) : (
+                      <ArrowDown className="w-3 h-3" />
+                    )}
                   </TouchFeedbackButton>
                 </div>
               </div>
@@ -1322,40 +1494,43 @@ const AdminDashboard = ({ user, onClose }) => {
                                 : user.userId,
                             )
                           }
-                          className="p-4 flex items-center justify-between cursor-pointer active:bg-gray-50 transition-colors"
+                          className="p-3 sm:p-4 flex items-center gap-3 cursor-pointer active:bg-gray-50 transition-colors"
                         >
-                          <div className="flex items-center gap-3 flex-1 min-w-0">
-                            <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-gradient-to-br from-green-50 to-green-100 border-green-200 text-green-700">
-                              {(user.userName || "U").charAt(0).toUpperCase()}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-bold text-gray-900 text-sm sm:text-[15px] truncate">
-                                {user.userName}
-                              </h3>
-                              <p className="text-[11px] sm:text-xs text-gray-500 mt-0.5 truncate">
-                                {user.email}
-                              </p>
-                              <div className="flex items-center gap-2 mt-1.5">
-                                <p className="text-[11px] text-gray-400 font-medium">
-                                  {formatNumber(user.totalTokens)} tokens
-                                </p>
-                              </div>
-                            </div>
+                          {/* Avatar */}
+                          <div className="w-10 h-10 sm:w-11 sm:h-11 flex-shrink-0 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-gradient-to-br from-green-50 to-green-100 border-green-200 text-green-700">
+                            {(user.userName || "U").charAt(0).toUpperCase()}
                           </div>
-                          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+
+                          {/* Name + email + tokens */}
+                          <div className="flex-1 min-w-0">
+                            <h3 className="font-bold text-gray-900 text-sm sm:text-[15px] leading-tight break-words">
+                              {user.userName}
+                            </h3>
+                            <p className="text-[10px] sm:text-xs text-gray-400 truncate mt-0.5">
+                              {user.email}
+                            </p>
+                            <p className="text-[10px] sm:text-xs text-gray-400 font-medium mt-0.5">
+                              {formatNumber(user.totalTokens)} tokens
+                            </p>
+                          </div>
+
+                          {/* Cost + chevron */}
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
                             <div className="text-right">
-                              <div className="text-lg sm:text-xl font-bold text-green-600">
+                              <div className="text-base sm:text-lg font-bold text-green-600 leading-tight">
                                 {formatCurrency(user.totalCost)}
                               </div>
-                              <div className="text-[9px] sm:text-[10px] text-gray-400 font-bold uppercase tracking-wider">
+                              <div className="text-[9px] text-gray-400 font-bold uppercase tracking-wider text-right">
                                 Cost
                               </div>
                             </div>
-                            {expandedUserId === user.userId ? (
-                              <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300 rotate-180 transition-transform" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-300 transition-transform" />
-                            )}
+                            <ChevronDown
+                              className={`h-4 w-4 text-gray-300 transition-transform flex-shrink-0 ${
+                                expandedUserId === user.userId
+                                  ? "rotate-180"
+                                  : ""
+                              }`}
+                            />
                           </div>
                         </div>
                         {/* Expanded Token Details */}
@@ -1406,7 +1581,8 @@ const AdminDashboard = ({ user, onClose }) => {
                               </div>
                               <div className="px-4 pb-4 pt-0 text-center">
                                 <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
-                                  Total: {formatNumber(user.totalTokens)} tokens • {formatCurrency(user.totalCost)}
+                                  Total: {formatNumber(user.totalTokens)} tokens
+                                  • {formatCurrency(user.totalCost)}
                                 </p>
                               </div>
                             </motion.div>
@@ -1427,7 +1603,9 @@ const AdminDashboard = ({ user, onClose }) => {
                         <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Search className="h-8 w-8 text-gray-300" />
                         </div>
-                        <h3 className="text-gray-900 font-medium">No users found</h3>
+                        <h3 className="text-gray-900 font-medium">
+                          No users found
+                        </h3>
                         <p className="text-gray-500 text-sm mt-1">
                           No users found matching "{searchQuery}"
                         </p>
@@ -1437,7 +1615,9 @@ const AdminDashboard = ({ user, onClose }) => {
                         <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mx-auto mb-4">
                           <Activity className="h-8 w-8 text-gray-300" />
                         </div>
-                        <h3 className="text-gray-900 font-medium">No data available</h3>
+                        <h3 className="text-gray-900 font-medium">
+                          No data available
+                        </h3>
                         <p className="text-gray-500 text-sm mt-1">
                           No user spending data for this period
                         </p>

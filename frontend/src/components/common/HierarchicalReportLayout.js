@@ -457,15 +457,15 @@ const HierarchicalReportLayout = ({
           </div>
 
           {/* Date Range Pills */}
-          <div className="relative">
-            <div
-              className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-0 scrollbar-hide justify-center flex-wrap"
-              style={{
-                WebkitOverflowScrolling: "touch",
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
+          <div
+            className="relative overflow-x-auto scrollbar-hide"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            <div className="flex gap-1.5 sm:gap-2 pb-0 justify-center min-w-max mx-auto px-1">
               {[
                 { value: "today", label: "Today" },
                 { value: "yesterday", label: "Yesterday" },
@@ -482,7 +482,7 @@ const HierarchicalReportLayout = ({
                     key={range.value}
                     id={`date-range-${range.value}`}
                     onClick={() => onDateRangeChange(range.value)}
-                    className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                    className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
                       dateRange === range.value
                         ? "bg-green-700 text-white border-green-700 shadow-md"
                         : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -493,7 +493,7 @@ const HierarchicalReportLayout = ({
                 ))}
 
               {/* Custom Date Range Button */}
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <TouchFeedbackButton
                   id="date-range-custom"
                   onClick={() => setShowDatePicker(!showDatePicker)}
@@ -626,16 +626,19 @@ const HierarchicalReportLayout = ({
                       [
                         {
                           pill: "You",
+                          pillShort: "You",
                           subtitle: "Your own data",
                           active: true,
                         },
                         {
                           pill: "Direct Team",
+                          pillShort: "Direct",
                           subtitle: "Your direct members",
                           active: false,
                         },
                         {
                           pill: "Full Team",
+                          pillShort: "Full",
                           subtitle: "Entire team hierarchy",
                           active: false,
                         },
@@ -646,15 +649,17 @@ const HierarchicalReportLayout = ({
                         className="flex flex-col items-center gap-1.5"
                       >
                         <div
-                          className={`w-full flex items-center justify-center gap-1.5 px-2 py-2.5 rounded-xl font-semibold text-sm ${
+                          className={`w-full flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-2 py-1.5 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm ${
                             meta.active
                               ? "bg-green-500 text-white shadow-sm"
                               : "bg-white border border-gray-200 text-gray-800"
                           }`}
                         >
-                          <span>{meta.pill}</span>
+                          <span className="truncate">
+                            {meta.pillShort || meta.pill}
+                          </span>
                           <span
-                            className={`text-xs px-1.5 py-0.5 rounded-full font-bold ${
+                            className={`flex-shrink-0 text-[10px] sm:text-xs px-1 sm:px-1.5 py-0.5 rounded-full font-bold ${
                               meta.active
                                 ? "bg-white bg-opacity-25 text-white"
                                 : "bg-gray-100 text-gray-600"
@@ -663,7 +668,7 @@ const HierarchicalReportLayout = ({
                             {val}
                           </span>
                         </div>
-                        <span className="text-[10px] text-gray-400 text-center leading-tight">
+                        <span className="text-[9px] sm:text-[10px] text-gray-400 text-center leading-tight">
                           {meta.subtitle}
                         </span>
                       </div>
