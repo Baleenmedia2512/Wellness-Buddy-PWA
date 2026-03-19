@@ -202,6 +202,23 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
               </div>
             </div>
 
+            {/* BMR Field */}
+            <div>
+              <label className="flex items-center gap-1 text-sm font-semibold text-gray-700 mb-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                BMR (kcal) <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={bmr}
+                onChange={(e) => setBmr(e.target.value)}
+                placeholder="e.g. 2200"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-lg font-semibold bg-white"
+                style={{ fontSize: "16px" }}
+              />
+            </div>
+
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm font-medium">
