@@ -1,122 +1,154 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp } from 'lucide-react';
+import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from './LoadingSpinner';
 
-// Constants
-const CALORIES_PER_STEP = 0.04; // Walking: 1 step = 0.04 kcal
-const UPDATE_THROTTLE_MS = 1000; // Update UI max once per second
-const ACTIVITY_TYPE = 'walking'; // Only walking activity
-const AUTO_SAVE_INTERVAL_MS = 60 * 1000; // Auto-save every 1 minute
-const STEP_GOAL = 10000; // Daily step goal
-const RING_RADIUS = 80;
-const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const CALORIES_PER_STEP    = 0.04;
+const UPDATE_THROTTLE_MS   = 1000;        // Max one UI update per second
+const ACTIVITY_TYPE        = 'walking';
+const AUTO_SAVE_INTERVAL_MS = 60_000;     // Auto-save every 60 seconds
+const POLL_INTERVAL_MS     = 5000;        // Fallback sensor poll every 5 seconds
+const STEP_GOAL            = 10000;
+const RING_RADIUS          = 80;
+const RING_CIRCUMFERENCE   = 2 * Math.PI * RING_RADIUS;
 
-/**
- * Get date key in YYYY-MM-DD format
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// PURE UTILITY FUNCTIONS (no React state, safe to call anywhere)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Returns YYYY-MM-DD string for a given Date (or today). */
 const toDateKey = (date = new Date()) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
-/**
- * Calculate calories from steps
- */
-const calcCalories = (steps) => {
-  return Number((steps * CALORIES_PER_STEP).toFixed(2));
-};
+/** Calories burned from a step count. */
+const calcCalories = (steps) => Number((steps * CALORIES_PER_STEP).toFixed(2));
 
-/**
- * Local storage keys for baseline tracking
- */
-const getBaselineKey = (dateKey) => `step_counter_baseline_${dateKey}`;
-const getLastUpdateKey = () => 'step_counter_last_update';
+/** localStorage key for the day's sensor baseline. */
+const getBaselineKey    = (dateKey) => `step_counter_baseline_${dateKey}`;
+const getLastUpdateKey  = ()        => 'step_counter_last_update';
 
-/**
- * Read baseline from localStorage
- */
+/** Read today's sensor baseline from localStorage. Returns null if absent/invalid. */
 const readBaseline = (dateKey) => {
   try {
-    const raw = localStorage.getItem(getBaselineKey(dateKey));
+    const raw    = localStorage.getItem(getBaselineKey(dateKey));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    if (!Number.isFinite(parsed?.sensorTotal)) return null;
-    return parsed;
+    return Number.isFinite(parsed?.sensorTotal) ? parsed : null;
   } catch {
     return null;
   }
 };
 
-/**
- * Write baseline to localStorage
- */
+/** Persist today's sensor baseline to localStorage. */
 const writeBaseline = (dateKey, sensorTotal) => {
-  const payload = {
-    sensorTotal,
-    savedAt: Date.now(),
-    date: dateKey
-  };
-  localStorage.setItem(getBaselineKey(dateKey), JSON.stringify(payload));
+  localStorage.setItem(
+    getBaselineKey(dateKey),
+    JSON.stringify({ sensorTotal, savedAt: Date.now(), date: dateKey })
+  );
   localStorage.setItem(getLastUpdateKey(), Date.now().toString());
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 /**
  * Main Step Counter Component
  */
 const StepCounter = ({ onBack, userId }) => {
   const isNativePlatform = Capacitor.isNativePlatform();
-  
-  // State management
-  const [ready, setReady] = useState(false);
-  const [loading, setLoading] = useState(true);
+
+  // ── UI State (display-only; mutated via setters, never read by callbacks) ──
+  const [ready, setReady]                   = useState(false);
+  const [loading, setLoading]               = useState(true);
   const [sensorAvailable, setSensorAvailable] = useState(false);
   const [permissionGranted, setPermissionGranted] = useState(false);
-  const [todaySteps, setTodaySteps] = useState(0);
-  const [todayCalories, setTodayCalories] = useState(0);
-  const [lastUpdated, setLastUpdated] = useState(null);
-  const [error, setError] = useState(null);
-  const [dailyHistory, setDailyHistory] = useState([]);
-  const [saving, setSaving] = useState(false);
-  const [lastSaved, setLastSaved] = useState(null);
-  const [historyView, setHistoryView] = useState('week'); // 'week', 'month'
+  const [todaySteps, setTodaySteps]         = useState(0);
+  const [todayCalories, setTodayCalories]   = useState(0);
+  const [lastUpdated, setLastUpdated]       = useState(null);
+  const [error, setError]                   = useState(null);
+  const [dailyHistory, setDailyHistory]     = useState([]);
+  const [saving, setSaving]                 = useState(false);
+  const [lastSaved, setLastSaved]           = useState(null);
+  const [historyView, setHistoryView]       = useState('week');
+  const [refreshing, setRefreshing]         = useState(false); // manual refresh button
+  const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
+
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
-    // Try initializing from prop or localStorage immediately (synchronous)
     if (userId) return userId;
     const stored = localStorage.getItem('dbUserId');
     return stored ? Number(stored) : null;
   });
 
+  // ── Refs: always-current mirrors / stable handles ──────────────────────────
+  //
+  // FIX (core): All mutable values that callbacks (save, poll, cleanup) need are
+  // mirrored into refs. This means those callbacks can have stable references
+  // (no state in their dep arrays), which stops the chain reaction where every
+  // step increments todaySteps → recreates saveStepsToDatabase → recreates
+  // setupAutoSave → re-runs the main useEffect → tears down and rebuilds the
+  // sensor listener and poll on EVERY step.
+  //
+  const todayStepsRef        = useRef(0);    // mirror of todaySteps state
+  const todayCaloriesRef     = useRef(0);    // mirror of todayCalories state
+  const resolvedUserIdRef    = useRef(null); // mirror of resolvedUserId state
+  const latestSensorTotalRef = useRef(null); // raw cumulative sensor total
+  const lastUIUpdateRef      = useRef(0);    // throttle: timestamp of last setState
+  const lastSavedStepsRef    = useRef(null); // dedup: prevents redundant DB writes
+  // DB offset: today's steps already saved in DB before this session opened.
+  // Added on top of sensor-based steps so the counter continues from where it
+  // left off rather than resetting to 0 on every fresh app open.
+  const dbOffsetRef            = useRef(0);
+
+  // Timer and listener handles
+  const sensorListenerRef  = useRef(null);
+  const pollIntervalRef    = useRef(null);
+  const autoSaveTimerRef   = useRef(null);
+  const midnightTimerRef   = useRef(null);
+  const resolveIntervalRef = useRef(null);
+
+  // Stable function refs — intervals/cleanup always call the LATEST function
+  // version without needing it in their dependency arrays.
+  const saveStepsToDatabaseRef = useRef(null);
+  const processSensorValueRef  = useRef(null);
+  const loadDailyHistoryRef    = useRef(null);
+
+  // Sync value mirrors on every render (synchronous, before effects run)
+  resolvedUserIdRef.current = resolvedUserId;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // USER-ID RESOLUTION (multi-source fallback: prop → localStorage → API)
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
-    // If already resolved, nothing to do
-    if (resolvedUserId) return;
+    if (resolvedUserId) return; // already resolved
 
     let cancelled = false;
 
     const tryResolve = async () => {
-      // 1. Check prop
       if (userId) {
         if (!cancelled) setResolvedUserId(userId);
         return true;
       }
-      // 2. Check localStorage (written by App.js after login)
       const stored = localStorage.getItem('dbUserId');
       if (stored) {
         console.log('✅ [StepCounter] userId from localStorage:', stored);
         if (!cancelled) setResolvedUserId(Number(stored));
         return true;
       }
-      // 3. Final fallback: call lookup-user-id with stored email
       const email = localStorage.getItem('userEmail');
       if (email) {
         try {
           const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-          const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+          const res  = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })
@@ -129,13 +161,13 @@ const StepCounter = ({ onBack, userId }) => {
             return true;
           }
         } catch (e) {
-          console.warn('[StepCounter] API fallback failed:', e.message);
+          console.warn('[StepCounter] userId API fallback failed:', e.message);
         }
       }
       return false;
     };
 
-    // Try immediately, then poll every second for up to 30s
+    // Try immediately, then poll every 1 s for up to 30 s
     tryResolve().then(resolved => {
       if (resolved || cancelled) return;
       let attempts = 0;
@@ -145,7 +177,6 @@ const StepCounter = ({ onBack, userId }) => {
           if (ok || attempts >= 30) clearInterval(interval);
         });
       }, 1000);
-      // Store interval ref for cleanup
       resolveIntervalRef.current = interval;
     });
 
@@ -157,522 +188,473 @@ const StepCounter = ({ onBack, userId }) => {
       }
     };
   }, [userId, resolvedUserId]);
-  
-  // Refs for internal state
-  const latestSensorTotalRef = useRef(null);
-  const sensorListenerRef = useRef(null);
-  const lastUIUpdateRef = useRef(0);
-  const midnightTimerRef = useRef(null);
-  const autoSaveTimerRef = useRef(null);
-  const resolveIntervalRef = useRef(null);
-  const pollIntervalRef = useRef(null);
-  const todayStepsRef = useRef(0);       // Req 8: always-current step count for resume saves
-  const lastSavedStepsRef = useRef(null); // Req 8: prevent duplicate saves
-  const dbStepsFloorRef = useRef(0);     // Floor from DB to protect against reinstall data loss
-  const dbFloorCheckedRef = useRef(false); // Whether DB floor check has completed
-  const sensorReadyRef = useRef(false);    // Whether first sensor reading arrived
-  
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SENSOR VALUE PROCESSOR
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Process sensor value and calculate daily steps
+   * FIX 1: No DB floor logic.
+   *   Old code: dailySteps = Math.max(sensorSteps, dbStepsFloor)
+   *   This caused the counter to freeze whenever dbStepsFloor > sensorSteps
+   *   (e.g. after a reboot, reinstall, or when the auto-save failed to run).
+   *
+   *   New code: dailySteps = sensor − baseline  (pure, always live)
+   *   If the sensor resets below the stored baseline, we detect it and update
+   *   the baseline, so the counter starts fresh from 0 for that session.
+   *
+   * FIX 2: Writes to refs BEFORE calling setState.
+   *   This guarantees that any callback running concurrently (save, poll,
+   *   cleanup) reads the correct current value even if React hasn't re-rendered.
    */
   const processSensorValue = useCallback((totalSteps) => {
     if (!Number.isFinite(totalSteps)) {
-      console.warn('⚠️ Invalid sensor value:', totalSteps);
+      console.warn('⚠️ [StepCounter] Invalid sensor value:', totalSteps);
       return;
     }
-    
+
     const todayKey = toDateKey();
-    let baseline = readBaseline(todayKey);
-    
-    console.log('📊 Processing sensor value:', {
-      totalSteps,
-      todayKey,
-      baseline: baseline?.sensorTotal,
-      hasBaseline: !!baseline
-    });
-    
-    // First reading of the day - set baseline
+    let baseline   = readBaseline(todayKey);
+
+    // First reading of the day → establish baseline
     if (!baseline) {
-      baseline = { sensorTotal: totalSteps };
       writeBaseline(todayKey, totalSteps);
-      console.log('✅ Baseline set for first time:', totalSteps);
+      baseline = { sensorTotal: totalSteps };
+      console.log('✅ [StepCounter] Baseline established:', totalSteps);
     }
-    
-    // Device reboot detection - sensor reset to lower value
+
+    // Sensor reset detection: hardware counter was cleared (device reboot / reinstall).
+    // totalSteps is now smaller than our stored baseline → update baseline to match.
     if (totalSteps < baseline.sensorTotal) {
-      console.log('🔄 Device reboot detected, resetting baseline');
-      baseline = { sensorTotal: totalSteps };
+      console.log('🔄 [StepCounter] Sensor reset — updating baseline from', baseline.sensorTotal, 'to', totalSteps);
       writeBaseline(todayKey, totalSteps);
+      baseline = { sensorTotal: totalSteps };
     }
-    
-    // Calculate today's steps (use DB floor to prevent losing data after reinstall)
+
+    // Calculate steps this sensor session (since baseline was set this app open)
     const sensorSteps = Math.max(0, Math.floor(totalSteps - baseline.sensorTotal));
-    const dailySteps = Math.max(sensorSteps, dbStepsFloorRef.current);
-    const calories = calcCalories(dailySteps);
-    
-    console.log('🚶 Daily steps calculated:', {
-      dailySteps,
-      calories,
-      totalSteps,
-      baseline: baseline.sensorTotal
-    });
-    
-    // Only update if it's been more than throttle time OR this is first update
+    // Add DB offset: steps already recorded in DB from earlier sessions today.
+    // This means when the app opens and sensor starts at 0 relative to baseline,
+    // we still display the correct cumulative daily total (e.g. 3311 + new steps).
+    const dailySteps = dbOffsetRef.current + sensorSteps;
+    const calories   = calcCalories(dailySteps);
+
+    // Update refs synchronously FIRST so any concurrent callback sees the latest values
+    latestSensorTotalRef.current = totalSteps;
+    todayStepsRef.current        = dailySteps;
+    todayCaloriesRef.current     = calories;
+
+    // Throttle React state updates to at most once per UPDATE_THROTTLE_MS
     const now = Date.now();
     if (now - lastUIUpdateRef.current >= UPDATE_THROTTLE_MS || lastUIUpdateRef.current === 0) {
       lastUIUpdateRef.current = now;
-      latestSensorTotalRef.current = totalSteps;
-      todayStepsRef.current = dailySteps; // Keep ref in sync for resume saves
       setTodaySteps(dailySteps);
       setTodayCalories(calories);
       setLastUpdated(new Date());
-      sensorReadyRef.current = true;
-      // Only clear loading if DB floor check is done OR steps > 0
-      // (avoids flashing 0 on reinstall while DB fetch is pending)
-      if (dailySteps > 0 || dbFloorCheckedRef.current) {
-        setLoading(false);
-      }
-      console.log('✅ UI updated with new step count:', dailySteps);
+      setLoading(false);
     }
-  }, []);
-  
-  /**
-   * Save current steps to database
-   */
-  const saveStepsToDatabase = useCallback(async (stepsOverride, caloriesOverride) => {
-    // Allow callers (e.g. resume handler) to pass freshly computed values to avoid stale state
-    const steps = (stepsOverride !== undefined && stepsOverride !== null) ? stepsOverride : todaySteps;
-    const calories = (caloriesOverride !== undefined && caloriesOverride !== null) ? caloriesOverride : todayCalories;
 
-    console.log('💾 Save attempt:', {
-      userId: resolvedUserId,
-      steps,
-      calories,
-      latestSensorTotal: latestSensorTotalRef.current
-    });
-    
-    if (!resolvedUserId) {
-      console.log('⏭️ Skipping save: No userId resolved');
-      return;
-    }
-    
-    if (steps === 0) {
-      console.log('⏭️ Skipping save: No steps yet');
-      return;
-    }
-    
-    // Skip duplicate saves when steps have not changed
+    console.log('🚶 [StepCounter]', { dailySteps, calories, totalSteps, baseline: baseline.sensorTotal });
+  }, []); // Stable — reads/writes only refs and localStorage, no state deps
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE: SAVE
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * FIX 3: Reads todayStepsRef.current (ref) instead of todaySteps (state).
+   *
+   *   Old code depended on todaySteps state, so every step update recreated
+   *   this function → recreated setupAutoSave → re-ran the main useEffect →
+   *   rebuilt the sensor listener. The auto-save interval was reset on every
+   *   step and therefore NEVER fired during normal walking.
+   *
+   *   New code reads from refs: the function reference never changes, the
+   *   auto-save interval runs undisturbed for the full 60 seconds.
+   */
+  const saveStepsToDatabase = useCallback(async () => {
+    const userId   = resolvedUserIdRef.current;
+    const steps    = todayStepsRef.current;
+    const calories = todayCaloriesRef.current;
+
+    if (!userId || steps === 0) return;
+
+    // Dedup guard — skip DB write if nothing has changed since last save
     if (lastSavedStepsRef.current === steps) {
-      console.log('⏭️ Skipping save: Steps unchanged since last save', steps);
+      console.log('⏭️ [StepCounter] Auto-save skipped — steps unchanged at', steps);
       return;
     }
-    
+
     try {
       setSaving(true);
       const payload = {
-        userId: resolvedUserId,
-        activityDate: toDateKey(),
+        userId,
+        activityDate:        toDateKey(),
         steps,
-        activityType: ACTIVITY_TYPE,
-        caloriesBurned: calories,
-        currentSensorTotal: latestSensorTotalRef.current
+        activityType:        ACTIVITY_TYPE,
+        caloriesBurned:      calories,
+        currentSensorTotal:  latestSensorTotalRef.current
       };
-      
-      console.log('📤 Sending to database:', payload);
-      const result = await saveDailyActivity(payload);
-      console.log('✅ Save result:', result);
-      
-      lastSavedStepsRef.current = steps; // Track last persisted step count
+      console.log('💾 [StepCounter] Saving to DB:', payload);
+      await saveDailyActivity(payload);
+      lastSavedStepsRef.current = steps;
       setLastSaved(new Date());
-      console.log('💾 Steps saved to database successfully:', steps);
+      console.log('✅ [StepCounter] Saved:', steps, 'steps');
     } catch (err) {
-      console.error('❌ Failed to save steps:', err);
+      console.error('❌ [StepCounter] Save failed:', err);
       setError(`Save failed: ${err.message}`);
     } finally {
       setSaving(false);
     }
-  }, [resolvedUserId, todaySteps, todayCalories]);
-  
-  /**
-   * Load daily history from database
-   */
-  const loadDailyHistory = useCallback(async () => {
-    console.log('🔍 loadDailyHistory called, userId:', resolvedUserId);
-    
-    if (!resolvedUserId) return;
+  }, []); // Stable — reads all values from refs, no state in deps
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE: FETCH HISTORY
+  // ─────────────────────────────────────────────────────────────────────────
+  const loadDailyHistory = useCallback(async () => {
+    const userId = resolvedUserIdRef.current;
+    if (!userId) return;
     try {
-      const response = await fetchDailyActivity(resolvedUserId, 30, ACTIVITY_TYPE);
-      const trend = response.trend || response.data;
+      const response = await fetchDailyActivity(userId, 30, ACTIVITY_TYPE);
+      const trend    = response.trend || response.data;
       if (response.success && Array.isArray(trend)) {
-        const normalized = trend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 }));
-        setDailyHistory(normalized);
+        setDailyHistory(trend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 })));
       }
     } catch (err) {
-      console.error('❌ Failed to load history:', err);
+      console.error('❌ [StepCounter] Load history failed:', err);
     }
-  }, [resolvedUserId]);
+  }, []); // Stable — reads userId from ref
 
-  // Re-load real history once resolvedUserId becomes available
-  // (initial mount may fire before userId resolves)
-  useEffect(() => {
-    if (resolvedUserId) {
-      loadDailyHistory();
-      // Fetch today's steps from DB to protect against reinstall data loss
-      fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE)
-        .then((response) => {
-          const trend = response.trend || response.data;
-          dbFloorCheckedRef.current = true;
-          if (response.success && Array.isArray(trend)) {
-            const todayKey = toDateKey();
-            const todayEntry = trend.find((d) => d.date === todayKey);
-            if (todayEntry && todayEntry.steps > 0) {
-              dbStepsFloorRef.current = todayEntry.steps;
-              console.log('🛡️ DB steps floor set:', todayEntry.steps);
-              // Immediately update UI if current steps are below the DB floor
-              // (e.g. after reinstall when baseline was lost)
-              if (todayEntry.steps > todayStepsRef.current) {
-                const floorCalories = calcCalories(todayEntry.steps);
-                todayStepsRef.current = todayEntry.steps;
-                setTodaySteps(todayEntry.steps);
-                setTodayCalories(floorCalories);
-                setLastUpdated(new Date());
-                console.log('🛡️ UI updated from DB floor:', todayEntry.steps);
-              }
-            }
-            // DB check done — clear loading if sensor already came back with 0
-            if (sensorReadyRef.current) {
-              setLoading(false);
-            }
-          }
-        })
-        .catch((err) => {
-          console.warn('⚠️ Failed to fetch DB step floor:', err);
-          dbFloorCheckedRef.current = true;
-          // DB failed — clear loading if sensor is ready
-          if (sensorReadyRef.current) {
-            setLoading(false);
-          }
-        });
-    }
-  }, [resolvedUserId, loadDailyHistory]);
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // MANUAL REFRESH (Requirement 6)
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Initialize step tracking with sensor
+   * Fallback for when Android Doze or background throttle delays sensor events.
+   * User taps the refresh icon in the header to force an immediate sensor read.
+   */
+  const handleManualRefresh = useCallback(async () => {
+    if (!isNativePlatform) return;
+    setRefreshing(true);
+    setRefreshDone(false);
+    try {
+      const current = await StepCounterPlugin.getCurrentStepCount();
+      const val     = Number.parseInt(current?.totalSteps, 10);
+      if (Number.isFinite(val)) {
+        processSensorValueRef.current?.(val);
+        console.log('🔄 [StepCounter] Manual refresh — sensor total:', val);
+      }
+    } catch (err) {
+      console.error('❌ [StepCounter] Manual refresh failed:', err);
+    } finally {
+      setRefreshing(false);
+      // Show a brief "Done" indicator for 1.5 s so the user sees feedback
+      setRefreshDone(true);
+      setTimeout(() => setRefreshDone(false), 1500);
+    }
+  }, [isNativePlatform]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SENSOR INITIALIZATION
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * FIX 4: Uses processSensorValueRef.current inside the listener and poll
+   * callbacks instead of capturing processSensorValue directly (which would
+   * create a dependency chain). With this pattern:
+   *   - initStepTracking has NO state deps → it is stable (deps: [])
+   *   - The listener and poll always call the latest processSensorValue via ref
+   *   - Re-calling initStepTracking (e.g. after permission grant) safely
+   *     removes the old listener before adding a new one
    */
   const initStepTracking = useCallback(async () => {
-    console.log('🔧 Initializing step tracking...');
-    
+    console.log('🔧 [StepCounter] Initializing step tracking...');
     try {
       const availability = await StepCounterPlugin.isAvailable();
-      const available = !!availability?.available;
+      const available    = !!availability?.available;
       setSensorAvailable(available);
-      
-      console.log('📱 Sensor availability:', { available, availability });
-      
+
       if (!available) {
         setPermissionGranted(false);
         setLoading(false);
         return;
       }
-      
+
       const permission = await StepCounterPlugin.getPermissionStatus();
-      const granted = !!permission?.granted;
+      const granted    = !!permission?.granted;
       setPermissionGranted(granted);
-      
-      console.log('🔐 Permission status:', { granted, permission });
-      
+
       if (!granted) {
-        console.log('⚠️ Permission not granted');
-        setLoading(false); // Stop loading even if no data yet
+        setLoading(false);
         return;
       }
-      
-      // Start tracking
-      console.log('▶️ Starting step tracking...');
-      const startResult = await StepCounterPlugin.startTracking();
-      console.log('▶️ Start tracking result:', startResult);
-      
-      // Remove old listener if exists
+
+      await StepCounterPlugin.startTracking();
+
+      // Remove any existing listener before attaching a new one
       if (sensorListenerRef.current) {
         await sensorListenerRef.current.remove();
         sensorListenerRef.current = null;
-        console.log('🔇 Removed old listener');
       }
-      
-      // Add sensor listener
-      console.log('👂 Adding sensor listener...');
+
+      // Push-based: native sensor fires stepUpdate events when steps change
       sensorListenerRef.current = await StepCounterPlugin.addListener('stepUpdate', (event) => {
-        console.log('📨 Step update event received:', event);
         const steps = Number.parseInt(event?.totalSteps, 10);
         if (Number.isFinite(steps)) {
-          processSensorValue(steps);
+          // Call via ref so the listener never holds a stale closure
+          processSensorValueRef.current?.(steps);
         } else {
-          console.warn('⚠️ Invalid steps in event:', event);
+          console.warn('⚠️ [StepCounter] Invalid stepUpdate payload:', event);
         }
       });
-      console.log('👂 Listener added successfully');
-      
-      // Get current step count
-      console.log('📊 Getting current step count...');
-      const current = await StepCounterPlugin.getCurrentStepCount();
-      console.log('📊 Current step count result:', current);
-      
+
+      // Seed the UI with the current value immediately on open
+      const current      = await StepCounterPlugin.getCurrentStepCount();
       const currentValue = Number.parseInt(current?.totalSteps, 10);
       if (Number.isFinite(currentValue)) {
-        console.log('✅ Processing initial sensor value:', currentValue);
-        processSensorValue(currentValue);
+        processSensorValueRef.current?.(currentValue);
       } else {
-        console.warn('⚠️ Invalid current step count, but clearing loading state');
-        // Clear loading even if we don't have initial data
         setLoading(false);
       }
-      
-      // Safety timeout: clear loading after 3s regardless (prevents infinite spinner)
-      setTimeout(() => {
-        setLoading(false);
-      }, 3000);
-      
-      // Start polling for step updates every 5 seconds as a fallback
-      // This ensures UI updates even if the event listener doesn't fire
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      
+
+      // Safety: ensure loading spinner is cleared after 3 s even if sensor is silent
+      setTimeout(() => setLoading(false), 3000);
+
+      // Pull-based fallback: handles Android Doze / background throttle where
+      // push events are delayed. Polls every POLL_INTERVAL_MS.
+      if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = setInterval(async () => {
         try {
-          const current = await StepCounterPlugin.getCurrentStepCount();
-          const currentValue = Number.parseInt(current?.totalSteps, 10);
-          if (Number.isFinite(currentValue)) {
-            processSensorValue(currentValue);
-          }
-        } catch (err) {
-          console.warn('⚠️ Polling failed:', err);
+          const c = await StepCounterPlugin.getCurrentStepCount();
+          const v = Number.parseInt(c?.totalSteps, 10);
+          if (Number.isFinite(v)) processSensorValueRef.current?.(v);
+        } catch (e) {
+          console.warn('⚠️ [StepCounter] Poll failed:', e.message);
         }
-      }, 5000); // Poll every 5 seconds
-      
-      console.log('✅ Step tracking initialized successfully with polling fallback');
+      }, POLL_INTERVAL_MS);
+
+      console.log('✅ [StepCounter] Sensor initialized with push + poll fallback');
     } catch (err) {
-      console.error('❌ Failed to initialize step tracking:', err);
+      console.error('❌ [StepCounter] initStepTracking failed:', err);
       setError('Failed to initialize step counter');
       setLoading(false);
     }
-  }, [processSensorValue]);
-  
-  /**
-   * Request permission for activity recognition
-   */
+  }, []); // Stable — no state deps; uses processSensorValueRef internally
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // PERMISSION REQUEST
+  // ─────────────────────────────────────────────────────────────────────────
   const requestPermission = useCallback(async () => {
     try {
       const permission = await StepCounterPlugin.requestPermission();
-      const granted = !!permission?.granted;
+      const granted    = !!permission?.granted;
       setPermissionGranted(granted);
-      
-      if (granted) {
-        await initStepTracking();
-      }
+      if (granted) await initStepTracking();
     } catch (err) {
-      console.error('❌ Permission request failed:', err);
+      console.error('❌ [StepCounter] Permission request failed:', err);
       setError('Failed to get permission');
     }
-  }, [initStepTracking]);
-  
+  }, [initStepTracking]); // initStepTracking is stable
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTO-SAVE TIMER
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Setup auto-save timer
+   * FIX 5: Uses saveStepsToDatabaseRef.current in the interval body.
+   *   Old: setInterval called saveStepsToDatabase directly → that function
+   *        depended on todaySteps state → interval was re-created on every step
+   *        → never actually ticked to 60 s during walking.
+   *   New: interval body calls the ref → always latest save function, zero deps,
+   *        interval runs undisturbed for its full 60-second lifetime.
    */
   const setupAutoSave = useCallback(() => {
-    if (autoSaveTimerRef.current) {
-      clearInterval(autoSaveTimerRef.current);
-    }
-    
+    if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setInterval(() => {
-      saveStepsToDatabase();
+      saveStepsToDatabaseRef.current?.();
     }, AUTO_SAVE_INTERVAL_MS);
-    
-    console.log(`💾 Auto-save enabled (every ${AUTO_SAVE_INTERVAL_MS / 1000}s)`);
-  }, [saveStepsToDatabase]);
-  
-  /**
-   * Setup midnight reset timer
-   */
+    console.log(`💾 [StepCounter] Auto-save timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
+  }, []); // Stable — interval body only references a ref
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MIDNIGHT RESET TIMER
+  // ─────────────────────────────────────────────────────────────────────────
   const setupMidnightReset = useCallback(() => {
-    const now = new Date();
-    const tomorrow = new Date(now);
+    const now             = new Date();
+    const tomorrow        = new Date(now);
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
-    
     const msUntilMidnight = tomorrow.getTime() - now.getTime();
-    
-    if (midnightTimerRef.current) {
-      clearTimeout(midnightTimerRef.current);
-    }
-    
+
+    if (midnightTimerRef.current) clearTimeout(midnightTimerRef.current);
+
     midnightTimerRef.current = setTimeout(async () => {
-      console.log('🌙 Midnight reset triggered');
-      
-      // Save final steps before reset
-      await saveStepsToDatabase();
-      
-      // Get current sensor value and set it as new baseline
+      console.log('🌙 [StepCounter] Midnight reset');
+
+      // Save final steps of the day — reads from refs, not stale state
+      await saveStepsToDatabaseRef.current?.();
+
+      // Write new day's baseline using the last known raw sensor total
       if (latestSensorTotalRef.current !== null) {
-        const todayKey = toDateKey();
-        writeBaseline(todayKey, latestSensorTotalRef.current);
+        writeBaseline(toDateKey(), latestSensorTotalRef.current);
       }
-      
-      // Reset displayed values
+
+      // Reset counters for the new day
+      todayStepsRef.current     = 0;
+      todayCaloriesRef.current  = 0;
+      lastSavedStepsRef.current = null;
       setTodaySteps(0);
       setTodayCalories(0);
-      
-      // Reload history
-      await loadDailyHistory();
-      
-      // Setup next midnight timer
+
+      // Reload history to include the completed day
+      await loadDailyHistoryRef.current?.();
+
+      // Re-schedule for the next midnight
       setupMidnightReset();
     }, msUntilMidnight);
-    
-    console.log(`⏰ Midnight reset scheduled in ${Math.floor(msUntilMidnight / 1000 / 60)} minutes`);
-  }, [saveStepsToDatabase, loadDailyHistory]);
-  
+
+    console.log(`⏰ [StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
+  }, []); // Stable — uses only refs and reschedules itself
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SYNC FUNCTION REFS (runs synchronously on every render, before effects)
+  // ─────────────────────────────────────────────────────────────────────────
+  // This ensures that intervals, listeners, and cleanup closures always invoke
+  // the most up-to-date version of each callback, even if the reference changed.
+  saveStepsToDatabaseRef.current = saveStepsToDatabase;
+  processSensorValueRef.current  = processSensorValue;
+  loadDailyHistoryRef.current    = loadDailyHistory;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EFFECT 1: SENSOR LIFECYCLE — runs ONCE on mount / cleans up on unmount
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-   * Initialize on mount
+   * FIX 6 (root cause): Empty deps array.
+   *   Old code had todaySteps and saveStepsToDatabase in the dep array.
+   *   Every step update → todaySteps changed → saveStepsToDatabase recreated →
+   *   setupAutoSave recreated → this effect re-ran → sensor listener torn down
+   *   and rebuilt → counter appeared stuck mid-walk during the re-init window.
+   *
+   *   All callbacks called here are stable (deps: []) so listing them in deps
+   *   would be equivalent to []. We use [] explicitly and suppress the lint
+   *   warning to make the intent clear.
    */
   useEffect(() => {
-    let active = true;
-    
-    const setup = async () => {
-      setLoading(true);
-      
-      try {
-        if (isNativePlatform) {
-          await initStepTracking();
-        } else {
-          setLoading(false);
-        }
-        
-        // Load daily history (will generate dummy if no userId)
-        await loadDailyHistory();
-        
-        // Setup auto-save only if userId resolved
-        if (resolvedUserId) {
-          setupAutoSave();
-        }
-        
-        // Setup midnight reset
-        setupMidnightReset();
-      } catch (err) {
-        console.error('❌ Setup failed:', err);
-        if (active) {
-          setError('Failed to initialize step counter');
-          setLoading(false);
-        }
-      } finally {
-        if (active) {
-          setReady(true);
-          // Don't set loading to false here - let processSensorValue or loadDummyData do it when data is ready
-        }
-      }
-    };
-    
-    setup();
-    
+    if (isNativePlatform) {
+      initStepTracking();
+    } else {
+      setLoading(false);
+    }
+    setupMidnightReset();
+    setReady(true);
+
     return () => {
-      active = false;
-      
-      // Save before cleanup (only if userId resolved)
-      if (resolvedUserId && todaySteps > 0) {
-        saveStepsToDatabase().catch(() => {});
+      // FIX 7: Save using ref (latest steps), not stale todaySteps state
+      if (todayStepsRef.current > 0) {
+        saveStepsToDatabaseRef.current?.().catch(() => {});
       }
-      
-      // Cleanup timers
-      if (midnightTimerRef.current) {
-        clearTimeout(midnightTimerRef.current);
-      }
-      if (autoSaveTimerRef.current) {
-        clearInterval(autoSaveTimerRef.current);
-      }
-      if (pollIntervalRef.current) {
-        clearInterval(pollIntervalRef.current);
-      }
-      
+      // Tear down all timers and the native sensor listener
+      if (midnightTimerRef.current)  clearTimeout(midnightTimerRef.current);
+      if (autoSaveTimerRef.current)  clearInterval(autoSaveTimerRef.current);
+      if (pollIntervalRef.current)   clearInterval(pollIntervalRef.current);
       if (isNativePlatform) {
         StepCounterPlugin.stopTracking().catch(() => {});
-        if (sensorListenerRef.current?.remove) {
-          sensorListenerRef.current.remove().catch(() => {});
-        }
+        sensorListenerRef.current?.remove().catch(() => {});
       }
     };
-  }, [isNativePlatform, resolvedUserId, initStepTracking, loadDailyHistory, setupAutoSave, setupMidnightReset, todaySteps, saveStepsToDatabase]);
-  
-  /**
-   * Handle app resume (Android)
-   */
-  useEffect(() => {
-    if (!isNativePlatform) return;
-    
-    const handleResume = async () => {
-      console.log('📱 App resumed');
-      
-      if (permissionGranted && sensorAvailable) {
-        try {
-          const current = await StepCounterPlugin.getCurrentStepCount();
-          const currentValue = Number.parseInt(current?.totalSteps, 10);
-          if (Number.isFinite(currentValue)) {
-            // Req 4 & 9: Update UI state from latest sensor reading
-            processSensorValue(currentValue);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — sensor lifecycle tied to component mount only
 
-            // React setState is async, so compute steps inline and save immediately
-            // instead of relying on the (stale) todaySteps state value
-            const todayKey = toDateKey();
-            const baseline = readBaseline(todayKey);
-            if (baseline) {
-              const resumeSteps = Math.max(0, Math.floor(currentValue - baseline.sensorTotal));
-              const resumeCalories = calcCalories(resumeSteps);
-              console.log('📱 Resume: persisting steps to DB:', resumeSteps);
-              await saveStepsToDatabase(resumeSteps, resumeCalories);
+  // ─────────────────────────────────────────────────────────────────────────
+  // EFFECT 2: DB + AUTO-SAVE — runs once when userId resolves
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!resolvedUserId) return;
+
+    // Load today's DB steps as the starting offset for this session.
+    // This ensures the counter shows the correct cumulative total on fresh
+    // app opens instead of starting from 0 each time.
+    fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE)
+      .then((response) => {
+        const trend = response.trend || response.data;
+        if (response.success && Array.isArray(trend)) {
+          const todayKey   = toDateKey();
+          const todayEntry = trend.find((d) => d.date === todayKey);
+          if (todayEntry && todayEntry.steps > 0) {
+            dbOffsetRef.current = todayEntry.steps;
+            // Update lastSavedStepsRef so the first auto-save doesn't
+            // re-save the same DB value we just loaded.
+            lastSavedStepsRef.current = todayEntry.steps;
+            console.log('🗄️ [StepCounter] DB offset loaded:', todayEntry.steps);
+            // If sensor hasn't fired yet (still on 0), seed the UI now
+            if (todayStepsRef.current === 0) {
+              const offsetCalories = calcCalories(todayEntry.steps);
+              todayStepsRef.current    = todayEntry.steps;
+              todayCaloriesRef.current = offsetCalories;
+              setTodaySteps(todayEntry.steps);
+              setTodayCalories(offsetCalories);
+              setLoading(false);
             }
           }
-        } catch (err) {
-          console.error('❌ Resume fetch failed:', err);
         }
+      })
+      .catch((err) => console.warn('⚠️ [StepCounter] Failed to load DB offset:', err));
+
+    loadDailyHistoryRef.current?.();
+    setupAutoSave(); // starts the 60-second save interval
+  }, [resolvedUserId, setupAutoSave]); // setupAutoSave is stable (deps: [])
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // EFFECT 3: APP RESUME / FOREGROUND HANDLER (Requirement 7)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!isNativePlatform) return;
+
+    const handleResume = async () => {
+      console.log('📱 [StepCounter] App resumed — refreshing sensor');
+      try {
+        const current      = await StepCounterPlugin.getCurrentStepCount();
+        const currentValue = Number.parseInt(current?.totalSteps, 10);
+        if (Number.isFinite(currentValue)) {
+          // Update UI via ref (always calls the latest processSensorValue)
+          processSensorValueRef.current?.(currentValue);
+          // Immediately persist — reads from refs so no stale-closure risk
+          await saveStepsToDatabaseRef.current?.();
+        }
+      } catch (err) {
+        console.error('❌ [StepCounter] Resume handler failed:', err);
       }
     };
-    
-    // Listen for app resume events
+
     document.addEventListener('resume', handleResume);
     window.addEventListener('focus', handleResume);
-    
     return () => {
       document.removeEventListener('resume', handleResume);
       window.removeEventListener('focus', handleResume);
     };
-  // saveStepsToDatabase added so resume handler always uses the freshest closure
-  }, [isNativePlatform, permissionGranted, sensorAvailable, processSensorValue, saveStepsToDatabase]);
+  }, [isNativePlatform]); // isNativePlatform is a stable constant
 
-  
-  // Progress ring calculations
+  // ─────────────────────────────────────────────────────────────────────────
+  // DERIVED DISPLAY VALUES
+  // ─────────────────────────────────────────────────────────────────────────
   const stepProgress = Math.min(todaySteps / STEP_GOAL, 1);
-  const ringOffset = RING_CIRCUMFERENCE * (1 - stepProgress);
-
-  // History data
-  const historyData = historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory;
-  const maxStepsInHistory = Math.max(
-    ...historyData.map(d => {
-      const isToday = toDateKey(new Date(d.date)) === toDateKey();
-      return isToday ? todaySteps : (d.steps || 0);
-    }), 1
-  );
+  const ringOffset   = RING_CIRCUMFERENCE * (1 - stepProgress);
+  const historyData  = historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory;
 
   if (loading && !ready) {
     return <LoadingSpinner context="steps" />;
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40">
+
       {/* ──── Header ──── */}
       <div className="bg-white/90 backdrop-blur-lg border-b border-emerald-100/50 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           {onBack && (
-            <button onClick={onBack} className="p-2 -ml-2 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition-colors" aria-label="Go back">
+            <button
+              onClick={onBack}
+              className="p-2 -ml-2 rounded-xl hover:bg-emerald-50 active:bg-emerald-100 transition-colors"
+              aria-label="Go back"
+            >
               <ArrowLeft className="w-5 h-5 text-gray-700" />
             </button>
           )}
@@ -682,14 +664,44 @@ const StepCounter = ({ onBack, userId }) => {
             </div>
             <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
           </div>
-          {saving && <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Saving..." />}
+          <div className="flex items-center gap-2">
+            {/* Manual Refresh Button — fallback for Android Doze delays */}
+            {isNativePlatform && permissionGranted && (
+              <button
+                onClick={handleManualRefresh}
+                disabled={refreshing}
+                aria-label="Refresh steps"
+                title="Refresh Steps"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all duration-200 active:scale-95
+                  ${
+                    refreshDone
+                      ? 'bg-emerald-500 text-white shadow-md shadow-emerald-200'
+                      : refreshing
+                      ? 'bg-emerald-100 text-emerald-600 cursor-not-allowed'
+                      : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100 hover:shadow-sm'
+                  }`}
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${
+                    refreshing ? 'animate-spin' : refreshDone ? '' : ''
+                  }`}
+                />
+                <span>
+                  {refreshing ? 'Refreshing…' : refreshDone ? '✓ Updated' : 'Refresh'}
+                </span>
+              </button>
+            )}
+            {saving && (
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" title="Saving..." />
+            )}
+          </div>
         </div>
       </div>
 
       {/* ──── Content ──── */}
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
 
-        {/* Error */}
+        {/* Error banner */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-start gap-2.5">
             <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
@@ -697,7 +709,7 @@ const StepCounter = ({ onBack, userId }) => {
           </div>
         )}
 
-        {/* Permission */}
+        {/* Permission banner */}
         {isNativePlatform && sensorAvailable && !permissionGranted && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
@@ -705,7 +717,10 @@ const StepCounter = ({ onBack, userId }) => {
               <div className="flex-1">
                 <p className="text-sm font-semibold text-amber-900 mb-1">Permission Required</p>
                 <p className="text-xs text-amber-700 mb-3">Allow activity recognition to track your steps.</p>
-                <button onClick={requestPermission} className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-colors">
+                <button
+                  onClick={requestPermission}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white text-sm font-semibold rounded-xl transition-colors"
+                >
                   Grant Permission
                 </button>
               </div>
@@ -724,7 +739,8 @@ const StepCounter = ({ onBack, userId }) => {
                 <>
                   <svg viewBox="0 0 200 200" className="w-full h-full -rotate-90">
                     <circle cx="100" cy="100" r={RING_RADIUS} fill="none" stroke="#e5e7eb" strokeWidth="10" />
-                    <circle cx="100" cy="100" r={RING_RADIUS} fill="none"
+                    <circle
+                      cx="100" cy="100" r={RING_RADIUS} fill="none"
                       stroke="url(#stepGradient)" strokeWidth="10" strokeLinecap="round"
                       strokeDasharray={RING_CIRCUMFERENCE} strokeDashoffset={ringOffset}
                       className="transition-all duration-700 ease-out"
@@ -753,7 +769,7 @@ const StepCounter = ({ onBack, userId }) => {
             {!loading && (
               <p className="text-sm text-gray-500 font-medium mb-1">
                 {stepProgress >= 1
-                  ? '\ud83c\udf89 Goal reached!'
+                  ? '🎉 Goal reached!'
                   : `${Math.round(stepProgress * 100)}% of daily goal`}
               </p>
             )}
@@ -780,6 +796,14 @@ const StepCounter = ({ onBack, userId }) => {
               <p className="text-xs text-rose-500 mt-0.5 font-medium">Calories</p>
             </div>
           </div>
+
+          {/* Last updated / saved status line */}
+          {!loading && (lastUpdated || lastSaved) && (
+            <p className="text-center text-xs text-gray-400 mt-3">
+              {lastUpdated && `Updated ${lastUpdated.toLocaleTimeString()}`}
+              {lastSaved   && ` · Saved ${lastSaved.toLocaleTimeString()}`}
+            </p>
+          )}
         </div>
 
         {/* ──── History Section ──── */}
@@ -843,9 +867,9 @@ const StepCounter = ({ onBack, userId }) => {
               {/* Daily List */}
               <div className="mt-4 space-y-2 max-h-64 sm:max-h-80 overflow-y-auto">
                 {[...historyData].reverse().map((day) => {
-                  const date = new Date(day.date);
-                  const isToday = toDateKey(date) === toDateKey();
-                  const displaySteps = isToday ? todaySteps : (day.steps || 0);
+                  const date            = new Date(day.date);
+                  const isToday         = toDateKey(date) === toDateKey();
+                  const displaySteps    = isToday ? todaySteps    : (day.steps    || 0);
                   const displayCalories = isToday ? todayCalories : (day.calories || 0);
 
                   return (
