@@ -108,6 +108,9 @@ const StepCounter = ({ onBack, userId }) => {
   // Added on top of sensor-based steps so the counter continues from where it
   // left off rather than resetting to 0 on every fresh app open.
   const dbOffsetRef            = useRef(0);
+  // Guard: block UI updates until DB offset is fetched.
+  // Prevents showing a wrong (sensor-only) value before DB data arrives.
+  const dbOffsetLoadedRef      = useRef(false);
 
   // Timer and listener handles
   const sensorListenerRef  = useRef(null);
@@ -242,6 +245,10 @@ const StepCounter = ({ onBack, userId }) => {
     latestSensorTotalRef.current = totalSteps;
     todayStepsRef.current        = dailySteps;
     todayCaloriesRef.current     = calories;
+
+    // Hold UI update until DB offset is loaded — avoids showing a wrong value
+    // on first open while the DB fetch is still in-flight.
+    if (!dbOffsetLoadedRef.current) return;
 
     // Throttle React state updates to at most once per UPDATE_THROTTLE_MS
     const now = Date.now();
@@ -581,8 +588,13 @@ const StepCounter = ({ onBack, userId }) => {
             // re-save the same DB value we just loaded.
             lastSavedStepsRef.current = todayEntry.steps;
             console.log('🗄️ [StepCounter] DB offset loaded:', todayEntry.steps);
-            // If sensor hasn't fired yet (still on 0), seed the UI now
-            if (todayStepsRef.current === 0) {
+            // Unlock UI — from this point processSensorValue will update the display
+            dbOffsetLoadedRef.current = true;
+            if (latestSensorTotalRef.current !== null) {
+              // Sensor already fired with wrong offset — reprocess to get correct value
+              processSensorValueRef.current?.(latestSensorTotalRef.current);
+            } else {
+              // Sensor hasn't fired yet — seed UI directly from DB
               const offsetCalories = calcCalories(todayEntry.steps);
               todayStepsRef.current    = todayEntry.steps;
               todayCaloriesRef.current = offsetCalories;
@@ -593,7 +605,16 @@ const StepCounter = ({ onBack, userId }) => {
           }
         }
       })
-      .catch((err) => console.warn('⚠️ [StepCounter] Failed to load DB offset:', err));
+      .catch((err) => {
+        console.warn('⚠️ [StepCounter] Failed to load DB offset:', err);
+        // DB fetch failed — unlock UI anyway so sensor value is shown
+        dbOffsetLoadedRef.current = true;
+        if (latestSensorTotalRef.current !== null) {
+          processSensorValueRef.current?.(latestSensorTotalRef.current);
+        } else {
+          setLoading(false);
+        }
+      });
 
     loadDailyHistoryRef.current?.();
     setupAutoSave(); // starts the 60-second save interval
