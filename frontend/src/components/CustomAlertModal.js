@@ -5,7 +5,8 @@ import TouchFeedbackButton from './TouchFeedbackButton';
 
 /**
  * Custom Alert Modal Component
- * Replaces browser alert() with a styled modal dialog
+ * Replaces browser alert() with a styled modal dialog.
+ * 
  * 
  * @param {boolean} isOpen - Whether modal is visible
  * @param {function} onClose - Callback when modal is closed
