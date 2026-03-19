@@ -82,7 +82,7 @@ export default async function handler(req, res) {
     // Fetch all users in the hierarchy
     let query = supabase
       .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoCoachId, Status");
+      .select("UserId, UserName, Email, Role, CoachId, CoCoachId, Status, ProfileImage");
 
     // Only filter by Active status if includeInactive is not true
     if (includeInactive !== "true") {
@@ -156,6 +156,7 @@ export default async function handler(req, res) {
         coachName: coachNameMap[user.CoachId] || "",
         coCoachName: coachNameMap[user.CoCoachId] || "",
         status: user.Status,
+        profileImage: user.ProfileImage || null,
         teamMembers: [],
         directMemberCount: 0,
         totalMemberCount: 0,

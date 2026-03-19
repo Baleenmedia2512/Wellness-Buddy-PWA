@@ -66,7 +66,10 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
         className="bg-white rounded-t-3xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-hidden animate-slideUp"
         onClick={(e) => e.stopPropagation()}
       >
+<<<<<<< HEAD
         {/* Image Header with Overlay */}
+=======
+>>>>>>> origin/MAD_Adithya_2026-03-16
         <div className="relative">
           {data.WeightImageBase64 ? (
             <img
@@ -88,15 +91,15 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
           )}
 
           {/* Gradient Overlay */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 space-y-3">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-5 space-y-3">
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="text-xl font-bold text-white leading-tight">
+                <h2 className="text-2xl font-bold text-white leading-tight drop-shadow-lg">
                   {isEditing ? editWeight || '--' : data.Weight} kg
                 </h2>
-                <div className="text-xs text-white/70 mt-0.5">
+                <div className="text-xs text-white/90 mt-0.5 drop-shadow">
                   <p>Logged at {formatISTToLocalTime(data.CreatedAt)}</p>
-                  <p className="text-xs text-gray-400">{formatDate(data.CreatedAt)}</p>
+                  <p className="text-xs text-white/75">{formatDate(data.CreatedAt)}</p>
                 </div>
               </div>
               {/* <div className="text-right">
