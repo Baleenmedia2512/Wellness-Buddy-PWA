@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, RefreshCw, MapPin, Eye, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import LoadingSpinner from './LoadingSpinner';
@@ -727,57 +727,62 @@ const NutritionCentersMap = ({ user, onBack }) => {
                   <div
                     key={center.id}
                     onClick={() => viewCenterOnMap(center)}
-                    className="bg-white rounded-xl p-4 shadow-sm border border-green-100 hover:shadow-md hover:border-green-300 transition-all cursor-pointer"
+                    className="bg-white rounded-2xl shadow-sm border border-gray-200 hover:shadow-md transition-all cursor-pointer overflow-hidden"
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-800">{center.center_name}</h3>
-                        <p className="text-sm text-gray-600 mt-1">Owner: {center.ownerName}</p>
-                        <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                          <span>
-                            {dateRange === 'yesterday' ? 'Yesterday' : dateRange === 'custom' && customDate
-                              ? customDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-                              : 'Today'} Attendance:{' '}
-                            <span className="font-semibold text-gray-700">{center.todayAttendance || 0}</span>
-                          </span>
+                    {/* Info */}
+                    <div className="px-4 pt-4 pb-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 truncate text-[15px]">{center.center_name}</h3>
+                          <p className="text-xs text-gray-500 mt-0.5">{center.ownerName}</p>
                         </div>
-                      
+                        <span className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full border ${
+                          (center.todayAttendance || 0) > 0
+                            ? 'bg-green-100 text-green-700 border-green-200'
+                            : 'bg-gray-50 text-gray-600 border-gray-300'
+                        }`}>
+                          {center.todayAttendance || 0} attended
+                        </span>
                       </div>
+                    </div>
 
-                      <div className="flex flex-col gap-2 ml-4">
-                        <TouchFeedbackButton
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            openStreetView(center);
-                          }}
-                          className="p-2 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-colors"
-                          title="Street View"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </TouchFeedbackButton>
-                        {center.owner_phone && (
-                          <>
-                            <a
-                              href={`tel:${center.owner_phone}`}
-                              onClick={(e) => e.stopPropagation()}
-                              className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
-                              title="Call"
-                            >
-                              <img src="/call-icon.png" alt="Call" className="h-5 w-5" />
-                            </a>
-                            <TouchFeedbackButton
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openWhatsApp(center.owner_phone);
-                              }}
-                              className="p-3 bg-green-500 rounded-lg hover:bg-green-600 transition-colors shadow-sm"
-                              title="WhatsApp"
-                            >
-                              <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5" />
-                            </TouchFeedbackButton>
-                          </>
-                        )}
-                      </div>
+                    {/* Action pills — wrapping row */}
+                    <div
+                      className="flex flex-wrap gap-2 px-4 pb-4"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Street View */}
+                      <TouchFeedbackButton
+                        onClick={(e) => { e.stopPropagation(); openStreetView(center); }}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-blue-300 bg-blue-50 active:bg-blue-100 transition-colors"
+                        ariaLabel="Street View"
+                      >
+                        <img src="/street-view-icon.png" alt="Street View" className="h-5 w-5 object-contain" />
+                        <span className="text-xs font-semibold text-blue-700">Street View</span>
+                      </TouchFeedbackButton>
+
+                      {center.owner_phone && (
+                        <>
+                          <a
+                            href={`tel:${center.owner_phone}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-full border border-green-300 bg-green-50 active:bg-green-100 transition-colors"
+                            aria-label="Call"
+                          >
+                            <img src="/call-icon.png" alt="Call" className="h-5 w-5 object-contain" />
+                            <span className="text-xs font-semibold text-green-700">Call</span>
+                          </a>
+                          <TouchFeedbackButton
+                            onClick={(e) => { e.stopPropagation(); openWhatsApp(center.owner_phone); }}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-full border active:opacity-80 transition-colors"
+                            style={{ backgroundColor: '#e7faf0', borderColor: '#25D366' }}
+                            ariaLabel="WhatsApp"
+                          >
+                            <img src="/whatsapp-icon.png" alt="WhatsApp" className="h-5 w-5 object-contain" />
+                            <span className="text-xs font-semibold" style={{ color: '#128C7E' }}>WhatsApp</span>
+                          </TouchFeedbackButton>
+                        </>
+                      )}
                     </div>
                   </div>
                       ))

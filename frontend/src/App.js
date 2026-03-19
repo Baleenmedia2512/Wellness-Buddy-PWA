@@ -3223,21 +3223,9 @@ function WellnessValleyApp() {
             : null
         }
         onShowAttendanceReport={() => setShowAttendanceReport(true)}
-        onShowClubAttendanceReport={
-          userRole === "admin" ||
-          userRole === "coach" ||
-          userRole === "developer"
-            ? () => setShowClubAttendanceReport(true)
-            : null
-        }
+        onShowClubAttendanceReport={() => setShowClubAttendanceReport(true)}
         onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
-        onShowRegisterCenter={
-          userRole === "admin" ||
-          userRole === "coach" ||
-          userRole === "developer"
-            ? () => setShowRegisterCenter(true)
-            : null
-        }
+        onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
         onProfileSaved={() => {
