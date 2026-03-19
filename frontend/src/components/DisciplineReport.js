@@ -366,17 +366,17 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     return (
       <>
         <div className="flex-1 flex flex-col items-center pr-2">
-          <span className="text-base font-bold text-gray-900">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
             {selfScore}%
           </span>
         </div>
         <div className="flex-1 flex flex-col items-center px-2">
-          <span className="text-base font-bold text-gray-900">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
             {directScore}%
           </span>
         </div>
         <div className="flex-1 flex flex-col items-center pl-2">
-          <span className="text-base font-bold text-gray-900">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
             {fullScore}%
           </span>
         </div>
@@ -422,66 +422,87 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
     return (
       <div className="border-t border-gray-100 bg-gray-50/50">
-        <div className="p-4">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        <div className="p-2 sm:p-4">
+          <h4 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
             Activity Breakdown
           </h4>
-          <div className="grid grid-cols-5 gap-2">
-            <div
-              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
-                weight,
-              )}`}
-            >
-              <Scale className={`h-4 w-4 mb-1 ${getIconColor(weight)}`} />
-              <span className={`text-sm font-bold ${getScoreColor(weight)}`}>
-                {weight}%
-              </span>
-              <span className="text-[9px] text-gray-400 capitalize">WEI</span>
-            </div>
-            <div
-              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
-                education,
-              )}`}
-            >
-              <BookOpen className={`h-4 w-4 mb-1 ${getIconColor(education)}`} />
-              <span className={`text-sm font-bold ${getScoreColor(education)}`}>
-                {education}%
-              </span>
-              <span className="text-[9px] text-gray-400 capitalize">EDU</span>
-            </div>
-            <div
-              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
-                breakfast,
-              )}`}
-            >
-              <Coffee className={`h-4 w-4 mb-1 ${getIconColor(breakfast)}`} />
-              <span className={`text-sm font-bold ${getScoreColor(breakfast)}`}>
-                {breakfast}%
-              </span>
-              <span className="text-[9px] text-gray-400 capitalize">BRE</span>
-            </div>
-            <div
-              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
-                lunch,
-              )}`}
-            >
-              <Utensils className={`h-4 w-4 mb-1 ${getIconColor(lunch)}`} />
-              <span className={`text-sm font-bold ${getScoreColor(lunch)}`}>
-                {lunch}%
-              </span>
-              <span className="text-[9px] text-gray-400 capitalize">LUN</span>
-            </div>
-            <div
-              className={`flex flex-col items-center p-2 rounded-lg border ${getActivityBoxStyle(
-                dinner,
-              )}`}
-            >
-              <Moon className={`h-4 w-4 mb-1 ${getIconColor(dinner)}`} />
-              <span className={`text-sm font-bold ${getScoreColor(dinner)}`}>
-                {dinner}%
-              </span>
-              <span className="text-[9px] text-gray-400 capitalize">DIN</span>
-            </div>
+          <div className="grid grid-cols-5 gap-1 sm:gap-2">
+            {[
+              {
+                icon: (
+                  <Scale
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      weight,
+                    )}`}
+                  />
+                ),
+                val: weight,
+                label: "WEI",
+              },
+              {
+                icon: (
+                  <BookOpen
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      education,
+                    )}`}
+                  />
+                ),
+                val: education,
+                label: "EDU",
+              },
+              {
+                icon: (
+                  <Coffee
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      breakfast,
+                    )}`}
+                  />
+                ),
+                val: breakfast,
+                label: "BRE",
+              },
+              {
+                icon: (
+                  <Utensils
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      lunch,
+                    )}`}
+                  />
+                ),
+                val: lunch,
+                label: "LUN",
+              },
+              {
+                icon: (
+                  <Moon
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      dinner,
+                    )}`}
+                  />
+                ),
+                val: dinner,
+                label: "DIN",
+              },
+            ].map(({ icon, val, label }) => (
+              <div
+                key={label}
+                className={`flex flex-col items-center p-1.5 sm:p-2 rounded-lg border ${getActivityBoxStyle(
+                  val,
+                )}`}
+              >
+                {icon}
+                <span
+                  className={`text-xs sm:text-sm font-bold ${getScoreColor(
+                    val,
+                  )}`}
+                >
+                  {val}%
+                </span>
+                <span className="text-[8px] sm:text-[9px] text-gray-400 capitalize">
+                  {label}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="px-4 pb-4 pt-0 text-center">

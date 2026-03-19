@@ -111,9 +111,9 @@ function WellnessValleyApp() {
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(
     localStorage.getItem("currentPage") === "dashboard" ||
-    localStorage.getItem("currentPage") === "nutrition-dashboard" ||
-    localStorage.getItem("currentPage") === "weight-tracking" ||
-    localStorage.getItem("currentPage") === "weight-insights",
+      localStorage.getItem("currentPage") === "nutrition-dashboard" ||
+      localStorage.getItem("currentPage") === "weight-tracking" ||
+      localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [showStepCounter, setShowStepCounter] = useState(false);
@@ -586,16 +586,16 @@ function WellnessValleyApp() {
     if (!Capacitor.isNativePlatform()) return;
     try {
       console.log("📱 Requesting all permissions at once...");
-      
+
       // Request camera/gallery permissions
-      await Camera.requestPermissions({ permissions: ['camera', 'photos'] });
-      
+      await Camera.requestPermissions({ permissions: ["camera", "photos"] });
+
       // Request push notification permissions
       await PushNotifications.requestPermissions();
 
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
-      
+
       console.log("✅ All permissions requested");
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
@@ -727,7 +727,6 @@ function WellnessValleyApp() {
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
     async (userEmail) => {
-
       if (!userEmail) return;
       // Skip if user already completed profile in this session (prevents race conditions)
       if (profileCompletedRef.current) return;
@@ -1531,14 +1530,15 @@ function WellnessValleyApp() {
           userId,
         );
         console.log("✅ Attendance determined:", attendance);
-        
+
         // Check if location permission was denied
-        if (attendance.locationError === 'PERMISSION_DENIED') {
+        if (attendance.locationError === "PERMISSION_DENIED") {
           setAlertModal({
             isOpen: true,
-            title: 'Location Permission Required',
-            message: 'To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.',
-            type: 'warning'
+            title: "Location Permission Required",
+            message:
+              "To track your attendance at nutrition clubs, please enable location permissions in your device settings. Without location access, your attendance will be marked as Remote.",
+            type: "warning",
           });
         }
       } catch (gpsError) {
@@ -1552,7 +1552,7 @@ function WellnessValleyApp() {
           nutritionCenterId: null,
           centerName: null,
           nearbyCenters: [],
-          locationError: 'UNKNOWN',
+          locationError: "UNKNOWN",
         };
       }
 
@@ -1619,7 +1619,9 @@ function WellnessValleyApp() {
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
-      console.log(`   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`);
+      console.log(
+        `   📍 Attendance: ${attendance.attendanceType.toUpperCase()}`,
+      );
       if (finalCenterName) {
         console.log(`   🏢 Club: ${finalCenterName}`);
       }
@@ -1938,7 +1940,8 @@ function WellnessValleyApp() {
       if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
         console.log(
-          `⏱️ [PERF] Compression: ${Date.now() - compressStart
+          `⏱️ [PERF] Compression: ${
+            Date.now() - compressStart
           }ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`,
         );
       } else {
@@ -2271,8 +2274,8 @@ function WellnessValleyApp() {
               detectedType.confidence > 0.8
                 ? "high"
                 : detectedType.confidence > 0.5
-                  ? "medium"
-                  : "low",
+                ? "medium"
+                : "low",
             detailedItems: foods.map((food) => {
               // 🎯 Extract nutrition values from the corrected food object
               const nutritionValues = {
@@ -3642,9 +3645,9 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
-                              : `${Math.abs(weightDiff.change)} ${
-                                  weightResult.unit
-                                }`}
+                              : `${parseFloat(
+                                  Math.abs(weightDiff.change).toFixed(4),
+                                )} ${weightResult.unit}`}
                           </p>
                           <p
                             style={{ fontSize: 13, fontWeight: 600, margin: 0 }}
@@ -3758,21 +3761,41 @@ function WellnessValleyApp() {
 
                 {/* Weight diff vs previous entry */}
                 {weightDiff && (
-                  <div className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${weightDiff.change < 0 ? 'bg-green-50 border border-green-100' :
-                      weightDiff.change > 0 ? 'bg-red-50 border border-red-100' :
-                        'bg-gray-50 border border-gray-100'
-                    }`}>
+                  <div
+                    className={`mt-3 flex items-center justify-between px-4 py-3 rounded-xl ${
+                      weightDiff.change < 0
+                        ? "bg-green-50 border border-green-100"
+                        : weightDiff.change > 0
+                        ? "bg-red-50 border border-red-100"
+                        : "bg-gray-50 border border-gray-100"
+                    }`}
+                  >
                     <div>
                       <p className="text-xs text-gray-500">vs Previous entry</p>
                       <p className="text-sm font-semibold text-gray-700">
                         {weightDiff.previous} {weightResult.unit}
                       </p>
                     </div>
-                    <div className={`font-bold text-lg ${weightDiff.change < 0 ? 'text-green-600' : weightDiff.change > 0 ? 'text-red-500' : 'text-gray-500'
-                      }`}>
-                      {weightDiff.change > 0 ? '▲' : weightDiff.change < 0 ? '▼' : '—'}
-                      {' '}{weightDiff.change === 0 ? 'No change' : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
-                      {weightDiff.change < 0 && <span className="text-sm ml-1">🎉</span>}
+                    <div
+                      className={`font-bold text-lg ${
+                        weightDiff.change < 0
+                          ? "text-green-600"
+                          : weightDiff.change > 0
+                          ? "text-red-500"
+                          : "text-gray-500"
+                      }`}
+                    >
+                      {weightDiff.change > 0
+                        ? "▲"
+                        : weightDiff.change < 0
+                        ? "▼"
+                        : "—"}{" "}
+                      {weightDiff.change === 0
+                        ? "No change"
+                        : `${Math.abs(weightDiff.change)} ${weightResult.unit}`}
+                      {weightDiff.change < 0 && (
+                        <span className="text-sm ml-1">🎉</span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -3801,10 +3824,11 @@ function WellnessValleyApp() {
                       }
                     }}
                     disabled={isWeightSharing}
-                    className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${isWeightSharing
+                    className={`w-full mt-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-all duration-200 shadow-md ${
+                      isWeightSharing
                         ? "opacity-50 cursor-not-allowed"
                         : "hover:shadow-lg active:scale-[0.98]"
-                      }`}
+                    }`}
                     style={{ touchAction: "manipulation" }}
                   >
                     {isWeightSharing ? (
@@ -3831,8 +3855,8 @@ function WellnessValleyApp() {
                 {imageType === "weight"
                   ? "Saving your weight progress..."
                   : imageType === "education"
-                    ? "Saving your study session..."
-                    : "Saving your nutrition analysis..."}
+                  ? "Saving your study session..."
+                  : "Saving your nutrition analysis..."}
               </div>
             </div>
           )}
@@ -4252,7 +4276,7 @@ function WellnessValleyApp() {
                       </div>
 
                       {log.aiDetected.trim().toLowerCase() ===
-                        log.userCorrected.trim().toLowerCase() ? (
+                      log.userCorrected.trim().toLowerCase() ? (
                         <div className="text-white mb-2">
                           <span className="text-gray-400">║</span> ✓{" "}
                           <span className="text-cyan-400">Status:</span>
@@ -4300,7 +4324,7 @@ function WellnessValleyApp() {
                       </div>
 
                       {log.aiDetected.trim().toLowerCase() ===
-                        log.userCorrected.trim().toLowerCase() ? (
+                      log.userCorrected.trim().toLowerCase() ? (
                         <div>
                           <span className="text-green-400">
                             ✓ [NO-CORRECTION]

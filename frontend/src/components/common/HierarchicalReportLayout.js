@@ -457,15 +457,15 @@ const HierarchicalReportLayout = ({
           </div>
 
           {/* Date Range Pills */}
-          <div className="relative">
-            <div
-              className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-0 scrollbar-hide justify-center flex-wrap"
-              style={{
-                WebkitOverflowScrolling: "touch",
-                scrollbarWidth: "none",
-                msOverflowStyle: "none",
-              }}
-            >
+          <div
+            className="relative overflow-x-auto scrollbar-hide"
+            style={{
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            <div className="flex gap-1.5 sm:gap-2 pb-0 justify-center min-w-max mx-auto px-1">
               {[
                 { value: "today", label: "Today" },
                 { value: "yesterday", label: "Yesterday" },
@@ -482,7 +482,7 @@ const HierarchicalReportLayout = ({
                     key={range.value}
                     id={`date-range-${range.value}`}
                     onClick={() => onDateRangeChange(range.value)}
-                    className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                    className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
                       dateRange === range.value
                         ? "bg-green-700 text-white border-green-700 shadow-md"
                         : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -493,7 +493,7 @@ const HierarchicalReportLayout = ({
                 ))}
 
               {/* Custom Date Range Button */}
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <TouchFeedbackButton
                   id="date-range-custom"
                   onClick={() => setShowDatePicker(!showDatePicker)}
