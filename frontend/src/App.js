@@ -1885,7 +1885,7 @@ function WellnessValleyApp() {
         console.error("❌ Image validation failed:", validation);
         setAlertModal({
           isOpen: true,
-          title: "� Fresh Photo Required",
+          title: validation.message || "Photo Not From Today",
           message:
             "Please use a photo taken today to continue. Select or capture a new image from today.",
           type: "error",
@@ -3979,7 +3979,7 @@ function WellnessValleyApp() {
         onSelectClub={handleClubSelection}
       />
 
-      {/* Custom Alert Modal (for proxy alerts and other critical messages) */}
+      {/* Custom Alert Modal (for image validation and other critical messages) */}
       <CustomAlertModal
         isOpen={alertModal.isOpen}
         onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
