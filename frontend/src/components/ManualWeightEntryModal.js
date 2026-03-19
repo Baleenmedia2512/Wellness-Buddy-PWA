@@ -73,6 +73,10 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
           setError("BMR must be a positive number");
           return;
         }
+        if (bmrValue < 1100 || bmrValue > 2200) {
+          setError("BMR must be between 1100 and 2200 kcal/day");
+          return;
+        }
       }
 
       setIsSaving(true);
