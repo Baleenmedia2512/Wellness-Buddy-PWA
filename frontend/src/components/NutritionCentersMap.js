@@ -83,6 +83,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   const [showStreetView, setShowStreetView] = useState(false);
   const [streetViewLoading, setStreetViewLoading] = useState(false);
   const [selectedCenter, setSelectedCenter] = useState(null);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
   
   const mapRef = useRef(null);
   const googleMapRef = useRef(null);
@@ -648,10 +649,46 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </div>
         ) : (
           <>
+            {/* Map — compact by default, fullscreen overlay when expanded */}
             <div
-              ref={mapRef}
-              className="w-full h-[500px] rounded-xl shadow-lg border border-green-200"
-            />
+              className={mapFullscreen
+                ? 'fixed inset-0 z-[55] flex flex-col bg-black'
+                : 'relative rounded-xl overflow-hidden shadow-lg border border-green-200'}
+            >
+              {/* Fullscreen top bar */}
+              {mapFullscreen && (
+                <div className="flex items-center justify-between px-4 py-3 bg-black/80 flex-shrink-0">
+                  <span className="text-white font-semibold text-sm">Physical Club Map</span>
+                  <TouchFeedbackButton
+                    onClick={() => setMapFullscreen(false)}
+                    className="p-2 bg-white/20 hover:bg-white/30 rounded-full"
+                    ariaLabel="Close fullscreen map"
+                  >
+                    <X className="h-5 w-5 text-white" />
+                  </TouchFeedbackButton>
+                </div>
+              )}
+
+              {/* The actual map div — always mounted so Google Maps stays attached */}
+              <div
+                ref={mapRef}
+                className={mapFullscreen ? 'flex-1 w-full' : 'w-full h-52'}
+              />
+
+              {/* "View Full Map" button shown only in compact mode */}
+              {!mapFullscreen && (
+                <TouchFeedbackButton
+                  onClick={() => setMapFullscreen(true)}
+                  className="absolute bottom-2 right-2 flex items-center gap-1.5 px-3 py-1.5 bg-white/90 hover:bg-white rounded-full shadow text-xs font-semibold text-green-800 border border-green-200 transition-colors"
+                  ariaLabel="View full map"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 8V4h4M16 4h4v4M4 16v4h4M16 20h4v-4" />
+                  </svg>
+                  View Full Map
+                </TouchFeedbackButton>
+              )}
+            </div>
             
             {/* Centres List */}
             <div className="mt-4 space-y-2">
