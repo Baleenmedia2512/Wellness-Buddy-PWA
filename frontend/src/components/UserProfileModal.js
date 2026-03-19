@@ -220,14 +220,6 @@ const UserProfileModal = ({
       setSuccessMessage("");
       setIsSaving(true);
 
-      // Validate inputs
-      if (!phone || phone.trim() === "") {
-        setError("Phone number is required");
-        setIsSaving(false);
-        return;
-      }
-
-      if (height && (parseFloat(height) < 50 || parseFloat(height) > 198)) {
       // Validate name (mandatory field)
       if (!name || name.trim() === "") {
         setError("Name is required");
