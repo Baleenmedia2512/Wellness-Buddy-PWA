@@ -148,7 +148,7 @@ const AttendanceReport = ({ user, onBack }) => {
                 </TouchFeedbackButton>
               ))}
               
-              {/* Custom Date Picker with Formatted Display */}
+              {/* Custom Date Picker with Formatted Display... */}
               <div className="relative flex-shrink-0">
                 <input
                   type="date"
