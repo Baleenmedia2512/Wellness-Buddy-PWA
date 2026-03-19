@@ -196,9 +196,9 @@ const Header = ({
               title="User Menu"
               ariaLabel="User Menu"
             >
-              {savedProfileImage || user?.photoURL ? (
+              {savedProfileImage ? (
                 <img
-                  src={savedProfileImage || user.photoURL}
+                  src={savedProfileImage}
                   alt="User Avatar"
                   className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
                   loading="lazy"

@@ -220,6 +220,14 @@ const UserProfileModal = ({
       setSuccessMessage("");
       setIsSaving(true);
 
+      // Validate inputs
+      if (!phone || phone.trim() === "") {
+        setError("Phone number is required");
+        setIsSaving(false);
+        return;
+      }
+
+      if (height && (parseFloat(height) < 50 || parseFloat(height) > 198)) {
       // Validate name (mandatory field)
       if (!name || name.trim() === "") {
         setError("Name is required");
@@ -384,9 +392,9 @@ const UserProfileModal = ({
                 onClick={handleProfileImageClick}
                 className="w-16 h-16 rounded-full border-2 border-white overflow-hidden cursor-pointer hover:border-green-100 transition-all group relative"
               >
-                {profileImagePreview || user?.photoURL ? (
+                {profileImagePreview ? (
                   <img
-                    src={profileImagePreview || user.photoURL}
+                    src={profileImagePreview}
                     alt={user.displayName || user.name || "User"}
                     className="w-full h-full object-cover"
                     loading="lazy"

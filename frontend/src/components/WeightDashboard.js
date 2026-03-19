@@ -1261,7 +1261,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 onView={handleViewEntry}
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
-                                profileImage={savedProfileImage || user?.photoURL || null}
+                                profileImage={savedProfileImage || null}
                               />
                             </Suspense>
                           );
@@ -1278,7 +1278,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 onView={handleViewEntry}
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
-                                profileImage={savedProfileImage || user?.photoURL || null}
+                                profileImage={savedProfileImage || null}
                               />
                             </Suspense>
                           </LazyLoadWrapper>
