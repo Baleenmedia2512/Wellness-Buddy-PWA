@@ -639,7 +639,7 @@ const HierarchicalReportLayout = ({
                         {
                           pill: "Full Team",
                           pillShort: "Full",
-                          subtitle: "Entire team hierarchy",
+                          subtitle: "Your full team members",
                           active: false,
                         },
                       ][i] || {};
