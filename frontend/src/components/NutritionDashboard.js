@@ -1049,6 +1049,7 @@ const NutritionDashboard = ({
             }
           }
         );
+        
         if (response.ok) {
           const data = await response.json();
           if (data.success && data.data?.latestBmr) {
