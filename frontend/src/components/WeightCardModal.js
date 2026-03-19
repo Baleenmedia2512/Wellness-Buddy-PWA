@@ -66,7 +66,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
         className="bg-white rounded-t-3xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-hidden animate-slideUp"
         onClick={(e) => e.stopPropagation()}
       >
-        Image Header with Overlay
+        {/* Image Header with Overlay */}
         <div className="relative">
           {data.WeightImageBase64 ? (
             <img
