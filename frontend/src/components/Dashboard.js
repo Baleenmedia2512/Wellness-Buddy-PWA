@@ -61,7 +61,7 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
  * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user' }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', profileUpdateTrigger }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
@@ -374,6 +374,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideHeader={true}
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
+              profileUpdateTrigger={profileUpdateTrigger}
             />
           )}
 

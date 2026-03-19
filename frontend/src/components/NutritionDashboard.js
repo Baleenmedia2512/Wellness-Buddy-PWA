@@ -36,6 +36,7 @@ const NutritionDashboard = ({
   hideHeader,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
+  profileUpdateTrigger,
 }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1035,10 +1036,18 @@ const NutritionDashboard = ({
       if (!user?.email) return;
 
       try {
+        // Add timestamp to bust cache and get fresh data
         const response = await fetch(
           `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
             user.email,
-          )}`,
+          )}&_t=${Date.now()}`,
+          {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
         );
 
         if (response.ok) {
@@ -1064,7 +1073,47 @@ const NutritionDashboard = ({
     };
 
     fetchUserBmr();
-  }, [user?.email, apiBaseUrl]);
+  }, [user?.email, apiBaseUrl, profileUpdateTrigger]);
+
+  // Refetch BMR when analyses change (weight entry with BMR updates it)
+  useEffect(() => {
+    const fetchUserBmr = async () => {
+      if (!user?.email) return;
+
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
+            user.email,
+          )}&_t=${Date.now()}`,
+          {
+            cache: 'no-store',
+            headers: {
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache'
+            }
+          }
+        );
+
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success && data.data?.latestBmr) {
+            setCalorieTarget(Math.round(data.data.latestBmr));
+            console.log(
+              "🔥 [NutritionDashboard] BMR refreshed from profile:",
+              data.data.latestBmr,
+            );
+          }
+        }
+      } catch (err) {
+        console.error("❌ [NutritionDashboard] Failed to refresh BMR:", err);
+      }
+    };
+
+    // Refetch when analyses change (could indicate weight/BMR update)
+    if (analyses.length > 0) {
+      fetchUserBmr();
+    }
+  }, [analyses.length, user?.email, apiBaseUrl]);
 
   // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {

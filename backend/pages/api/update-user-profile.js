@@ -170,12 +170,15 @@ export default async function handler(req, res) {
     let savedBmr = null;
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
-      if (!isNaN(bmrValue) && bmrValue >= 1100 && bmrValue <= 2200) {
-        // Check if user has any weight records
+      console.log("🔍 [DEBUG] BMR received from frontend:", bmr, "→ parsed as:", bmrValue);
+      if (!isNaN(bmrValue) && bmrValue >= 1100) {
+        console.log("✅ [DEBUG] BMR validation passed:", bmrValue, ">= 1100");
+        // Check if user has any weight records (excluding deleted ones)
         const { data: weightRecords, error: weightError } = await supabase
           .from("weight_records_table")
           .select("ID")
           .eq("UserId", userId)
+          .or('"IsDeleted".is.null,"IsDeleted".eq.0')
           .order("CreatedAt", { ascending: false })
           .limit(1);
 
@@ -194,6 +197,16 @@ export default async function handler(req, res) {
             "✅ [update-user-profile] BMR updated in latest weight record:",
             bmrValue,
           );
+          console.log("🔍 [DEBUG] Verifying BMR was saved correctly...");
+          
+          // Verify what was actually saved
+          const { data: verifyBmr } = await supabase
+            .from("weight_records_table")
+            .select("Bmr")
+            .eq("ID", weightRecords[0].ID)
+            .single();
+          
+          console.log("🔍 [DEBUG] BMR value in database:", verifyBmr?.Bmr);
           savedBmr = bmrValue;
         } else {
           // 🔥 FIX: No weight records exist - Create a placeholder weight record with BMR

@@ -179,6 +179,9 @@ function WellnessValleyApp() {
     storedEmail !== "" &&
       localStorage.getItem("profileComplete_v2_" + storedEmail) === "true",
   );
+
+  // Profile update trigger - increment this to force Dashboard to refetch BMR
+  const [profileUpdateTrigger, setProfileUpdateTrigger] = useState(0);
   // Initialize showCompleteProfile based on localStorage check to prevent flashing
   const [showCompleteProfile, setShowCompleteProfile] = useState(
     !profileCompletedRef.current,
@@ -3162,6 +3165,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           initialTab={dashboardInitialTab}
           userRole={userRole}
+          profileUpdateTrigger={profileUpdateTrigger}
         />
       </Suspense>
     );
@@ -3250,6 +3254,8 @@ function WellnessValleyApp() {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
           checkProfileCompletion(email);
+          // Trigger Dashboard to refetch BMR
+          setProfileUpdateTrigger(prev => prev + 1);
         }}
       />
 

@@ -132,9 +132,11 @@ export default async function handler(req, res) {
       console.warn('⚠️ [get-user-profile] Weight query error:', weightError);
     } else if (weightRows && weightRows.length > 0) {
       const latestWeight = weightRows[0];
+      console.log('🔍 [DEBUG] Raw BMR from database:', latestWeight.Bmr, 'Type:', typeof latestWeight.Bmr);
       profileData.latestWeight = latestWeight.Weight ? parseFloat(latestWeight.Weight) : null;
       profileData.latestBmr = latestWeight.Bmr ? parseFloat(latestWeight.Bmr) : null;
       profileData.weightRecordDate = latestWeight.CreatedAt;
+      console.log('🔍 [DEBUG] Parsed BMR:', profileData.latestBmr);
     }
     
     console.log('📦 [get-user-profile] Compiled profile data:', {
