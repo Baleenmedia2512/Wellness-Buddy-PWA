@@ -74,6 +74,8 @@ const UserProfileModal = ({
         const profile = data.data;
         console.log("📥 [UserProfileModal] Fetched profile data:", {
           latestBmr: profile.latestBmr,
+          latestWeight: profile.latestWeight,
+          weightRecordDate: profile.weightRecordDate,
           height: profile.height,
           phoneNumber: profile.phoneNumber,
           dietType: profile.dietType
@@ -87,6 +89,7 @@ const UserProfileModal = ({
         if (profile.profileImage) {
           setProfileImagePreview(profile.profileImage);
         }
+        console.log("✅ [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
       }
     } catch (err) {
       console.error("❌ Error fetching user profile:", err);
@@ -273,6 +276,8 @@ const UserProfileModal = ({
         }),
       });
 
+      console.log("📤 [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
+
       // Check if response is JSON before parsing
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
@@ -317,6 +322,10 @@ const UserProfileModal = ({
               ),
             );
         }
+
+        // Refetch profile data to show updated values immediately
+        await fetchUserProfile();
+        console.log("✅ [Profile Update] Profile data refresched after save");
 
         // Show success message and keep modal open
         setSuccessMessage("Profile saved successfully!");
@@ -527,11 +536,10 @@ const UserProfileModal = ({
                     inputMode="numeric"
                     value={bmr}
                     onChange={(e) => setBmr(e.target.value)}
-                    placeholder="1100 - 2200"
+                    placeholder="Enter your BMR"
                     className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                     style={{ fontSize: "16px" }}
                     min="1100"
-                    max="2200"
                   />
                 </div>
 

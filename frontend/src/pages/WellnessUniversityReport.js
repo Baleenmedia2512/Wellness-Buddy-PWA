@@ -123,7 +123,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             })),
           );
 
-          // Track direct reports separately (for direct team calculation)
+          // Track direct reports separately (for di...rect team calculation)
           myDirectTeamIds = teamMembers
             .filter((member) => {
               const memberUserId = Number(member.UserId);

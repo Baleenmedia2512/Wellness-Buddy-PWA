@@ -4,7 +4,6 @@ import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '.
 import { geminiService } from '../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 import { istToLocalDate } from '../utils/timezoneUtils';
-
 /**
  * Debug panel to view user's food corrections
  * Only visible in development mode
