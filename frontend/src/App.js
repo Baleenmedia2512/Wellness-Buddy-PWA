@@ -131,6 +131,7 @@ function WellnessValleyApp() {
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
+  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 
@@ -1127,6 +1128,20 @@ function WellnessValleyApp() {
       .catch(() => { if (!cancelled) setSharePhotoBase64(null); });
     return () => { cancelled = true; };
   }, [user?.photoURL]);
+
+  // Fetch saved custom profile image for share card
+  useEffect(() => {
+    if (!user?.email || !apiBaseUrl) { setSavedProfileImage(null); return; }
+    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`, {
+      cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);
+        else setSavedProfileImage(null);
+      })
+      .catch(() => setSavedProfileImage(null));
+  }, [user?.email, apiBaseUrl]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -3232,12 +3247,12 @@ function WellnessValleyApp() {
                   {/* User header strip */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '32px 28px', background: 'linear-gradient(135deg, #0d9488 0%, #059669 100%)', borderRadius: '18px 18px 0 0', minHeight: 110 }}>
                     {/* Profile photo — div+backgroundImage for reliable html2canvas rendering */}
-                    {(sharePhotoBase64 || user?.photoURL) ? (
+                    {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
                       <div style={{
                         width: 64, height: 64,
                         borderRadius: '50%',
                         border: '3px solid rgba(255,255,255,0.95)',
-                        backgroundImage: `url(${sharePhotoBase64 || user.photoURL})`,
+                        backgroundImage: `url(${savedProfileImage || sharePhotoBase64 || user.photoURL})`,
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
                         flexShrink: 0,
@@ -3257,10 +3272,6 @@ function WellnessValleyApp() {
                       <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 13, margin: 0, lineHeight: 1 }}>
                         {new Date().toLocaleDateString(undefined, { dateStyle: "medium" })}
                       </p>
-                    </div>
-                    <div style={{ textAlign: 'right', flexShrink: 0, paddingLeft: 8 }}>
-                      <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 14, fontWeight: 800, margin: '0 0 2px 0', lineHeight: 1.3, letterSpacing: '0.02em' }}>Wellness</p>
-                      <p style={{ color: 'rgba(187,247,236,0.95)', fontSize: 14, fontWeight: 800, margin: 0, lineHeight: 1.3, letterSpacing: '0.02em' }}>Buddy</p>
                     </div>
                   </div>
 

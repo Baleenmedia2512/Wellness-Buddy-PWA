@@ -194,9 +194,19 @@ const WeightCard = React.memo(({
             {/* Weight value */}
             <div className="flex items-baseline gap-1.5 flex-wrap">
               <span className="text-lg font-bold text-gray-900 leading-none">
-                {parseFloat(data.Weight).toFixed(1)}
+                {parseFloat(data.Weight).toFixed(2)}
               </span>
               <span className="text-xs text-gray-400 font-medium">kg</span>
+              {previousWeight !== null && previousWeight !== undefined && (() => {
+                const diff = parseFloat(data.Weight) - parseFloat(previousWeight);
+                if (Math.abs(diff) < 0.01) return null;
+                const gained = diff > 0;
+                return (
+                  <span className={`text-xs font-semibold ${gained ? 'text-red-500' : 'text-green-500'}`}>
+                    {gained ? '↑' : '↓'} {Math.abs(diff).toFixed(1)} kg
+                  </span>
+                );
+              })()}
             </div>
             {/* Date */}
             <p className="text-[11px] text-gray-400 mt-0.5 truncate">{formatDate(data.CreatedAt)}</p>
@@ -206,7 +216,7 @@ const WeightCard = React.memo(({
           {/* Right: big weight badge */}
           <div className="shrink-0 flex flex-col items-center justify-center bg-emerald-50 rounded-xl px-3 py-2 min-w-[52px]">
             <span className="text-lg font-extrabold text-emerald-600 leading-none">
-              {parseFloat(data.Weight).toFixed(1)}
+              {parseFloat(data.Weight).toFixed(2)}
             </span>
             <span className="text-[10px] text-emerald-400 font-medium mt-0.5">kg</span>
           </div>
