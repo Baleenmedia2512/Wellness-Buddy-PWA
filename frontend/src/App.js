@@ -116,6 +116,7 @@ function WellnessValleyApp() {
       localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
+  const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   const [showStepCounter, setShowStepCounter] = useState(false);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -3147,6 +3148,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           initialTab={dashboardInitialTab}
           userRole={userRole}
+          bmrUpdateKey={bmrUpdateKey}
         />
       </Suspense>
     );
@@ -3243,10 +3245,14 @@ function WellnessValleyApp() {
         }
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
-        onProfileSaved={() => {
+        onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
           checkProfileCompletion(email);
+          // If a new BMR was saved, force NutritionDashboard to re-fetch it
+          if (profileData?.bmr) {
+            setBmrUpdateKey((prev) => prev + 1);
+          }
         }}
       />
 

@@ -184,12 +184,13 @@ export default async function handler(req, res) {
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
       if (!isNaN(bmrValue) && bmrValue > 0) {
-        // Check if user has any weight records
+        // Check if user has any weight records (match same filter as get-user-profile)
         const { data: weightRecords, error: weightError } = await supabase
           .from("weight_records_table")
-          .select("ID")
-          .eq("UserId", userId)
-          .order("CreatedAt", { ascending: false })
+          .select('"ID"')
+          .eq('"UserId"', userId)
+          .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+          .order('"CreatedAt"', { ascending: false })
           .limit(1);
 
         if (weightError) throw weightError;
@@ -200,7 +201,7 @@ export default async function handler(req, res) {
           const { error: bmrUpdateError } = await supabase
             .from("weight_records_table")
             .update({ Bmr: bmrValue, UpdatedAt: currentTime })
-            .eq("ID", weightRecords[0].ID);
+            .eq('"ID"', weightRecords[0].ID);
 
           if (bmrUpdateError) throw bmrUpdateError;
           console.log(

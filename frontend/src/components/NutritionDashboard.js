@@ -36,6 +36,7 @@ const NutritionDashboard = ({
   hideHeader,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
+  bmrUpdateKey = 0,
 }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1038,7 +1039,7 @@ const NutritionDashboard = ({
         const response = await fetch(
           `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
             user.email,
-          )}`,
+          )}&_t=${Date.now()}`,
         );
 
         if (response.ok) {
@@ -1064,7 +1065,18 @@ const NutritionDashboard = ({
     };
 
     fetchUserBmr();
-  }, [user?.email, apiBaseUrl]);
+
+    // Re-fetch BMR when user returns to the tab/app (e.g. after editing profile)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchUserBmr();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user?.email, apiBaseUrl, bmrUpdateKey]);
 
   // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {

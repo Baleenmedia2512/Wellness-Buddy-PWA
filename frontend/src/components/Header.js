@@ -105,7 +105,7 @@ const Header = ({
     }
     // Re-check profile completion so the blocking gate is dismissed if now complete
     if (onProfileSaved) {
-      onProfileSaved();
+      onProfileSaved({ bmr: profileData?.bmr ?? null });
     }
   };
 
