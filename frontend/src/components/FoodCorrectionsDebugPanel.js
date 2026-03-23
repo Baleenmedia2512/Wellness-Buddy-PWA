@@ -15,7 +15,6 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('corrections'); // 'corrections' | 'context' | 'prompt'
   const [userContext, setUserContext] = useState(null);
   const [lastPrompt, setLastPrompt] = useState(null);
-
   // Load corrections and context
   const loadData = async (forceRefresh = false) => {
     if (!userId) return;
