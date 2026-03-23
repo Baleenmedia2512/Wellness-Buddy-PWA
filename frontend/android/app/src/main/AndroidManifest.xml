@@ -23,6 +23,14 @@
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
+    <!-- Exact alarms: required on Android 12+ (API 31+) for precise reminder times -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- USE_EXACT_ALARM: alternative for apps targeting Android 13+ (does not require runtime grant) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Reschedule reminders after device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Queries for share functionality (Android 11+) -->
     <queries>
         <!-- Allow querying all apps for sharing -->
@@ -112,6 +120,30 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- ── Daily Activity Reminder receivers ──────────────────────── -->
+        <!-- Fires when an alarm triggers; shows notification + reschedules for next day -->
+        <receiver
+            android:name=".services.ReminderAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.wellnessvalley.app.REMINDER_WEIGHT" />
+                <action android:name="com.wellnessvalley.app.REMINDER_EDUCATION" />
+                <action android:name="com.wellnessvalley.app.REMINDER_BREAKFAST" />
+                <action android:name="com.wellnessvalley.app.REMINDER_LUNCH" />
+                <action android:name="com.wellnessvalley.app.REMINDER_DINNER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-schedule reminders after device reboot -->
+        <receiver
+            android:name=".services.ReminderBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         
     </application>
 </manifest>

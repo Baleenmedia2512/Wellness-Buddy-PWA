@@ -97,6 +97,7 @@ const WellnessUniversityReport = lazy(() =>
 );
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
+const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -208,6 +209,12 @@ function WellnessValleyApp() {
   const [showScreenTime, setShowScreenTime] = useState(false);
   const showScreenTimePage = useCallback(() => {
     setShowScreenTime(true);
+  }, []);
+
+  // Reminders state
+  const [showReminders, setShowReminders] = useState(false);
+  const showRemindersPage = useCallback(() => {
+    setShowReminders(true);
   }, []);
 
   // Attendance report state (for coaches)
@@ -3182,6 +3189,17 @@ function WellnessValleyApp() {
     );
   }
 
+  // Reminders page
+  if (showReminders) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+        <ReminderSettingsPage
+          onBack={() => setShowReminders(false)}
+        />
+      </Suspense>
+    );
+  }
+
   // Discipline Report for all users
   if (showDisciplineReport) {
     return (
@@ -3210,6 +3228,7 @@ function WellnessValleyApp() {
         onShowBackgroundHistory={showDashboardPage}
         onShowStepCounter={showStepCounterPage}
         onShowScreenTime={showScreenTimePage}
+        onShowReminders={showRemindersPage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)
