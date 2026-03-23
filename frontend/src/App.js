@@ -47,7 +47,6 @@ import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
 import { validateImageFreshness } from "./utils/imageValidator";
-import { syncRemindersOnLogin } from "./services/reminderService";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
@@ -98,7 +97,6 @@ const WellnessUniversityReport = lazy(() =>
 );
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
-const RemindersPage = lazy(() => import("./pages/RemindersPage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -210,12 +208,6 @@ function WellnessValleyApp() {
   const [showScreenTime, setShowScreenTime] = useState(false);
   const showScreenTimePage = useCallback(() => {
     setShowScreenTime(true);
-  }, []);
-
-  // Reminders state
-  const [showReminders, setShowReminders] = useState(false);
-  const showRemindersPage = useCallback(() => {
-    setShowReminders(true);
   }, []);
 
   // Attendance report state (for coaches)
@@ -929,13 +921,6 @@ function WellnessValleyApp() {
 
       setUser(user);
       setAuthLoading(false);
-
-      // ✅ Sync reminders from DB and re-schedule alarms after login
-      if (user?.id && Capacitor.isNativePlatform()) {
-        syncRemindersOnLogin(user.id).catch(err =>
-          console.warn('[App] reminder sync failed:', err)
-        );
-      }
 
       // Skip handleSaveUserCache for fresh sign-ins - let sign-in handler do it after save
       const isFreshSignIn =
@@ -3197,20 +3182,6 @@ function WellnessValleyApp() {
     );
   }
 
-  // Reminders page
-  if (showReminders) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <RemindersPage
-          userId={user?.id}
-          onBack={() => {
-            setShowReminders(false);
-          }}
-        />
-      </Suspense>
-    );
-  }
-
   // Discipline Report for all users
   if (showDisciplineReport) {
     return (
@@ -3239,7 +3210,6 @@ function WellnessValleyApp() {
         onShowBackgroundHistory={showDashboardPage}
         onShowStepCounter={showStepCounterPage}
         onShowScreenTime={showScreenTimePage}
-        onShowReminders={showRemindersPage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)

@@ -11,7 +11,6 @@ import {
   Map,
   Building2,
   Smartphone,
-  Bell,
   X,
 } from "lucide-react";
 import APP_VERSION from "../config/version";
@@ -29,7 +28,6 @@ const Header = ({
   onShowDisciplineReport,
   onShowStepCounter,
   onShowScreenTime,
-  onShowReminders,
   onShowWellnessEnrollment,
   onShowWellnessReport,
   onShowAttendanceReport,
@@ -358,25 +356,6 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Screen Time
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Reminders */}
-                      {onShowReminders && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowReminders();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Reminders"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-indigo-100 flex items-center justify-center">
-                            <Bell className="h-5 w-5 text-indigo-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Reminders
                           </span>
                         </TouchFeedbackButton>
                       )}

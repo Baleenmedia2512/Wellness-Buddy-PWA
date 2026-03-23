@@ -13,14 +13,7 @@
     <!-- For newer Android versions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-
-    <!-- Reminder / Alarm permissions -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.WAKE_LOCK" />
+        <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
     <!-- Location permissions for attendance tracking -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -119,18 +112,6 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
-
-        <!-- ✅ Wellness Reminders: BroadcastReceiver for AlarmManager -->
-        <receiver
-            android:name=".services.ReminderBroadcastReceiver"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.wellnessvalley.app.ACTION_REMINDER" />
-                <!-- Re-schedule reminders after phone reboot -->
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
-            </intent-filter>
-        </receiver>
-
+        
     </application>
 </manifest>
