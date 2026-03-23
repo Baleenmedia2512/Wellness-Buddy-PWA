@@ -95,6 +95,9 @@ const WellnessUniversityEnrollment = lazy(() =>
 const WellnessUniversityReport = lazy(() =>
   import("./pages/WellnessUniversityReport"),
 );
+const WellnessCounselling = lazy(() =>
+  import("./pages/WellnessCounselling"),
+);
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
 

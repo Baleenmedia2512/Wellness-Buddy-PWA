@@ -433,8 +433,10 @@ export function applyFallbackNutrition(foods) {
   });
 }
 
-export default {
+const nutritionFallbackService = {
   getFallbackNutrition,
   needsNutritionCorrection,
   applyFallbackNutrition
 };
+
+export default nutritionFallbackService;
