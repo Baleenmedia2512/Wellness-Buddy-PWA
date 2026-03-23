@@ -30,6 +30,15 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Reschedule reminders after device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Wake device screen + CPU for alarm -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Vibrate device during alarm -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Show full-screen alarm popup on lock screen -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Queries for share functionality (Android 11+) -->
     <queries>
@@ -144,6 +153,27 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
+
+        <!-- Foreground service that plays alarm sound for 60 seconds -->
+        <service
+            android:name=".services.AlarmSoundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Full-screen alarm popup shown on top of lock screen when alarm fires -->
+        <activity
+            android:name=".services.AlarmFullScreenActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
+        <!-- Stops the alarm sound when user taps Dismiss on the notification -->
+        <receiver
+            android:name=".services.AlarmDismissReceiver"
+            android:exported="false" />
         
     </application>
 </manifest>

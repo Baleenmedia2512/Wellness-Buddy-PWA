@@ -7,6 +7,9 @@ import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.media.AudioAttributes;
+import android.media.RingtoneManager;
+import android.net.Uri;
 import android.os.Build;
 import android.util.Log;
 
@@ -77,11 +80,43 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         Log.d(TAG, "⏰ Reminder fired for " + activityType
                 + " at " + formatTime(hour, minute));
 
-        // 1. Show the notification
+        // 1. Start AlarmSoundService → plays alarm ringtone for 60s + vibrates
+        startAlarmSound(context, activityType, label, hour, minute);
+
+        // 2. Show the status-bar notification (with Dismiss button)
         showReminderNotification(context, activityType, label, hour, minute);
 
-        // 2. Reschedule for the SAME time tomorrow
+        // 3. Reschedule for the SAME time tomorrow
         scheduleNextDay(context, activityType, label, hour, minute);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Start alarm sound via foreground service
+    // ─────────────────────────────────────────────────────────────────────
+
+    private void startAlarmSound(Context context,
+                                 String activityType,
+                                 String label,
+                                 int hour,
+                                 int minute) {
+        try {
+            String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
+            String message = getActivityMessage(activityType, hour, minute + 15);
+
+            Intent serviceIntent = new Intent(context, AlarmSoundService.class);
+            serviceIntent.setAction(AlarmSoundService.ACTION_START);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_TITLE,   title);
+            serviceIntent.putExtra(AlarmSoundService.EXTRA_MESSAGE, message);
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            Log.d(TAG, "🔊 AlarmSoundService started for " + activityType);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to start AlarmSoundService", e);
+        }
     }
 
     // ─────────────────────────────────────────────────────────────────────
@@ -112,15 +147,27 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
         );
 
+        // "Dismiss" action → stops AlarmSoundService
+        Intent dismissIntent = new Intent(context, AlarmDismissReceiver.class);
+        dismissIntent.setAction(AlarmSoundService.ACTION_DISMISS);
+        PendingIntent dismissPi = PendingIntent.getBroadcast(
+                context,
+                getRequestCode(activityType) + 100,
+                dismissIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+        );
+
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setAutoCancel(true)
                 .setContentIntent(pendingOpen)
-                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC);
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .addAction(R.drawable.ic_notification, "Dismiss", dismissPi);
 
         nm.notify(getNotificationId(activityType), builder.build());
         Log.d(TAG, "✅ Notification shown for " + activityType);
@@ -300,7 +347,21 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                     NotificationManager.IMPORTANCE_HIGH
             );
             channel.setDescription("Daily activity reminders for Wellness Valley");
-            channel.enableVibration(true);
+            channel.enableVibration(false); // Vibration handled by AlarmSoundService
+
+            // Use system alarm sound on the channel (fallback if service not running)
+            Uri alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM);
+            if (alarmUri == null) {
+                alarmUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
+            }
+            if (alarmUri != null) {
+                AudioAttributes audioAttrs = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ALARM)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                        .build();
+                channel.setSound(alarmUri, audioAttrs);
+            }
+
             channel.setShowBadge(true);
             nm.createNotificationChannel(channel);
         }
