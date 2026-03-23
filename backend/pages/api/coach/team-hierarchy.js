@@ -168,6 +168,7 @@ export default async function handler(req, res) {
       userId,
       parentCoachId = null,
       visited = new Set(),
+      coachPartnerIds = [userId], // IDs of co-coach partners (to exclude from nested view)
     ) => {
       const user = userMap.get(userId);
       if (!user) return null;
@@ -190,10 +191,12 @@ export default async function handler(req, res) {
       };
 
       // Find all direct reports (where CoachId OR CoCoachId matches userId)
+      // EXCLUDE co-coach partners from appearing as nested members
       const directReports = allUsers.filter(
         (u) =>
           (u.CoachId === userId || u.CoCoachId === userId) &&
-          u.UserId !== userId,
+          u.UserId !== userId &&
+          !coachPartnerIds.includes(u.UserId), // Exclude co-coach partner
       );
 
       console.log(
@@ -212,7 +215,12 @@ export default async function handler(req, res) {
 
         // If this user reports through CoachId
         if (report.CoachId === userId) {
-          const childNode = buildHierarchy(report.UserId, userId, newVisited);
+          const childNode = buildHierarchy(
+            report.UserId,
+            userId,
+            newVisited,
+            coachPartnerIds,
+          );
           if (childNode) {
             childNode.isCoachRelationship = true;
             userNode.teamMembers.push(childNode);
@@ -224,7 +232,12 @@ export default async function handler(req, res) {
           report.CoCoachId === userId &&
           report.CoCoachId !== report.CoachId
         ) {
-          const childNode = buildHierarchy(report.UserId, userId, newVisited);
+          const childNode = buildHierarchy(
+            report.UserId,
+            userId,
+            newVisited,
+            coachPartnerIds,
+          );
           if (childNode) {
             childNode.isCoachRelationship = false;
             userNode.teamMembers.push(childNode);
@@ -252,8 +265,32 @@ export default async function handler(req, res) {
       return;
     }
 
+    // Check if this coach has a co-coach partner
+    // Query coach_teams_table to find which team this coach manages
+    let coachPartnerIds = [coachIdInt];
+    
+    const { data: managedTeam } = await supabase
+      .from('coach_teams_table')
+      .select('TeamId, CoachId, CoCoachId')
+      .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
+      .eq('Status', 'active')
+      .maybeSingle();
+    
+    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+      // This coach has a co-coach partner - exclude both from each other's nested view
+      coachPartnerIds = [managedTeam.CoachId, managedTeam.CoCoachId];
+      console.log(`👥 [team-hierarchy] Co-coach partnership detected:`, {
+        TeamId: managedTeam.TeamId,
+        CoachId: managedTeam.CoachId,
+        CoCoachId: managedTeam.CoCoachId,
+        LoggedInCoach: coachIdInt,
+        WillExcludePartnerIds: coachPartnerIds
+      });
+    }
+
     // Build hierarchy starting from logged-in coach
-    const hierarchy = buildHierarchy(coachIdInt);
+    // Pass coachPartnerIds to exclude partner from nested view
+    const hierarchy = buildHierarchy(coachIdInt, null, new Set(), coachPartnerIds);
 
     // Flatten hierarchy to get all members (for enrollment reports)
     // Use Set to avoid duplicates from dual reporting relationships

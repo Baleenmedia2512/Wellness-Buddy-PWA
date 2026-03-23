@@ -446,7 +446,34 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     return [];
   }
 
-  // Step 2: Fetch all team members recursively using DUAL COACHING MODEL
+  // Step 2: Check if user has a co-coach (team partner with same TeamId)
+  // If yes, both coaches should be treated as level 0 for their shared downline
+  let coachPartnerIds = [userIdNum]; // Start with just this user
+  
+  if (user.TeamId) {
+    const { data: coachTeam, error: coachTeamError } = await supabase
+      .from('coach_teams_table')
+      .select('CoachId, CoCoachId')
+      .eq('TeamId', user.TeamId)
+      .eq('Status', 'active')
+      .maybeSingle();
+    
+    if (!coachTeamError && coachTeam) {
+      // Add both coaches to the starting level
+      if (coachTeam.CoachId && coachTeam.CoCoachId) {
+        coachPartnerIds = [coachTeam.CoachId, coachTeam.CoCoachId];
+        
+        if (enableLogging) {
+          console.log(`👥 [getDualCoachingTeamHierarchy] Co-coaching team detected:`, {
+            TeamId: user.TeamId,
+            CoachIds: coachPartnerIds
+          });
+        }
+      }
+    }
+  }
+
+  // Step 3: Fetch all team members recursively using DUAL COACHING MODEL
   // Support both CoachId and CoCoachId - members can report to 2 coaches
   const allMembers = [];
   const processedUserIds = new Map(); // Track unique users
@@ -462,7 +489,8 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   processedUserIds.set(user.UserId, user);
 
   // Iteratively fetch team members level by level
-  let currentLevelCoachIds = [userIdNum];
+  // Start with all co-coach partners (for shared downline)
+  let currentLevelCoachIds = coachPartnerIds;
   let currentLevel = 1;
   const maxLevel = 10;
 

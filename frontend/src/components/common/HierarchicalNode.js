@@ -165,23 +165,45 @@ const HierarchicalNode = ({
                           YOU
                         </span>
                       )}
+                      {/* Shared Team Badge - when viewing yourself as a co-coach */}
+                      {isCurrentUser && node.uplineCoachName && node.uplineCoCoachName && (
+                        <span className="text-[9px] bg-amber-100 text-amber-700 border border-amber-400 px-1.5 py-0.5 rounded-full font-bold uppercase flex items-center gap-0.5">
+                          <Users className="w-2 h-2" />
+                          SHARED TEAM
+                        </span>
+                      )}
                     </div>
                     {/* Reports to - Coach and Co-Coach */}
                     {(node.uplineCoachName || node.uplineCoCoachName) && (
                       <div className="text-[10px] text-gray-500 mt-0.5">
-                        Reports to:{" "}
-                        {node.uplineCoachName && (
-                          <span className="font-medium text-gray-700">
-                            {node.uplineCoachName}
-                          </span>
-                        )}
-                        {node.uplineCoachName && node.uplineCoCoachName && (
-                          <span className="text-gray-400"> & </span>
-                        )}
-                        {node.uplineCoCoachName && (
-                          <span className="font-medium text-gray-700">
-                            {node.uplineCoCoachName}
-                          </span>
+                        {isCurrentUser && node.uplineCoachName && node.uplineCoCoachName ? (
+                          <>
+                            <span className="text-amber-600 font-semibold">Co-Coach Partnership:</span>{" "}
+                            <span className="font-medium text-gray-700">
+                              {node.uplineCoachName}
+                            </span>
+                            <span className="text-gray-400"> & </span>
+                            <span className="font-medium text-gray-700">
+                              {node.uplineCoCoachName}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            Reports to:{" "}
+                            {node.uplineCoachName && (
+                              <span className="font-medium text-gray-700">
+                                {node.uplineCoachName}
+                              </span>
+                            )}
+                            {node.uplineCoachName && node.uplineCoCoachName && (
+                              <span className="text-gray-400"> & </span>
+                            )}
+                            {node.uplineCoCoachName && (
+                              <span className="font-medium text-gray-700">
+                                {node.uplineCoCoachName}
+                              </span>
+                            )}
+                          </>
                         )}
                       </div>
                     )}
