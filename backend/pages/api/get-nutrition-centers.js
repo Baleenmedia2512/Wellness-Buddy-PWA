@@ -22,9 +22,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, teamFilter = 'direct', scope = 'team' } = req.query;
+  const { userId, teamFilter = 'direct', scope = 'team', dateRange = 'today', startDate, endDate } = req.query;
 
-  console.log('🗺️ [get-nutrition-centers] Request:', { userId, teamFilter, scope });
+  console.log('🗺️ [get-nutrition-centers] Request:', { userId, teamFilter, scope, dateRange, startDate, endDate });
 
   if (!userId) {
     res.status(400).json({
@@ -42,10 +42,17 @@ export default async function handler(req, res) {
 
     // Get team hierarchy using DUAL COACHING MODEL
     let teamMembers = [];
-    if (teamFilter === 'full') {
+    let teamUserIds = [];
+    
+    if (teamFilter === 'self') {
+      // Only show the logged-in user's own clubs
+      console.log('👤 [get-nutrition-centers] Fetching SELF only...');
+      teamUserIds = [userIdNum];
+    } else if (teamFilter === 'full') {
       // Get full team hierarchy with dual-coaching support
       console.log('📊 [get-nutrition-centers] Fetching FULL team hierarchy...');
       teamMembers = await getDualCoachingTeamHierarchy(userIdNum, false);
+      teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
     } else {
       // Get direct team only (dual-coaching model: CoachId OR CoCoachId)
       console.log('📊 [get-nutrition-centers] Fetching DIRECT team...');
@@ -56,10 +63,8 @@ export default async function handler(req, res) {
         .eq('Status', 'Active');
       
       teamMembers = directTeam || [];
+      teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
     }
-
-    // Include the logged-in user
-    const teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
 
     console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length, 'members');
 
@@ -110,40 +115,38 @@ export default async function handler(req, res) {
     });
 
     // Calculate attendance metrics for each center
-    const today = new Date().toISOString().split('T')[0];
+    // Dates are always sent from the frontend using local timezone (avoids UTC shift issues)
+    if (!startDate || !endDate) {
+      // Fallback: should not happen as frontend always sends dates
+      const today = new Date().toISOString().split('T')[0];
+      startDate = today;
+      endDate = today;
+    }
+    const rangeStart = startDate + 'T00:00:00';
+    const rangeEnd = endDate + 'T23:59:59';
+    console.log('📅 [get-nutrition-centers] Attendance window:', { rangeStart, rangeEnd, dateRange });
+
     const centersWithMetrics = await Promise.all(
       centers.map(async (center) => {
-        // Count total participants at this center (ever)
-        const { data: totalLogs } = await supabase
+        // Get attendance for selected date range
+        const { data: rangeLogs } = await supabase
           .from('education_logs_table')
-          .select('UserId', { count: 'exact', head: false })
+          .select('"UserId"')
           .eq('nutrition_center_id', center.id)
-          .eq('IsDeleted', 0);
+          .eq('"IsDeleted"', false)
+          .gte('"CreatedAt"', rangeStart)
+          .lte('"CreatedAt"', rangeEnd);
 
-        const uniqueUserIds = new Set((totalLogs || []).map(log => log.UserId));
-        const totalParticipants = uniqueUserIds.size;
+        const rangeUniqueUsers = new Set((rangeLogs || []).map(log => log.UserId));
+        const todayAttendance = rangeUniqueUsers.size;
 
-        // Get today's attendance
-        const { data: todayLogs } = await supabase
-          .from('education_logs_table')
-          .select('UserId')
-          .eq('nutrition_center_id', center.id)
-          .eq('IsDeleted', 0)
-          .gte('CreatedAt', today)
-          .lte('CreatedAt', today + 'T23:59:59');
-
-        const todayUniqueUsers = new Set((todayLogs || []).map(log => log.UserId));
-        const todayAttendance = todayUniqueUsers.size;
-
-        // Calculate attendance percentage (today vs total)
-        const attendancePercentage = totalParticipants > 0 
-          ? Math.round((todayAttendance / totalParticipants) * 100) 
-          : 0;
+        // Calculate attendance percentage
+        const attendancePercentage = todayAttendance > 0 ? 100 : 0;
 
         return {
           ...center,
           ownerName: ownerMap[center.owner_user_id] || 'Unknown',
-          totalParticipants,
+          totalParticipants: todayAttendance,
           todayAttendance,
           attendancePercentage,
         };

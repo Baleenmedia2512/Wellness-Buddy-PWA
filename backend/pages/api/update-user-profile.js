@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email, name, height, bmr, dietType, profileImage } = req.body;
+  const { email, name, height, bmr, dietType, profileImage, phoneNumber } = req.body;
 
   console.log("👤 [update-user-profile] Request received:", {
     email,
@@ -32,6 +32,7 @@ export default async function handler(req, res) {
     height,
     bmr,
     dietType,
+    phoneNumber,
     hasProfileImage: !!profileImage,
   });
 
@@ -71,6 +72,7 @@ export default async function handler(req, res) {
 
     // Build update data object for team_table
     const updateData = {};
+    let cleanedPhoneNumber;
 
     if (name !== undefined && name !== null) {
       updateData.UserName = name;
@@ -95,6 +97,17 @@ export default async function handler(req, res) {
       }
     }
 
+    if (phoneNumber !== undefined && phoneNumber !== null && phoneNumber.trim() !== "") {
+      // Basic validation: 10-15 digits, optional leading +
+      const cleaned = phoneNumber.trim().replace(/[\s\-()]/g, "");
+      if (/^\+?[0-9]{10,15}$/.test(cleaned)) {
+        updateData.PhoneNumber = cleaned;
+        cleanedPhoneNumber = cleaned;
+      } else {
+        console.log("⚠️ [update-user-profile] Invalid phone number:", phoneNumber);
+      }
+    }
+
     // Handle profile image update
     if (profileImage !== undefined && profileImage !== null) {
       // Validate base64 image format
@@ -109,25 +122,63 @@ export default async function handler(req, res) {
     // Update team_table if there are fields to update
     if (Object.keys(updateData).length > 0) {
       console.log("📝 [update-user-profile] Updating team_table:", updateData);
-      const { error: updateError } = await supabase
+      const { data: updatedRows, error: updateError } = await supabase
         .from("team_table")
         .update(updateData)
-        .eq("Email", email);
+        .eq("UserId", userId)
+        .select('"UserId"');
 
       if (updateError) throw updateError;
-      console.log("✅ [update-user-profile] team_table updated successfully");
+      if (!updatedRows || updatedRows.length === 0) {
+        throw new Error(`Profile update matched 0 rows for UserId ${userId}`);
+      }
+
+      console.log("✅ [update-user-profile] team_table updated successfully, rows affected:", updatedRows.length);
+
+      // Verify persisted values to prevent false success responses.
+      const { data: verifyRow, error: verifyError } = await supabase
+        .from("team_table")
+        .select('"UserId", "Height", "DietType", "PhoneNumber"')
+        .eq('"UserId"', userId)
+        .maybeSingle();
+
+      if (verifyError) throw verifyError;
+      if (!verifyRow) {
+        throw new Error(`Unable to verify profile update for UserId ${userId}`);
+      }
+
+      if (cleanedPhoneNumber && verifyRow.PhoneNumber !== cleanedPhoneNumber) {
+        throw new Error("Phone number was not saved. Please try again.");
+      }
+
+      if (height !== undefined && height !== null) {
+        const reqHeight = parseFloat(height);
+        const savedHeight = verifyRow.Height ? parseFloat(verifyRow.Height) : null;
+        if (!Number.isNaN(reqHeight) && savedHeight !== reqHeight) {
+          throw new Error("Height was not saved. Please try again.");
+        }
+      }
+
+      if (dietType !== undefined && dietType !== null && updateData.DietType) {
+        if (verifyRow.DietType !== updateData.DietType) {
+          throw new Error("Diet preference was not saved. Please try again.");
+        }
+      }
     }
 
     // Update BMR in the latest weight record if provided
     let savedBmr = null;
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
-      if (!isNaN(bmrValue) && bmrValue >= 1100 && bmrValue <= 2200) {
-        // Check if user has any weight records
+      console.log("🔍 [DEBUG] BMR received from frontend:", bmr, "→ parsed as:", bmrValue);
+      if (!isNaN(bmrValue) && bmrValue >= 1100) {
+        console.log("✅ [DEBUG] BMR validation passed:", bmrValue, ">= 1100");
+        // Check if user has any weight records (excluding deleted ones)
         const { data: weightRecords, error: weightError } = await supabase
           .from("weight_records_table")
           .select("ID")
           .eq("UserId", userId)
+          .or('"IsDeleted".is.null,"IsDeleted".eq.0')
           .order("CreatedAt", { ascending: false })
           .limit(1);
 
@@ -146,14 +197,47 @@ export default async function handler(req, res) {
             "✅ [update-user-profile] BMR updated in latest weight record:",
             bmrValue,
           );
+          console.log("🔍 [DEBUG] Verifying BMR was saved correctly...");
+          
+          // Verify what was actually saved
+          const { data: verifyBmr } = await supabase
+            .from("weight_records_table")
+            .select("Bmr")
+            .eq("ID", weightRecords[0].ID)
+            .single();
+          
+          console.log("🔍 [DEBUG] BMR value in database:", verifyBmr?.Bmr);
           savedBmr = bmrValue;
         } else {
-          // No weight records exist - BMR will be saved with next weight entry
+          // 🔥 FIX: No weight records exist - Create a placeholder weight record with BMR
           console.log(
-            "⚠️ [update-user-profile] No weight records found, BMR will be saved with next weight entry",
+            "⚠️ [update-user-profile] No weight records found, creating placeholder with BMR:",
+            bmrValue,
           );
-          // Return the BMR value so frontend knows it was received (but not saved yet)
-          savedBmr = bmrValue;
+          const currentTime = getISTTimestamp();
+          const { error: createError } = await supabase
+            .from("weight_records_table")
+            .insert({
+              UserId: userId,
+              Weight: null, // No weight yet
+              Bmr: bmrValue,
+              CreatedAt: currentTime,
+              UpdatedAt: currentTime,
+            });
+
+          if (createError) {
+            console.error(
+              "❌ [update-user-profile] Failed to create BMR record:",
+              createError,
+            );
+            // Don't throw - still return success for profile update
+          } else {
+            console.log(
+              "✅ [update-user-profile] BMR placeholder record created:",
+              bmrValue,
+            );
+            savedBmr = bmrValue;
+          }
         }
       }
     }
@@ -182,6 +266,7 @@ export default async function handler(req, res) {
         height: height ? parseFloat(height) : undefined,
         bmr: savedBmr || undefined,
         dietType: dietType || undefined,
+        phoneNumber: cleanedPhoneNumber || undefined,
         profileImageUpdated: !!profileImage,
       },
     };

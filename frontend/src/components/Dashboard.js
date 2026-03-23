@@ -59,8 +59,9 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
  * Replaces the separate Nutrition Dashboard and Weight Tracking pages
  * @param {string} initialTab - Optional tab to open initially ('nutrition' or 'weight')
  * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
+ * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user' }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', profileUpdateTrigger }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
@@ -141,6 +142,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </TouchFeedbackButton>
             )}
             {/* Empty space for weight and education tabs to maintain layou//t */}
+            {/* Empty space for tabs without top-right action */}
             {(activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
@@ -372,6 +374,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               hideHeader={true}
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
+              profileUpdateTrigger={profileUpdateTrigger}
             />
           )}
 

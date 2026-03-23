@@ -4,7 +4,9 @@
  * 
  * Allows authenticated user to claim an available Team ID
  * Updates team_table.TeamId for the user
- * Also creates entry in coach_teams_table if user is a coach (Role=admin)
+ * 
+ * Note: coach_teams_table entry is created later during OTP validation
+ * when the user is approved by their coach (see validate-otp.js)
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';

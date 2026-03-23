@@ -182,9 +182,12 @@ export default async function handler(req, res) {
 
     const requesterTeamId = requesterData[0]?.TeamId;
 
+    console.log(`📊 [validate-otp] Requester TeamId: ${requesterTeamId || 'none'}`);
+
     // STEP 1: Update coach_teams_table ONLY if user has a TeamId
     // This is now optional - users can complete account activation without Team ID
     if (requesterTeamId) {
+      console.log(`🔍 [validate-otp] Checking coach_teams_table for TeamId: ${requesterTeamId}`);
       // Check if TeamId exists in coach_teams_table (including inactive)
       const { data: existingTeam, error: existingTeamError } = await supabase
         .from("coach_teams_table")
@@ -200,16 +203,22 @@ export default async function handler(req, res) {
           // Team is active, add requester as CoCoachId if slot available
           if (!team.CoCoachId) {
             const updateTime = getISTTimestamp();
-            await supabase
+            const { error: coCoachUpdateError } = await supabase
               .from("coach_teams_table")
               .update({ CoCoachId: requesterId, UpdatedAt: updateTime })
               .eq("TeamId", requesterTeamId)
               .eq("Status", "active");
+            
+            if (coCoachUpdateError) {
+              console.error("❌ Error adding co-coach to team:", coCoachUpdateError);
+              throw coCoachUpdateError;
+            }
+            console.log("✅ Added as co-coach to team:", requesterTeamId);
           }
         } else {
           // Team is inactive, reactivate with requester as primary coach
           const updateTime = getISTTimestamp();
-          await supabase
+          const { error: reactivateError } = await supabase
             .from("coach_teams_table")
             .update({
               CoachId: requesterId,
@@ -218,15 +227,34 @@ export default async function handler(req, res) {
               UpdatedAt: updateTime,
             })
             .eq("TeamId", requesterTeamId);
+          
+          if (reactivateError) {
+            console.error("❌ Error reactivating team:", reactivateError);
+            throw reactivateError;
+          }
+          console.log("✅ Reactivated team:", requesterTeamId);
         }
       } else {
         // Create new entry with requester as primary coach
-        await supabase
+        const { error: insertError } = await supabase
           .from("coach_teams_table")
           .insert([
-            { TeamId: requesterTeamId, CoachId: requesterId, Status: "active" },
+            { 
+              TeamId: requesterTeamId, 
+              CoachId: requesterId, 
+              CoCoachId: null, // Explicitly set to NULL (no co-coach yet)
+              Status: "active" 
+            },
           ]);
+        
+        if (insertError) {
+          console.error("❌ Error creating coach_teams_table entry:", insertError);
+          throw insertError;
+        }
+        console.log("✅ Created coach_teams_table entry for team:", requesterTeamId);
       }
+    } else {
+      console.log("ℹ️ User has no TeamId, skipping coach_teams_table creation");
     }
 
     // STEP 2: Get coach details for CoachName and CoCoachName
@@ -240,6 +268,7 @@ export default async function handler(req, res) {
     const coachTeamId = coachData[0]?.TeamId;
     const coachName = coachData[0]?.UserName;
     let coCoachName = null;
+    let coCoachId = null; // Declare at correct scope level
 
     if (coachTeamId) {
       // Find the co-coach from coach_teams_table
@@ -253,7 +282,7 @@ export default async function handler(req, res) {
 
       if (coachTeam && coachTeam.length > 0) {
         // Determine which is the co-coach (the one that's not our coach)
-        const coCoachId =
+        coCoachId =
           coachTeam[0].CoachId === request.UplineCoachId
             ? coachTeam[0].CoCoachId
             : coachTeam[0].CoachId;
@@ -271,14 +300,23 @@ export default async function handler(req, res) {
     }
 
     // STEP 3: NOW update team_table (after coach_teams_table succeeds if applicable)
-    // Update UplineCoachId, CoachName, and CoCoachName regardless of TeamId status
+    // Update ALL coach-related fields to support dual-coaching hierarchy
+    const updateData = {
+      UplineCoachId: request.UplineCoachId,
+      CoachId: request.UplineCoachId, // Primary coach for hierarchy queries
+      CoachName: coachName,
+      CoCoachName: coCoachName,
+      CoachTeamId: coachTeamId, // Link member to their coach's team
+    };
+
+    // Set CoCoachId if there's a co-coach on the team
+    if (coCoachId) {
+      updateData.CoCoachId = coCoachId;
+    }
+
     await supabase
       .from("team_table")
-      .update({
-        UplineCoachId: request.UplineCoachId,
-        CoachName: coachName,
-        CoCoachName: coCoachName,
-      })
+      .update(updateData)
       .eq("UserId", requesterId);
 
     // STEP 4: Mark request as approved

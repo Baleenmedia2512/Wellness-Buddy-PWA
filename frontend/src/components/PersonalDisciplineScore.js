@@ -1,5 +1,10 @@
 // src/components/PersonalDisciplineScore.js
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from "react";
+import React, {
+  useState,
+  useEffect,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
 import { Scale, BookOpen, Coffee, Utensils, Moon } from "lucide-react";
 
 /**
@@ -50,7 +55,9 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         });
 
         if (!result.success || !result.coachPerformance) {
-          console.log("📊 [PersonalDisciplineScore] No data available - hiding component");
+          console.log(
+            "📊 [PersonalDisciplineScore] No data available - hiding component",
+          );
           setCategories(null);
           setOverallScore(0);
           setLoading(false);
@@ -58,13 +65,17 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         }
 
         // Get overall discipline score
-        const overall = result.coachPerformance.periodDiscipline?.percentage || 0;
+        const overall =
+          result.coachPerformance.periodDiscipline?.percentage || 0;
         console.log("📊 [PersonalDisciplineScore] Overall score:", overall);
         setOverallScore(overall);
 
         // Get personal discipline activities (use 'activities' field from API)
         const activities = result.coachPerformance.activities || {};
-        console.log("📊 [PersonalDisciplineScore] Activities data:", activities);
+        console.log(
+          "📊 [PersonalDisciplineScore] Activities data:",
+          activities,
+        );
 
         const categoryData = {
           weight: activities.weight || { percentage: 0 },
@@ -73,8 +84,11 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           lunch: activities.lunch || { percentage: 0 },
           dinner: activities.dinner || { percentage: 0 },
         };
-        
-        console.log("📊 [PersonalDisciplineScore] Setting categories:", categoryData);
+
+        console.log(
+          "📊 [PersonalDisciplineScore] Setting categories:",
+          categoryData,
+        );
         setCategories(categoryData);
       } catch (error) {
         console.error(
@@ -95,8 +109,8 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
   useImperativeHandle(ref, () => ({
     refresh: () => {
       console.log("📊 [PersonalDisciplineScore] Manual refresh triggered");
-      setRefreshKey(prev => prev + 1);
-    }
+      setRefreshKey((prev) => prev + 1);
+    },
   }));
 
   // Get color based on score
@@ -115,14 +129,6 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     dinner: <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
   };
 
-  const categoryLabels = {
-    weight: "WEI",
-    education: "EDU",
-    breakfast: "BRE",
-    lunch: "LUN",
-    dinner: "DIN",
-  };
-
   // Don't render if loading
   if (loading) {
     return null;
@@ -136,41 +142,16 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     return null;
   }
 
-  console.log(" [PersonalDisciplineScore] Rendering with categories:", categories);
+  console.log(
+    " [PersonalDisciplineScore] Rendering with categories:",
+    categories,
+  );
 
   return (
     <div className="w-full bg-white border-b border-gray-200 shadow-sm">
       <div className="max-w-4xl mx-auto px-2 sm:px-3 py-1 sm:py-2">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-          {/* Header with Overall Score .*/}
-          <div className="px-2 sm:px-3 py-1.5 bg-gradient-to-r from-blue-50 to-green-50 border-b border-gray-100">
-            <div className="flex items-center justify-center gap-2">
-              <div className="flex-1 text-left">
-                <p className="text-[10px] sm:text-xs font-semibold text-gray-700">
-                  Your Daily Discipline Score
-                </p>
-                {/* <p className="text-[9px] text-gray-500 mt-0">
-                  Swipe to see each of your meals
-                </p> */}
-              </div>
-              <div className="flex flex-col items-center">
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0">
-                  Overall
-                </p>
-                <div
-                  className={`text-lg sm:text-xl md:text-2xl font-black ${
-                    overallScore >= 80
-                      ? "text-green-600"
-                      : overallScore >= 60
-                      ? "text-yellow-600"
-                      : "text-red-600"
-                  }`}
-                >
-                  {overallScore}%
-                </div>
-              </div>
-            </div>
-          </div>
+          {/* Header - Overall Score Removed */}
 
           {/* Categories Grid */}
           <div className="grid grid-cols-5 divide-x divide-gray-200">
@@ -186,37 +167,34 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                 >
                   {categoryIcons[key]}
                 </div>
-                <p className="text-[8px] sm:text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-0.5">
-                  {categoryLabels[key]}
-                </p>
-                <div
-                  className={`text-xs sm:text-sm md:text-base font-black ${
+                <span
+                  className={`text-[11px] font-bold mt-0.5 ${
                     data.percentage >= 80
                       ? "text-green-600"
                       : data.percentage >= 60
                       ? "text-yellow-600"
-                      : "text-red-600"
+                      : "text-red-500"
                   }`}
                 >
                   {data.percentage}%
-                </div>
+                </span>
               </div>
             ))}
           </div>
 
           {/* Progress indicator bar */}
-          <div className="h-0.5 sm:h-1 bg-gray-100 grid grid-cols-5">
+          <div className="h-0.5 sm:h-1 bg-gray-100 flex">
             {Object.entries(categories).map(([key, data]) => (
               <div
                 key={key}
-                className={`transition-all duration-500 ${
+                className={`transition-all duration-500 flex-1 ${
                   data.percentage >= 80
                     ? "bg-green-500"
                     : data.percentage >= 60
                     ? "bg-yellow-500"
                     : "bg-red-500"
                 }`}
-                style={{ width: `${data.percentage}%` }}
+                style={{ opacity: data.percentage > 0 ? 1 : 0.1 }}
               />
             ))}
           </div>

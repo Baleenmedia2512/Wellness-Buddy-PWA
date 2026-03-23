@@ -1,426 +1,530 @@
-﻿import React, { useState, useEffect } from 'react';
-import {
-  ArrowLeft,
-  RefreshCw,
-  Calendar,
-  MapPin,
-  Wifi,
-  XCircle,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import TouchFeedbackButton from './TouchFeedbackButton';
-import LoadingSpinner from './LoadingSpinner';
+﻿import React, { useState, useEffect } from "react";
+import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
+import HierarchicalReportLayout, {
+  LoadingSkeleton,
+} from "./common/HierarchicalReportLayout";
+import HierarchicalNode from "./common/HierarchicalNode";
 
 const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [hierarchyData, setHierarchyData] = useState(null);
-  const [dateFilter, setDateFilter] = useState('today');
-  const [customDate, setCustomDate] = useState(null);
+  const [dateRange, setDateRange] = useState("today");
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [customEndDate, setCustomEndDate] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [refreshing, setRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState("desc");
+  const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
   const formatDate = (date) => {
     const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
     return `${year}-${month}-${day}`;
   };
 
   const getTargetDate = () => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    if (dateFilter === 'yesterday') {
+
+    if (dateRange === "yesterday") {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       return formatDate(yesterday);
     }
-    if (dateFilter === 'custom') {
-      return customDate ? formatDate(customDate) : formatDate(today);
+    if (dateRange === "week") {
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
+      return formatDate(weekAgo);
+    }
+    if (dateRange === "month") {
+      const monthAgo = new Date(today);
+      monthAgo.setMonth(monthAgo.getMonth() - 1);
+      return formatDate(monthAgo);
+    }
+    if (dateRange === "custom" && customStartDate) {
+      return formatDate(customStartDate);
     }
     return formatDate(today);
   };
 
-  const getDisplayDate = () => {
-    if (dateFilter === 'today') return 'Today';
-    if (dateFilter === 'yesterday') return 'Yesterday';
-    return getTargetDate();
-  };
-
   const getUserId = async (email) => {
     const response = await fetch(
-      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
     );
     const data = await response.json();
-    if (!data.success) throw new Error('User not found');
+    if (!data.success) throw new Error("User not found");
     return data.userId;
   };
 
-  const fetchData = async () => {
+  const fetchData = async (isBackground = false) => {
     if (!user) return;
-    setLoading(true);
+
+    if (!isBackground) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
     setError(null);
+
     try {
       const userId = await getUserId(user.email);
       const date = getTargetDate();
       const response = await fetch(
         `${apiBaseUrl}/api/coach/hierarchical-club-attendance?userId=${userId}&date=${date}`,
-        { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } }
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
       );
       const result = await response.json();
       if (!response.ok || !result.success) {
-        throw new Error(result.message || 'Failed to fetch attendance data');
+        throw new Error(result.message || "Failed to fetch attendance data");
+        throw new Error(result.message || "Failed to fetch attendance data");
       }
-      setHierarchyData(result.data.hierarchy);
+
+      // Map field names for HierarchicalNode component
+      const mapFields = (node) => {
+        const mapped = { ...node };
+        mapped.userEmail = node.email || node.userEmail;
+        mapped.uplineCoachName = node.coachName || node.uplineCoachName;
+        mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        if (mapped.teamMembers && mapped.teamMembers.length > 0) {
+          mapped.teamMembers = mapped.teamMembers.map(mapFields);
+        }
+        return mapped;
+      };
+
+      setHierarchyData(mapFields(result.data.hierarchy));
     } catch (err) {
-      console.error('Error fetching attendance:', err);
+      console.error("Error fetching attendance:", err);
       setError(err.message);
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      } else {
+        setRefreshing(false);
+      }
     }
   };
 
   useEffect(() => {
-    if (user) fetchData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, dateFilter, customDate]);
+    fetchData();
+  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
 
-  return (
-    <div className="fixed inset-0 bg-gradient-to-br from-slate-50 to-green-50 z-50 overflow-auto">
-      {/* Header */}
-      <div className="sticky top-0 z-10 bg-white shadow-md">
-        <div className="max-w-4xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <TouchFeedbackButton
-                onClick={onBack}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full"
-                ariaLabel="Go back"
-              >
-                <ArrowLeft className="h-5 w-5 text-gray-600" />
-              </TouchFeedbackButton>
-              <div>
-                <h1 className="text-base sm:text-lg font-bold text-gray-800">
-                  Attendance Report
-                </h1>
-                <p className="text-[10px] sm:text-xs text-gray-500">
-                  Team education attendance hierarchy
-                </p>
-              </div>
-            </div>
-            <TouchFeedbackButton
-              onClick={fetchData}
-              disabled={loading}
-              className="p-1.5 sm:p-2 hover:bg-gray-100 rounded-full disabled:opacity-50"
-              ariaLabel="Refresh"
-            >
-              <RefreshCw
-                className={`h-4 w-4 sm:h-5 sm:w-5 text-gray-600 ${loading ? 'animate-spin' : ''}`}
-              />
-            </TouchFeedbackButton>
-          </div>
+  // Filter options
+  const filterOptions = [
+    { value: "all", label: "All Members", icon: null },
+    { value: "attended", label: "Attended", icon: Check },
+    { value: "notAttended", label: "Not Attended", icon: XCircle },
+  ];
 
-          {/* Date Filter */}
-          <div className="mt-2 sm:mt-3">
-            <div className="flex gap-1.5 sm:gap-2 overflow-x-auto pb-1 scrollbar-hide items-center">
-              {[
-                { value: 'today', label: 'Today' },
-                { value: 'yesterday', label: 'Yesterday' },
-              ].map((filter) => (
-                <TouchFeedbackButton
-                  key={filter.value}
-                  onClick={() => setDateFilter(filter.value)}
-                  className={`px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all whitespace-nowrap flex-shrink-0 ${
-                    dateFilter === filter.value
-                      ? 'bg-green-600 text-white shadow-md'
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
-                  }`}
-                >
-                  {filter.label}
-                </TouchFeedbackButton>
-              ))}
-              <input
-                type="date"
-                max={formatDate(new Date())}
-                value={dateFilter === 'custom' && customDate ? formatDate(customDate) : ''}
-                onChange={(e) => {
-                  if (e.target.value) {
-                    const [year, month, day] = e.target.value.split('-').map(Number);
-                    setCustomDate(new Date(year, month - 1, day));
-                    setDateFilter('custom');
-                  }
-                }}
-                className={`px-3 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all flex-shrink-0 border-2 cursor-pointer focus:outline-none ${
-                  dateFilter === 'custom'
-                    ? 'bg-green-600 text-white border-green-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-green-400'
-                }`}
-                style={{ minWidth: '130px' }}
-              />
-            </div>
-          </div>
+  // Match filter logic
+  const matchesFilter = (node, filterValue) => {
+    if (filterValue === "all") return true;
+    const attended = node.metrics?.attended === true;
+    if (filterValue === "attended") return attended;
+    if (filterValue === "notAttended") return !attended;
+    return true;
+  };
+
+  // Match search logic with recursive check for descendants
+  const matchesSearch = (node, query) => {
+    if (!query) return true;
+    const lowerQuery = query.toLowerCase();
+
+    // Check current node
+    if (
+      node.userName?.toLowerCase().includes(lowerQuery) ||
+      node.userEmail?.toLowerCase().includes(lowerQuery)
+    ) {
+      return true;
+    }
+
+    // Check descendants
+    if (node.teamMembers && node.teamMembers.length > 0) {
+      return node.teamMembers.some((child) => matchesSearch(child, query));
+    }
+
+    return false;
+  };
+
+  // Check if hierarchy has any visible nodes after filtering
+  const hasVisibleNodes = (node) => {
+    if (!node) return false;
+
+    // Check if current node matches
+    const nodeMatchesSearch = matchesSearch(node, searchQuery);
+    const nodeMatchesFilter = matchesFilter(node, filter);
+
+    if (nodeMatchesSearch && nodeMatchesFilter) {
+      return true;
+    }
+
+    // Check children recursively
+    if (node.teamMembers && node.teamMembers.length > 0) {
+      return node.teamMembers.some((child) => hasVisibleNodes(child));
+    }
+
+    return false;
+  };
+
+  // Render status badge
+  const renderStatus = (node, showDetails) => {
+    const attended = node.metrics?.attended === true;
+    const clubs = node.metrics?.clubs || [];
+    const remoteCount = node.metrics?.remoteCount || 0;
+    const hasMultipleLocations = attended && clubs.length + remoteCount > 1;
+
+    if (!attended) {
+      return (
+        <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-500">
+          <XCircle className="h-2.5 w-2.5 flex-shrink-0" />
+          <span className="text-[9px] font-semibold whitespace-nowrap">
+            Not Attended
+          </span>
         </div>
-      </div>
+      );
+    }
 
-      {/* Content */}
-      <div className="max-w-4xl mx-auto p-3 sm:p-4 space-y-4">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center h-96">
-            <LoadingSpinner />
-            <p className="mt-4 text-gray-500 text-sm">Loading attendance...</p>
-          </div>
-        ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-6 text-center">
-            <p className="text-red-600 font-medium">{error}</p>
-            <TouchFeedbackButton
-              onClick={fetchData}
-              className="mt-4 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 text-sm"
-            >
-              Try Again
-            </TouchFeedbackButton>
-          </div>
-        ) : hierarchyData ? (
-          <>
-            {/* Date label */}
-            <div className="flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-semibold text-gray-600">{getDisplayDate()}</span>
-            </div>
-
-            {/* Hierarchy Tree */}
-            <div className="space-y-0">
-              <AttendanceNode node={hierarchyData} level={0} isLastChild={true} />
-            </div>
-          </>
-        ) : (
-          <div className="text-center py-16 text-gray-400">
-            <p className="text-sm">No data available</p>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-/* ── Individual tree node ── */
-const AttendanceNode = ({ node, level, isLastChild }) => {
-  const [showClubDetails, setShowClubDetails] = useState(false);
-  
-  const hasChildren = node.teamMembers && node.teamMembers.length > 0;
-  const attended = node.metrics?.attended === true;
-  const clubs = node.metrics?.clubs || [];
-  const remoteCount = node.metrics?.remoteCount || 0;
-  const hasMultipleLocations = attended && (clubs.length + remoteCount > 1);
-
-  const attendedDirect = node.directTeamCount?.qualified || 0;
-  const totalDirect = node.directTeamCount?.total || 0;
-  const attendedFull = node.fullTeamCount?.qualified || 0;
-  const totalFull = node.fullTeamCount?.total || 0;
-
-  return (
-    <div className="relative flex" style={{ marginLeft: level > 0 ? 0 : 0 }}>
-      {/* Vertical + Horizontal tree lines */}
-      {level > 0 && (
-        <div className="relative flex-shrink-0" style={{ width: '28px' }}>
-          {/* horizontal connector */}
-          <div className="absolute top-[22px] left-0 h-[2px] bg-gray-200 w-full" />
-          {/* vertical line from parent */}
-          <div
-            className="absolute left-0 top-0 w-[2px] bg-gray-200"
-            style={{ height: isLastChild ? '22px' : 'calc(100% + 12px)' }}
-          />
+    if (hasMultipleLocations) {
+      return (
+        <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-700">
+          <MapPin className="h-2.5 w-2.5" />
+          <span className="text-[9px] font-semibold">
+            {clubs.length + remoteCount} locations
+          </span>
         </div>
-      )}
+      );
+    }
 
-      {/* Node body */}
-      <div className="flex-1 mb-2 min-w-0">
-        <div
-          className={`rounded-xl border-2 overflow-hidden transition-all ${
-            level === 0
-              ? attended
-                ? 'bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 shadow-md'
-                : 'bg-white border-gray-200 shadow-md'
-              : attended
-              ? 'bg-white border-green-200 shadow-sm'
-              : 'bg-gray-50 border-gray-200'
-          }`}
-        >
-          {/* Row - Clickable to expand clubs */}
-          <div 
-            className={`flex items-center gap-2 px-3 py-2.5 ${hasMultipleLocations ? 'cursor-pointer hover:bg-black/5' : ''}`}
-            onClick={() => hasMultipleLocations && setShowClubDetails(!showClubDetails)}
-          >
-            {/* Avatar */}
-            <div
-              className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 flex-shrink-0 ${
-                level === 0 && attended
-                  ? 'bg-yellow-400 border-yellow-500 text-white'
-                  : attended
-                  ? 'bg-green-100 border-green-400 text-green-700'
-                  : 'bg-gray-200 border-gray-300 text-gray-500'
-              }`}
-            >
-              {node.userName?.charAt(0).toUpperCase() || '?'}
-            </div>
+    if (clubs.length === 1) {
+      return (
+        <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-700">
+          <MapPin className="h-2.5 w-2.5" />
+          <span className="text-[9px] font-semibold">{clubs[0].name}</span>
+        </div>
+      );
+    }
 
-            {/* Name + sub-info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span
-                  className={`text-sm font-bold truncate ${
-                    level === 0 && attended ? 'text-yellow-900' : attended ? 'text-gray-900' : 'text-gray-500'
-                  }`}
-                >
-                  {node.userName}
-                </span>
-                {level === 0 && (
-                  <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
-                    YOU
+    if (remoteCount === 1) {
+      return (
+        <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-50 border border-blue-300 text-blue-600">
+          <Wifi className="h-2.5 w-2.5" />
+          <span className="text-[9px] font-semibold">Remote</span>
+        </div>
+      );
+    }
+
+    return (
+      <div className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-50 border border-green-300 text-green-700">
+        <Check className="h-2.5 w-2.5" />
+        <span className="text-[9px] font-semibold">Attended</span>
+      </div>
+    );
+  };
+
+  // Render stats strip
+  const renderStats = (node, level, isCurrentUser) => {
+    const attended = node.metrics?.attended === true;
+    const clubs = node.metrics?.clubs || [];
+    const remoteCount = node.metrics?.remoteCount || 0;
+
+    const attendedDirect = node.directTeamCount?.qualified || 0;
+    const totalDirect = node.directTeamCount?.total || 0;
+    const attendedFull = node.fullTeamCount?.qualified || 0;
+    const totalFull = node.fullTeamCount?.total || 0;
+
+    return (
+      <>
+        {/* Self */}
+        <div className="flex-1 flex flex-col items-center pr-2">
+          {attended ? (
+            <div className="flex flex-wrap gap-1 justify-center mt-0.5">
+              {clubs.length > 0 && (
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                  <MapPin className="h-2.5 w-2.5 text-green-700" />
+                  <span className="text-[9px] font-semibold text-green-700">
+                    {clubs.length}
                   </span>
-                )}
-              </div>
-            </div>
-
-            {/* Right side - Attendance status or expand icon */}
-            <div className="flex-shrink-0 flex items-center gap-1">
-              {!attended ? (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-red-50 border border-red-200 text-red-500">
-                  <XCircle className="h-3.5 w-3.5 flex-shrink-0" />
-                  <span className="text-[11px] font-semibold whitespace-nowrap">Not Attended</span>
                 </div>
-              ) : hasMultipleLocations ? (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-semibold">{clubs.length + remoteCount} locations</span>
-                  {showClubDetails ? (
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  ) : (
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  )}
-                </div>
-              ) : clubs.length === 1 ? (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-green-50 border border-green-300 text-green-700">
-                  <MapPin className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-semibold">{clubs[0].name}</span>
-                </div>
-              ) : remoteCount === 1 ? (
-                <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-blue-50 border border-blue-300 text-blue-600">
-                  <Wifi className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-semibold">Remote</span>
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* Expanded Club Details */}
-          <AnimatePresence>
-            {showClubDetails && hasMultipleLocations && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-                className={`border-t overflow-hidden ${
-                  level === 0
-                    ? 'border-yellow-200 bg-yellow-50'
-                    : 'border-green-200 bg-green-50'
-                }`}
-              >
-                <div className="px-3 py-2 space-y-1.5">
-                  {clubs.map((club, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-green-200"
-                    >
-                      <MapPin className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-                      <span className="text-xs font-medium text-gray-800">{club.name}</span>
-                    </div>
-                  ))}
-                  {remoteCount > 0 && (
-                    <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-blue-200">
-                      <Wifi className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
-                      <span className="text-xs font-medium text-gray-800">Remote</span>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-
-          {/* Stats strip — You / Direct / Full for every node */}
-          <div className={`flex items-center divide-x px-3 py-2 border-t ${
-            level === 0
-              ? attended ? 'border-yellow-200 divide-yellow-200' : 'border-gray-100 divide-gray-100'
-              : attended ? 'border-green-100 divide-green-100' : 'border-gray-100 divide-gray-100'
-          }`}>
-            {/* Self attendance */}
-            <div className="flex-1 flex flex-col items-center pr-2">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-gray-400 mb-0.5">
-                {level === 0 ? 'You' : 'Self'}
-              </span>
-              {attended ? (
-                <div className="flex flex-wrap gap-1 justify-center mt-0.5">
-                  {clubs.length > 0 && (
-                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
-                      <MapPin className="h-2.5 w-2.5 text-green-700" />
-                      <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
-                    </div>
-                  )}
-                  {remoteCount > 0 && (
-                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
-                      <Wifi className="h-2.5 w-2.5 text-blue-700" />
-                      <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
-                    </div>
-                  )}
-                  {clubs.length === 0 && remoteCount === 0 && (
-                    <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
-                      <span className="text-[9px] font-semibold text-green-700">✓</span>
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-gray-100 border border-gray-300 mt-0.5">
-                  <span className="text-[9px] font-semibold text-gray-500">✗</span>
+              )}
+              {remoteCount > 0 && (
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                  <Wifi className="h-2.5 w-2.5 text-blue-700" />
+                  <span className="text-[9px] font-semibold text-blue-700">
+                    {remoteCount}
+                  </span>
                 </div>
               )}
             </div>
-            {/* Direct Team */}
-            <div className="flex-1 flex flex-col items-center px-2">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-blue-400 mb-0.5">Direct</span>
-              <span className="text-sm sm:text-base font-bold text-blue-700 leading-none">
-                {attendedDirect}<span className="text-[10px] sm:text-xs font-normal text-blue-400">/{totalDirect}</span>
-              </span>
-              <span className="text-[9px] font-semibold text-blue-400 mt-0.5">attended</span>
-            </div>
-            {/* Full Team */}
-            <div className="flex-1 flex flex-col items-center pl-2">
-              <span className="text-[9px] font-bold uppercase tracking-wide text-green-500 mb-0.5">Full Team</span>
-              <span className="text-sm sm:text-base font-bold text-green-700 leading-none">
-                {attendedFull}<span className="text-[10px] sm:text-xs font-normal text-green-400">/{totalFull}</span>
-              </span>
-              <span className="text-[9px] font-semibold text-green-500 mt-0.5">attended</span>
-            </div>
-          </div>
+          ) : (
+            <span className="text-lg font-bold text-red-500">0</span>
+          )}
         </div>
 
-        {/* Children - Always visible */}
-        {hasChildren && (
-          <div className="mt-2 ml-4 pl-0 space-y-0">
-            {node.teamMembers.map((child, index) => (
-              <AttendanceNode
-                key={child.userId}
-                node={child}
-                level={level + 1}
-                isLastChild={index === node.teamMembers.length - 1}
-              />
-            ))}
+        {/* Direct Team */}
+        <div className="flex-1 flex flex-col items-center px-2">
+          <span className="text-base font-bold text-gray-900">
+            {attendedDirect}/{totalDirect}
+          </span>
+        </div>
+
+        {/* Full Team */}
+        <div className="flex-1 flex flex-col items-center pl-2">
+          <span className="text-base font-bold text-gray-900">
+            {attendedFull}/{totalFull}
+          </span>
+        </div>
+      </>
+    );
+  };
+
+  // Render expanded details section
+  const renderExpandedDetails = (node, level, isCurrentUser) => {
+    const clubs = node.metrics?.clubs || [];
+    const remoteCount = node.metrics?.remoteCount || 0;
+    const hasMultipleLocations = clubs.length + remoteCount > 1;
+
+    if (!hasMultipleLocations) return null;
+
+    return (
+      <div
+        className={`px-3 py-2 space-y-1.5 ${
+          isCurrentUser ? "bg-yellow-50" : "bg-green-50"
+        }`}
+      >
+        {clubs.map((club, idx) => (
+          <div
+            key={idx}
+            className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-green-200"
+          >
+            <MapPin className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+            <span className="text-xs font-medium text-gray-800">
+              {club.name}
+            </span>
+          </div>
+        ))}
+        {remoteCount > 0 && (
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-white border border-blue-200">
+            <Wifi className="h-3.5 w-3.5 text-blue-600 flex-shrink-0" />
+            <span className="text-xs font-medium text-gray-800">Remote</span>
           </div>
         )}
       </div>
-    </div>
+    );
+  };
+
+  // Get status-based styling
+  const getStatusStyle = (node, level, isCurrentUser) => {
+    const attended = node.metrics?.attended === true;
+
+    if (isCurrentUser && attended) {
+      return {
+        containerClass:
+          "bg-gradient-to-r from-yellow-50 to-amber-50 border-yellow-300 shadow-md",
+        avatarClass: "bg-yellow-400 border-yellow-500 text-white",
+        nameClass: "text-yellow-900",
+        statsBorderClass: "border-yellow-200 divide-yellow-200",
+      };
+    }
+
+    if (attended) {
+      return {
+        containerClass: "bg-white border-green-200 shadow-sm",
+        avatarClass: "bg-green-100 border-green-400 text-green-700",
+        nameClass: "text-gray-900",
+        statsBorderClass: "border-green-100 divide-green-100",
+      };
+    }
+
+    return {
+      containerClass: "bg-gray-50 border-gray-200",
+      avatarClass: "bg-gray-200 border-gray-300 text-gray-500",
+      nameClass: "text-gray-500",
+      statsBorderClass: "border-gray-100 divide-gray-100",
+    };
+  };
+
+  // Calculate summary stats
+  const mySelfAttended = hierarchyData?.metrics?.attended === true;
+  const directAttended = hierarchyData?.directTeamCount?.qualified || 0;
+  const directTotal = hierarchyData?.directTeamCount?.total || 0;
+  const fullAttended = hierarchyData?.fullTeamCount?.qualified || 0;
+  const fullTotal = hierarchyData?.fullTeamCount?.total || 0;
+
+  const summaryStats = hierarchyData
+    ? {
+        note: `Self: ${
+          mySelfAttended ? "✓" : "✗"
+        } | Direct: ${directAttended}/${directTotal} | Full: ${fullAttended}/${fullTotal}`,
+      }
+    : null;
+
+  // Filter hierarchy based on teamView
+  const getFilteredHierarchy = () => {
+    if (!hierarchyData) return null;
+    if (teamView === "full") return hierarchyData;
+    // Direct view - remove nested teams
+    if (hierarchyData.teamMembers) {
+      return {
+        ...hierarchyData,
+        teamMembers: hierarchyData.teamMembers.map((member) => ({
+          ...member,
+          teamMembers: [],
+        })),
+      };
+    }
+    return hierarchyData;
+  };
+
+  const filteredHierarchy = getFilteredHierarchy();
+
+  // Get team counts
+  const getTeamCounts = (node) => {
+    if (!node) return { coaches: 0, members: 0 };
+
+    let coaches = 0;
+    let members = 0;
+
+    const countNode = (n) => {
+      if (n.teamMembers && n.teamMembers.length > 0) {
+        coaches++;
+        n.teamMembers.forEach((child) => countNode(child));
+      } else {
+        members++;
+      }
+    };
+
+    countNode(node);
+    return { coaches, members };
+  };
+
+  const teamCounts = hierarchyData
+    ? getTeamCounts(hierarchyData)
+    : { coaches: 0, members: 0 };
+
+  const handleDateRangeSelect = (start, end) => {
+    setCustomStartDate(start);
+    setCustomEndDate(end);
+    setDateRange("custom");
+  };
+
+  const handleManualRefresh = () => {
+    fetchData(true);
+  };
+
+  const handleDownload = () => {
+    console.log("Download attendance report");
+    // Implement download logic here
+  };
+
+  const handleSortToggle = () => {
+    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+  };
+
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
+  return (
+    <HierarchicalReportLayout
+      title="Attendance Report"
+      subtitle={`${
+        teamCounts.coaches + teamCounts.members
+      } Members • Last updated ${new Date().toLocaleString("en-US", {
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      })}`}
+      onBack={onBack}
+      onRefresh={handleManualRefresh}
+      onDownload={handleDownload}
+      sortOrder={sortOrder}
+      onSortChange={handleSortToggle}
+      loading={refreshing}
+      error={error}
+      dateRange={dateRange}
+      onDateRangeChange={setDateRange}
+      customStartDate={customStartDate}
+      customEndDate={customEndDate}
+      onCustomDateSelect={handleDateRangeSelect}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      filter={filter}
+      onFilterChange={setFilter}
+      filterOptions={filterOptions}
+      allowedDateRanges={["today", "yesterday"]}
+      summaryStats={summaryStats}
+    >
+      {/* Team View Toggle */}
+      {hierarchyData && (
+        <div className="flex justify-end mb-3 sm:mb-4">
+          <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+            <button
+              onClick={() => setTeamView("direct")}
+              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                teamView === "direct"
+                  ? "bg-green-600 text-white shadow-sm"
+                  : "text-green-700 hover:text-green-800"
+              }`}
+            >
+              Direct
+            </button>
+            <button
+              onClick={() => setTeamView("full")}
+              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                teamView === "full"
+                  ? "bg-green-600 text-white shadow-sm"
+                  : "text-green-700 hover:text-green-800"
+              }`}
+            >
+              Full
+            </button>
+          </div>
+        </div>
+      )}
+
+      {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
+        <HierarchicalNode
+          node={filteredHierarchy}
+          level={0}
+          isLastChild={true}
+          renderStatus={renderStatus}
+          renderStats={renderStats}
+          renderExpandedDetails={renderExpandedDetails}
+          isCurrentUser={true}
+          showTeamCount={true}
+          getStatusStyle={getStatusStyle}
+          searchQuery={searchQuery}
+          filter={filter}
+          matchesFilter={matchesFilter}
+          matchesSearch={matchesSearch}
+        />
+      ) : (
+        <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+            <Users className="w-8 h-8 text-gray-400" />
+          </div>
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">
+            No members found
+          </h3>
+          <p className="text-sm text-gray-500 max-w-sm">
+            {filter !== "all"
+              ? `No members match the "${
+                  filterOptions.find((f) => f.value === filter)?.label
+                }" filter.`
+              : searchQuery
+              ? `No members match "${searchQuery}".`
+              : "No team members to display."}
+          </p>
+        </div>
+      )}
+    </HierarchicalReportLayout>
   );
 };
 
 export default AttendanceReport;
-

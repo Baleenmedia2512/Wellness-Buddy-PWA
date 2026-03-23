@@ -1,91 +1,181 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import React, { useState, useEffect, useCallback } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
 const PROGRAMS = [
-  'Family Healthy Breakfast Program',
-  'Weight Loss',
-  'Weight Gain',
-  'Kids Nutrition',
-  'Sports Nutrition',
-  'Targeted Nutrition',
-  'How to Earn My Product Cost',
-  'Extra Income Opportunity',
+  {
+    id: "family-breakfast",
+    name: "Family Healthy Breakfast Programme",
+    icon: "🥗",
+  },
+  { id: "weight-loss", name: "Weight Loss", icon: "📉" },
+  { id: "weight-gain", name: "Weight Gain", icon: "📈" },
+  { id: "kids-nutrition", name: "Kids Nutrition", icon: "🧒" },
+  { id: "sports-nutrition", name: "Sports Nutrition", icon: "🏃" },
+  { id: "targeted-nutrition", name: "Targeted Nutrition", icon: "🎯" },
+  { id: "earn-product-cost", name: "How to Earn My Product Cost", icon: "💰" },
+  { id: "extra-income", name: "Extra Income Opportunity", icon: "💼" },
 ];
 
 const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [enrollments, setEnrollments] = useState([]);
+  const [allTeamMembers, setAllTeamMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [selectedEnrollment, setSelectedEnrollment] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [programFilter, setProgramFilter] = useState('all');
-  const [dateFilter, setDateFilter] = useState('today');
-  const [customDateRange, setCustomDateRange] = useState({ start: '', end: '' });
-  const [showCustomDateModal, setShowCustomDateModal] = useState(false);
-  const [selectingStartDate, setSelectingStartDate] = useState(true);
-  // const [stats, setStats] = useState({
-  //   totalEnrollments: 0,
-  //   mostPopularProgram: '',
-  //   mostPopularCount: 0,
-  //   recentEnrollments: 0,
-  // });
-
-  // Stats calculation - commented out (stats removed)
-  // const calculateStats = (data) => {
-  //   const now = new Date();
-  //   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-
-  //   const recentEnrollments = data.filter(
-  //     (e) => new Date(e.LastUpdated || e.EnrollmentDate) >= weekAgo
-  //   ).length;
-
-  //   const programCounts = {};
-  //   data.forEach((enrollment) => {
-  //     const programs = JSON.parse(enrollment.EnrolledPrograms || '[]');
-  //     programs.forEach((program) => {
-  //       programCounts[program] = (programCounts[program] || 0) + 1;
-  //     });
-  //   });
-
-  //   let mostPopular = '';
-  //   let maxCount = 0;
-  //   Object.entries(programCounts).forEach(([program, count]) => {
-  //     if (count > maxCount) {
-  //       maxCount = count;
-  //       mostPopular = program;
-  //     }
-  //   });
-
-  //   setStats({
-  //     totalEnrollments: data.length,
-  //     mostPopularProgram: mostPopular || 'N/A',
-  //     mostPopularCount: maxCount,
-  //     recentEnrollments,
-  //   });
-  // };
+  const [error, setError] = useState("");
+  const [expandedProgram, setExpandedProgram] = useState(null);
+  const [viewType, setViewType] = useState(null); // 'mine', 'direct', 'full'
+  const [currentUserId, setCurrentUserId] = useState(null);
+  const [showNotEnrolled, setShowNotEnrolled] = useState(true); // Toggle for showing non-enrolled members
+  const [expandedNodes, setExpandedNodes] = useState(new Set()); // For hierarchy expansion
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
       const cacheBuster = Date.now();
+
+      // Get current user ID first
+      const userProfileResponse = await fetch(
+        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(
+          user.email,
+        )}&_t=${cacheBuster}`,
+      );
+      const userProfileData = await userProfileResponse.json();
+
+      if (userProfileData.success && userProfileData.data?.userId) {
+        setCurrentUserId(userProfileData.data.userId);
+      }
+
+      // Fetch team hierarchy FIRST to get proper CoachId/CoCoachId relationships
+      let teamMembers = [];
+      let myDirectTeamIds = []; // Track who reports directly to you
+
+      try {
+        // Use coachId if available, otherwise fall back to email
+        const userId = userProfileData.data?.userId;
+        const teamUrl = userId
+          ? `${API_BASE}/api/coach/team-hierarchy?coachId=${userId}&includeInactive=true&_t=${cacheBuster}`
+          : `${API_BASE}/api/coach/team-hierarchy?email=${encodeURIComponent(
+              user.email,
+            )}&includeInactive=true&_t=${cacheBuster}`;
+
+        console.log("📡 Fetching team hierarchy:", teamUrl);
+
+        const teamResponse = await fetch(teamUrl);
+
+        if (!teamResponse.ok) {
+          const errorText = await teamResponse.text();
+          console.error(
+            "❌ Team hierarchy API failed:",
+            teamResponse.status,
+            errorText,
+          );
+          throw new Error(`API returned ${teamResponse.status}: ${errorText}`);
+        }
+
+        const teamData = await teamResponse.json();
+
+        if (
+          teamData.success &&
+          teamData.allMembers &&
+          teamData.allMembers.length > 0
+        ) {
+          console.log(
+            "✅ Team hierarchy loaded:",
+            teamData.allMembers?.length,
+            "members",
+          );
+          console.log(
+            "👥 All team members from API (detailed):",
+            teamData.allMembers.map((m) => ({
+              name: m.UserName || m.Email,
+              userId: m.UserId,
+              coachId: m.CoachId,
+              coCoachId: m.CoCoachId,
+              coachName: m.coachName,
+              coCoachName: m.coCoachName,
+              status: m.Status,
+            })),
+          );
+          console.log(
+            "📊 Hierarchy structure:",
+            JSON.stringify(teamData.hierarchy, null, 2),
+          );
+
+          // Get current user ID as number for filtering
+          const currentUserIdNum = Number(userProfileData.data?.userId);
+          console.log("🔍 Current User ID:", currentUserIdNum);
+
+          // Store ALL team members for building full hierarchy
+          // Don't filter - we need everyone to calculate full team
+          teamMembers = teamData.allMembers || [];
+
+          console.log("✅ Stored all team members:", teamMembers.length);
+          console.log(
+            "👥 Team members:",
+            teamMembers.map((m) => ({
+              name: m.UserName,
+              userId: m.UserId,
+              coachId: m.CoachId,
+              reportsTo: m.coachName,
+            })),
+          );
+
+          // Track direct reports separately (for di...rect team calculation)
+          myDirectTeamIds = teamMembers
+            .filter((member) => {
+              const memberUserId = Number(member.UserId);
+              const memberCoachId = Number(member.CoachId);
+              const memberCoCoachId = Number(member.CoCoachId);
+
+              return (
+                (memberCoachId === currentUserIdNum ||
+                  memberCoCoachId === currentUserIdNum) &&
+                memberUserId !== currentUserIdNum
+              );
+            })
+            .map((m) => Number(m.UserId));
+
+          console.log("✅ Direct team IDs:", myDirectTeamIds);
+
+          setAllTeamMembers(teamMembers);
+        } else {
+          console.warn("⚠️ Team hierarchy returned no members");
+        }
+      } catch (teamErr) {
+        console.error("❌ Team hierarchy API failed:", teamErr);
+      }
+
+      // Fetch enrollments
       const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`
+        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(
+          user.email,
+        )}&_t=${cacheBuster}`,
       );
       const data = await response.json();
 
       if (data.success) {
+        console.log(
+          "✅ Enrollments loaded:",
+          data.enrollments?.length,
+          "enrollments",
+        );
+        console.log("Sample enrollment data:", data.enrollments[0]);
         setEnrollments(data.enrollments || []);
-        // calculateStats(data.enrollments || []);
+
+        // If team hierarchy failed, use enrollments as fallback
+        if (teamMembers.length === 0) {
+          console.warn("⚠️ Using enrollments as team members (fallback)");
+          setAllTeamMembers(data.enrollments || []);
+        }
       } else {
-        setError(data.message || 'Failed to load enrollments');
+        setError(data.message || "Failed to load enrollments");
       }
     } catch (err) {
-      console.error('Error fetching enrollments:', err);
-      setError('Network error. Please try again.');
+      console.error("Error fetching enrollments:", err);
+      setError("Network error. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -95,536 +185,1224 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
     fetchEnrollments();
   }, [fetchEnrollments]);
 
-  // Handler to open enrollment details with fresh data
-  const handleViewEnrollmentDetails = async (enrollment) => {
-    try {
-      const cacheBuster = Date.now();
-      const response = await fetch(
-        `${API_BASE}/api/wellness-university/get-enrollments?email=${encodeURIComponent(enrollment.Email)}&userOnly=true&_t=${cacheBuster}`
+  // Calculate program statistics
+  const calculateProgramStats = () => {
+    const stats = {};
+
+    PROGRAMS.forEach((program) => {
+      const programName = program.name;
+
+      // Filter enrollments for this program
+      const programEnrollments = enrollments.filter((enrollment) => {
+        const programs = JSON.parse(enrollment.EnrolledPrograms || "[]");
+        return programs.includes(programName);
+      });
+
+      console.log(
+        `[${programName}] Program enrollments:`,
+        programEnrollments.length,
       );
-      const data = await response.json();
-      
-      if (data.success && data.enrollments && data.enrollments.length > 0) {
-        const freshEnrollment = data.enrollments[0];
-        setSelectedEnrollment(freshEnrollment);
-        
-        // Also update in the main list
-        setEnrollments(prev => 
-          prev.map(e => e.Email === freshEnrollment.Email ? freshEnrollment : e)
+
+      // Mine: Check if current user enrolled
+      const myEnrollment = programEnrollments.find(
+        (e) => e.UserId === currentUserId,
+      );
+      const mine = myEnrollment ? 1 : 0;
+
+      // If we have team hierarchy data, use it
+      if (allTeamMembers.length > 0) {
+        console.log(
+          `[${programName}] Using team members path. Total members:`,
+          allTeamMembers.length,
         );
+        console.log(
+          `[${programName}] Current user ID:`,
+          currentUserId,
+          "Type:",
+          typeof currentUserId,
+        );
+        console.log(
+          `[${programName}] All team members in data:`,
+          allTeamMembers.map((m) => ({
+            UserId: m.UserId,
+            UserName: m.UserName,
+            CoachId: m.CoachId,
+            CoCoachId: m.CoCoachId,
+          })),
+        );
+
+        // Convert currentUserId to number for comparison
+        const currentUserIdNum = Number(currentUserId);
+
+        // Get all direct team members (CoachId or CoCoachId = currentUserId)
+        const allDirectMembers = allTeamMembers.filter((member) => {
+          const memberUserId = Number(member.UserId);
+          const memberCoachId = Number(member.CoachId);
+          const memberCoCoachId = Number(member.CoCoachId);
+
+          const coachIdMatch = memberCoachId === currentUserIdNum;
+          const coCoachIdMatch = memberCoCoachId === currentUserIdNum;
+          const notSelf = memberUserId !== currentUserIdNum;
+          const isDirect = (coachIdMatch || coCoachIdMatch) && notSelf;
+
+          if (!notSelf || isDirect) {
+            console.log(
+              `[${programName}] Member:`,
+              member.UserName || member.Email,
+              "| UserId:",
+              memberUserId,
+              "| CoachId:",
+              memberCoachId,
+              "| CoCoachId:",
+              memberCoCoachId,
+              "| CoachMatch:",
+              coachIdMatch,
+              "| CoCoachMatch:",
+              coCoachIdMatch,
+              "| NotSelf:",
+              notSelf,
+              "| ✅ IsDirect:",
+              isDirect,
+            );
+          }
+
+          return isDirect;
+        });
+
+        console.log(
+          `[${programName}] ✅ Direct members found:`,
+          allDirectMembers.length,
+        );
+        console.log(
+          `[${programName}] ✅ Direct members:`,
+          allDirectMembers.map((m) => m.UserName || m.Email),
+        );
+
+        // Build FULL TEAM recursively - all members in downline hierarchy
+        // IMPORTANT: Use allTeamMembers (ALL team members) not just enrolled ones
+        const buildFullTeam = (startMembers, allMembers) => {
+          const fullTeam = new Map(); // Use Map to avoid duplicates
+          const queue = [...startMembers];
+
+          console.log(
+            `[${programName}] 🔧 Building full team from ${startMembers.length} direct members`,
+          );
+          console.log(
+            `[${programName}] 🔧 Using ${allMembers.length} total members for hierarchy traversal`,
+          );
+          console.log(
+            `[${programName}] 🔧 All members sample:`,
+            allMembers.slice(0, 5).map((m) => ({
+              UserId: m.UserId,
+              UserName: m.UserName,
+              CoachId: m.CoachId,
+              CoCoachId: m.CoCoachId,
+            })),
+          );
+
+          while (queue.length > 0) {
+            const current = queue.shift();
+            const currentUserId = Number(current.UserId);
+
+            // Add current member to full team
+            if (!fullTeam.has(currentUserId)) {
+              fullTeam.set(currentUserId, current);
+              console.log(
+                `[${programName}] ➕ Added to full team:`,
+                current.UserName || current.Email,
+                "(UserId:",
+                currentUserId,
+                ")",
+              );
+
+              // Find all members who report to this person
+              const subTeam = allMembers.filter((m) => {
+                const mCoachId = Number(m.CoachId);
+                const mCoCoachId = Number(m.CoCoachId);
+                const mUserId = Number(m.UserId);
+
+                // Check if this member reports to current user
+                const reportsToAsPrimaryCoach =
+                  mCoachId === currentUserId && mUserId !== currentUserId;
+                const reportsToAsCoCoach =
+                  mCoCoachId === currentUserId &&
+                  mUserId !== currentUserId &&
+                  mCoachId !== currentUserId;
+                const isSubTeamMember =
+                  reportsToAsPrimaryCoach || reportsToAsCoCoach;
+
+                if (isSubTeamMember) {
+                  console.log(
+                    `[${programName}] 👤 Found sub-team member:`,
+                    m.UserName || m.Email,
+                    "(UserId:",
+                    mUserId,
+                    "CoachId:",
+                    mCoachId,
+                    "CoCoachId:",
+                    mCoCoachId,
+                    ")",
+                    "reports to",
+                    current.UserName || current.Email,
+                    "(UserId:",
+                    currentUserId,
+                    ")",
+                  );
+                }
+
+                return isSubTeamMember;
+              });
+
+              console.log(
+                `[${programName}] 📋 ${current.UserName || current.Email} has ${
+                  subTeam.length
+                } direct reports`,
+              );
+
+              // Add sub-team members to queue for processing
+              subTeam.forEach((member) => {
+                if (!fullTeam.has(Number(member.UserId))) {
+                  queue.push(member);
+                }
+              });
+            }
+          }
+
+          const result = Array.from(fullTeam.values());
+          console.log(
+            `[${programName}] ✅ Full team build complete: ${result.length} members`,
+          );
+          return result;
+        };
+
+        // Use allTeamMembers (from team-hierarchy API) for building full hierarchy
+        // This includes ALL team members regardless of enrollment status
+        const allFullMembers = buildFullTeam(allDirectMembers, allTeamMembers);
+
+        console.log(
+          `[${programName}] 📊 Full team members (entire downline):`,
+          allFullMembers.length,
+        );
+        console.log(
+          `[${programName}] 📊 Full team:`,
+          allFullMembers.map((m) => m.UserName || m.Email),
+        );
+
+        // Split into enrolled and unenrolled for direct team
+        const directEnrolled = [];
+        const directNotEnrolled = [];
+
+        allDirectMembers.forEach((member) => {
+          const enrollment = programEnrollments.find(
+            (e) => e.UserId === member.UserId,
+          );
+          if (enrollment) {
+            directEnrolled.push({
+              ...member,
+              ...enrollment,
+              isEnrolled: true,
+              CoachName: enrollment.CoachName || member.coachName || "",
+            });
+          } else {
+            directNotEnrolled.push({
+              ...member,
+              isEnrolled: false,
+              CoachName: member.coachName || "",
+              UserName: member.UserName || "Unknown",
+            });
+          }
+        });
+
+        // Split into enrolled and unenrolled for full team
+        const fullEnrolled = [];
+        const fullNotEnrolled = [];
+
+        console.log(
+          `[${programName}] 🔍 Processing full team members:`,
+          allFullMembers.length,
+        );
+        allFullMembers.forEach((member) => {
+          console.log(
+            `[${programName}] Full team member:`,
+            member.UserName,
+            "| UserId:",
+            member.UserId,
+            "| CoachId:",
+            member.CoachId,
+          );
+          const enrollment = programEnrollments.find(
+            (e) => e.UserId === member.UserId,
+          );
+          if (enrollment) {
+            fullEnrolled.push({
+              ...member,
+              ...enrollment,
+              isEnrolled: true,
+              CoachName: enrollment.CoachName || member.coachName || "",
+            });
+          } else {
+            fullNotEnrolled.push({
+              ...member,
+              isEnrolled: false,
+              CoachName: member.coachName || "",
+              UserName: member.UserName || "Unknown",
+            });
+          }
+        });
+
+        console.log(
+          `[${programName}] 📊 Full enrolled:`,
+          fullEnrolled.length,
+          fullEnrolled.map((m) => m.UserName),
+        );
+        console.log(
+          `[${programName}] 📊 Full unenrolled:`,
+          fullNotEnrolled.length,
+          fullNotEnrolled.map((m) => m.UserName),
+        );
+
+        // Combine: enrolled first, then unenrolled
+        const directTeamMembers = [...directEnrolled, ...directNotEnrolled];
+        const fullTeamMembers = [...fullEnrolled, ...fullNotEnrolled];
+
+        stats[programName] = {
+          mine,
+          directTeam: directEnrolled.length,
+          fullTeam: fullEnrolled.length,
+          directTeamMembers,
+          fullTeamMembers,
+          directEnrolledCount: directEnrolled.length,
+          fullEnrolledCount: fullEnrolled.length,
+        };
       } else {
-        // Fallback to the existing enrollment data
-        setSelectedEnrollment(enrollment);
+        // Fallback: Use enrollment data with CoachId/CoCoachId to determine hierarchy
+        console.log(
+          `[${programName}] Using fallback - CurrentUserId:`,
+          currentUserId,
+        );
+        console.log(
+          `[${programName}] Sample enrollment:`,
+          programEnrollments[0],
+        );
+
+        // Convert to numbers for comparison
+        const currentUserIdNum = Number(currentUserId);
+
+        const directEnrolledMembers = programEnrollments
+          .filter((e) => {
+            const memberUserId = Number(e.UserId);
+            const memberCoachId = Number(e.CoachId);
+            const memberCoCoachId = Number(e.CoCoachId);
+
+            const isDirect =
+              memberUserId !== currentUserIdNum &&
+              (memberCoachId === currentUserIdNum ||
+                memberCoCoachId === currentUserIdNum);
+            if (isDirect) {
+              console.log(
+                `[${programName}] Direct member found:`,
+                e.UserName,
+                "CoachId:",
+                memberCoachId,
+                "CoCoachId:",
+                memberCoCoachId,
+              );
+            }
+            return isDirect;
+          })
+          .map((e) => ({
+            ...e,
+            isEnrolled: true,
+            CoachName: e.CoachName || "",
+            UserName: e.UserName || "Unknown",
+          }));
+
+        const fullEnrolledMembers = programEnrollments
+          .filter((e) => Number(e.UserId) !== currentUserIdNum)
+          .map((e) => ({
+            ...e,
+            isEnrolled: true,
+            CoachName: e.CoachName || "",
+            UserName: e.UserName || "Unknown",
+          }));
+
+        console.log(
+          `[${programName}] Direct enrolled:`,
+          directEnrolledMembers.length,
+          "Full enrolled:",
+          fullEnrolledMembers.length,
+        );
+
+        stats[programName] = {
+          mine,
+          directTeam: directEnrolledMembers.length,
+          fullTeam: fullEnrolledMembers.length,
+          directTeamMembers: directEnrolledMembers,
+          fullTeamMembers: fullEnrolledMembers,
+          directEnrolledCount: directEnrolledMembers.length,
+          fullEnrolledCount: fullEnrolledMembers.length,
+        };
       }
-    } catch (err) {
-      console.error('Error fetching fresh enrollment:', err);
-      // Fallback to the existing enrollment data
-      setSelectedEnrollment(enrollment);
-    }
-  };
-
-  const getDateFilterRange = () => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (dateFilter) {
-      case 'today':
-        return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
-      case 'yesterday':
-        const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
-        return { start: yesterday, end: today };
-      case 'week':
-        const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-        return { start: weekAgo, end: now };
-      case 'month':
-        const monthAgo = new Date(now.getFullYear(), now.getMonth(), 1);
-        return { start: monthAgo, end: now };
-      case 'custom':
-        if (customDateRange.start && customDateRange.end) {
-          return {
-            start: new Date(customDateRange.start),
-            end: new Date(new Date(customDateRange.end).getTime() + 24 * 60 * 60 * 1000)
-          };
-        }
-        return null;
-      default:
-        return null;
-    }
-  };
-
-  const filteredEnrollments = enrollments.filter((enrollment) => {
-    const matchesSearch =
-      searchQuery === '' ||
-      enrollment.UserName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      enrollment.Email?.toLowerCase().includes(searchQuery.toLowerCase());
-
-    const enrolledPrograms = JSON.parse(enrollment.EnrolledPrograms || '[]');
-    const matchesProgram =
-      programFilter === 'all' || enrolledPrograms.includes(programFilter);
-
-    // Date filtering
-    const dateRange = getDateFilterRange();
-    let matchesDate = true;
-    if (dateRange) {
-      const enrollmentDate = new Date(enrollment.LastUpdated || enrollment.EnrollmentDate);
-      matchesDate = enrollmentDate >= dateRange.start && enrollmentDate < dateRange.end;
-    }
-
-    return matchesSearch && matchesProgram && matchesDate;
-  });
-
-  const exportToCSV = () => {
-    const headers = ['Name', 'Email', 'Programs', 'Last Updated'];
-    const rows = filteredEnrollments.map((e) => {
-      const programs = JSON.parse(e.EnrolledPrograms || '[]').join('; ');
-      const date = new Date(e.LastUpdated || e.EnrollmentDate).toLocaleDateString();
-      return [e.UserName, e.Email, programs, date];
     });
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map((row) => row.map((cell) => `"${cell}"`).join(',')),
-    ].join('\n');
+    console.log("Program stats calculated:", stats);
+    return stats;
+  };
 
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `wellness-university-enrollments-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
+  const programStats = calculateProgramStats();
+
+  // Recursively collect all node IDs for auto-expansion
+  const collectAllNodeIds = (nodes) => {
+    const ids = [];
+    const traverse = (nodeList) => {
+      nodeList.forEach((node) => {
+        ids.push(node.userId);
+        if (node.teamMembers && node.teamMembers.length > 0) {
+          traverse(node.teamMembers);
+        }
+      });
+    };
+    traverse(nodes);
+    return ids;
+  };
+
+  // Handle view type click
+  const handleViewClick = (programName, type) => {
+    if (expandedProgram === programName && viewType === type) {
+      // Close if clicking the same view
+      setExpandedProgram(null);
+      setViewType(null);
+      setExpandedNodes(new Set());
+    } else {
+      setExpandedProgram(programName);
+      setViewType(type);
+
+      // Auto-expand all nodes when viewing FULL TEAM
+      if (type === "full") {
+        const stats = programStats[programName];
+        if (stats && stats.fullTeamMembers) {
+          const hierarchy = buildHierarchy(stats.fullTeamMembers);
+          if (hierarchy) {
+            const allIds = collectAllNodeIds(hierarchy);
+            setExpandedNodes(new Set(allIds));
+          }
+        }
+      } else {
+        setExpandedNodes(new Set());
+      }
+    }
+  };
+
+  // Build hierarchical structure from flat member list
+  const buildHierarchy = (members) => {
+    if (!members || members.length === 0) return null;
+
+    // Create a map of userId to member
+    const memberMap = new Map();
+    members.forEach((member) => {
+      memberMap.set(member.UserId, {
+        userId: member.UserId,
+        userName: member.UserName || "Unknown",
+        email: member.Email,
+        role: member.Role || "member",
+        coachId: member.CoachId,
+        coCoachId: member.CoCoachId,
+        coachName: member.CoachName || "",
+        coCoachName: member.CoCoachName || "",
+        isEnrolled: member.isEnrolled !== false,
+        teamMembers: [],
+      });
+    });
+
+    // Build parent-child relationships
+    const rootNodes = [];
+    memberMap.forEach((member) => {
+      const hasCoach = member.coachId && memberMap.has(member.coachId);
+      const hasCoCoach = member.coCoachId && memberMap.has(member.coCoachId);
+
+      if (hasCoach) {
+        // Add to coach's team
+        const coach = memberMap.get(member.coachId);
+        if (!coach.teamMembers.some((m) => m.userId === member.userId)) {
+          coach.teamMembers.push(member);
+        }
+      } else if (hasCoCoach) {
+        // Add to co-coach's team
+        const coCoach = memberMap.get(member.coCoachId);
+        if (!coCoach.teamMembers.some((m) => m.userId === member.userId)) {
+          coCoach.teamMembers.push(member);
+        }
+      } else {
+        // This is a root node (direct report of current user)
+        rootNodes.push(member);
+      }
+    });
+
+    return rootNodes;
+  };
+
+  // Render hierarchical tree view
+  const renderHierarchyView = (members, programName) => {
+    if (!members || members.length === 0) {
+      return (
+        <div className="text-center py-6 sm:py-8 text-gray-500 text-sm sm:text-base">
+          No members found
+        </div>
+      );
+    }
+
+    const hierarchy = buildHierarchy(members);
+
+    if (!hierarchy || hierarchy.length === 0) {
+      return (
+        <div className="text-center py-6 sm:py-8 text-gray-500 text-sm sm:text-base">
+          No team hierarchy available
+        </div>
+      );
+    }
+
+    const handleToggleExpand = (nodeId) => {
+      setExpandedNodes((prev) => {
+        const newSet = new Set(prev);
+        if (newSet.has(nodeId)) {
+          newSet.delete(nodeId);
+        } else {
+          newSet.add(nodeId);
+        }
+        return newSet;
+      });
+    };
+
+    // Recursive component to render tree node
+    const TreeNode = ({ node, level = 0, isLastChild = false }) => {
+      const isExpanded = expandedNodes.has(node.userId);
+      const hasChildren = node.teamMembers && node.teamMembers.length > 0;
+      const isEnrolled = node.isEnrolled !== false;
+
+      return (
+        <div className="relative flex">
+          {/* Tree Connector Lines */}
+          {level > 0 && (
+            <div className="relative flex-shrink-0" style={{ width: "24px" }}>
+              <div
+                className="absolute top-[28px] left-0 h-[2px] bg-gray-400"
+                style={{ width: "24px" }}
+              />
+              {!isLastChild && (
+                <div
+                  className="absolute left-0 top-0 w-[2px] bg-gray-400"
+                  style={{ height: "calc(100% + 8px)" }}
+                />
+              )}
+              {isLastChild && (
+                <div
+                  className="absolute left-0 top-0 w-[2px] bg-gray-400"
+                  style={{ height: "28px" }}
+                />
+              )}
+            </div>
+          )}
+
+          {/* Node Content */}
+          <div className="flex-1 mb-2 w-full">
+            <div
+              className={`rounded-lg p-2.5 border shadow-sm transition-all ${
+                isEnrolled
+                  ? "bg-white border-green-200"
+                  : "bg-gray-50 border-gray-300 opacity-60"
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {/* Expand/Collapse Button */}
+                {hasChildren && (
+                  <button
+                    onClick={() => handleToggleExpand(node.userId)}
+                    className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded hover:bg-gray-100"
+                  >
+                    <svg
+                      className="w-4 h-4 text-gray-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      {isExpanded ? (
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M19 9l-7 7-7-7"
+                        />
+                      ) : (
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 5l7 7-7 7"
+                        />
+                      )}
+                    </svg>
+                  </button>
+                )}
+                {!hasChildren && <div className="w-6" />}
+
+                {/* Avatar */}
+                <div
+                  className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-sm ${
+                    isEnrolled
+                      ? "bg-gradient-to-br from-green-400 to-teal-400"
+                      : "bg-gray-400"
+                  }`}
+                >
+                  {node.userName?.charAt(0).toUpperCase() || "U"}
+                </div>
+
+                {/* Member Info */}
+                <div className="flex-1 min-w-0">
+                  <h4
+                    className={`font-semibold text-xs sm:text-sm truncate ${
+                      isEnrolled ? "text-gray-800" : "text-gray-500"
+                    }`}
+                  >
+                    {node.userName}
+                    {level === 0 && (
+                      <span className="ml-1.5 text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">
+                        DIRECT
+                      </span>
+                    )}
+                  </h4>
+                  <p
+                    className={`text-[10px] sm:text-xs truncate ${
+                      isEnrolled ? "text-gray-600" : "text-gray-400"
+                    }`}
+                  >
+                    {node.email}
+                  </p>
+                  {hasChildren && (
+                    <p className="text-[10px] text-blue-600 font-medium mt-0.5">
+                      {node.teamMembers.length} team member
+                      {node.teamMembers.length !== 1 ? "s" : ""}
+                    </p>
+                  )}
+                </div>
+
+                {/* Enrollment Status. */}
+                <div className="flex-shrink-0">
+                  {isEnrolled ? (
+                    <div className="bg-green-100 text-green-700 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
+                      ✓ Enrolled
+                    </div>
+                  ) : (
+                    <div className="bg-gray-200 text-gray-500 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
+                      Unenrolled
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Render Children */}
+            {isExpanded && hasChildren && (
+              <div className="mt-1 ml-0">
+                {node.teamMembers.map((child, index) => (
+                  <TreeNode
+                    key={child.userId}
+                    node={child}
+                    level={level + 1}
+                    isLastChild={index === node.teamMembers.length - 1}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    return (
+      <div className="space-y-3">
+        {hierarchy.map((node, index) => (
+          <TreeNode
+            key={node.userId}
+            node={node}
+            level={0}
+            isLastChild={index === hierarchy.length - 1}
+          />
+        ))}
+      </div>
+    );
+  };
+
+  // Render member list
+  const renderMemberList = (members) => {
+    if (!members || members.length === 0) {
+      return (
+        <div className="text-center py-6 sm:py-8 text-gray-500 text-sm sm:text-base">
+          No members found
+        </div>
+      );
+    }
+
+    // Filter members based on showNotEnrolled toggle
+    const filteredMembers = showNotEnrolled
+      ? members
+      : members.filter((m) => m.isEnrolled !== false);
+
+    if (filteredMembers.length === 0) {
+      return (
+        <div className="text-center py-6 sm:py-8 text-gray-500 text-sm sm:text-base">
+          No enrolled members found
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-2">
+        {filteredMembers.map((member, index) => {
+          const isEnrolled = member.isEnrolled !== false;
+
+          return (
+            <div
+              key={`${member.Email}-${index}`}
+              className={`rounded-lg p-2.5 sm:p-3 border shadow-sm transition-all ${
+                isEnrolled
+                  ? "bg-white border-gray-200"
+                  : "bg-gray-50 border-gray-300 opacity-50"
+              }`}
+            >
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div
+                  className={`w-9 h-9 sm:w-10 sm:h-10 flex-shrink-0 rounded-full flex items-center justify-center text-white font-bold text-sm sm:text-base ${
+                    isEnrolled
+                      ? "bg-gradient-to-br from-green-400 to-teal-400"
+                      : "bg-gray-400"
+                  }`}
+                >
+                  {member.UserName?.charAt(0).toUpperCase() || "U"}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h4
+                    className={`font-semibold text-xs sm:text-sm truncate ${
+                      isEnrolled ? "text-gray-800" : "text-gray-500"
+                    }`}
+                  >
+                    {member.UserName}
+                  </h4>
+                  <p
+                    className={`text-[10px] sm:text-xs truncate ${
+                      isEnrolled ? "text-gray-600" : "text-gray-400"
+                    }`}
+                  >
+                    {member.Email}
+                  </p>
+                  {member.CoachName && (
+                    <p
+                      className={`text-[10px] sm:text-xs ${
+                        isEnrolled ? "text-gray-500" : "text-gray-400"
+                      }`}
+                    >
+                      Reports to: {member.CoachName}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  {isEnrolled && member.LastUpdated && (
+                    <div className="text-[10px] sm:text-xs text-gray-500">
+                      {new Date(
+                        member.LastUpdated || member.EnrollmentDate,
+                      ).toLocaleDateString("en-US", {
+                        month: "short",
+                        day: "numeric",
+                      })}
+                    </div>
+                  )}
+                  {!isEnrolled && (
+                    <div className="text-[10px] sm:text-xs text-gray-400 font-medium px-1.5 sm:px-2 py-0.5 sm:py-1 bg-gray-200 rounded whitespace-nowrap">
+                      Unenrolled
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
   };
 
   return (
     <div className="fixed inset-0 bg-gray-50 z-50 overflow-y-auto">
       {/* Header */}
       <div className="bg-green-200 sticky top-0 z-10 shadow-lg">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-3 sm:py-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <button
               onClick={onClose}
-              className="text-gray-700 hover:bg-white hover:bg-opacity-50 rounded-full p-2 transition-colors"
+              className="text-gray-700 hover:bg-white hover:bg-opacity-50 rounded-full p-1.5 sm:p-2 transition-colors flex-shrink-0"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
-            <div className="flex-1">
-              <h1 className="text-lg font-bold text-gray-800">
-                Enrollments Report
+            <div className="flex-1 min-w-0">
+              <h1 className="text-base sm:text-lg font-bold text-gray-800 truncate">
+                Wellness University Reprorts
               </h1>
-              <p className="text-gray-700 text-xs">
-                {enrollments.length} {enrollments.length === 1 ? 'Report' : 'Reports'} • {new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              <p className="text-gray-700 text-xs hidden sm:block">
+                Track program enrollments across your team
               </p>
             </div>
             <button
               onClick={fetchEnrollments}
-              className="text-gray-700 hover:bg-white hover:bg-opacity-50 rounded-full p-2 transition-colors"
+              className="text-gray-700 hover:bg-white hover:bg-opacity-50 rounded-full p-1.5 sm:p-2 transition-colors flex-shrink-0"
               title="Refresh"
             >
-              <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              <svg
+                className="w-5 h-5 sm:w-6 sm:h-6"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
               </svg>
             </button>
           </div>
         </div>
       </div>
 
-      {/* Date Filter Buttons - Mobile View (below header) */}
-      <div className="md:hidden bg-green-200 px-4 pb-4 sticky top-[72px] z-10">
-        <style>{`
-          .hide-scrollbar::-webkit-scrollbar {
-            display: none;
-          }
-        `}</style>
-        <div className="flex flex-nowrap gap-2 justify-start overflow-x-auto hide-scrollbar" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
-          <button
-            onClick={() => setDateFilter('today')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-              dateFilter === 'today'
-                ? 'bg-green-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            Today
-          </button>
-          <button
-            onClick={() => setDateFilter('yesterday')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-              dateFilter === 'yesterday'
-                ? 'bg-green-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            Yesterday
-          </button>
-          <button
-            onClick={() => setDateFilter('week')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-              dateFilter === 'week'
-                ? 'bg-green-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            Week
-          </button>
-          <button
-            onClick={() => setDateFilter('month')}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
-              dateFilter === 'month'
-                ? 'bg-green-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            Month
-          </button>
-          <button
-            onClick={() => {
-              setShowCustomDateModal(true);
-              setSelectingStartDate(true);
-            }}
-            className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all flex items-center gap-1 whitespace-nowrap ${
-              dateFilter === 'custom'
-                ? 'bg-green-500 text-white'
-                : 'bg-white text-gray-700 hover:bg-gray-50'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            Custom
-          </button>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-green-500 mb-4"></div>
-            <p className="text-gray-600">Loading enrollments...</p>
+          <div className="flex flex-col items-center justify-center py-12 sm:py-20">
+            <div className="animate-spin rounded-full h-12 w-12 sm:h-16 sm:w-16 border-b-2 border-green-500 mb-4"></div>
+            <p className="text-gray-600 text-sm sm:text-base">
+              Loading enrollments...
+            </p>
           </div>
         ) : error ? (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-            <p className="text-red-700">{error}</p>
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 sm:p-6 text-center">
+            <p className="text-red-700 text-sm sm:text-base">{error}</p>
             <button
               onClick={fetchEnrollments}
-              className="mt-4 bg-red-600 text-white px-6 py-2 rounded-lg hover:bg-red-700"
+              className="mt-4 bg-red-600 text-white px-4 sm:px-6 py-2 rounded-lg hover:bg-red-700 text-sm sm:text-base"
             >
               Retry
             </button>
           </div>
         ) : (
           <>
-            {/* Date Filter Buttons - Desktop View (below header) */}
-            <div className="hidden md:block bg-green-200 rounded-xl p-4 mb-6 shadow-sm">
-              <div className="flex flex-wrap gap-3 justify-center">
-                <button
-                  onClick={() => setDateFilter('today')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    dateFilter === 'today'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => setDateFilter('yesterday')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    dateFilter === 'yesterday'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  Yesterday
-                </button>
-                <button
-                  onClick={() => setDateFilter('week')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    dateFilter === 'week'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  Week
-                </button>
-                <button
-                  onClick={() => setDateFilter('month')}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                    dateFilter === 'month'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  Month
-                </button>
-                <button
-                  onClick={() => {
-                    setShowCustomDateModal(true);
-                    setSelectingStartDate(true);
-                  }}
-                  className={`px-4 py-2 rounded-full text-sm font-medium transition-all flex items-center gap-2 ${
-                    dateFilter === 'custom'
-                      ? 'bg-green-500 text-white shadow-md'
-                      : 'bg-white text-gray-700 hover:bg-gray-50'
-                  }`}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                  </svg>
-                  Custom
-                </button>
-              </div>
-            </div>
-
-            {/* Stats Cards - Removed per user request */}
-            
-            {/* Filters */}
-            <div className="bg-white rounded-xl shadow-sm p-4 mb-6">
-              <div className="flex flex-col md:flex-row gap-4 items-center">
-                <div className="flex-1 w-full md:w-auto">
-                  <div className="relative">
-                    <svg className="w-5 h-5 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                    <input
-                      type="text"
-                      placeholder="Search members..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 bg-gray-50"
-                    />
-                  </div>
+            {/* Programs List */}
+            <div className="space-y-3 sm:space-y-4">
+              {PROGRAMS.filter((program) => {
+                const stats = programStats[program.name] || {
+                  mine: 0,
+                  directTeam: 0,
+                  fullTeam: 0,
+                };
+                return (
+                  stats.mine > 0 || stats.directTeam > 0 || stats.fullTeam > 0
+                );
+              }).length === 0 ? (
+                <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
+                  <div className="text-5xl sm:text-6xl mb-4">📋</div>
+                  <p className="text-gray-600 text-base sm:text-lg">
+                    No enrollments found
+                  </p>
+                  <p className="text-gray-500 text-xs sm:text-sm mt-2">
+                    Be the first to enroll in a program!
+                  </p>
                 </div>
-              </div>
-            </div>
+              ) : (
+                <>
+                  {PROGRAMS.map((program) => {
+                    const stats = programStats[program.name] || {
+                      mine: 0,
+                      directTeam: 0,
+                      fullTeam: 0,
+                      directTeamMembers: [],
+                      fullTeamMembers: [],
+                    };
 
-            {/* Enrollments List */}
-            {filteredEnrollments.length === 0 ? (
-              <div className="bg-gray-50 rounded-xl p-12 text-center">
-                <div className="text-6xl mb-4">📋</div>
-                <p className="text-gray-600 text-lg">No enrollments found</p>
-                <p className="text-gray-500 text-sm mt-2">
-                  {searchQuery || programFilter !== 'all'
-                    ? 'Try adjusting your filters'
-                    : 'Be the first to enroll!'}
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                {filteredEnrollments.map((enrollment) => {
-                  const enrolledPrograms = JSON.parse(enrollment.EnrolledPrograms || '[]');
-                  const enrollmentDate = new Date(enrollment.LastUpdated || enrollment.EnrollmentDate).toLocaleDateString('en-US', {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                  });
+                    // Hide programs with no enrollments
+                    if (
+                      stats.mine === 0 &&
+                      stats.directTeam === 0 &&
+                      stats.fullTeam === 0
+                    ) {
+                      return null;
+                    }
 
-                  return (
-                    <div
-                      key={enrollment.Id}
-                      onClick={() => handleViewEnrollmentDetails(enrollment)}
-                      className="bg-white rounded-xl shadow-md hover:shadow-lg transition-shadow p-3 sm:p-4 cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-400 to-teal-400 rounded-full flex items-center justify-center text-white font-bold text-base">
-                          {enrollment.UserName?.charAt(0).toUpperCase() || 'U'}
+                    const isExpanded = expandedProgram === program.name;
+
+                    return (
+                      <div
+                        key={program.id}
+                        className="bg-white rounded-xl shadow-md overflow-hidden"
+                      >
+                        {/* Program Header - Responsive Layout */}
+                        <div className="p-3 sm:p-4">
+                          {/* Mobile: Stacked Layout (< 640px) */}
+                          <div className="sm:hidden space-y-3">
+                            {/* Program Name */}
+                            <div className="flex items-center gap-2">
+                              <div className="w-10 h-10 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl">
+                                {program.icon}
+                              </div>
+                              <h3 className="font-semibold text-gray-800 text-sm flex-1 min-w-0">
+                                {program.name}
+                              </h3>
+                            </div>
+
+                            {/* Metrics in 3 columns */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {/* Mine */}
+                              <div
+                                onClick={() =>
+                                  stats.mine > 0 &&
+                                  handleViewClick(program.name, "mine")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.mine > 0
+                                    ? "bg-blue-50 border-blue-200 cursor-pointer active:bg-blue-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "mine"
+                                    ? "ring-2 ring-blue-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-2xl font-bold ${
+                                      stats.mine > 0
+                                        ? "text-blue-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.mine > 0 ? "✓" : "✗"}
+                                  </div>
+                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
+                                    SELF
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Direct Team */}
+                              <div
+                                onClick={() =>
+                                  stats.directTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "direct")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.directTeamMembers.length > 0
+                                    ? "bg-green-50 border-green-200 cursor-pointer active:bg-green-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "direct"
+                                    ? "ring-2 ring-green-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-2xl font-bold ${
+                                      stats.directTeamMembers.length > 0
+                                        ? "text-green-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.directTeam}
+                                  </div>
+                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
+                                    DIRECT TEAM
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Full Team */}
+                              <div
+                                onClick={() =>
+                                  stats.fullTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "full")
+                                }
+                                className={`px-2 py-2 rounded-lg border transition-all ${
+                                  stats.fullTeamMembers.length > 0
+                                    ? "bg-purple-50 border-purple-200 cursor-pointer active:bg-purple-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "full"
+                                    ? "ring-2 ring-purple-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-2xl font-bold ${
+                                      stats.fullTeamMembers.length > 0
+                                        ? "text-purple-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.fullTeam}
+                                  </div>
+                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
+                                    FULL TEAM
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Desktop: One Row Layout (>= 640px) */}
+                          <div className="hidden sm:flex items-center justify-between gap-4">
+                            {/* Left: Icon + Name */}
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-12 h-12 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-3xl">
+                                {program.icon}
+                              </div>
+                              <h3 className="font-semibold text-gray-800 text-base truncate">
+                                {program.name}
+                              </h3>
+                            </div>
+
+                            {/* Right: Metrics in horizontal row */}
+                            <div className="flex items-center gap-2">
+                              {/* Mine */}
+                              <div
+                                onClick={() =>
+                                  stats.mine > 0 &&
+                                  handleViewClick(program.name, "mine")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.mine > 0
+                                    ? "bg-blue-50 border-blue-200 cursor-pointer hover:bg-blue-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "mine"
+                                    ? "ring-2 ring-blue-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-lg font-bold ${
+                                      stats.mine > 0
+                                        ? "text-blue-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.mine > 0 ? "✓" : "✗"}
+                                  </div>
+                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                                    SELF
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Direct Team */}
+                              <div
+                                onClick={() =>
+                                  stats.directTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "direct")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.directTeamMembers.length > 0
+                                    ? "bg-green-50 border-green-200 cursor-pointer hover:bg-green-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "direct"
+                                    ? "ring-2 ring-green-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-lg font-bold ${
+                                      stats.directTeamMembers.length > 0
+                                        ? "text-green-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.directTeam}
+                                  </div>
+                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                                    DIRECT TEAM
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Full Team */}
+                              <div
+                                onClick={() =>
+                                  stats.fullTeamMembers.length > 0 &&
+                                  handleViewClick(program.name, "full")
+                                }
+                                className={`px-3 py-2 rounded-lg border transition-all ${
+                                  stats.fullTeamMembers.length > 0
+                                    ? "bg-purple-50 border-purple-200 cursor-pointer hover:bg-purple-100"
+                                    : "bg-gray-50 border-gray-200"
+                                } ${
+                                  isExpanded && viewType === "full"
+                                    ? "ring-2 ring-purple-400"
+                                    : ""
+                                }`}
+                              >
+                                <div className="text-center">
+                                  <div
+                                    className={`text-lg font-bold ${
+                                      stats.fullTeamMembers.length > 0
+                                        ? "text-purple-600"
+                                        : "text-gray-400"
+                                    }`}
+                                  >
+                                    {stats.fullTeam}
+                                  </div>
+                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
+                                    FULL TEAM
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <h3 className="font-semibold text-gray-800 text-base truncate">{enrollment.UserName}</h3>
+
+                        {/* Expanded Member List */}
+                        <AnimatePresence>
+                          {isExpanded && (
+                            <motion.div
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: "auto", opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.2 }}
+                              className="overflow-hidden"
+                            >
+                              <div className="border-t border-gray-200 bg-gray-50 p-3 sm:p-4">
+                                {/* Header with Toggles */}
+                                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+                                  <h4 className="text-xs sm:text-sm font-semibold text-gray-700">
+                                    {viewType === "mine" && "My Enrollment"}
+                                    {viewType === "direct" &&
+                                      `Direct Team (${stats.directEnrolledCount} / ${stats.directTeamMembers.length})`}
+                                    {viewType === "full" &&
+                                      `Full Team - Hierarchy View (${stats.fullEnrolledCount} / ${stats.fullTeamMembers.length})`}
+                                  </h4>
+
+                                  {/* Toggle button for non-enrolled members (only show for non-hierarchy views) */}
+                                  {viewType === "direct" && (
+                                    <button
+                                      onClick={() =>
+                                        setShowNotEnrolled(!showNotEnrolled)
+                                      }
+                                      className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[10px] sm:text-xs font-medium transition-all ${
+                                        showNotEnrolled
+                                          ? "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                                          : "bg-green-100 text-green-700 hover:bg-green-200"
+                                      }`}
+                                    >
+                                      {showNotEnrolled ? (
+                                        <>
+                                          <svg
+                                            className="w-3 h-3 sm:w-4 sm:h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                            />
+                                          </svg>
+                                          <span className="hidden sm:inline">
+                                            Hide
+                                          </span>{" "}
+                                          Unenrolled
+                                        </>
+                                      ) : (
+                                        <>
+                                          <svg
+                                            className="w-3 h-3 sm:w-4 sm:h-4"
+                                            fill="none"
+                                            stroke="currentColor"
+                                            viewBox="0 0 24 24"
+                                          >
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                            />
+                                            <path
+                                              strokeLinecap="round"
+                                              strokeLinejoin="round"
+                                              strokeWidth={2}
+                                              d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                            />
+                                          </svg>
+                                          <span className="hidden sm:inline">
+                                            Show
+                                          </span>{" "}
+                                          Unenrolled
+                                        </>
+                                      )}
+                                    </button>
+                                  )}
+                                </div>
+
+                                {viewType === "mine" && stats.mine > 0 && (
+                                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 text-center">
+                                    <div className="text-3xl sm:text-4xl mb-2">
+                                      ✅
+                                    </div>
+                                    <p className="text-blue-800 font-semibold text-sm sm:text-base">
+                                      You're enrolled in this program!
+                                    </p>
+                                  </div>
+                                )}
+                                {viewType === "mine" && stats.mine === 0 && (
+                                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4 text-center">
+                                    <div className="text-3xl sm:text-4xl mb-2">
+                                      📋
+                                    </div>
+                                    <p className="text-gray-600 font-semibold text-sm sm:text-base">
+                                      You're unenrolled in this program
+                                    </p>
+                                  </div>
+                                )}
+                                {viewType === "direct" &&
+                                  renderMemberList(stats.directTeamMembers)}
+                                {viewType === "full" &&
+                                  renderHierarchyView(
+                                    stats.fullTeamMembers,
+                                    program.name,
+                                  )}
+                              </div>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </>
+              )}
+            </div>
           </>
         )}
       </div>
-
-      {/* Detail Modal */}
-      <AnimatePresence>
-        {selectedEnrollment && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setSelectedEnrollment(null)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-lg w-full"
-            >
-              <div className="bg-green-200 p-4 rounded-t-2xl">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <h3 className="text-lg font-bold text-gray-800">Enrollment Details</h3>
-                    <p className="text-xs text-gray-700 mt-0.5">
-                      {new Date(selectedEnrollment.LastUpdated || selectedEnrollment.EnrollmentDate).toLocaleDateString('en-US', {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                      }).replace(',', '')}
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setSelectedEnrollment(null)}
-                    className="text-gray-700 hover:bg-white hover:bg-opacity-50 rounded-full p-1.5"
-                  >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              <div className="p-4 space-y-3">
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Name</p>
-                  <p className="text-base font-semibold text-gray-800">{selectedEnrollment.UserName}</p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-600 mb-1">Email</p>
-                  <p className="text-gray-800">{selectedEnrollment.Email}</p>
-                </div>
-
-                <div>
-                  <p className="text-sm text-gray-600 mb-2">Enrolled Programs</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {JSON.parse(selectedEnrollment.EnrolledPrograms || '[]').map((program, idx) => (
-                      <div
-                        key={idx}
-                        className="bg-gradient-to-r from-green-50 to-teal-50 border border-green-200 p-3 rounded-lg text-center"
-                      >
-                        <span className="text-gray-800 font-medium text-sm">{program}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Custom Date Range Modal */}
-      <AnimatePresence>
-        {showCustomDateModal && (
-          <div
-            className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4"
-            onClick={() => setShowCustomDateModal(false)}
-          >
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6"
-            >
-              <div className="mb-4">
-                <h3 className="text-lg font-bold text-gray-800 text-center">March 2026</h3>
-                <p className="text-sm text-gray-600 text-center mt-1">
-                  {selectingStartDate ? 'Select start date' : 'Select end date'}
-                </p>
-              </div>
-
-              {/* Calendar Grid */}
-              <div className="mb-4">
-                {/* Day Headers */}
-                <div className="grid grid-cols-7 gap-2 mb-2">
-                  {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
-                    <div key={day} className="text-center text-xs font-medium text-gray-600">
-                      {day}
-                    </div>
-                  ))}
-                </div>
-
-                {/* Calendar Days */}
-                <div className="grid grid-cols-7 gap-2">
-                  {[...Array(42)].map((_, index) => {
-                    const dayNumber = index - 6 + 1; // March 2026 starts on Sunday (index 0)
-                    const isValidDay = dayNumber > 0 && dayNumber <= 31;
-                    const today = new Date().getDate();
-                   const isToday = dayNumber === today;
-                    const dateStr = isValidDay ? `2026-03-${String(dayNumber).padStart(2, '0')}` : '';
-                    
-                    return (
-                      <button
-                        key={index}
-                        disabled={!isValidDay}
-                        onClick={() => {
-                          if (isValidDay) {
-                            if (selectingStartDate) {
-                              setCustomDateRange({ ...customDateRange, start: dateStr });
-                              setSelectingStartDate(false);
-                            } else {
-                              setCustomDateRange({ ...customDateRange, end: dateStr });
-                              setDateFilter('custom');
-                              setShowCustomDateModal(false);
-                            }
-                          }
-                        }}
-                        className={`
-                          aspect-square rounded-lg text-sm font-medium transition-colors
-                          ${!isValidDay ? 'invisible' : ''}
-                          ${isToday ? 'bg-green-100 text-green-700 hover:bg-green-200' : ''}
-                          ${!isToday && isValidDay ? 'hover:bg-gray-100 text-gray-800' : ''}
-                          ${customDateRange.start === dateStr || customDateRange.end === dateStr 
-                            ? 'bg-green-500 text-white hover:bg-green-600' 
-                            : ''}
-                        `}
-                      >
-                        {isValidDay ? dayNumber : ''}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Selected Range Display */}
-              {customDateRange.start && (
-                <div className="mb-4 text-center text-sm text-gray-600">
-                  <span className="font-medium">{customDateRange.start}</span>
-                  {customDateRange.end && (
-                    <>
-                      <span className="mx-2">to</span>
-                      <span className="font-medium">{customDateRange.end}</span>
-                    </>
-                  )}
-                </div>
-              )}
-
-              {/* Footer Buttons */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowCustomDateModal(false);
-                    setCustomDateRange({ start: '', end: '' });
-                    setSelectingStartDate(true);
-                  }}
-                  className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                  Cancel
-                </button>
-                {customDateRange.start && customDateRange.end && (
-                  <button
-                    onClick={() => {
-                      setDateFilter('custom');
-                      setShowCustomDateModal(false);
-                    }}
-                    className="flex-1 px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"
-                  >
-                    Apply
-                  </button>
-                )}
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 };

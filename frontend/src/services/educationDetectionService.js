@@ -140,7 +140,7 @@ NOTE: Titles often NOT visible in Google Meet. Be confident about platform (>0.8
       return {
         success: true,
         platform: data.platform || 'Online Meeting',
-        topic: data.detectedTitle || 'Education Meeting', // ✅ Fallback here
+        topic: 'Education Meeting', // ✅ Fixed topic
         confidence: data.confidence || 0.7,
         participantCount: data.participantCount || 'Unknown',
         detectionReason: data.detectionReason || 'Meeting detected'

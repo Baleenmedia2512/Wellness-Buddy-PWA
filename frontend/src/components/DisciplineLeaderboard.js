@@ -26,6 +26,7 @@ import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
 const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
@@ -46,7 +47,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log("⭐ [DISCIPLINE-LEADERBOARD] Response status:", response.status);
+      console.log(
+        "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
+        response.status,
+      );
       const result = await response.json();
       console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
@@ -145,15 +149,23 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Get star icon based on discipline percentage
   const getStarIcon = (disciplinePercentage) => {
     if (disciplinePercentage >= 90) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 fill-yellow-500" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-yellow-500 fill-yellow-500" />
+      );
     }
     if (disciplinePercentage >= 80) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 fill-gray-400" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-gray-400 fill-gray-400" />
+      );
     }
     if (disciplinePercentage >= 70) {
-      return <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-orange-500 fill-orange-500" />;
+      return (
+        <Star className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-orange-500 fill-orange-500" />
+      );
     }
-    return <Award className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-500" />;
+    return (
+      <Award className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 text-green-500" />
+    );
   };
 
   // Don't render if no data or loading failed
@@ -206,28 +218,41 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation - Show all users in continuous scroll
+  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 overflow-hidden shadow-sm border-b border-purple-100">
-      <div className="py-2 sm:py-2.5 px-3 sm:px-4 overflow-hidden">
+    <div className="w-full bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 shadow-sm">
+      <div className="py-2 sm:py-2.5 px-3 sm:px-4">
         {/* Title */}
-        <div className="text-center mb-1.5">
-          <span className="text-xs sm:text-sm font-semibold text-purple-700">
-            🌟 Discipline Champions (Last 10 Days)
+        <div className="flex items-center justify-between mb-1.5">
+          {/* <span className="text-xs sm:text-sm font-semibold text-purple-700">
+            🌟 Discipline Champions
+          </span> */}
+          <span className="text-[10px] sm:text-xs text-purple-600">
+            (Last 10 Days)
           </span>
         </div>
-        
+
         <div
-          className="animate-smooth-marquee whitespace-nowrap inline-flex"
-          style={{
-            animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
-          }}
+          className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
+          onClick={() => setIsPaused(!isPaused)}
         >
-          {/* First set of items */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-          
-          {/* Duplicate set for seamless loop */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+          <div
+            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            style={{
+              animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+              animationPlayState: isPaused ? "paused" : "running",
+            }}
+          >
+            {/* First set of items */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `first-${user.userId}`),
+            )}
+
+            {/* Duplicate set for seamless loop */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `second-${user.userId}`),
+            )}
+          </div>
         </div>
       </div>
     </div>

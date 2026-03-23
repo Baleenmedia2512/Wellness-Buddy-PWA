@@ -1,6 +1,16 @@
 // src/components/UserProfileModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { X, Save, CheckCircle, Flame, ChevronDown, Camera } from "lucide-react";
+import {
+  X,
+  Save,
+  CheckCircle,
+  Flame,
+  ChevronDown,
+  Camera,
+  Phone,
+  User,
+  Ruler,
+} from "lucide-react";
 import { getUserContext } from "../services/userContextService";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 
@@ -8,10 +18,17 @@ import TouchFeedbackButton from "./TouchFeedbackButton";
  * User Profile Modal
  * Displays user information and allows editing profile fields
  */
-const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
+const UserProfileModal = ({
+  isOpen,
+  onClose,
+  user,
+  userRole = "user",
+  onProfileUpdate,
+}) => {
   const [name, setName] = useState("");
   const [height, setHeight] = useState("");
   const [bmr, setBmr] = useState("");
+  const [phone, setPhone] = useState("");
   const [dietType, setDietType] = useState("");
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
@@ -55,14 +72,24 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
 
       if (data.success && data.data) {
         const profile = data.data;
+        console.log("📥 [UserProfileModal] Fetched profile data:", {
+          latestBmr: profile.latestBmr,
+          latestWeight: profile.latestWeight,
+          weightRecordDate: profile.weightRecordDate,
+          height: profile.height,
+          phoneNumber: profile.phoneNumber,
+          dietType: profile.dietType
+        });
         setName(profile.userName || user.name || "");
         setHeight(profile.height ? String(profile.height) : "");
         setBmr(profile.latestBmr ? String(Math.round(profile.latestBmr)) : "");
+        setPhone(profile.phoneNumber || "");
         setDietType(profile.dietType || "");
         // Set existing profile image if available
         if (profile.profileImage) {
           setProfileImagePreview(profile.profileImage);
         }
+        console.log("✅ [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
       }
     } catch (err) {
       console.error("❌ Error fetching user profile:", err);
@@ -102,7 +129,6 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setHasSaved(false);
       setError("");
       setProfileImage(null);
-      setProfileImagePreview(null);
       fetchUserProfile();
     }
   }, [isOpen, user?.email, fetchUserProfile]);
@@ -197,21 +223,41 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       setSuccessMessage("");
       setIsSaving(true);
 
-      // Validate inputs
-      if (height && (parseFloat(height) < 50 || parseFloat(height) > 198)) {
+      // Validate name (mandatory field)
+      if (!name || name.trim() === "") {
+        setError("Name is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate height (mandatory field)
+      if (!height || height.trim() === "") {
+        setError("Height is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate height range
+      const heightValue = parseFloat(height);
+      if (isNaN(heightValue) || heightValue < 50 || heightValue > 198) {
         setError("Height must be between 50 and 198 cm (max 6.5 feet)");
         setIsSaving(false);
         return;
       }
 
-      // Validate BMR if provided
-      if (bmr && bmr.trim() !== "") {
-        const bmrValue = parseFloat(bmr);
-        if (isNaN(bmrValue) || bmrValue < 1100 || bmrValue > 2200) {
-          setError("BMR must be between 1100 and 2200 kcal/day");
-          setIsSaving(false);
-          return;
-        }
+      // Validate phone number (mandatory field)
+      if (!phone || phone.trim() === "") {
+        setError("Phone number is required");
+        setIsSaving(false);
+        return;
+      }
+
+      // Validate phone number format
+      const cleanedPhone = phone.trim().replace(/[\s\-()]/g, "");
+      if (!/^\+?[0-9]{10,15}$/.test(cleanedPhone)) {
+        setError("Please enter a valid phone number (10-15 digits)");
+        setIsSaving(false);
+        return;
       }
 
       const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
@@ -225,9 +271,12 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
           height: height ? parseFloat(height) : undefined,
           bmr: bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined,
           dietType: dietType || undefined,
+          phoneNumber: phone.trim() || undefined,
           profileImage: profileImage || undefined,
         }),
       });
+
+      console.log("📤 [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
 
       // Check if response is JSON before parsing
       const contentType = response.headers.get("content-type");
@@ -248,17 +297,12 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
       }
 
       if (data.success) {
-        // Update BMR if it was recalculated
-        if (data.data?.bmr) {
-          setBmr(String(Math.round(data.data.bmr)));
-        }
-
         // Notify parent component of the update
         if (onProfileUpdate) {
           onProfileUpdate({
             name,
             height: height ? parseFloat(height) : null,
-            bmr: data.data?.bmr || (bmr ? parseFloat(bmr) : null),
+            bmr: bmr ? parseFloat(bmr) : null,
             dietType: dietType || null,
             profileImage: profileImagePreview || null,
           });
@@ -278,6 +322,10 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
               ),
             );
         }
+
+        // Refetch profile data to show updated values immediately
+        await fetchUserProfile();
+        console.log("✅ [Profile Update] Profile data refresched after save");
 
         // Show success message and keep modal open
         setSuccessMessage("Profile saved successfully!");
@@ -345,9 +393,9 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                 onClick={handleProfileImageClick}
                 className="w-16 h-16 rounded-full border-2 border-white overflow-hidden cursor-pointer hover:border-green-100 transition-all group relative"
               >
-                {profileImagePreview || user?.photoURL ? (
+                {profileImagePreview ? (
                   <img
-                    src={profileImagePreview || user.photoURL}
+                    src={profileImagePreview}
                     alt={user.displayName || user.name || "User"}
                     className="w-full h-full object-cover"
                     loading="lazy"
@@ -377,9 +425,31 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             </div>
 
             <div>
-              <h2 className="text-xl font-bold text-white">
-                {name || user?.displayName || user?.name || "User"}
-              </h2>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-xl font-bold text-white">
+                  {name || user?.displayName || user?.name || "User"}
+                </h2>
+                {userRole === "admin" && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">
+                    Admin
+                  </span>
+                )}
+                {userRole === "developer" && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">
+                    Developer
+                  </span>
+                )}
+                {userRole === "coach" && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">
+                    Coach
+                  </span>
+                )}
+                {(!userRole || userRole === "user") && (
+                  <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-900 flex-shrink-0">
+                    User
+                  </span>
+                )}
+              </div>
               <p className="text-sm text-green-50">{user?.email}</p>
               <p className="text-xs text-green-100 mt-1">
                 Click photo to change
@@ -408,92 +478,94 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
               <div className="space-y-4">
                 {/* Name */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Name
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Enter your name"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
                     style={{ fontSize: "16px" }}
                   />
                 </div>
 
                 {/* Height */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    Height (cm)
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Height (cm) <span className="text-red-500">*</span>
                   </label>
                   <input
                     type="number"
                     inputMode="decimal"
                     value={height}
                     onChange={(e) => setHeight(e.target.value)}
-                    placeholder="e.g., 183 (6 feet)"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-purple-400 focus:outline-none text-base bg-white"
+                    placeholder="e.g. 170"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
                     style={{ fontSize: "16px" }}
                     min="50"
                     max="198"
                   />
                 </div>
 
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Phone Number <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="tel"
+                    inputMode="tel"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    placeholder="e.g. +91 9876543210"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
+                    style={{ fontSize: "16px" }}
+                  />
+                </div>
+
                 {/* BMR */}
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
-                    <span className="flex items-center gap-2">
-                      <Flame className="w-4 h-4 text-orange-500" />
-                      BMR (kcal)
-                    </span>
+                  <label className="flex items-center gap-1 text-sm font-medium text-gray-700 mb-1">
+                    <Flame className="w-4 h-4 text-orange-500" />
+                    BMR (kcal)
                   </label>
                   <input
                     type="number"
                     inputMode="numeric"
                     value={bmr}
                     onChange={(e) => setBmr(e.target.value)}
-                    placeholder="e.g., 1650"
-                    className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-base bg-white"
+                    placeholder="Enter your BMR"
+                    className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                     style={{ fontSize: "16px" }}
                     min="1100"
-                    max="2200"
                   />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Basal Metabolic Rate (1100 - 2200 kcal/day)
-                  </p>
                 </div>
 
-                {/* Diet Preference - Custom Dropdown */}
+                {/* Diet Preference - Dropdown */}
                 <div className="relative">
-                  <label className="block text-sm font-semibold text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
                     Diet Preference
                   </label>
-
-                  {/* Dropdown Toggle Button */}
                   <button
                     type="button"
                     onClick={() => setIsDietDropdownOpen(!isDietDropdownOpen)}
-                    className="w-full px-4 py-3 rounded-xl border-2 border-gray-300 bg-white text-left transition-all hover:border-gray-400 focus:ring-2 focus:ring-green-500 focus:border-green-500 flex items-center justify-between"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none text-left flex items-center justify-between"
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-gray-900 text-base truncate">
-                        {dietType ? (
-                          <>
-                            {dietType === "Vegetarian" && "🌱 Vegetarian"}
-                            {dietType === "Non-Vegetarian" &&
-                              "🍗 Non-Vegetarian"}
-                            {dietType === "Vegan" && "🥦 Vegan"}
-                            {dietType === "Pescatarian" && "🐟 Pescatarian"}
-                          </>
-                        ) : (
-                          <span className="text-gray-400">
-                            Select diet type
-                          </span>
-                        )}
-                      </div>
-                    </div>
+                    <span
+                      className={`flex items-center gap-2 ${
+                        dietType ? "text-gray-900" : "text-gray-400"
+                      }`}
+                    >
+                      {dietType === "Vegetarian" && "🌱"}
+                      {dietType === "Non-Vegetarian" && "🍗"}
+                      {dietType === "Vegan" && "🥦"}
+                      {dietType === "Pescatarian" && "🐟"}
+                      {dietType || "Select diet preference"}
+                    </span>
                     <ChevronDown
-                      className={`w-5 h-5 text-gray-400 transition-transform flex-shrink-0 ml-2 ${
+                      className={`w-5 h-5 text-gray-400 transition-transform ${
                         isDietDropdownOpen ? "rotate-180" : ""
                       }`}
                     />
@@ -503,28 +575,24 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                   {isDietDropdownOpen && (
                     <div
                       ref={dropdownOptionsRef}
-                      className="absolute z-50 w-full mt-2 bg-white rounded-xl border-2 border-gray-300 shadow-lg overflow-hidden"
+                      className="absolute z-50 w-full mt-1 bg-white rounded-lg border border-gray-300 shadow-lg overflow-hidden"
                     >
                       {[
                         {
                           value: "Vegetarian",
-                          label: "🌱 Vegetarian",
-                          desc: "No meat or fish",
+                          label: "Vegetarian",
+                          icon: "🌱",
                         },
                         {
                           value: "Non-Vegetarian",
-                          label: "🍗 Non-Vegetarian",
-                          desc: "Includes all foods",
+                          label: "Non-Vegetarian",
+                          icon: "🍗",
                         },
-                        {
-                          value: "Vegan",
-                          label: "🥦 Vegan",
-                          desc: "No animal products",
-                        },
+                        { value: "Vegan", label: "Vegan", icon: "🥦" },
                         {
                           value: "Pescatarian",
-                          label: "🐟 Pescatarian",
-                          desc: "Fish but no meat",
+                          label: "Pescatarian",
+                          icon: "🐟",
                         },
                       ].map((option) => (
                         <button
@@ -534,40 +602,21 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
                             setDietType(option.value);
                             setIsDietDropdownOpen(false);
                           }}
-                          className={`w-full px-4 py-3 transition-all text-left border-b border-gray-100 last:border-b-0 ${
+                          className={`w-full px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 flex items-center gap-2 ${
                             dietType === option.value
                               ? "bg-green-50 text-green-900"
-                              : "text-gray-700 hover:bg-gray-50"
+                              : "text-gray-700"
                           }`}
                         >
-                          <div className="flex items-center justify-between">
-                            <div className="flex-1 min-w-0">
-                              <div className="font-medium text-base">
-                                {option.label}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-0.5">
-                                {option.desc}
-                              </div>
-                            </div>
-                            {dietType === option.value && (
-                              <svg
-                                className="w-5 h-5 text-green-600 flex-shrink-0 ml-2"
-                                fill="currentColor"
-                                viewBox="0 0 20 20"
-                              >
-                                <path
-                                  fillRule="evenodd"
-                                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                                  clipRule="evenodd"
-                                />
-                              </svg>
-                            )}
-                          </div>
+                          <span className="text-lg">{option.icon}</span>
+                          <span>{option.label}</span>
+                          {dietType === option.value && (
+                            <CheckCircle className="w-4 h-4 text-green-600 ml-auto" />
+                          )}
                         </button>
                       ))}
                     </div>
                   )}
-
                   <p className="text-xs text-gray-500 mt-1">
                     AI will prioritize foods matching your diet preference
                   </p>
@@ -606,7 +655,12 @@ const UserProfileModal = ({ isOpen, onClose, user, onProfileUpdate }) => {
             </TouchFeedbackButton>
             <TouchFeedbackButton
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={
+                isSaving || 
+                !name || name.trim() === "" || 
+                !height || height.trim() === "" || 
+                !phone || phone.trim() === ""
+              }
               className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
               ariaLabel="Save profile"
             >

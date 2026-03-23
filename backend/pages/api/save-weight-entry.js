@@ -1,52 +1,56 @@
-﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
-import { cache, cacheKeys } from '../../utils/cache.js';
-import { largeBodyConfig as config } from '../../utils/apiConfig.js';
+﻿import {
+  getSupabaseClient,
+  getISTTimestamp,
+} from "../../utils/supabaseClient.js";
+import { cache, cacheKeys } from "../../utils/cache.js";
+import { largeBodyConfig as config } from "../../utils/apiConfig.js";
 
 export { config };
 
 export default async function handler(req, res) {
   // Set CORS headers for all requests
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+
   // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
+  if (req.method === "OPTIONS") {
     res.status(200).end();
     return;
   }
 
-  if (req.method !== 'POST') {
-    res.status(405).json({ message: 'Method not allowed' });
+  if (req.method !== "POST") {
+    res.status(405).json({ message: "Method not allowed" });
     return;
   }
 
   // Check if request body is too large or malformed
-  // Check 
+  // Check
   if (!req.body) {
-    res.status(400).json({ 
-      message: 'Request body is missing or too large. Maximum size is 10MB.' 
+    res.status(400).json({
+      message: "Request body is missing or too large. Maximum size is 10MB.",
     });
     return;
   }
 
-  const { 
-    userId, 
+  const {
+    userId,
     weightValue,
-    unit = 'kg', // Default to kg if not provided
+    unit = "kg", // Default to kg if not provided
     bmi,
     bodyFat,
     muscleMass,
     bmr,
     imageBase64ToSave: WeightImageBase64,
     clientTimestamp, // User's actual upload time from their device
-    clientTimezoneOffset // User's timezone offset in minutes
+    clientTimezoneOffset, // User's timezone offset in minutes
+    entryId // If provided, overwrite existing entry instead of inserting
   } = req.body;
 
   // Validate required fields
   if (!userId || !weightValue) {
-    res.status(400).json({ 
-      message: 'Missing required fields: userId, weightValue' 
+    res.status(400).json({
+      message: "Missing required fields: userId, weightValue",
     });
     return;
   }
@@ -54,16 +58,16 @@ export default async function handler(req, res) {
   // Validate weight value
   const weight = parseFloat(weightValue);
   if (isNaN(weight) || weight <= 0 || weight > 500) {
-    res.status(400).json({ 
-      message: 'Invalid weight value. Must be between 0 and 500.' 
+    res.status(400).json({
+      message: "Invalid weight value. Must be between 0 and 500.",
     });
     return;
   }
 
   // Validate unit
-  if (unit !== 'kg' && unit !== 'lbs') {
-    res.status(400).json({ 
-      message: 'Invalid unit. Must be "kg" or "lbs".' 
+  if (unit !== "kg" && unit !== "lbs") {
+    res.status(400).json({
+      message: 'Invalid unit. Must be "kg" or "lbs".',
     });
     return;
   }
@@ -72,84 +76,196 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // If ImageBase64 is empty string, store as null
-    const imageBase64ToSave = (WeightImageBase64 && WeightImageBase64.trim() !== '') ? WeightImageBase64 : null;
+    const imageBase64ToSave =
+      WeightImageBase64 && WeightImageBase64.trim() !== ""
+        ? WeightImageBase64
+        : null;
 
     // Parse optional metrics and convert to null if not provided or invalid
     const bmiValue = bmi && !isNaN(parseFloat(bmi)) ? parseFloat(bmi) : null;
-    const bodyFatValue = bodyFat && !isNaN(parseFloat(bodyFat)) ? parseFloat(bodyFat) : null;
-    const muscleMassValue = muscleMass && !isNaN(parseFloat(muscleMass)) ? parseFloat(muscleMass) : null;
-    // Use provided BMR (manually entered)
-    const bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
+    const bodyFatValue =
+      bodyFat && !isNaN(parseFloat(bodyFat)) ? parseFloat(bodyFat) : null;
+    const muscleMassValue =
+      muscleMass && !isNaN(parseFloat(muscleMass))
+        ? parseFloat(muscleMass)
+        : null;
+
+    // 🔥 BMR PRESERVATION: Carry forward previous BMR if not explicitly provided
+    let bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
+
+    if (!bmrValue) {
+      // No BMR provided - preserve from previous weight record if exists
+      const { data: previousWeight } = await supabase
+        .from("weight_records_table")
+        .select("Bmr")
+        .eq("UserId", parseInt(userId))
+        .order("CreatedAt", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (previousWeight?.Bmr) {
+        bmrValue = parseFloat(previousWeight.Bmr);
+        console.log("🔄 [BMR] Preserved from previous record:", bmrValue);
+      }
+    } else {
+      console.log("✏️ [BMR] Explicitly updated to:", bmrValue);
+    }
 
     // Insert using Supabase (ID will be auto-generated by sequence)
     // Use exact PascalCase column names as they exist in Supabase
     // Store everything in IST (Indian Standard Time)
     const currentTime = getISTTimestamp();
-    
+
     // 🔍 DEBUG: Log weight upload details with client time comparison
     const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
-    console.log('⚖️ Weight Upload:', {
+    console.log("⚖️ Weight Upload:", {
       userId,
       weightValue,
+      entryId: entryId || 'new entry',
       clientUploaded: clientTimestamp || 'Not provided',
       clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { timeZone: 'America/New_York', hour12: true }) : 'N/A',
       clientTimezoneOffset,
       serverUTC: new Date().toISOString(),
       storedIST: currentTime,
-      timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
-      note: 'Compare client upload time vs stored IST'
+      timeDifference: clientTimestamp
+        ? `${Math.round((new Date() - clientLocalTime) / 1000)}s`
+        : "N/A",
+      note: "Compare client upload time vs stored IST",
     });
-    
-    const { data, error } = await supabase
-      .from('weight_records_table')
-      .insert({
-        UserId: parseInt(userId),
-        Weight: weight,
-        Bmi: bmiValue,
-        BodyFat: bodyFatValue,
-        MuscleMass: muscleMassValue,
-        Bmr: bmrValue,
-        WeightImageBase64: imageBase64ToSave,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
-      })
-      .select()
-      .single();
 
-    if (error) throw error;
+    // Derive the calendar date for this entry (client's local date preferred).
+    const entryDate = clientTimestamp
+      ? new Date(clientTimestamp).toISOString().substring(0, 10)
+      : currentTime.substring(0, 10); // fallback: IST date "YYYY-MM-DD"
+
+    // Day window in IST for duplicate detection
+    const dayStart = entryDate + 'T00:00:00';
+    const dayEnd   = entryDate + 'T23:59:59';
+
+    let data, error;
+    let wasUpdated = false;
+
+    if (entryId) {
+      // ✏️ OVERWRITE: explicit edit by ID from dashboard/modal
+      const updateFields = {
+        Weight: weight,
+        UpdatedAt: currentTime
+      };
+      if (bmiValue !== null) updateFields.Bmi = bmiValue;
+      if (bodyFatValue !== null) updateFields.BodyFat = bodyFatValue;
+      if (muscleMassValue !== null) updateFields.MuscleMass = muscleMassValue;
+      if (bmrValue !== null) updateFields.Bmr = bmrValue;
+      if (imageBase64ToSave !== null) updateFields.WeightImageBase64 = imageBase64ToSave;
+
+      ({ data, error } = await supabase
+        .from('weight_records_table')
+        .update(updateFields)
+        .eq('ID', entryId)
+        .eq('UserId', parseInt(userId))
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .select()
+        .single());
+
+      if (!data && !error) {
+        return res.status(403).json({ success: false, message: 'Entry not found or unauthorized' });
+      }
+      wasUpdated = true;
+    } else {
+      // 🔄 CHECK-THEN-INSERT/UPDATE: find existing entry for today, update if
+      // found, insert if not — works without the EntryDate column.
+      console.log(`🔄 [save-weight-entry] Check-upsert for user ${userId} on ${entryDate}`);
+
+      const { data: existing } = await supabase
+        .from('weight_records_table')
+        .select('ID')
+        .eq('UserId', parseInt(userId))
+        .gte('CreatedAt', dayStart)
+        .lte('CreatedAt', dayEnd)
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .order('CreatedAt', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (existing?.ID) {
+        // Update the existing today-entry
+        const updateFields = {
+          Weight: weight,
+          UpdatedAt: currentTime
+        };
+        if (bmiValue !== null) updateFields.Bmi = bmiValue;
+        if (bodyFatValue !== null) updateFields.BodyFat = bodyFatValue;
+        if (muscleMassValue !== null) updateFields.MuscleMass = muscleMassValue;
+        if (bmrValue !== null) updateFields.Bmr = bmrValue;
+        if (imageBase64ToSave !== null) updateFields.WeightImageBase64 = imageBase64ToSave;
+
+        ({ data, error } = await supabase
+          .from('weight_records_table')
+          .update(updateFields)
+          .eq('ID', existing.ID)
+          .select()
+          .single());
+
+        wasUpdated = true;
+        console.log(`✅ [save-weight-entry] Updated existing entry ID=${existing.ID}`);
+      } else {
+        // Insert a fresh entry
+        const insertPayload = {
+          UserId: parseInt(userId),
+          Weight: weight,
+          Bmi: bmiValue,
+          BodyFat: bodyFatValue,
+          MuscleMass: muscleMassValue,
+          Bmr: bmrValue,
+          WeightImageBase64: imageBase64ToSave,
+          CreatedAt: currentTime,
+          UpdatedAt: currentTime
+        };
+
+        ({ data, error } = await supabase
+          .from('weight_records_table')
+          .insert(insertPayload)
+          .select()
+          .single());
+
+        console.log(`✅ [save-weight-entry] Inserted new entry`);
+      }
+    }
     
+    if (error) throw error;
+
     // Get user email to clear profile cache
     const { data: user, error: userError } = await supabase
-      .from('team_table')
-      .select('Email')
-      .eq('UserId', userId)
+      .from("team_table")
+      .select("Email")
+      .eq("UserId", userId)
       .maybeSingle();
 
     if (!userError && user?.Email) {
       cache.delete(cacheKeys.userProfile(user.Email));
-      console.log('🗑️ [save-weight-entry] Cache cleared for user:', user.Email);
+      console.log("🗑️ [save-weight-entry] Cache cleared for user:", user.Email);
     }
-    
+
     res.status(200).json({
       success: true,
       id: data?.ID || data?.id,
-      message: 'Weight entry saved successfully',
+      updated: wasUpdated,
+      message: wasUpdated ? "Today's weight entry updated successfully" : 'Weight entry saved successfully',
       data: {
         userId,
         weightValue: weight,
         unit,
         bmr: bmrValue,
+        bmrPreserved: !bmr && bmrValue ? true : false, // true if BMR was carried forward
         imageBase64: imageBase64ToSave,
-        timestamp: new Date().toISOString()
-      }
+        timestamp: new Date().toISOString(),
+      },
     });
-
   } catch (error) {
-    console.error('❌ Database save error:', error);
+    console.error("❌ Database save error:", error);
     res.status(500).json({
       success: false,
-      message: 'Failed to save weight entry',
-      error: error.message
+      message: "Failed to save weight entry",
+      error: error.message,
     });
   }
 }

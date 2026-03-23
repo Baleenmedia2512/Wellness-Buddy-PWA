@@ -157,6 +157,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Modal and delete states
   const [selectedEntry, setSelectedEntry] = useState(null);
   const [showModal, setShowModal] = useState(false);
+
+  // Profile display
+  const [savedUserName, setSavedUserName] = useState(null);
+  const [savedProfileImage, setSavedProfileImage] = useState(null);
   
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
@@ -372,6 +376,29 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     return () => window.removeEventListener('resize', updateChartWidth);
   }, [activeWeightPanel, weightTrendRangeDays, weightTrendSeries.length]);
 
+  // Fetch saved user profile (name + photo) once when user changes
+  useEffect(() => {
+    const fetchProfile = async () => {
+      if (!user?.email) return;
+      try {
+        const response = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
+          { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } }
+        );
+        if (response.ok) {
+          const d = await response.json();
+          if (d.success && d.data) {
+            if (d.data.userName) setSavedUserName(d.data.userName);
+            if (d.data.profileImage) setSavedProfileImage(d.data.profileImage);
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching profile for WeightDashboard:', err);
+      }
+    };
+    fetchProfile();
+  }, [user?.email, apiBaseUrl]);
+
   /**
    * Fetch ALL weight history on mount and when user changes
    */
@@ -585,6 +612,30 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
+   * Handle weight edit/update - updates both backend and local state
+   */
+  const handleUpdateEntry = async (entryId, newWeight) => {
+    const userId = userIdRef.current || user?.id;
+    const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, entryId, weightValue: newWeight })
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Failed to update weight');
+    }
+    // Update local weight history
+    setWeightHistory(prev =>
+      prev.map(e => String(e.ID ?? e.id) === String(entryId) ? { ...e, Weight: String(newWeight) } : e)
+    );
+    // Keep modal in sync
+    setSelectedEntry(prev =>
+      prev && String(prev.ID ?? prev.id) === String(entryId) ? { ...prev, Weight: String(newWeight) } : prev
+    );
+  };
+
+  /**
    * Handle undo expiration - called when timer runs out
    * Just remove placeholder (backend already deleted)
    */
@@ -647,6 +698,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     return (
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-24 mt-2 overflow-x-hidden">
         <div className="px-3 md:px-4">
+
+
           {/* Current Month Header */}
           {/* <div className="mt-5 mb-6"> */}
             {/* <div className="flex items-rigth justify-between"> */}
@@ -1207,6 +1260,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 onDelete={handleDeleteEntry}
                                 onView={handleViewEntry}
                                 index={index}
+                                userName={savedUserName || user?.displayName || user?.name || 'User'}
+                                profileImage={savedProfileImage || null}
                               />
                             </Suspense>
                           );
@@ -1222,6 +1277,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 onDelete={handleDeleteEntry}
                                 onView={handleViewEntry}
                                 index={index}
+                                userName={savedUserName || user?.displayName || user?.name || 'User'}
+                                profileImage={savedProfileImage || null}
                               />
                             </Suspense>
                           </LazyLoadWrapper>
@@ -1271,10 +1328,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 setSelectedEntry(null);
               }}
               onDelete={handleDeleteEntry}
-              onEdit={() => {
-                // TODO: Implement edit functionality
-                // console.log('Edit not implemented yet');
-              }}
+              onUpdate={handleUpdateEntry}
+              apiBaseUrl={apiBaseUrl}
               previousWeight={(() => {
                 const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
                 const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
@@ -1313,10 +1368,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               setSelectedEntry(null);
             }}
             onDelete={handleDeleteEntry}
-            onEdit={() => {
-              // TODO: Implement edit functionality
-              // console.log('Edit not implemented yet');
-            }}
+            onUpdate={handleUpdateEntry}
+            apiBaseUrl={apiBaseUrl}
             previousWeight={(() => {
               const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
               const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;

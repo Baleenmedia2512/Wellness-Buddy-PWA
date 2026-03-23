@@ -210,18 +210,38 @@ const TeamNode = ({
                     MEMBER
                   </span>
                 )}
+                {/* Shared Team Badge - when viewing yourself as a co-coach */}
+                {level === 0 && node.coachName && node.coCoachName && (
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-amber-50 text-amber-700 border border-amber-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0 flex items-center gap-0.5">
+                    <Users className="w-2 h-2 xs:w-2.5 xs:h-2.5" />
+                    SHARED TEAM
+                  </span>
+                )}
               </div>
               <p className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 {node.email}
               </p>
               {(node.coachName || node.coCoachName) && (
                 <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
-                  Reports to:{" "}
-                  <span className="text-gray-600 font-medium">
-                    {node.coachName}
-                    {node.coachName && node.coCoachName && ", "}
-                    {node.coCoachName}
-                  </span>
+                  {level === 0 && node.coachName && node.coCoachName ? (
+                    <>
+                      <span className="text-amber-600 font-semibold">Co-Coach Partnership:</span>{" "}
+                      <span className="text-gray-600 font-medium">
+                        {node.coachName}
+                        {node.coachName && node.coCoachName && " & "}
+                        {node.coCoachName}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Reports to:{" "}
+                      <span className="text-gray-600 font-medium">
+                        {node.coachName}
+                        {node.coachName && node.coCoachName && ", "}
+                        {node.coCoachName}
+                      </span>
+                    </>
+                  )}
                 </p>
               )}
               {hasChildren && (

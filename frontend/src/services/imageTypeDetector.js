@@ -2,6 +2,7 @@
 import { weightDetectionService } from './weightDetectionService';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
+import { applyFallbackNutrition } from './nutritionFallback';
 
 /**
  * Image Type Detector Service using Gemini AI
@@ -155,6 +156,20 @@ CRITICAL RULES:
 - For FOOD: MUST return at least ONE food item - NEVER empty array
 - For FOOD: If unclear, describe what you see (Rice, Curry, Mixed meal)
 
+🔥 NUTRITION ESTIMATION RULES (CRITICAL):
+- NEVER return 0 for calories UNLESS truly zero-calorie (water, black tea, black coffee only)
+- If unsure about exact values, provide REASONABLE ESTIMATES based on:
+  * Typical serving size for that food type
+  * Visual portion size in the image
+  * Standard nutrition for that cuisine/category
+- Indian food examples:
+  * Lemon Rice (1 plate ~150g) = ~230 cal, 45g carbs, 4g protein, 5g fat
+  * Biryani (1 plate ~200g) = ~350 cal, 48g carbs, 12g protein, 12g fat
+  * Idli (1 piece ~40g) = ~39 cal, 8g carbs, 2g protein, 0.2g fat
+  * Dosa (1 piece ~70g) = ~133 cal, 20g carbs, 4g protein, 4g fat
+- If genuinely cannot estimate, use category averages (rice dish ~200 cal/100g, curry ~80 cal/100g)
+- ALWAYS provide estimates - empty/null nutrition is NOT acceptable
+
 Return ONLY JSON matching ONE of the above formats.`;
 
       console.log('⚡ [UNIFIED API] Single call for detection + analysis');
@@ -183,6 +198,19 @@ Return ONLY JSON matching ONE of the above formats.`;
         foodsCount: analysisData.foods?.length || 0,
         hasWeight: !!analysisData.weight
       });
+      
+      // 🔍 LOG RAW AI NUTRITION DATA (before any fallback)
+      if (analysisData.type === 'food' && analysisData.foods) {
+        console.log('🤖 [RAW AI NUTRITION] What AI returned BEFORE fallback:');
+        analysisData.foods.forEach((food, idx) => {
+          const cal = food.nutrition?.calories;
+          const protein = food.nutrition?.protein;
+          const carbs = food.nutrition?.carbs;
+          const fat = food.nutrition?.fat;
+          const status = (cal === 0 || cal === undefined) ? '❌ NEEDS FALLBACK' : '✅ HAS DATA';
+          console.log(`   ${idx + 1}. "${food.name}": ${cal || 0} cal, ${carbs || 0}g carbs, ${protein || 0}g protein, ${fat || 0}g fat ${status}`);
+        });
+      }
       
       // Determine operation type for tracking
       let operationType = 'image_analysis'; // default
@@ -219,7 +247,7 @@ Return ONLY JSON matching ONE of the above formats.`;
           details: {
             isMeeting: true,
             platform: analysisData.platform || 'Online Meeting',
-            topic: analysisData.topic || 'Education Meeting',
+            topic: 'Education Meeting',
             aiAnalysis: true,
             reason: analysisData.reason
           }
@@ -251,11 +279,32 @@ Return ONLY JSON matching ONE of the above formats.`;
       console.log('🍽️ [RESULT] Foods:', analysisData.foods?.map(f => `${f.name} (${f.nutrition?.calories || 0} cal)`).join(', ') || 'NONE');
       console.log('🍽️ [RESULT] Total calories:', analysisData.total?.calories || 0);
       console.log('🍽️ [RESULT] Confidence:', analysisData.confidence || 0.5);
+      
+      // 🔴 CRITICAL: Apply fallback nutrition for foods with 0 or missing nutrition
+      let foodsWithNutrition = analysisData.foods || [];
+      if (foodsWithNutrition.length > 0) {
+        console.log('🔧 [NUTRITION-CHECK] Checking for missing nutrition values...');
+        const beforeFallback = foodsWithNutrition.map(f => ({
+          name: f.name,
+          calories: f.nutrition?.calories || 0
+        }));
+        
+        foodsWithNutrition = applyFallbackNutrition(foodsWithNutrition);
+        
+        const afterFallback = foodsWithNutrition.map(f => ({
+          name: f.name,
+          calories: f.nutrition?.calories || f.calories || 0,
+          source: f.nutritionSource || 'ai'
+        }));
+        
+        console.log('🔧 [NUTRITION-CHECK] Before fallback:', beforeFallback);
+        console.log('🔧 [NUTRITION-CHECK] After fallback:', afterFallback);
+      }
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
       
       // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
       // This ensures debug logging shows the correct AI detected name
-      const foodsWithOriginalName = (analysisData.foods || []).map(food => ({
+      const foodsWithOriginalName = foodsWithNutrition.map(food => ({
         ...food,
         originalAiName: food.name,  // Preserve the AI detected name
         wasAutoCorrected: false,    // Not corrected yet
