@@ -289,6 +289,7 @@ export function calculateHierarchyStats(hierarchy, conditionFn = null) {
  *   (record) => ({ score: record.Score, grade: record.Grade })
  * );
  */
+
 export function buildDataMap(records, userIdField = 'UserId', transformFn = null) {
   const map = new Map();
   records.forEach(record => {
