@@ -708,7 +708,7 @@ const StepCounter = ({ onBack, userId }) => {
             // the in-app sensor saved. Always trust the higher (DB) value.
             const toFix = bgDays.filter(e => {
               const dbSteps = dbMap.get(e.date) || 0;
-              return dbSteps === 0;  // only fill completely missing days
+              return dbSteps === 0;  // only fill completely missing days.
             });
 
             if (toFix.length === 0) return;
