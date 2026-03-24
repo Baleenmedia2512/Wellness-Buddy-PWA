@@ -3188,6 +3188,7 @@ function WellnessValleyApp() {
       <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
         <StepCounter
           userId={user?.id}
+          userRole={userRole}
           onBack={() => {
             setShowStepCounter(false);
           }}

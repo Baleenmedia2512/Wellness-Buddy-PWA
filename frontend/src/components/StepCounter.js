@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
+import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw, Users } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
+import { teamHierarchyService } from '../services/teamHierarchyService';
+import HierarchicalTeamView from './HierarchicalTeamView';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -65,8 +67,9 @@ const writeBaseline = (dateKey, sensorTotal) => {
 /**
  * Main Step Counter Component
  */
-const StepCounter = ({ onBack, userId }) => {
+const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
   const isNativePlatform = Capacitor.isNativePlatform();
+  const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
 
   // ── UI State (display-only; mutated via setters, never read by callbacks) ──
   const [ready, setReady]                   = useState(false);
@@ -87,6 +90,14 @@ const StepCounter = ({ onBack, userId }) => {
   const [historyView, setHistoryView]       = useState('week');
   const [refreshing, setRefreshing]         = useState(false); // manual refresh button
   const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
+
+  // ── Team View State (coaches only) ─────────────────────────────────────────
+  const [activeTab, setActiveTab]           = useState('my-steps');
+  const [teamHierarchy, setTeamHierarchy]   = useState(null);
+  const [stepScoreMap, setStepScoreMap]     = useState({});
+  const [teamLoading, setTeamLoading]       = useState(false);
+  const [teamError, setTeamError]           = useState(null);
+  const [teamDate, setTeamDate]             = useState(toDateKey());
 
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
@@ -293,6 +304,84 @@ const StepCounter = ({ onBack, userId }) => {
   // DATABASE: SAVE
   // ─────────────────────────────────────────────────────────────────────────
   /**
+  // ─────────────────────────────────────────────────────────────────────────
+  // TEAM STEPS: FETCH HIERARCHY + STEP DATA (coaches only)
+  // ─────────────────────────────────────────────────────────────────────────
+  const fetchTeamData = useCallback(async (date) => {
+    const uid = resolvedUserIdRef.current;
+    if (!uid) return;
+    setTeamLoading(true);
+    setTeamError(null);
+    try {
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || '';
+      const [hierarchyRes, stepsRes] = await Promise.all([
+        teamHierarchyService.getTeamHierarchy(uid, false).catch(() => null),
+        fetch(`${apiBaseUrl}/api/coach/team-steps?coachId=${uid}&targetDate=${date}`, { cache: 'no-store' }),
+      ]);
+
+      const stepsJson = stepsRes.ok ? await stepsRes.json() : null;
+      const members = stepsJson?.success ? stepsJson.members : [];
+
+      // Build scoreMap: { userId: stepPercent, "userId": stepPercent }
+      const scoreMap = {};
+      members.forEach((m) => {
+        scoreMap[m.userId] = m.stepPercent;
+        scoreMap[String(m.userId)] = m.stepPercent;
+      });
+      setStepScoreMap(scoreMap);
+
+      if (hierarchyRes?.hierarchy) {
+        // Enrich hierarchy nodes with __score, __directAvg, __fullAvg
+        // following the same pattern as ActivityTimeReport
+        const getAllDescendantScores = (node) => {
+          let scores = [];
+          (node.teamMembers || []).forEach((m) => {
+            scores.push(scoreMap[m.userId] ?? 0);
+            scores = scores.concat(getAllDescendantScores(m));
+          });
+          return scores;
+        };
+
+        const enrichNode = (node) => {
+          const uid2 = node.userId || node.id;
+          const enriched = {
+            ...node,
+            userId: uid2,
+            userName: node.userName || node.name,
+          };
+          enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
+          const directScores = enriched.teamMembers.map((m) => scoreMap[m.userId] ?? 0);
+          enriched.__directAvg = directScores.length
+            ? Math.round(directScores.reduce((a, b) => a + b, 0) / directScores.length)
+            : null;
+          const fullScores = getAllDescendantScores(enriched);
+          enriched.__fullAvg = fullScores.length
+            ? Math.round(fullScores.reduce((a, b) => a + b, 0) / fullScores.length)
+            : null;
+          return enriched;
+        };
+
+        setTeamHierarchy(enrichNode(hierarchyRes.hierarchy));
+      } else {
+        setTeamHierarchy(null);
+      }
+    } catch (err) {
+      console.error('[StepCounter] fetchTeamData failed:', err);
+      setTeamError(err.message || 'Failed to load team data');
+    } finally {
+      setTeamLoading(false);
+    }
+  }, []); // stable — reads uid from ref
+
+  // Load team data when tab is activated or date changes
+  useEffect(() => {
+    if (!isCoach || activeTab !== 'team-steps' || !resolvedUserId) return;
+    fetchTeamData(teamDate);
+  }, [activeTab, teamDate, resolvedUserId, isCoach, fetchTeamData]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE: SAVE STEPS
+  // ─────────────────────────────────────────────────────────────────────────
    * FIX 3: Reads todayStepsRef.current (ref) instead of todaySteps (state).
    *
    *   Old code depended on todaySteps state, so every step update recreated
@@ -832,7 +921,95 @@ const StepCounter = ({ onBack, userId }) => {
         </div>
       </div>
 
-      {/* ──── Content ──── */}
+      {/* ──── Tab Navigation (coaches only) ──── */}
+      {isCoach && (
+        <div className="bg-white border-b border-gray-100">
+          <div className="max-w-2xl mx-auto px-4 flex gap-0">
+            <button
+              onClick={() => setActiveTab('my-steps')}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === 'my-steps'
+                  ? 'border-emerald-500 text-emerald-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Footprints className="w-4 h-4" />
+              My Steps
+            </button>
+            <button
+              onClick={() => setActiveTab('team-steps')}
+              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
+                activeTab === 'team-steps'
+                  ? 'border-emerald-500 text-emerald-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              Team Steps
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ──── Team Steps Tab ──── */}
+      {isCoach && activeTab === 'team-steps' && (
+        <div className="max-w-2xl mx-auto px-4 pt-4 pb-8">
+          {/* Date picker */}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+              <Users className="w-4 h-4 text-emerald-500" />
+              Team Step Performance
+            </h2>
+            <input
+              type="date"
+              value={teamDate}
+              max={toDateKey()}
+              onChange={(e) => setTeamDate(e.target.value)}
+              className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
+            />
+          </div>
+
+          {/* Info legend */}
+          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-700">
+            <span className="font-semibold">Each card shows 3 numbers:</span>
+            {' '}1st — Self step %{'  '}·{'  '}2nd — Direct team avg{'  '}·{'  '}3rd — Full team avg
+          </div>
+
+          {teamLoading && (
+            <div className="flex items-center justify-center py-16">
+              <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {teamError && (
+            <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-start gap-2.5 mb-4">
+              <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-700">{teamError}</p>
+            </div>
+          )}
+
+          {!teamLoading && !teamError && teamHierarchy && (
+            <HierarchicalTeamView
+              hierarchy={teamHierarchy}
+              showDisciplineScores={true}
+              disciplineScores={stepScoreMap}
+              memberActivities={{}}
+              emptyMessage="No team members found"
+            />
+          )}
+
+          {!teamLoading && !teamError && !teamHierarchy && (
+            <div className="text-center py-16">
+              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+              <p className="text-gray-500 font-medium">No team hierarchy found</p>
+              <p className="text-sm text-gray-400 mt-1">You may not have any team members yet</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ──── My Steps Content ──── */}
+      {activeTab === 'my-steps' && (
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
 
         {/* Error banner */}
@@ -1071,6 +1248,7 @@ const StepCounter = ({ onBack, userId }) => {
           )}
         </div>
       </div>
+      )} {/* end my-steps tab */}
     </div>
   );
 };
