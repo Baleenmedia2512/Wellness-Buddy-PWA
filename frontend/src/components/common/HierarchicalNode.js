@@ -16,6 +16,7 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * @param {Function} props.renderExpandedDetails - Optional function to render expanded details section
  * @param {boolean} props.isCurrentUser - Is this node the logged-in user
  * @param {boolean} props.showTeamCount - Show team member count
+ * @param {boolean} props.showFullTeam - Show full hierarchy (true) or only direct reports (false)
  * @param {Function} props.getStatusStyle - Function to get status-based styling
  * @param {string} props.searchQuery - Search query for filtering
  * @param {string} props.filter - Current filter value
@@ -31,6 +32,7 @@ const HierarchicalNode = ({
   renderExpandedDetails,
   isCurrentUser,
   showTeamCount = true,
+  showFullTeam = true,
   getStatusStyle,
   searchQuery,
   filter,
@@ -279,24 +281,31 @@ const HierarchicalNode = ({
         {/* Children Nodes */}
         {hasChildren && expanded && (
           <div className="mt-2 space-y-0">
-            {node.teamMembers.map((child, index) => (
-              <HierarchicalNode
-                key={child.userId || child.id || index}
-                node={child}
-                level={level + 1}
-                isLastChild={index === node.teamMembers.length - 1}
-                renderStatus={renderStatus}
-                renderStats={renderStats}
-                renderExpandedDetails={renderExpandedDetails}
-                isCurrentUser={false}
-                showTeamCount={showTeamCount}
-                getStatusStyle={getStatusStyle}
-                searchQuery={searchQuery}
-                filter={filter}
-                matchesFilter={matchesFilter}
-                matchesSearch={matchesSearch}
-              />
-            ))}
+            {node.teamMembers
+              .filter((child, index) => {
+                // If showFullTeam is true, show all children
+                // If showFullTeam is false, only show if we're at level 0 (direct reports)
+                return showFullTeam || level === 0;
+              })
+              .map((child, index, filteredArray) => (
+                <HierarchicalNode
+                  key={child.userId || child.id || index}
+                  node={child}
+                  level={level + 1}
+                  isLastChild={index === filteredArray.length - 1}
+                  renderStatus={renderStatus}
+                  renderStats={renderStats}
+                  renderExpandedDetails={renderExpandedDetails}
+                  isCurrentUser={false}
+                  showTeamCount={showTeamCount}
+                  showFullTeam={showFullTeam}
+                  getStatusStyle={getStatusStyle}
+                  searchQuery={searchQuery}
+                  filter={filter}
+                  matchesFilter={matchesFilter}
+                  matchesSearch={matchesSearch}
+                />
+              ))}
           </div>
         )}
       </div>

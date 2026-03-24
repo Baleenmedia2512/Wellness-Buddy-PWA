@@ -417,6 +417,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             renderExpandedDetails={renderExpandedDetails}
             isCurrentUser={true}
             showTeamCount={true}
+            showFullTeam={teamView === "full"}
             getStatusStyle={getStatusStyle}
             searchQuery={searchQuery}
             filter={filter}
