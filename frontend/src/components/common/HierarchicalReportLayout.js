@@ -598,7 +598,7 @@ const HierarchicalReportLayout = ({
                   <div className="flex flex-col gap-1.5">
                     <p className="text-xs font-semibold text-blue-800">Each member tile shows 3 numbers:</p>
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
-                      <span className="text-xs text-blue-700"><span className="font-bold">1st</span> — Self attendance / score</span>
+                      <span className="text-xs text-blue-700"><span className="font-bold">1st</span> — Self status</span>
                       <span className="text-xs text-blue-700"><span className="font-bold">2nd</span> — Direct team count</span>
                       <span className="text-xs text-blue-700"><span className="font-bold">3rd</span> — Full team count</span>
                     </div>

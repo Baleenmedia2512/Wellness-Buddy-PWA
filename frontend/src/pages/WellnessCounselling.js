@@ -225,19 +225,85 @@ const WellnessCounselling = ({ user, onBack }) => {
     );
   };
 
-  // Render stats strip
+  // Calculate counselling counts for a node (self, direct, full team)
+  const calculateCounsellingCounts = (node) => {
+    let selfCounselled = assessmentData[node.userId] ? 1 : 0;
+    let directCounselled = 0;
+    let directTotal = 0;
+    let fullCounselled = 0;
+    let fullTotal = 0;
+
+    // Count direct reports
+    if (node.teamMembers && node.teamMembers.length > 0) {
+      directTotal = node.teamMembers.length;
+      directCounselled = node.teamMembers.filter(child => 
+        assessmentData[child.userId]
+      ).length;
+
+      // Count full team recursively
+      const countFullTeam = (n) => {
+        fullTotal++;
+        if (assessmentData[n.userId]) {
+          fullCounselled++;
+        }
+        if (n.teamMembers && n.teamMembers.length > 0) {
+          n.teamMembers.forEach(countFullTeam);
+        }
+      };
+
+      node.teamMembers.forEach(countFullTeam);
+    }
+
+    return {
+      self: { counselled: selfCounselled, total: 1 },
+      direct: { counselled: directCounselled, total: directTotal },
+      full: { counselled: fullCounselled, total: fullTotal }
+    };
+  };
+
+  // Render stats strip with counselling counts
   const renderStats = (node) => {
+    const counts = calculateCounsellingCounts(node);
     const assessment = assessmentData[node.userId];
-    if (!assessment) return null;
 
     return (
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <div className="flex items-center gap-2 text-xs text-gray-600">
-          <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
-          <span className="text-gray-400">•</span>
-          <span>{new Date(assessment.submittedAt).toLocaleDateString()}</span>
+      <>
+        {/* Self */}
+        <div className="flex-1 flex flex-col items-center pr-2">
+          <span className={`text-base font-bold ${counts.self.counselled > 0 ? 'text-green-600' : 'text-gray-400'}`}>
+            {counts.self.counselled}/{counts.self.total}
+          </span>
+          {assessment && assessment.medicationDetails && (
+            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes">📝 Notes</span>
+          )}
         </div>
-      </div>
+
+        {/* Direct Team */}
+        <div className="flex-1 flex flex-col items-center px-2">
+          <span className={`text-base font-bold ${
+            counts.direct.counselled === counts.direct.total && counts.direct.total > 0
+              ? 'text-green-600'
+              : counts.direct.counselled > 0
+              ? 'text-orange-600'
+              : 'text-gray-400'
+          }`}>
+            {counts.direct.counselled}/{counts.direct.total}
+          </span>
+        </div>
+
+        {/* Full Team */}
+        <div className="flex-1 flex flex-col items-center pl-2">
+          <span className={`text-base font-bold ${
+            counts.full.counselled === counts.full.total && counts.full.total > 0
+              ? 'text-green-600'
+              : counts.full.counselled > 0
+              ? 'text-orange-600'
+              : 'text-gray-400'
+          }`}>
+            {counts.full.counselled}/{counts.full.total}
+          </span>
+        </div>
+      </>
     );
   };
 
@@ -248,23 +314,39 @@ const WellnessCounselling = ({ user, onBack }) => {
     return (
       <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
         {assessment ? (
-          <TouchFeedbackButton
-            onClick={() => setViewingAssessment({ node, assessment })}
-            className="w-full bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-          >
-            View Assessment Details
-          </TouchFeedbackButton>
+          <>
+            {/* Assessment info */}
+            <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
+              <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
+              <span className="text-gray-400">•</span>
+              <span>{new Date(assessment.submittedAt).toLocaleDateString()}</span>
+            </div>
+            <TouchFeedbackButton
+              onClick={() => setViewingAssessment({ node, assessment })}
+              className="w-full bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+            >
+              View Assessment Details
+            </TouchFeedbackButton>
+          </>
         ) : (
-          <TouchFeedbackButton
-            onClick={() => {
-              setSelectedMember(node);
-              setIsFormOpen(true);
-            }}
-            className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-          >
-            <Plus size={16} />
-            Start Assessment
-          </TouchFeedbackButton>
+          <>
+            {/* Info note when starting assessment */}
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
+              <p className="text-xs text-blue-800">
+                💡 Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
+              </p>
+            </div>
+            <TouchFeedbackButton
+              onClick={() => {
+                setSelectedMember(node);
+                setIsFormOpen(true);
+              }}
+              className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+            >
+              <Plus size={16} />
+              Start Assessment
+            </TouchFeedbackButton>
+          </>
         )}
       </div>
     );
@@ -325,33 +407,16 @@ const WellnessCounselling = ({ user, onBack }) => {
 
   const stats = hierarchyData ? calculateStats(hierarchyData) : { total: 0, counselled: 0, pending: 0 };
 
-  const summaryStats = [
-    {
-      label: "Total Members",
-      value: stats.total,
-      color: "blue",
-      icon: Users,
-    },
-    {
-      label: "Counselled",
-      value: stats.counselled,
-      color: "green",
-      icon: CheckCircle,
-    },
-    {
-      label: "Pending",
-      value: stats.pending,
-      color: "orange",
-      icon: Clock,
-    },
-  ];
+  const summaryStats = {
+    note: true, // Enables the common note display
+  };
 
   if (loading) {
     return <LoadingSkeleton />;
   }
 
   return (
-    <>
+    <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <HierarchicalReportLayout
         title="Wellness Counselling"
         subtitle={`${stats.total} Members • ${stats.counselled} Counselled`}
@@ -366,18 +431,6 @@ const WellnessCounselling = ({ user, onBack }) => {
         onFilterChange={setFilter}
         filterOptions={filterOptions}
         summaryStats={summaryStats}
-        topContent={
-          <TouchFeedbackButton
-            onClick={() => {
-              setSelectedMember(null);
-              setIsFormOpen(true);
-            }}
-            className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mb-4"
-          >
-            <Plus size={20} />
-            Start New Assessment
-          </TouchFeedbackButton>
-        }
       >
         {/* Team View Toggle */}
         {hierarchyData && (
@@ -474,7 +527,7 @@ const WellnessCounselling = ({ user, onBack }) => {
           onClose={() => setViewingAssessment(null)}
         />
       )}
-    </>
+    </div>
   );
 };
 
