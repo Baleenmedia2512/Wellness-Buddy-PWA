@@ -419,25 +419,6 @@ const Header = ({
                         </TouchFeedbackButton>
                       )}
 
-                      {/* Wellness Counselling */}
-                      {onShowWellnessCounselling && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowWellnessCounselling();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Wellness Counselling"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-pink-100 flex items-center justify-center">
-                            <Heart className="h-5 w-5 text-pink-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Counselling
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
                       {/* Enrollment Reports */}
                       {onShowWellnessReport && (
                         <TouchFeedbackButton
@@ -453,6 +434,25 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Enrollments
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Wellness Counselling */}
+                      {onShowWellnessCounselling && (
+                        <TouchFeedbackButton
+                          onClick={() => {
+                            onShowWellnessCounselling();
+                            closeMenu();
+                          }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Wellness Counselling"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-pink-100 flex items-center justify-center">
+                            <Heart className="h-5 w-5 text-pink-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Counselling
                           </span>
                         </TouchFeedbackButton>
                       )}
