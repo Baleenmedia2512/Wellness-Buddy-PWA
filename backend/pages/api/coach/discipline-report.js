@@ -108,11 +108,7 @@ export default async function handler(req, res) {
       HierarchyLevel: 0,
       IsLoggedInCoach: true,
       CoachId: coach.CoachId || null,
-      CoCoachId: coach.CoCoachId || null,
-      CoachName: null,
-      CoCoachName: null,
       ParentCoachId: null, // Which coach this entry reports through
-      ParentCoachName: null,
     };
     allMembers.push(coachEntry);
     memberEntries.push(coachEntry);
@@ -124,13 +120,12 @@ export default async function handler(req, res) {
     const maxLevel = 10;
 
     while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-      // Fetch members where coach_id OR co_coach_id matches current level coaches
+      // Fetch members where coach_id matches current level coaches
+      // NOTE: Query ONLY by CoachId (not CoCoachId) as coachPartnerIds already includes both coaches
       const { data: levelMembers, error: levelError } = await supabase
         .from("team_table")
         .select("*")
-        .or(
-          `CoachId.in.(${currentLevelCoachIds.join(",")}),CoCoachId.in.(${currentLevelCoachIds.join(",")})`,
-        )
+        .in("CoachId", currentLevelCoachIds)
         .eq("Status", "Active");
 
       if (levelError) {
@@ -150,93 +145,31 @@ export default async function handler(req, res) {
 
         const baseMember = processedUserIds.get(member.UserId);
 
-        // Create entries for BOTH coach and co-coach relationships (duplicates allowed)
-        const relationships = [];
-
+        // Add member entry (no need for duplicate relationships since coachPartnerIds handles dual reporting)
         if (currentLevelCoachIds.includes(member.CoachId)) {
-          const parentCoach = allMembers.find(
-            (m) => m.UserId === member.CoachId,
-          );
-          relationships.push({
+          const entry = {
             ...baseMember,
             HierarchyLevel: currentLevel,
             IsLoggedInCoach: false,
             CoachId: member.CoachId,
-            CoCoachId: member.CoCoachId,
             ParentCoachId: member.CoachId,
-            ParentCoachName: parentCoach?.UserName || null,
-            IsCoachRelationship: true,
-          });
-        }
-
-        if (currentLevelCoachIds.includes(member.CoCoachId)) {
-          const parentCoCoach = allMembers.find(
-            (m) => m.UserId === member.CoCoachId,
-          );
-          relationships.push({
-            ...baseMember,
-            HierarchyLevel: currentLevel,
-            IsLoggedInCoach: false,
-            CoachId: member.CoachId,
-            CoCoachId: member.CoCoachId,
-            ParentCoachId: member.CoCoachId,
-            ParentCoachName: parentCoCoach?.UserName || null,
-            IsCoachRelationship: false,
-          });
-        }
-
-        // Add all relationship entries
-        relationships.forEach((entry) => {
+          };
+          
           memberEntries.push(entry);
 
           // Add to nextLevel if they are a coach (avoid duplicates)
           if (
-            entry.Role === "coach" &&
-            !nextLevelCoachIds.includes(entry.UserId)
+            baseMember.Role === "coach" &&
+            !nextLevelCoachIds.includes(baseMember.UserId)
           ) {
-            nextLevelCoachIds.push(entry.UserId);
+            nextLevelCoachIds.push(baseMember.UserId);
           }
-        });
+        }
       }
 
       currentLevelCoachIds = nextLevelCoachIds;
       currentLevel++;
     }
-
-    // Get coach names for all CoachId and CoCoachId
-    const allCoachIds = new Set();
-    Array.from(processedUserIds.values()).forEach((m) => {
-      if (m.CoachId) allCoachIds.add(m.CoachId);
-      if (m.CoCoachId) allCoachIds.add(m.CoCoachId);
-    });
-
-    const coachNameMap = {};
-    if (allCoachIds.size > 0) {
-      const { data: coaches } = await supabase
-        .from("team_table")
-        .select("UserId, UserName")
-        .in("UserId", Array.from(allCoachIds));
-
-      if (coaches) {
-        coaches.forEach((c) => {
-          coachNameMap[c.UserId] = c.UserName;
-        });
-      }
-    }
-
-    // Add coach names to all entries
-    memberEntries.forEach((entry) => {
-      if (entry.CoachId) {
-        entry.CoachName = coachNameMap[entry.CoachId] || null;
-      }
-      if (entry.CoCoachId) {
-        entry.CoCoachName = coachNameMap[entry.CoCoachId] || null;
-      }
-    });
-
-    // Use memberEntries for processing (includes duplicates for dual reporting)
-    allMembers.length = 0;
-    allMembers.push(...memberEntries);
 
     // Step 3: Get time windows
     const { data: timeWindows, error: twError } = await supabase
@@ -678,9 +611,6 @@ export default async function handler(req, res) {
           joinedDate: loggedInCoach.EntryDateTime,
           isLoggedInCoach: true,
           coachId: loggedInCoach.CoachId,
-          coCoachId: loggedInCoach.CoCoachId,
-          coachName: loggedInCoach.CoachName || null,
-          coCoachName: loggedInCoach.CoCoachName || null,
           hierarchyLevel: loggedInCoach.HierarchyLevel,
           periodDiscipline: {
             percentage: calculateDisciplinePercentage(
@@ -779,11 +709,10 @@ export default async function handler(req, res) {
         }
 
         const isCoach = member.Role === "coach";
-        // Count sub-team based on CoachId or CoCoachId
+        // Count sub-team based on CoachId only
         const subTeamCount = isCoach
           ? Array.from(processedUserIds.values()).filter(
-              (m) =>
-                m.CoachId === member.UserId || m.CoCoachId === member.UserId,
+              (m) => m.CoachId === member.UserId,
             ).length
           : 0;
 
@@ -882,11 +811,7 @@ export default async function handler(req, res) {
           isLoggedInCoach: false,
           subTeamCount: subTeamCount,
           coachId: member.CoachId,
-          coCoachId: member.CoCoachId,
-          coachName: member.CoachName,
-          coCoachName: member.CoCoachName,
           parentCoachId: member.ParentCoachId, // Which coach this entry reports through
-          parentCoachName: member.ParentCoachName,
           hierarchyLevel: member.HierarchyLevel,
           profileImage: null,
           joinedDate: member.EntryDateTime,

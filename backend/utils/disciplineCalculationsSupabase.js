@@ -20,7 +20,7 @@ export async function getTeamHierarchy(coachId) {
   // Get the logged-in coach first
   const { data: coach, error: coachError } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
+    .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
     .eq('"UserId"', coachId)
     .eq('"Status"', 'Active')
     .maybeSingle();
@@ -38,8 +38,7 @@ export async function getTeamHierarchy(coachId) {
   const allMembers = [{
     ...coach,
     HierarchyLevel: 0,
-    IsLoggedInCoach: true,
-    UplineCoachName: null
+    IsLoggedInCoach: true
   }];
   
   // Recursive function to get team members at each level
@@ -50,8 +49,8 @@ export async function getTeamHierarchy(coachId) {
     
     const { data: members, error } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
-      .in('"UplineCoachId"', parentIds)
+      .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
+      .in('"CoachId"', parentIds)
       .eq('"Status"', 'Active');
     
     if (error) {
@@ -83,30 +82,6 @@ export async function getTeamHierarchy(coachId) {
   // Get all team members recursively
   const teamMembers = await getTeamAtLevel([coachId], 1);
   allMembers.push(...teamMembers);
-  
-  // Fetch upline coach names for all members
-  const uplineCoachIds = [...new Set(allMembers.map(m => m.UplineCoachId).filter(Boolean))];
-  
-  if (uplineCoachIds.length > 0) {
-    const { data: coaches } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName"')
-      .in('"UserId"', uplineCoachIds);
-    
-    const coachNameMap = {};
-    if (coaches) {
-      coaches.forEach(c => {
-        coachNameMap[c.UserId] = c.UserName;
-      });
-    }
-    
-    // Add upline coach names
-    allMembers.forEach(m => {
-      if (m.UplineCoachId) {
-        m.UplineCoachName = coachNameMap[m.UplineCoachId] || null;
-      }
-    });
-  }
   
   // Deduplicate by UserId (keep lowest hierarchy level)
   const uniqueMembers = [];
@@ -495,11 +470,12 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   const maxLevel = 10;
 
   while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-    // Fetch members where CoachId OR CoCoachId matches current level coaches
+    // Fetch members where CoachId matches current level coaches
+    // NOTE: We query ONLY by CoachId (not CoCoachId) because coachPartnerIds already includes both coaches
     const { data: levelMembers, error: levelError } = await supabase
       .from('team_table')
       .select('*')
-      .or(`CoachId.in.(${currentLevelCoachIds.join(',')}),CoCoachId.in.(${currentLevelCoachIds.join(',')})`)
+      .in('CoachId', currentLevelCoachIds)
       .eq('Status', 'Active');
 
     if (enableLogging) {
@@ -523,16 +499,10 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
       // Store unique member
       if (!processedUserIds.has(member.UserId)) {
         // Determine which coach this member reports to in THIS hierarchy path
-        // Check if CoachId is in current level, use that; otherwise use CoCoachId
-        let hierarchyParent = null;
-        if (member.CoachId && currentLevelCoachIds.includes(member.CoachId)) {
-          hierarchyParent = member.CoachId;
-        } else if (member.CoCoachId && currentLevelCoachIds.includes(member.CoCoachId)) {
-          hierarchyParent = member.CoCoachId;
-        }
+        let hierarchyParent = member.CoachId; // Always use CoachId as the parent
         
         if (enableLogging) {
-          console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}, CoCoachId:${member.CoCoachId}]`);
+          console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}]`);
         }
         
         processedUserIds.set(member.UserId, member);

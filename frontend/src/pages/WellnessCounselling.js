@@ -117,8 +117,6 @@ const WellnessCounselling = ({ user, onBack }) => {
         
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
-        mapped.uplineCoachName = node.coachName || node.uplineCoachName;
-        mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
         
         // Add counselling status to metrics
         const hasCounselling = assessmentData[node.userId];

@@ -257,62 +257,30 @@ export default async function handler(req, res) {
       console.log("ℹ️ User has no TeamId, skipping coach_teams_table creation");
     }
 
-    // STEP 2: Get coach details for CoachName and CoCoachName
+    // STEP 2: Get coach's team details
     const { data: coachData, error: coachDataError } = await supabase
       .from("team_table")
-      .select("TeamId, UserName")
+      .select("TeamId")
       .eq("UserId", request.UplineCoachId);
 
     if (coachDataError) throw coachDataError;
 
-    const coachTeamId = coachData[0]?.TeamId;
-    const coachName = coachData[0]?.UserName;
-    let coCoachName = null;
-    let coCoachId = null; // Declare at correct scope level
+    const coachTeamId = coachData[0]?.TeamId; // Coach's business team code (e.g., "ABC123")
+    
+    // TEMPORARY: Store TeamId string until database migration is complete
+    // TODO: After migrating CoachTeamId column to integer, store coach_teams_table.id instead
+    let coachTeamIdValue = coachTeamId; // For now, store the TeamId string
 
-    if (coachTeamId) {
-      // Find the co-coach from coach_teams_table
-      const { data: coachTeam, error: coachTeamError } = await supabase
-        .from("coach_teams_table")
-        .select("CoachId, CoCoachId")
-        .eq("TeamId", coachTeamId)
-        .eq("Status", "active");
-
-      if (coachTeamError) throw coachTeamError;
-
-      if (coachTeam && coachTeam.length > 0) {
-        // Determine which is the co-coach (the one that's not our coach)
-        coCoachId =
-          coachTeam[0].CoachId === request.UplineCoachId
-            ? coachTeam[0].CoCoachId
-            : coachTeam[0].CoachId;
-
-        if (coCoachId) {
-          const { data: coCoachData, error: coCoachError } = await supabase
-            .from("team_table")
-            .select("UserName")
-            .eq("UserId", coCoachId);
-
-          if (coCoachError) throw coCoachError;
-          coCoachName = coCoachData[0]?.UserName || null;
-        }
-      }
-    }
-
-    // STEP 3: NOW update team_table (after coach_teams_table succeeds if applicable)
-    // Update ALL coach-related fields to support dual-coaching hierarchy
+    // STEP 3: NOW update team_table
+    // Store only CoachId and CoachTeamId
     const updateData = {
-      UplineCoachId: request.UplineCoachId,
-      CoachId: request.UplineCoachId, // Primary coach for hierarchy queries
-      CoachName: coachName,
-      CoCoachName: coCoachName,
-      CoachTeamId: coachTeamId, // Link member to their coach's team
+      UplineCoachId: request.UplineCoachId, // Keep for legacy compatibility
+      CoachId: request.UplineCoachId, // User's chosen referrer/coach
+      CoachTeamId: coachTeamIdValue, // TEMPORARY: Storing TeamId string until schema migration
     };
-
-    // Set CoCoachId if there's a co-coach on the team
-    if (coCoachId) {
-      updateData.CoCoachId = coCoachId;
-    }
+    
+    // NOTE: CoCoachId is NOT stored here - it's derived dynamically from coach_teams_table
+    // by looking up coach_teams_table WHERE TeamId = CoachTeamId (after migration: WHERE id = CoachTeamId)
 
     await supabase
       .from("team_table")

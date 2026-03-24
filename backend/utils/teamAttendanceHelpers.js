@@ -76,8 +76,6 @@ export function addTeamAttendanceCounts(node, attendanceMap, transformFn = null)
     role: node.Role,
     coachId: node.CoachId,
     coCoachId: node.CoCoachId,
-    coachName: node.CoachName,
-    coCoachName: node.CoCoachName,
     profileImage: node.ProfileImage || null,
     hierarchyLevel: node.HierarchyLevel,
     // Attendance data

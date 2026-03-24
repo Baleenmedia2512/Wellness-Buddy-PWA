@@ -84,7 +84,7 @@ export default async function handler(req, res) {
     // Fetch all users in the hierarchy
     let query = supabase
       .from("team_table")
-      .select("UserId, UserName, Email, Role, CoachId, CoCoachId, Status, ProfileImage");
+      .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage");
 
     // Only filter by Active status if includeInactive is not true
     if (includeInactive !== "true") {
@@ -124,26 +124,48 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Get all coach names for CoachId and CoCoachId
-    const allCoachIds = new Set();
-    allUsers.forEach((user) => {
-      if (user.CoachId) allCoachIds.add(user.CoachId);
-      if (user.CoCoachId) allCoachIds.add(user.CoCoachId);
-    });
-
-    const coachNameMap = {};
-    if (allCoachIds.size > 0) {
-      const { data: coaches } = await supabase
-        .from("team_table")
-        .select("UserId, UserName")
-        .in("UserId", Array.from(allCoachIds));
-
-      if (coaches) {
-        coaches.forEach((c) => {
-          coachNameMap[c.UserId] = c.UserName;
+    // Derive CoCoachId from coach_teams_table (instead of storing redundantly)
+    // Get all unique CoachTeamIds
+    // TEMPORARY: CoachTeamId is currently TeamId string until database migration
+    const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
+    console.log(`📊 [team-hierarchy] Fetching ${coachTeamIds.length} coach teams for co-coach derivation`);
+    
+    const coachTeamsMap = {}; // Maps TeamId string -> {CoachId, CoCoachId}
+    if (coachTeamIds.length > 0) {
+      const { data: coachTeams, error: teamsError } = await supabase
+        .from("coach_teams_table")
+        .select("id, TeamId, CoachId, CoCoachId")
+        .in("TeamId", coachTeamIds) // TEMPORARY: Query by TeamId string until schema migration
+        .eq("Status", "active");
+      
+      if (teamsError) {
+        console.error("❌ [team-hierarchy] Error fetching coach teams:", teamsError);
+      } else if (coachTeams) {
+        coachTeams.forEach(team => {
+          coachTeamsMap[team.TeamId] = { // TEMPORARY: Map by TeamId string
+            coachId: team.CoachId,
+            coCoachId: team.CoCoachId
+          };
         });
+        console.log(`✅ [team-hierarchy] Loaded ${coachTeams.length} active coach team partnerships`);
       }
     }
+    
+    // Helper function to derive coCoachId for a user
+    const deriveCoCoachId = (user) => {
+      if (!user.CoachTeamId) return null;
+      
+      const team = coachTeamsMap[user.CoachTeamId];
+      if (!team) return null;
+      
+      // The co-coach is whichever coach in the team ISN'T the user's primary coach
+      if (user.CoachId === team.coachId) {
+        return team.coCoachId; // User reports to coach, so co-coach is the partner
+      } else if (user.CoachId === team.coCoachId) {
+        return team.coachId; // User reports to co-coach, so co-coach is the primary
+      }
+      return null;
+    };
 
     // Build user map for quick lookup
     const userMap = new Map();
@@ -154,9 +176,7 @@ export default async function handler(req, res) {
         email: user.Email || "",
         role: user.Role || "user",
         coachId: user.CoachId,
-        coCoachId: user.CoCoachId,
-        coachName: coachNameMap[user.CoachId] || "",
-        coCoachName: coachNameMap[user.CoCoachId] || "",
+        coCoachId: deriveCoCoachId(user), // Dynamically derived from coach_teams_table
         status: user.Status,
         profileImage: user.ProfileImage || null,
         teamMembers: [],
@@ -309,8 +329,6 @@ export default async function handler(req, res) {
           Role: node.role,
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
-          coachName: node.coachName,
-          coCoachName: node.coCoachName,
           Status: node.status,
         });
       }
@@ -354,8 +372,6 @@ export default async function handler(req, res) {
         role: hierarchy.role,
         coachId: hierarchy.coachId,
         coCoachId: hierarchy.coCoachId,
-        coachName: hierarchy.coachName,
-        coCoachName: hierarchy.coCoachName,
         totalMemberCount: hierarchy.totalMemberCount,
       },
       hierarchy: hierarchy,
