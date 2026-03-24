@@ -1332,8 +1332,10 @@ function WellnessValleyApp() {
       // Show success popup (similar to nutrition save)
       setError(null);
 
-      // Refresh leaderboard immediately after weight save
-      handleLeaderboardRefresh();
+      // Background refresh to pick up other users' data from server
+      setTimeout(() => {
+        handleLeaderboardRefresh();
+      }, 3000);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -2104,11 +2106,23 @@ function WellnessValleyApp() {
             );
             const diffData = await diffRes.json();
             if (diffData.success && diffData.stats?.previousWeight) {
+              const weightChange = parseFloat(diffData.stats.weightChange);
               setWeightDiff({
                 previous: parseFloat(diffData.stats.previousWeight.value),
                 previousDate: diffData.stats.previousWeight.date,
-                change: parseFloat(diffData.stats.weightChange),
+                change: weightChange,
               });
+              // ✅ Immediately inject into leaderboard strip — no API wait needed
+              if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
+                leaderboardRef.current.injectEntry({
+                  userId: diffUserId,
+                  userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                  email: user?.email || "",
+                  weightLoss: Math.abs(weightChange),
+                  profileImage: user?.photoURL || user?.ProfileImage || null,
+                  coachName: "",
+                });
+              }
             }
           } catch (_) {
             /* non-critical — share card just won't show diff */

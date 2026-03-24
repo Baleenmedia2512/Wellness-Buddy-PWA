@@ -72,9 +72,36 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     }
   }, [apiBaseUrl, topN]);
 
-  // Expose refresh method to parent via ref
+  // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
-    refresh: fetchLeaderboard,
+    // refresh: re-fetches from server (retries after 4s for DB propagation)
+    refresh: () => {
+      fetchLeaderboard();
+      setTimeout(fetchLeaderboard, 4000);
+    },
+    // injectEntry: instantly show the current user's entry in the strip
+    // without waiting for any API call. The next refresh will replace with real data.
+    injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
+      if (!weightLoss || weightLoss <= 0) return; // only show if weight was actually lost
+      setLeaderboardData((prev) => {
+        // Remove any existing entry for this user, then add new one at top
+        const filtered = prev.filter((u) => u.userId !== userId);
+        const injected = [{
+          userId,
+          userName: userName || "You",
+          email: email || "",
+          coachName: coachName || "",
+          profileImage: profileImage || null,
+          weightLoss: parseFloat(weightLoss.toFixed(2)),
+          rank: 1,
+          todayWeight: null,
+          yesterdayWeight: null,
+        }, ...filtered];
+        // Re-rank after injection
+        return injected.map((u, i) => ({ ...u, rank: i + 1 }));
+      });
+      setIsVisible(true);
+    },
   }));
 
   // Initial fetch
