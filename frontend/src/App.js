@@ -100,6 +100,7 @@ const WellnessCounselling = lazy(() =>
 );
 const StepCounter = lazy(() => import("./components/StepCounter"));
 const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
+const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -119,6 +120,7 @@ function WellnessValleyApp() {
       localStorage.getItem("currentPage") === "weight-insights",
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
+  const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   const [showStepCounter, setShowStepCounter] = useState(false);
   const [user, setUser] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
@@ -214,6 +216,12 @@ function WellnessValleyApp() {
   const [showScreenTime, setShowScreenTime] = useState(false);
   const showScreenTimePage = useCallback(() => {
     setShowScreenTime(true);
+  }, []);
+
+  // Reminders state
+  const [showReminders, setShowReminders] = useState(false);
+  const showRemindersPage = useCallback(() => {
+    setShowReminders(true);
   }, []);
 
   // Attendance report state (for coaches)
@@ -1348,8 +1356,10 @@ function WellnessValleyApp() {
       // Show success popup (similar to nutrition save)
       setError(null);
 
-      // Refresh leaderboard immediately after weight save
-      handleLeaderboardRefresh();
+      // Background refresh to pick up other users' data from server
+      setTimeout(() => {
+        handleLeaderboardRefresh();
+      }, 3000);
 
       // Keep imagePreview and selectedImage visible (like food images)
       // Don't reset them here
@@ -2120,11 +2130,23 @@ function WellnessValleyApp() {
             );
             const diffData = await diffRes.json();
             if (diffData.success && diffData.stats?.previousWeight) {
+              const weightChange = parseFloat(diffData.stats.weightChange);
               setWeightDiff({
                 previous: parseFloat(diffData.stats.previousWeight.value),
                 previousDate: diffData.stats.previousWeight.date,
-                change: parseFloat(diffData.stats.weightChange),
+                change: weightChange,
               });
+              // ✅ Immediately inject into leaderboard strip — no API wait needed
+              if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
+                leaderboardRef.current.injectEntry({
+                  userId: diffUserId,
+                  userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                  email: user?.email || "",
+                  weightLoss: Math.abs(weightChange),
+                  profileImage: user?.photoURL || user?.ProfileImage || null,
+                  coachName: "",
+                });
+              }
             }
           } catch (_) {
             /* non-critical — share card just won't show diff */
@@ -3171,7 +3193,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           initialTab={dashboardInitialTab}
           userRole={userRole}
-          profileUpdateTrigger={profileUpdateTrigger}
+          bmrUpdateKey={bmrUpdateKey}
         />
       </Suspense>
     );
@@ -3200,6 +3222,17 @@ function WellnessValleyApp() {
           onBack={() => {
             setShowScreenTime(false);
           }}
+        />
+      </Suspense>
+    );
+  }
+
+  // Reminders page
+  if (showReminders) {
+    return (
+      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+        <ReminderSettingsPage
+          onBack={() => setShowReminders(false)}
         />
       </Suspense>
     );
@@ -3245,6 +3278,7 @@ function WellnessValleyApp() {
         onShowBackgroundHistory={showDashboardPage}
         onShowStepCounter={showStepCounterPage}
         onShowScreenTime={showScreenTimePage}
+        onShowReminders={showRemindersPage}
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)
@@ -3269,12 +3303,14 @@ function WellnessValleyApp() {
         onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
-        onProfileSaved={() => {
+        onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
           checkProfileCompletion(email);
-          // Trigger Dashboard to refetch BMR
-          setProfileUpdateTrigger(prev => prev + 1);
+          // If a new BMR was saved, force NutritionDashboard to re-fetch it
+          if (profileData?.bmr) {
+            setBmrUpdateKey((prev) => prev + 1);
+          }
         }}
       />
 

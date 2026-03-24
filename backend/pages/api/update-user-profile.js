@@ -24,7 +24,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email, name, height, bmr, dietType, profileImage, phoneNumber } = req.body;
+  const { email, name, height, bmr, dietType, profileImage, phoneNumber } =
+    req.body;
 
   console.log("👤 [update-user-profile] Request received:", {
     email,
@@ -97,14 +98,21 @@ export default async function handler(req, res) {
       }
     }
 
-    if (phoneNumber !== undefined && phoneNumber !== null && phoneNumber.trim() !== "") {
+    if (
+      phoneNumber !== undefined &&
+      phoneNumber !== null &&
+      phoneNumber.trim() !== ""
+    ) {
       // Basic validation: 10-15 digits, optional leading +
       const cleaned = phoneNumber.trim().replace(/[\s\-()]/g, "");
       if (/^\+?[0-9]{10,15}$/.test(cleaned)) {
         updateData.PhoneNumber = cleaned;
         cleanedPhoneNumber = cleaned;
       } else {
-        console.log("⚠️ [update-user-profile] Invalid phone number:", phoneNumber);
+        console.log(
+          "⚠️ [update-user-profile] Invalid phone number:",
+          phoneNumber,
+        );
       }
     }
 
@@ -133,7 +141,10 @@ export default async function handler(req, res) {
         throw new Error(`Profile update matched 0 rows for UserId ${userId}`);
       }
 
-      console.log("✅ [update-user-profile] team_table updated successfully, rows affected:", updatedRows.length);
+      console.log(
+        "✅ [update-user-profile] team_table updated successfully, rows affected:",
+        updatedRows.length,
+      );
 
       // Verify persisted values to prevent false success responses.
       const { data: verifyRow, error: verifyError } = await supabase
@@ -153,7 +164,9 @@ export default async function handler(req, res) {
 
       if (height !== undefined && height !== null) {
         const reqHeight = parseFloat(height);
-        const savedHeight = verifyRow.Height ? parseFloat(verifyRow.Height) : null;
+        const savedHeight = verifyRow.Height
+          ? parseFloat(verifyRow.Height)
+          : null;
         if (!Number.isNaN(reqHeight) && savedHeight !== reqHeight) {
           throw new Error("Height was not saved. Please try again.");
         }
@@ -170,16 +183,14 @@ export default async function handler(req, res) {
     let savedBmr = null;
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
-      console.log("🔍 [DEBUG] BMR received from frontend:", bmr, "→ parsed as:", bmrValue);
-      if (!isNaN(bmrValue) && bmrValue >= 1100) {
-        console.log("✅ [DEBUG] BMR validation passed:", bmrValue, ">= 1100");
-        // Check if user has any weight records (excluding deleted ones)
+      if (!isNaN(bmrValue) && bmrValue > 0) {
+        // Check if user has any weight records (match same filter as get-user-profile)
         const { data: weightRecords, error: weightError } = await supabase
           .from("weight_records_table")
-          .select("ID")
-          .eq("UserId", userId)
+          .select('"ID"')
+          .eq('"UserId"', userId)
           .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-          .order("CreatedAt", { ascending: false })
+          .order('"CreatedAt"', { ascending: false })
           .limit(1);
 
         if (weightError) throw weightError;
@@ -190,7 +201,7 @@ export default async function handler(req, res) {
           const { error: bmrUpdateError } = await supabase
             .from("weight_records_table")
             .update({ Bmr: bmrValue, UpdatedAt: currentTime })
-            .eq("ID", weightRecords[0].ID);
+            .eq('"ID"', weightRecords[0].ID);
 
           if (bmrUpdateError) throw bmrUpdateError;
           console.log(

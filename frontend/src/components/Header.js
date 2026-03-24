@@ -11,6 +11,7 @@ import {
   Map,
   Building2,
   Smartphone,
+  Bell,
   Heart,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ const Header = ({
   onShowDisciplineReport,
   onShowStepCounter,
   onShowScreenTime,
+  onShowReminders,
   onShowWellnessEnrollment,
   onShowWellnessCounselling,
   onShowWellnessReport,
@@ -107,7 +109,7 @@ const Header = ({
     }
     // Re-check profile completion so the blocking gate is dismissed if now complete
     if (onProfileSaved) {
-      onProfileSaved();
+      onProfileSaved({ bmr: profileData?.bmr ?? null });
     }
   };
 
@@ -358,6 +360,25 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Screen Time
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Reminders */}
+                      {onShowReminders && (
+                        <TouchFeedbackButton
+                          onClick={() => {
+                            onShowReminders();
+                            closeMenu();
+                          }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Reminders"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-green-100 flex items-center justify-center">
+                            <Bell className="h-5 w-5 text-green-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Reminders
                           </span>
                         </TouchFeedbackButton>
                       )}

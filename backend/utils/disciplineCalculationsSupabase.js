@@ -8,6 +8,20 @@ import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
 
+// ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
+// Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
+const WINDOW_BUFFER_SECONDS = 35;
+
+// Helper: Add buffer seconds to a time string "HH:MM:SS"
+const addBufferToTime = (t) => {
+  const [h, m, s] = t.split(':').map(Number);
+  const totalSecs = h * 3600 + m * 60 + s + WINDOW_BUFFER_SECONDS;
+  const nh = Math.floor(totalSecs / 3600) % 24;
+  const nm = Math.floor((totalSecs % 3600) / 60);
+  const ns = totalSecs % 60;
+  return `${String(nh).padStart(2,'0')}:${String(nm).padStart(2,'0')}:${String(ns).padStart(2,'0')}`;
+};
+
 /**
  * Get team hierarchy using Supabase REST API
  * Replaces the recursive CTE query
@@ -195,7 +209,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     }
     
     if (!time) return false;
-    return time >= window.start && time <= window.end;
+    // ✅ BUFFER FIX: Add 59-second buffer to window.end so uploads at e.g. 08:30:51 are counted on-time
+    return time >= window.start && time <= addBufferToTime(window.end);
   };
   
   // Helper to get unique dates with on-time posts
@@ -228,10 +243,11 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     const breakfast = timeWindows.breakfast || { start: '05:30:00', end: '08:30:00' };
     const lunch = timeWindows.lunch || { start: '12:00:00', end: '16:00:00' };
     const dinner = timeWindows.dinner || { start: '17:30:00', end: '20:30:00' };
-    
-    if (time >= breakfast.start && time <= breakfast.end) return 'breakfast';
-    if (time >= lunch.start && time <= lunch.end) return 'lunch';
-    if (time >= dinner.start && time <= dinner.end) return 'dinner';
+
+    // ✅ BUFFER FIX: Add 59-second buffer to meal end times
+    if (time >= breakfast.start && time <= addBufferToTime(breakfast.end)) return 'breakfast';
+    if (time >= lunch.start && time <= addBufferToTime(lunch.end)) return 'lunch';
+    if (time >= dinner.start && time <= addBufferToTime(dinner.end)) return 'dinner';
     return null;
   };
   

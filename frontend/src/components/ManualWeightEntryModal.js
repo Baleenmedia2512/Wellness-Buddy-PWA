@@ -1,16 +1,16 @@
 // src/components/ManualWeightEntryModal.js
-import React, { useState } from 'react';
-import { X, Flame } from 'lucide-react';
+import React, { useState } from "react";
+import { X, Flame } from "lucide-react";
 
 // Custom weighing scale icon component (matching Dashboard)
 const WeighingScaleIcon = ({ className }) => (
-  <svg 
-    className={className} 
-    viewBox="0 0 24 24" 
-    fill="none" 
-    stroke="currentColor" 
-    strokeWidth="2.5" 
-    strokeLinecap="round" 
+  <svg
+    className={className}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2.5"
+    strokeLinecap="round"
     strokeLinejoin="round"
   >
     {/* Outer rounded square (scale body) */}
@@ -32,47 +32,45 @@ const WeighingScaleIcon = ({ className }) => (
  * Supports manual BMR entry
  */
 const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
-  const [weight, setWeight] = useState('');
-  const [unit, setUnit] = useState('kg');
-  const [bmr, setBmr] = useState('');
-  const [error, setError] = useState('');
+  const [weight, setWeight] = useState("");
+  const [unit, setUnit] = useState("kg");
+  const [bmr, setBmr] = useState("");
+  const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
   const handleSave = async () => {
     try {
-      setError('');
+      setError("");
 
       // Validate weight input
       const weightValue = parseFloat(weight);
 
       if (!weight || isNaN(weightValue)) {
-        setError('Please enter a valid weight');
+        setError("Please enter a valid weight");
         return;
       }
 
       if (weightValue <= 0) {
-        setError('Weight must be greater than 0');
+        setError("Weight must be greater than 0");
         return;
       }
 
-      const minWeight = unit === 'kg' ? 20 : 44;
-      const maxWeight = unit === 'kg' ? 300 : 660;
+      const minWeight = unit === "kg" ? 20 : 44;
+      const maxWeight = unit === "kg" ? 300 : 660;
 
       if (weightValue < minWeight || weightValue > maxWeight) {
-        setError(`Weight must be between ${minWeight} and ${maxWeight} ${unit}`);
+        setError(
+          `Weight must be between ${minWeight} and ${maxWeight} ${unit}`,
+        );
         return;
       }
 
       // Validate BMR if provided (optional field)
       let bmrValue = null;
-      if (bmr && bmr.trim() !== '') {
+      if (bmr && bmr.trim() !== "") {
         bmrValue = parseFloat(bmr);
         if (isNaN(bmrValue) || bmrValue <= 0) {
-          setError('BMR must be a positive number');
-          return;
-        }
-        if (bmrValue < 1100) {
-          setError('BMR must be at least 1100 kcal/day');
+          setError("BMR must be a positive number");
           return;
         }
       }
@@ -83,29 +81,28 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
       await onSave({
         weightValue,
         unit,
-        bmr: bmrValue
+        bmr: bmrValue,
       });
 
       // Reset and close
-      setWeight('');
-      setUnit('kg');
-      setBmr('');
-      setError('');
+      setWeight("");
+      setUnit("kg");
+      setBmr("");
+      setError("");
       onClose();
-
     } catch (err) {
-      console.error('❌ Manual entry error:', err);
-      setError(err.message || 'Failed to save weight');
+      console.error("❌ Manual entry error:", err);
+      setError(err.message || "Failed to save weight");
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleCancel = () => {
-    setWeight('');
-    setUnit('kg');
-    setBmr('');
-    setError('');
+    setWeight("");
+    setUnit("kg");
+    setBmr("");
+    setError("");
     onClose();
   };
 
@@ -121,8 +118,12 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
               <WeighingScaleIcon className="w-6 h-6 text-green-600" />
             </div>
             <div>
-              <h2 className="text-xl font-bold text-gray-800">Enter Weight Manually</h2>
-              <p className="text-sm text-gray-500">Could not detect weight automatically</p>
+              <h2 className="text-xl font-bold text-gray-800">
+                Enter Weight Manually
+              </h2>
+              <p className="text-sm text-gray-500">
+                Could not detect weight automatically
+              </p>
             </div>
           </div>
           <button
@@ -165,34 +166,34 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
                   placeholder="e.g., 72.5"
                   autoFocus
                   className="flex-1 min-w-0 px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-green-400 focus:outline-none text-lg font-semibold bg-white"
-                  style={{ fontSize: '16px' }}
+                  style={{ fontSize: "16px" }}
                 />
                 {/* Custom Toggle Switch for Unit */}
-                <div 
+                <div
                   className="relative flex items-center bg-gray-200 rounded-full p-1 cursor-pointer flex-shrink-0"
-                  onClick={() => setUnit(unit === 'kg' ? 'lbs' : 'kg')}
-                  style={{ width: '90px', height: '44px' }}
+                  onClick={() => setUnit(unit === "kg" ? "lbs" : "kg")}
+                  style={{ width: "90px", height: "44px" }}
                 >
                   {/* Sliding background */}
-                  <div 
+                  <div
                     className={`absolute bg-green-500 rounded-full transition-all duration-300 ease-in-out disabled:opacity-50`}
-                    style={{ 
-                      width: '42px', 
-                      height: '36px',
-                      left: unit === 'kg' ? '4px' : '44px'
+                    style={{
+                      width: "42px",
+                      height: "36px",
+                      left: unit === "kg" ? "4px" : "44px",
                     }}
                   />
                   {/* Labels */}
-                  <span 
+                  <span
                     className={`relative z-10 flex-1 text-center font-bold text-sm transition-colors duration-300 ${
-                      unit === 'kg' ? 'text-white' : 'text-gray-500'
+                      unit === "kg" ? "text-white" : "text-gray-500"
                     }`}
                   >
                     kg
                   </span>
-                  <span 
+                  <span
                     className={`relative z-10 flex-1 text-center font-bold text-sm transition-colors duration-300 ${
-                      unit === 'lbs' ? 'text-white' : 'text-gray-500'
+                      unit === "lbs" ? "text-white" : "text-gray-500"
                     }`}
                   >
                     lbs
@@ -201,9 +202,23 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
               </div>
             </div>
 
-            
-
-            
+            {/* BMR Field */}
+            <div>
+              <label className="flex items-center gap-1 text-sm font-semibold text-gray-700 mb-2">
+                <Flame className="w-4 h-4 text-orange-500" />
+                BMR (kcal){" "}
+                <span className="text-gray-400 font-normal">— optional</span>
+              </label>
+              <input
+                type="number"
+                inputMode="numeric"
+                value={bmr}
+                onChange={(e) => setBmr(e.target.value)}
+                placeholder="e.g. 2200"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-lg font-semibold bg-white"
+                style={{ fontSize: "16px" }}
+              />
+            </div>
 
             {/* Error Message */}
             {error && (
@@ -234,12 +249,10 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview }) => {
                 Saving...
               </span>
             ) : (
-              'Save Weight'
+              "Save Weight"
             )}
           </button>
         </div>
-
-        
       </div>
     </div>
   );

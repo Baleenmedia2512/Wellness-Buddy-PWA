@@ -603,6 +603,73 @@ const HierarchicalReportLayout = ({
                       <span className="text-xs text-blue-700"><span className="font-bold">3rd</span> — Full team count</span>
                     </div>
                   </div>
+                  <button className="text-gray-400 hover:text-gray-600 p-1">
+                    <svg
+                      className="w-5 h-5"
+                      fill="currentColor"
+                      viewBox="0 0 20 20"
+                    >
+                      <path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z" />
+                    </svg>
+                  </button>
+                </div>
+
+                {/* Three columns */}
+                <div className="grid grid-cols-3 gap-2">
+                  {summaryStats.note.split(" | ").map((s, i) => {
+                    const [label, val] = s.split(": ");
+                    const meta =
+                      [
+                        {
+                          pill: "You",
+                          pillShort: "You",
+                          subtitle: "Your own data",
+                          active: true,
+                        },
+                        {
+                          pill: "Direct Team",
+                          pillShort: "Direct",
+                          subtitle: "Your direct members",
+                          active: false,
+                        },
+                        {
+                          pill: "Full Team",
+                          pillShort: "Full",
+                          subtitle: "Your full team members",
+                          active: false,
+                        },
+                      ][i] || {};
+                    return (
+                      <div
+                        key={i}
+                        className="flex flex-col items-center gap-1.5"
+                      >
+                        <div
+                          className={`w-full flex items-center justify-center gap-1 sm:gap-1.5 px-1 sm:px-2 py-1.5 sm:py-2.5 rounded-xl font-semibold text-xs sm:text-sm ${
+                            meta.active
+                              ? "bg-green-500 text-white shadow-sm"
+                              : "bg-white border border-gray-200 text-gray-800"
+                          }`}
+                        >
+                          <span className="truncate">
+                            {meta.pillShort || meta.pill}
+                          </span>
+                          <span
+                            className={`flex-shrink-0 text-[10px] sm:text-xs px-1 sm:px-1.5 py-0.5 rounded-full font-bold ${
+                              meta.active
+                                ? "bg-white bg-opacity-25 text-white"
+                                : "bg-gray-100 text-gray-600"
+                            }`}
+                          >
+                            {val}
+                          </span>
+                        </div>
+                        <span className="text-[9px] sm:text-[10px] text-gray-400 text-center leading-tight">
+                          {meta.subtitle}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

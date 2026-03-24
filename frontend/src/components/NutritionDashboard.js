@@ -36,7 +36,7 @@ const NutritionDashboard = ({
   hideHeader,
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
-  profileUpdateTrigger,
+  bmrUpdateKey = 0,
 }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1041,13 +1041,6 @@ const NutritionDashboard = ({
           `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
             user.email,
           )}&_t=${Date.now()}`,
-          {
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            }
-          }
         );
         
         if (response.ok) {
@@ -1073,47 +1066,18 @@ const NutritionDashboard = ({
     };
 
     fetchUserBmr();
-  }, [user?.email, apiBaseUrl, profileUpdateTrigger]);
 
-  // Refetch BMR when analyses change (weight entry with BMR updates it)
-  useEffect(() => {
-    const fetchUserBmr = async () => {
-      if (!user?.email) return;
-
-      try {
-        const response = await fetch(
-          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
-            user.email,
-          )}&_t=${Date.now()}`,
-          {
-            cache: 'no-store',
-            headers: {
-              'Cache-Control': 'no-cache',
-              'Pragma': 'no-cache'
-            }
-          }
-        );
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.latestBmr) {
-            setCalorieTarget(Math.round(data.data.latestBmr));
-            console.log(
-              "🔥 [NutritionDashboard] BMR refreshed from profile:",
-              data.data.latestBmr,
-            );
-          }
-        }
-      } catch (err) {
-        console.error("❌ [NutritionDashboard] Failed to refresh BMR:", err);
+    // Re-fetch BMR when user returns to the tab/app (e.g. after editing profile)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        fetchUserBmr();
       }
     };
-
-    // Refetch when analyses change (could indicate weight/BMR update)
-    if (analyses.length > 0) {
-      fetchUserBmr();
-    }
-  }, [analyses.length, user?.email, apiBaseUrl]);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [user?.email, apiBaseUrl, bmrUpdateKey]);
 
   // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {

@@ -78,7 +78,7 @@ const UserProfileModal = ({
           weightRecordDate: profile.weightRecordDate,
           height: profile.height,
           phoneNumber: profile.phoneNumber,
-          dietType: profile.dietType
+          dietType: profile.dietType,
         });
         setName(profile.userName || user.name || "");
         setHeight(profile.height ? String(profile.height) : "");
@@ -536,10 +536,9 @@ const UserProfileModal = ({
                     inputMode="numeric"
                     value={bmr}
                     onChange={(e) => setBmr(e.target.value)}
-                    placeholder="Enter your BMR"
+                    placeholder="e.g. 2200"
                     className="w-full px-3 py-2 border border-orange-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
                     style={{ fontSize: "16px" }}
-                    min="1100"
                   />
                 </div>
 
@@ -656,10 +655,13 @@ const UserProfileModal = ({
             <TouchFeedbackButton
               onClick={handleSave}
               disabled={
-                isSaving || 
-                !name || name.trim() === "" || 
-                !height || height.trim() === "" || 
-                !phone || phone.trim() === ""
+                isSaving ||
+                !name ||
+                name.trim() === "" ||
+                !height ||
+                height.trim() === "" ||
+                !phone ||
+                phone.trim() === ""
               }
               className="flex-1 px-6 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center justify-center gap-2"
               ariaLabel="Save profile"

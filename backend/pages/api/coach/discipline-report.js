@@ -8,6 +8,20 @@ import {
   formatDateForMySQL,
 } from "../../../utils/disciplineHelpers.js";
 
+// ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
+// Ensures uploads made within the last minute of the window (e.g. 08:30:35) are counted on-time
+const WINDOW_BUFFER_SECONDS = 35;
+
+// Helper: Add buffer seconds to a time string "HH:MM:SS"
+const addBufferToTime = (t) => {
+  const [h, m, s] = t.split(':').map(Number);
+  const totalSecs = h * 3600 + m * 60 + s + WINDOW_BUFFER_SECONDS;
+  const nh = Math.floor(totalSecs / 3600) % 24;
+  const nm = Math.floor((totalSecs % 3600) / 60);
+  const ns = totalSecs % 60;
+  return `${String(nh).padStart(2,'0')}:${String(nm).padStart(2,'0')}:${String(ns).padStart(2,'0')}`;
+};
+
 /**
  * API: Get Coach Discipline Report
  * Returns discipline percentages for all team members
@@ -292,7 +306,8 @@ export default async function handler(req, res) {
       }
       
       if (!time) return false;
-      return time >= windowStart && time <= windowEnd;
+      // ✅ BUFFER FIX: Add 59-second buffer to windowEnd so uploads at e.g. 08:30:51 are counted on-time
+      return time >= windowStart && time <= addBufferToTime(windowEnd);
     };
 
     // Helper to get unique dates (timezone-safe)
