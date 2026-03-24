@@ -101,7 +101,7 @@ export default async function handler(req, res) {
     const { data: allMembers, error: membersError } = await supabase
       .from("team_table")
       .select(
-        "UserId, UserName, Email, Role, EntryDateTime, CoachId, CoCoachId, TeamId",
+        "UserId, UserName, Email, Role, EntryDateTime, CoachId, TeamId",
       )
       .eq("Status", "Active")
       .order("UserName", { ascending: true });
@@ -130,6 +130,25 @@ export default async function handler(req, res) {
       });
       return;
     }
+
+    // Derive CoCoachId from coach_teams_table (source of truth)
+    const memberCoachIds = [...new Set(allMembers.map(m => m.CoachId).filter(Boolean))];
+    const coCoachDeriveMap = {};
+    if (memberCoachIds.length > 0) {
+      const { data: coCoachTeamData } = await supabase
+        .from('coach_teams_table')
+        .select('CoachId, CoCoachId')
+        .in('CoachId', memberCoachIds)
+        .eq('Status', 'active');
+      if (coCoachTeamData) {
+        coCoachTeamData.forEach(t => {
+          if (t.CoCoachId) coCoachDeriveMap[t.CoachId] = t.CoCoachId;
+        });
+      }
+    }
+    allMembers.forEach(m => {
+      m.CoCoachId = m.CoachId ? (coCoachDeriveMap[m.CoachId] || null) : null;
+    });
 
     // Step 3: Get coach names for CoachId and CoCoachId
     const allCoachIds = new Set();
@@ -524,8 +543,8 @@ export default async function handler(req, res) {
           email: member.Email,
           role: member.Role,
           teamId: member.TeamId,
-          coachId: member.Coach_Id,
-          coCoachId: member.CoCoach_Id,
+          coachId: member.CoachId,
+          coCoachId: member.CoCoachId,
           coachName: member.CoachName,
           coCoachName: member.CoCoachName,
           profileImage: null,

@@ -54,16 +54,39 @@ export default async function handler(req, res) {
       teamMembers = await getDualCoachingTeamHierarchy(userIdNum, false);
       teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
     } else {
-      // Get direct team only (dual-coaching model: CoachId OR CoCoachId)
+      // Get direct team only (dual-coaching model)
       console.log('📊 [get-nutrition-centers] Fetching DIRECT team...');
-      const { data: directTeam } = await supabase
+
+      // Direct members: their CoachId = me
+      const { data: directMembers } = await supabase
         .from('team_table')
-        .select('*')
-        .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+        .select('UserId')
+        .eq('CoachId', userIdNum)
         .eq('Status', 'Active');
-      
-      teamMembers = directTeam || [];
-      teamUserIds = [userIdNum, ...teamMembers.map(m => m.UserId)];
+
+      // Co-coached members: find teams where I'm co-coach, then get their members
+      const { data: coCoachTeams } = await supabase
+        .from('coach_teams_table')
+        .select('CoachId')
+        .eq('CoCoachId', userIdNum)
+        .eq('Status', 'active');
+
+      let coCoachMemberIds = [];
+      if (coCoachTeams && coCoachTeams.length > 0) {
+        const primaryCoachIds = [...new Set(coCoachTeams.map(t => t.CoachId).filter(id => id && id !== userIdNum))];
+        if (primaryCoachIds.length > 0) {
+          const { data: coMembers } = await supabase
+            .from('team_table')
+            .select('UserId')
+            .in('CoachId', primaryCoachIds)
+            .eq('Status', 'Active');
+          coCoachMemberIds = (coMembers || []).map(m => m.UserId);
+        }
+      }
+
+      // Merge and deduplicate
+      const directMemberIds = (directMembers || []).map(m => m.UserId);
+      teamUserIds = [...new Set([userIdNum, ...directMemberIds, ...coCoachMemberIds])];
     }
 
     console.log('👥 [get-nutrition-centers] Team size:', teamUserIds.length, 'members');

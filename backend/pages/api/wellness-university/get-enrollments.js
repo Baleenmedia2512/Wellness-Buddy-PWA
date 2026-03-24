@@ -118,13 +118,24 @@ export default async function handler(req, res) {
       const maxLevel = 10;
 
       while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
-        // Fetch members where CoachId OR CoCoachId matches current level coaches
+        // Derive co-coach relationships from coach_teams_table
+        const { data: coCoachTeamEntries } = await supabase
+          .from('coach_teams_table')
+          .select('CoachId')
+          .in('CoCoachId', currentLevelCoachIds)
+          .eq('Status', 'active');
+
+        // Expand to include primary coaches whose co-coach is in current level
+        const expandedCoachIds = [...new Set([
+          ...currentLevelCoachIds,
+          ...(coCoachTeamEntries || []).map(t => t.CoachId).filter(Boolean)
+        ])];
+
+        // Fetch members where CoachId matches any coach in expanded list
         const { data: levelMembers, error: levelError } = await supabase
           .from('team_table')
-          .select('"UserId", "Role", "CoachId", "CoCoachId"')
-          .or(
-            `CoachId.in.(${currentLevelCoachIds.join(",")}),CoCoachId.in.(${currentLevelCoachIds.join(",")})`,
-          )
+          .select('"UserId", "Role", "CoachId"')
+          .in('"CoachId"', expandedCoachIds)
           .eq('"Status"', 'Active');
 
         if (levelError) {
@@ -167,7 +178,7 @@ export default async function handler(req, res) {
     const userIds = enrollments.map((e) => e.UserId);
     const { data: users, error: usersError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "CoachId", "CoCoachId"')
+      .select('"UserId", "UserName", "Email", "CoachId"')
       .in('"UserId"', userIds);
 
     if (usersError) {
@@ -189,6 +200,21 @@ export default async function handler(req, res) {
       }
     }
 
+    // Derive CoCoachId from coach_teams_table (source of truth)
+    const coCoachMap = {};
+    if (coachIds.length > 0) {
+      const { data: coCoachEntries } = await supabase
+        .from('coach_teams_table')
+        .select('CoachId, CoCoachId')
+        .in('CoachId', coachIds)
+        .eq('Status', 'active');
+      if (coCoachEntries) {
+        coCoachEntries.forEach(t => {
+          if (t.CoCoachId) coCoachMap[t.CoachId] = t.CoCoachId;
+        });
+      }
+    }
+
     // Merge user data with enrollments
     const enrichedEnrollments = enrollments.map((enrollment) => {
       const user = users.find((u) => u.UserId === enrollment.UserId);
@@ -200,7 +226,7 @@ export default async function handler(req, res) {
         Email: user?.Email || '',
         CoachName: coach?.UserName || '',
         CoachId: user?.CoachId || null,
-        CoCoachId: user?.CoCoachId || null,
+        CoCoachId: user?.CoachId ? (coCoachMap[user.CoachId] || null) : null,
       };
     });
 
