@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { isExemptedBeverageOnly } from '../../../utils/foodTypeDetection.js';
 import { 
   getTeamHierarchy,
   getDualCoachingTeamHierarchy 
@@ -96,15 +97,21 @@ export default async function handler(req, res) {
         .lte('CreatedAt', end + 'T23:59:59')
         .eq('IsDeleted', false),
       
-      // Food/nutrition records
+      // Food/nutrition records (include AnalysisData to filter out beverage-only entries)
       supabase
         .from('food_nutrition_data_table')
-        .select('UserID, CreatedAt')
+        .select('UserID, CreatedAt, AnalysisData')
         .in('UserID', allUserIds.map(String))
         .gte('CreatedAt', start)
         .lte('CreatedAt', end + 'T23:59:59')
         .eq('IsDeleted', false)
     ]);
+
+    // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
+    const filteredFoodData = {
+      ...foodData,
+      data: (foodData.data || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData))
+    };
 
     console.log('📊 [attendance-report] Discipline data fetched:', {
       weight: weightData.data?.length || 0,
@@ -158,15 +165,15 @@ export default async function handler(req, res) {
           educationData.data || [], userId, timeWindows.education.start, timeWindows.education.end
         ).size;
 
-        // Meals on-time (breakfast, lunch, dinner)
+        // Meals on-time (breakfast, lunch, dinner) — uses filtered food data (no beverage-only entries)
         const breakfastOnTime = getUniqueOnTimeDates(
-          foodData.data || [], userId, timeWindows.breakfast.start, timeWindows.breakfast.end, 'UserID'
+          filteredFoodData.data || [], userId, timeWindows.breakfast.start, timeWindows.breakfast.end, 'UserID'
         ).size;
         const lunchOnTime = getUniqueOnTimeDates(
-          foodData.data || [], userId, timeWindows.lunch.start, timeWindows.lunch.end, 'UserID'
+          filteredFoodData.data || [], userId, timeWindows.lunch.start, timeWindows.lunch.end, 'UserID'
         ).size;
         const dinnerOnTime = getUniqueOnTimeDates(
-          foodData.data || [], userId, timeWindows.dinner.start, timeWindows.dinner.end, 'UserID'
+          filteredFoodData.data || [], userId, timeWindows.dinner.start, timeWindows.dinner.end, 'UserID'
         ).size;
 
         // Total on-time posts
@@ -399,5 +406,5 @@ export default async function handler(req, res) {
       message: error.message,
     });
   }
-  
+
 }

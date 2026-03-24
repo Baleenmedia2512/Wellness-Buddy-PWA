@@ -7,6 +7,7 @@ import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
+import { isExemptedBeverageOnly } from './foodTypeDetection.js';
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
@@ -183,14 +184,17 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
   
-  // Get nutrition data
-  const { data: nutritionRecords } = await supabase
+  // Get nutrition data (include AnalysisData to filter out beverage-only entries)
+  const { data: nutritionRecordsRaw } = await supabase
     .from('food_nutrition_data_table')
-    .select('"CreatedAt"')
+    .select('"CreatedAt", "AnalysisData"')
     .eq('"UserID"', String(userId))
     .eq('"IsDeleted"', false)
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh etc.)
+  const nutritionRecords = (nutritionRecordsRaw || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
   
   // Helper to check Database stores in IST, but check against user's local time
   // Converts IST timestamp to user's local timezone before checking

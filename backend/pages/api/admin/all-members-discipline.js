@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
+import { isExemptedBeverageOnly } from "../../../utils/foodTypeDetection.js";
 import {
   parseDateRange,
   calculateExpectedPosts,
@@ -248,15 +249,20 @@ export default async function handler(req, res) {
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
-      // Food/nutrition records
+      // Food/nutrition records (include AnalysisData to filter out beverage-only entries)
       supabase
         .from("food_nutrition_data_table")
-        .select("UserID, CreatedAt")
+        .select("UserID, CreatedAt, AnalysisData")
         .in("UserID", memberIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
+
+    // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
+    if (foodData.data) {
+      foodData.data = foodData.data.filter(r => !isExemptedBeverageOnly(r.AnalysisData));
+    }
 
     if (weightData.error) {
       console.error("Error fetching weight data:", weightData.error);
