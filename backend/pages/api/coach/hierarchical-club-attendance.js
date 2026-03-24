@@ -176,15 +176,26 @@ export default async function handler(req, res) {
           // Fetch user details for external attendees
           const { data: externalUsersData, error: externalUsersError } = await supabase
             .from('team_table')
-            .select('UserId, UserName, Email, CoachName, ProfileImage')
+            .select('UserId, UserName, Email, CoachId, ProfileImage')
             .in('UserId', externalUserIds);
 
           if (!externalUsersError && externalUsersData) {
+            // Batch lookup coach names from CoachId
+            const externalCoachIds = [...new Set(externalUsersData.map(u => u.CoachId).filter(Boolean))];
+            const coachNameMap = {};
+            if (externalCoachIds.length > 0) {
+              const { data: coaches } = await supabase
+                .from('team_table')
+                .select('UserId, UserName')
+                .in('UserId', externalCoachIds);
+              if (coaches) coaches.forEach(c => { coachNameMap[c.UserId] = c.UserName; });
+            }
+
             externalAttendees = externalUsersData.map(user => ({
               userId: user.UserId,
               userName: user.UserName,
               email: user.Email,
-              coachName: user.CoachName || 'Unknown',
+              coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'Unknown') : 'No Coach',
               profileImage: user.ProfileImage || null,
             }));
           }

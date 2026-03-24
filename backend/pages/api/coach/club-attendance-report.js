@@ -135,7 +135,7 @@ export default async function handler(req, res) {
     // Fetch user details including coach information
     const { data: usersData, error: usersError } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachId, CoCoachId, CoachName, ProfileImage')
+      .select('UserId, UserName, Email, CoachId, ProfileImage')
       .in('UserId', attendeeUserIds);
 
     if (usersError) {
@@ -158,19 +158,27 @@ export default async function handler(req, res) {
       attendeeMap.get(key).add(attendanceDate);
     });
 
+    // Batch lookup coach names from CoachId
+    const coachIds = [...new Set(usersData.map(u => u.CoachId).filter(Boolean))];
+    const coachNameMap = {};
+    if (coachIds.length > 0) {
+      const { data: coaches } = await supabase
+        .from('team_table')
+        .select('UserId, UserName')
+        .in('UserId', coachIds);
+      if (coaches) coaches.forEach(c => { coachNameMap[c.UserId] = c.UserName; });
+    }
+
     // Combine user data with attendance count
     const attendees = usersData.map(user => {
       const attendanceDays = attendeeMap.get(user.UserId) || new Set();
-      
-      // Get coach name - prefer CoachName from team_table, fall back to looking up coach
-      let coachName = user.CoachName || 'No Coach';
       
       return {
         userId: user.UserId,
         userName: user.UserName,
         email: user.Email,
         profileImage: user.ProfileImage || null,
-        coachName: coachName,
+        coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'Unknown') : 'No Coach',
         attendanceDays: attendanceDays.size,
         attendanceDates: Array.from(attendanceDays).sort(),
       };

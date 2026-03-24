@@ -589,6 +589,37 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
     member.CoCoachId = member.DerivedCoCoachId;
   }
 
+  // Step 5: Derive CoachName for all members by looking up coach's UserName
+  const allCoachIds = [...new Set(allMembers.map(m => m.CoachId).filter(Boolean))];
+  const coachNameMap = {};
+  if (allCoachIds.length > 0) {
+    const { data: coachUsers } = await supabase
+      .from('team_table')
+      .select('UserId, UserName')
+      .in('UserId', allCoachIds);
+    if (coachUsers) {
+      coachUsers.forEach(c => { coachNameMap[c.UserId] = c.UserName; });
+    }
+  }
+
+  // Also lookup CoCoachName from derived CoCoachId
+  const allCoCoachIds = [...new Set(allMembers.map(m => m.CoCoachId).filter(Boolean))];
+  const coCoachNameMap = {};
+  if (allCoCoachIds.length > 0) {
+    const { data: coCoachUsers } = await supabase
+      .from('team_table')
+      .select('UserId, UserName')
+      .in('UserId', allCoCoachIds);
+    if (coCoachUsers) {
+      coCoachUsers.forEach(c => { coCoachNameMap[c.UserId] = c.UserName; });
+    }
+  }
+
+  for (const member of allMembers) {
+    member.CoachName = member.CoachId ? (coachNameMap[member.CoachId] || null) : null;
+    member.CoCoachName = member.CoCoachId ? (coCoachNameMap[member.CoCoachId] || null) : null;
+  }
+
   if (enableLogging) {
     console.log('🔍 [getDualCoachingTeamHierarchy] Team members found (dual-coaching model):', {
       count: allMembers?.length || 0,
