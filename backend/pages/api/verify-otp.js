@@ -102,8 +102,6 @@ export default async function handler(req, res) {
           Password: hashedPassword,
           // TargetWeightInKg: 0,
           'TargetWeightInKg': 0,
-          CoachName: '',
-          CoCoachName: '',
           Status: 'Active',
           CoachApproved: 0,
           Email: recipient

@@ -94,8 +94,6 @@ export default async function handler(req, res) {
           UserName: username,
           Password: "User@123#",
           TargetWeightInKg: 0,
-          CoachName: "",
-          CoCoachName: "",
           Status: "Active",
           CoachApproved: 0,
           Email: email,

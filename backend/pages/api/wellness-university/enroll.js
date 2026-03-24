@@ -56,7 +56,7 @@ export default async function handler(req, res) {
     // Get user info from team_table
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "UplineCoachId"')
+      .select('"UserId", "UserName", "Email", "CoachId"')
       .eq('"Email"', email)
       .maybeSingle();
 
@@ -117,8 +117,8 @@ export default async function handler(req, res) {
     console.log('✅ [enroll] Enrollment created successfully:', { enrollmentId: newEnrollment.Id });
 
     // TODO: Send notification to coach (optional)
-    if (user.UplineCoachId) {
-      console.log('📧 [enroll] Coach notification needed for coach:', user.UplineCoachId);
+    if (user.CoachId) {
+      console.log('📧 [enroll] Coach notification needed for coach:', user.CoachId);
       // You can add email notification here similar to upline/request.js
     }
 

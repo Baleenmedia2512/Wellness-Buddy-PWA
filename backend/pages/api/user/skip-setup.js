@@ -74,10 +74,7 @@ export default async function handler(req, res) {
     // If coach was selected (coachId provided), save the coach relationship
     if (coachId) {
       updateData.CoachId = coachId;
-      if (coachName) {
-        updateData.CoachName = coachName;
-      }
-      console.log(`👥 Saving coach relationship: User → Coach (${coachName || coachId})`);
+      console.log(`👥 Saving coach relationship: User → Coach (${coachId})`);
     }
 
     // Update SetupSkipped flag (and optionally CoachId)
