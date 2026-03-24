@@ -6,6 +6,16 @@ import React, {
   useEffect,
   useImperativeHandle,
 } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
+import { Filesystem } from "@capacitor/filesystem";
+import TouchFeedbackButton from "./TouchFeedbackButton";
+import CustomAlertModal from "./CustomAlertModal";
+import {
+  validateImageFreshness,
+  validateImageForEducation,
+} from "../utils/imageValidator";
 
 /**
  * Convert a local-time Date to an ISO-8601 string that PRESERVES the device's
@@ -27,16 +37,6 @@ function toLocalISOString(date) {
     `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${tzStr}`
   );
 }
-import { AnimatePresence, motion } from "framer-motion";
-import { Capacitor } from "@capacitor/core";
-import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
-import { Filesystem } from "@capacitor/filesystem";
-import TouchFeedbackButton from "./TouchFeedbackButton";
-import CustomAlertModal from "./CustomAlertModal";
-import {
-  validateImageFreshness,
-  validateImageForEducation,
-} from "../utils/imageValidator";
 
 const ImageUpload = forwardRef(
   (
