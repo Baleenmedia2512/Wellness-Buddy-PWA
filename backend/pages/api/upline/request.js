@@ -97,7 +97,7 @@ export default async function handler(req, res) {
     // Get requester's UserId and details
     const { data: requesterRows, error: requesterError } = await supabase
       .from("team_table")
-      .select("UserId, UserName, Email, TeamId, UplineCoachId")
+      .select("UserId, UserName, Email, TeamId, CoachId")
       .eq("Email", email)
       .limit(1);
 
@@ -127,11 +127,11 @@ export default async function handler(req, res) {
     // Team ID is now optional - user can proceed without claiming it first
     // This allows flexible onboarding flow
 
-    // Check if user already has an upline coach
-    if (requester.UplineCoachId) {
+    // Check if user already has a coach
+    if (requester.CoachId) {
       res.status(400).json({
         success: false,
-        error: "You already have an upline coach",
+        error: "You already have a coach",
         redirectTo: "/dashboard",
       });
       return;

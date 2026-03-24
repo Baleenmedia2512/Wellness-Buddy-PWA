@@ -73,14 +73,14 @@ export default async function handler(req, res) {
     
     // If coach was selected (coachId provided), save the coach relationship
     if (coachId) {
-      updateData.UplineCoachId = coachId;
+      updateData.CoachId = coachId;
       if (coachName) {
         updateData.CoachName = coachName;
       }
       console.log(`👥 Saving coach relationship: User → Coach (${coachName || coachId})`);
     }
 
-    // Update SetupSkipped flag (and optionally UplineCoachId)
+    // Update SetupSkipped flag (and optionally CoachId)
     const { error: updateError } = await supabase
       .from("team_table")
       .update(updateData)

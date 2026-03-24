@@ -274,7 +274,6 @@ export default async function handler(req, res) {
     // STEP 3: NOW update team_table
     // Store only CoachId and CoachTeamId
     const updateData = {
-      UplineCoachId: request.UplineCoachId, // Keep for legacy compatibility
       CoachId: request.UplineCoachId, // User's chosen referrer/coach
       CoachTeamId: coachTeamIdValue, // TEMPORARY: Storing TeamId string until schema migration
     };
