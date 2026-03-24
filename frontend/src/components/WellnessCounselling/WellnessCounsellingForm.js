@@ -47,10 +47,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSave
 
       const formData = {
         userId: targetMember?.userId || targetMember?.id,
-        userEmail: targetMember?.userEmail || targetMember?.email,
-        userName: targetMember?.userName || targetMember?.name,
         counsellorId: user?.id,
-        counsellorName: user?.name || user?.email,
         healthProblems: selectedHealthProblems,
         eatingHabits,
         sleepData,

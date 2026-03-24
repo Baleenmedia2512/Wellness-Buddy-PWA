@@ -4,24 +4,11 @@
  * POST /api/counselling/save-assessment
  * 
  * Saves a counselling assessment for a team member
+ * Database table: wellness_counselling_assessments
+ * Migration: backend/migrations/wellness_counselling_assessments.sql
  */
 
-// TODO: Add database table structure
-// CREATE TABLE wellness_counselling_assessments (
-//   id SERIAL PRIMARY KEY,
-//   user_id VARCHAR(255) NOT NULL,
-//   user_email VARCHAR(255) NOT NULL,
-//   user_name VARCHAR(255),
-//   counsellor_id VARCHAR(255) NOT NULL,
-//   counsellor_name VARCHAR(255) NOT NULL,
-//   health_problems JSONB,
-//   eating_habits JSONB,
-//   sleep_data JSONB,
-//   medication_details TEXT,
-//   submitted_at TIMESTAMP DEFAULT NOW(),
-//   created_at TIMESTAMP DEFAULT NOW(),
-//   updated_at TIMESTAMP DEFAULT NOW()
-// );
+import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all responses
@@ -45,10 +32,7 @@ export default async function handler(req, res) {
   try {
     const {
       userId,
-      userEmail,
-      userName,
       counsellorId,
-      counsellorName,
       healthProblems,
       eatingHabits,
       sleepData,
@@ -56,10 +40,21 @@ export default async function handler(req, res) {
     } = req.body;
 
     // Validation
-    if (!userId || !userEmail || !counsellorId) {
+    if (!userId || !counsellorId) {
       return res.status(400).json({
         success: false,
-        message: 'Missing required fields: userId, userEmail, counsellorId'
+        message: 'Missing required fields: userId, counsellorId'
+      });
+    }
+
+    // Ensure IDs are integers
+    const userIdInt = parseInt(userId);
+    const counsellorIdInt = parseInt(counsellorId);
+
+    if (isNaN(userIdInt) || isNaN(counsellorIdInt)) {
+      return res.status(400).json({
+        success: false,
+        message: 'userId and counsellorId must be valid integers'
       });
     }
 
@@ -70,47 +65,52 @@ export default async function handler(req, res) {
       });
     }
 
-    // TODO: Implement database save
-    // const { Pool } = require('pg');
-    // const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    // 
-    // const query = `
-    //   INSERT INTO wellness_counselling_assessments 
-    //   (user_id, user_email, user_name, counsellor_id, counsellor_name, 
-    //    health_problems, eating_habits, sleep_data, medication_details)
-    //   VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-    //   RETURNING id, submitted_at
-    // `;
-    // 
-    // const values = [
-    //   userId,
-    //   userEmail,
-    //   userName,
-    //   counsellorId,
-    //   counsellorName,
-    //   JSON.stringify(healthProblems),
-    //   JSON.stringify(eatingHabits),
-    //   JSON.stringify(sleepData),
-    //   medicationDetails
-    // ];
-    // 
-    // const result = await pool.query(query, values);
-
-    console.log('📋 Counselling Assessment Saved:', {
-      userId,
-      userEmail,
-      userName,
-      counsellorName,
-      healthProblems,
+    console.log('📋 Saving Counselling Assessment:', {
+      userId: userIdInt,
+      counsellorId: counsellorIdInt,
+      healthProblemsCount: healthProblems?.length,
     });
+
+    // Get Supabase client
+    const supabase = getSupabaseClient();
+    const timestamp = getISTTimestamp();
+
+    // Insert assessment into database (SERIAL auto-generates ID)
+    const { data, error } = await supabase
+      .from('wellness_counselling_assessments')
+      .insert({
+        user_id: userIdInt,
+        counsellor_id: counsellorIdInt,
+        health_problems: healthProblems,
+        eating_habits: eatingHabits || null,
+        sleep_data: sleepData || null,
+        medication_details: medicationDetails || null,
+        submitted_at: timestamp,
+        created_at: timestamp,
+        updated_at: timestamp,
+        is_deleted: false
+      })
+      .select()
+      .single();
+
+    if (error) {
+      console.error('❌ Database error saving assessment:', error);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to save assessment to database',
+        error: error.message
+      });
+    }
+
+    console.log('✅ Assessment saved successfully:', data.id);
 
     return res.status(200).json({
       success: true,
       message: 'Assessment saved successfully',
       data: {
-        id: 'mock-id-' + Date.now(),
-        userId,
-        submittedAt: new Date().toISOString(),
+        id: data.id,
+        userId: data.user_id,
+        submittedAt: data.submitted_at,
       }
     });
 
