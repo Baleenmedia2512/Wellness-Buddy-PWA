@@ -314,6 +314,58 @@ export default async function handler(req, res) {
     // Pass coachPartnerIds to exclude partner from nested view
     const hierarchy = buildHierarchy(coachIdInt, null, new Set(), coachPartnerIds);
 
+    // If co-coach partnership exists, add co-coach node and their direct members
+    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+      const partnerId = managedTeam.CoachId === coachIdInt
+        ? managedTeam.CoCoachId
+        : managedTeam.CoachId;
+
+      const partnerData = userMap.get(partnerId);
+      if (partnerData) {
+        // Create co-coach node (highlighted, no sub-tree of its own)
+        const coCoachNode = {
+          ...partnerData,
+          isCoCoach: true,
+          parentCoachId: coachIdInt,
+          teamMembers: [],
+          directMemberCount: 0,
+          totalMemberCount: 0,
+        };
+
+        // Find co-coach's direct members that aren't already in root's team
+        const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
+        existingIds.add(coachIdInt);
+        existingIds.add(partnerId);
+
+        const coCoachDirectMembers = allUsers.filter(
+          u => u.CoachId === partnerId && !existingIds.has(u.UserId)
+        );
+
+        console.log(`👥 [team-hierarchy] Adding ${coCoachDirectMembers.length} co-coach members to root`);
+
+        // Build hierarchy for each co-coach member and add to root
+        coCoachDirectMembers.forEach(member => {
+          const memberNode = buildHierarchy(
+            member.UserId,
+            coachIdInt,
+            new Set([coachIdInt, partnerId]),
+            coachPartnerIds
+          );
+          if (memberNode) {
+            hierarchy.teamMembers.push(memberNode);
+          }
+        });
+
+        // Add co-coach node at the beginning of teamMembers
+        hierarchy.teamMembers.unshift(coCoachNode);
+
+        // Recalculate counts
+        hierarchy.directMemberCount = hierarchy.teamMembers.length;
+        hierarchy.totalMemberCount = hierarchy.directMemberCount +
+          hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
+      }
+    }
+
     // Flatten hierarchy to get all members (for enrollment reports)
     // Use Set to avoid duplicates from dual reporting relationships
     const flattenHierarchy = (node, result = new Map()) => {
@@ -322,7 +374,7 @@ export default async function handler(req, res) {
       // Add current node (excluding the root coach for allMembers)
       // Use Map to ensure unique users by UserId
       if (node.userId !== coachIdInt && !result.has(node.userId)) {
-        result.set(node.userId, {
+        const entry = {
           UserId: node.userId,
           UserName: node.userName,
           Email: node.email,
@@ -330,7 +382,9 @@ export default async function handler(req, res) {
           CoachId: node.coachId,
           CoCoachId: node.coCoachId,
           Status: node.status,
-        });
+        };
+        if (node.isCoCoach) entry.isCoCoach = true;
+        result.set(node.userId, entry);
       }
 
       // Recursively flatten children

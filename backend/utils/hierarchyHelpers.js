@@ -116,6 +116,7 @@ export function addTeamMetricCounts(node, dataMap, transformFn = null, condition
     coachName: node.CoachName,
     coCoachName: node.CoCoachName,
     profileImage: node.ProfileImage || null,
+    isCoCoach: node.IsCoCoach || false,
     hierarchyLevel: node.HierarchyLevel,
     // Generic metrics data (structure depends on transformFn)
     metrics: metricsData,

@@ -77,12 +77,20 @@ const HierarchicalNode = ({
   const statusStyle = getStatusStyle
     ? getStatusStyle(node, level, isCurrentUser)
     : {};
-  const {
+  let {
     containerClass = "bg-white border-gray-200",
     avatarClass = "bg-gray-200 border-gray-300 text-gray-500",
     nameClass = "text-gray-900",
     statsBorderClass = "border-gray-100 divide-gray-100",
   } = statusStyle;
+
+  // Override styling for co-coach nodes
+  if (node.isCoCoach) {
+    containerClass = "bg-purple-50/60 border-purple-300 shadow-md ring-1 ring-purple-200";
+    avatarClass = "bg-purple-100 border-purple-400 text-purple-700";
+    nameClass = "text-purple-900";
+    statsBorderClass = "border-purple-100 divide-purple-100";
+  }
 
   return (
     <div className="relative flex" style={{ marginLeft: level > 0 ? 0 : 0 }}>
@@ -165,6 +173,12 @@ const HierarchicalNode = ({
                       {isCurrentUser && (
                         <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
                           YOU
+                        </span>
+                      )}
+                      {node.isCoCoach && (
+                        <span className="text-[9px] bg-purple-200 text-purple-800 border border-purple-400 px-1.5 py-0.5 rounded-full font-bold uppercase flex items-center gap-0.5">
+                          <Users className="w-2.5 h-2.5" />
+                          CO-COACH
                         </span>
                       )}
                       {/* Shared Team Badge - when viewing yourself as a co-coach */}

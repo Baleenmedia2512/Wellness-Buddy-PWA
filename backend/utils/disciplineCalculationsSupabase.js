@@ -463,6 +463,31 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
   allMembers.push(userEntry);
   processedUserIds.set(user.UserId, user);
 
+  // Add co-coach partner as a special node (highlighted in UI)
+  if (coachPartnerIds.length > 1) {
+    const partnerId = coachPartnerIds.find(id => id !== userIdNum);
+    if (partnerId) {
+      const { data: partner } = await supabase
+        .from('team_table')
+        .select('*')
+        .eq('UserId', partnerId)
+        .eq('Status', 'Active')
+        .maybeSingle();
+
+      if (partner) {
+        const partnerEntry = {
+          ...partner,
+          HierarchyLevel: 1,
+          IsLoggedInCoach: false,
+          IsCoCoach: true,
+          HierarchyParent: userIdNum,
+        };
+        allMembers.push(partnerEntry);
+        processedUserIds.set(partnerId, partner);
+      }
+    }
+  }
+
   // Iteratively fetch team members level by level
   // Start with all co-coach partners (for shared downline)
   let currentLevelCoachIds = coachPartnerIds;
@@ -500,6 +525,15 @@ export async function getDualCoachingTeamHierarchy(userId, enableLogging = false
       if (!processedUserIds.has(member.UserId)) {
         // Determine which coach this member reports to in THIS hierarchy path
         let hierarchyParent = member.CoachId; // Always use CoachId as the parent
+
+        // If member's CoachId is co-coach partner, reparent under root
+        // so all direct members appear flat under the logged-in coach
+        if (coachPartnerIds.length > 1 && currentLevel === 1) {
+          const partnerId = coachPartnerIds.find(id => id !== userIdNum);
+          if (hierarchyParent === partnerId) {
+            hierarchyParent = userIdNum;
+          }
+        }
         
         if (enableLogging) {
           console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}]`);

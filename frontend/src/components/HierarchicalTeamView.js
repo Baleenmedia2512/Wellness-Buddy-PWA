@@ -168,11 +168,17 @@ const TeamNode = ({
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg sm:rounded-xl shadow-md border-2 border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all duration-200 w-full max-w-full"
+          className={`rounded-lg sm:rounded-xl shadow-md border-2 overflow-hidden hover:shadow-lg transition-all duration-200 w-full max-w-full ${
+            node.isCoCoach
+              ? "bg-purple-50/40 border-purple-300 hover:border-purple-400 ring-1 ring-purple-200"
+              : "bg-white border-gray-100 hover:border-blue-200"
+          }`}
         >
           {/* Card Header */}
           <div
-            className="flex items-center gap-1 xs:gap-1.5 sm:gap-2 p-1.5 xs:p-2 sm:p-2.5 cursor-pointer active:bg-gray-50 transition-colors relative w-full overflow-hidden"
+            className={`flex items-center gap-1 xs:gap-1.5 sm:gap-2 p-1.5 xs:p-2 sm:p-2.5 cursor-pointer active:bg-gray-50 transition-colors relative w-full overflow-hidden ${
+              node.isCoCoach ? "bg-purple-50/50" : ""
+            }`}
             onClick={handleCardClick}
           >
             {/* Avatar */}
@@ -195,17 +201,17 @@ const TeamNode = ({
                   {node.userName}
                 </h3>
                 {/* Role Badge */}
-                {level === 0 && node.role === "coach" && (
+                {level === 0 && node.role === "coach" && !node.isCoCoach && (
                   <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     COACH
                   </span>
                 )}
-                {level === 1 && node.role === "coach" && (
+                {(node.isCoCoach || (level === 1 && node.role === "coach" && !node.isCoCoach)) && (
                   <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     CO-COACH
                   </span>
                 )}
-                {level >= 2 && (
+                {level >= 1 && !node.isCoCoach && node.role !== "coach" && (
                   <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-gray-100 text-gray-700 border border-gray-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     MEMBER
                   </span>

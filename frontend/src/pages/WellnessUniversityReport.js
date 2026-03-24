@@ -610,6 +610,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         coachName: member.CoachName || "",
         coCoachName: member.CoCoachName || "",
         isEnrolled: member.isEnrolled !== false,
+        isCoCoach: member.isCoCoach || false,
         teamMembers: [],
       });
     });
@@ -707,7 +708,9 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           <div className="flex-1 mb-2 w-full">
             <div
               className={`rounded-lg p-2.5 border shadow-sm transition-all ${
-                isEnrolled
+                node.isCoCoach
+                  ? "bg-purple-50/60 border-purple-300 ring-1 ring-purple-200"
+                  : isEnrolled
                   ? "bg-white border-green-200"
                   : "bg-gray-50 border-gray-300 opacity-60"
               }`}
@@ -764,7 +767,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                     }`}
                   >
                     {node.userName}
-                    {level === 0 && (
+                    {node.isCoCoach && (
+                      <span className="ml-1.5 text-[9px] bg-purple-100 text-purple-700 border border-purple-300 px-1.5 py-0.5 rounded-full font-bold">
+                        CO-COACH
+                      </span>
+                    )}
+                    {level === 0 && !node.isCoCoach && (
                       <span className="ml-1.5 text-[9px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-bold">
                         DIRECT
                       </span>
