@@ -82,13 +82,10 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         Log.d(TAG, "⏰ Reminder fired for " + activityType
                 + " at " + formatTime(hour, minute));
 
-        // 1. Start AlarmSoundService → plays alarm ringtone for 60s + vibrates
+        // 1. Start AlarmSoundService → plays alarm ringtone + shows foreground notification
         startAlarmSound(context, activityType, label, hour, minute);
 
-        // 2. Show the status-bar notification (with Dismiss button)
-        showReminderNotification(context, activityType, label, hour, minute);
-
-        // 3. Reschedule for the SAME time tomorrow
+        // 2. Reschedule for the SAME time tomorrow
         scheduleNextDay(context, activityType, label, hour, minute);
     }
 
