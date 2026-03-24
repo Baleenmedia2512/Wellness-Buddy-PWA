@@ -28,7 +28,11 @@ export default async function handler(req, res) {
 
     const safeUserId = Number.parseInt(userId, 10);
     const safeSeconds = Math.max(0, Number.parseInt(totalScreenTimeSeconds, 10) || 0);
-    const safeDate = date || new Date().toISOString().split('T')[0];
+    // Use client-provided date (device local timezone). Fall back to IST if missing.
+    const istDate = new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
+    const safeDate = (date && /^\d{4}-\d{2}-\d{2}$/.test(String(date)))
+      ? String(date)
+      : istDate;
 
     if (isNaN(safeUserId) || safeUserId <= 0) {
       res.status(400).json({ success: false, message: 'Invalid userId' });

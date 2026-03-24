@@ -133,7 +133,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, days = '7', activityType } = req.query;
+    const { userId, days = '7', activityType, targetDate: rawTargetDate } = req.query;
     const normalizedActivityType = activityType
       ? String(activityType).toLowerCase()
       : null;
@@ -153,7 +153,10 @@ export default async function handler(req, res) {
     }
 
     const trendDays = Math.min(30, Math.max(1, Number.parseInt(days, 10) || 7));
-    const todayKey = toDateKey();
+    const todayKey =
+      rawTargetDate && /^\d{4}-\d{2}-\d{2}$/.test(rawTargetDate)
+        ? rawTargetDate
+        : toDateKey();
     const startDate = shiftDate(todayKey, -(trendDays - 1));
 
     const supabase = getSupabaseClient();

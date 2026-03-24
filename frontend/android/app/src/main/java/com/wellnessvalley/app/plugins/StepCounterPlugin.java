@@ -134,6 +134,44 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
         call.resolve(ret);
     }
 
+    /**
+     * Returns per-day step totals tracked by the background service (GalleryMonitorService).
+     * Reads the "WellnessSteps" SharedPreferences that the service writes every sensor update.
+     *
+     * Called by StepCounter.js on app open to backfill missing DB days.
+     *
+     * Input: { days: number }  — how many days back to look (default 7)
+     * Output: { history: [ { date: "YYYY-MM-DD", steps: number } ] }
+     */
+    @PluginMethod
+    public void getBackgroundStepHistory(PluginCall call) {
+        int days = call.getInt("days", 7);
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessSteps", android.content.Context.MODE_PRIVATE);
+
+        com.getcapacitor.JSArray history = new com.getcapacitor.JSArray();
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+
+        for (int i = days - 1; i >= 0; i--) {
+            java.util.Calendar day = (java.util.Calendar) cal.clone();
+            day.add(java.util.Calendar.DAY_OF_YEAR, -i);
+            String dateKey = String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                    day.get(java.util.Calendar.YEAR),
+                    day.get(java.util.Calendar.MONTH) + 1,
+                    day.get(java.util.Calendar.DAY_OF_MONTH));
+
+            int steps = prefs.getInt("step_daily_" + dateKey, 0);
+            JSObject entry = new JSObject();
+            entry.put("date", dateKey);
+            entry.put("steps", steps);
+            history.put(entry);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("history", history);
+        call.resolve(ret);
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event == null || event.sensor == null || event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) {

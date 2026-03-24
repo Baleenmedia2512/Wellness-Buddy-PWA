@@ -1,5 +1,22 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
 
+// Returns today's date as YYYY-MM-DD in IST (UTC+5:30)
+function toISTDateString() {
+  const istOffset = 5.5 * 60 * 60 * 1000;
+  return new Date(Date.now() + istOffset).toISOString().split('T')[0];
+}
+
+// Shift a YYYY-MM-DD string by deltaDays
+function shiftDateStr(dateStr, deltaDays) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const date = new Date(y, m - 1, d);
+  date.setDate(date.getDate() + deltaDays);
+  const yr = date.getFullYear();
+  const mo = String(date.getMonth() + 1).padStart(2, '0');
+  const dy = String(date.getDate()).padStart(2, '0');
+  return `${yr}-${mo}-${dy}`;
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -16,7 +33,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { userId, days } = req.query;
+    const { userId, days, targetDate: rawTargetDate } = req.query;
 
     if (!userId) {
       res.status(400).json({ success: false, message: 'Missing required field: userId' });
@@ -31,12 +48,11 @@ export default async function handler(req, res) {
       return;
     }
 
-    // Calculate date range
-    const endDate = new Date();
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - (safeDays - 1));
-    const startDateStr = startDate.toISOString().split('T')[0];
-    const endDateStr = endDate.toISOString().split('T')[0];
+    // Use targetDate from client (device local date) to avoid IST/UTC mismatch
+    const endDateStr = (rawTargetDate && /^\d{4}-\d{2}-\d{2}$/.test(rawTargetDate))
+      ? rawTargetDate
+      : toISTDateString();
+    const startDateStr = shiftDateStr(endDateStr, -(safeDays - 1));
 
     const supabase = getSupabaseClient();
 
@@ -44,6 +60,7 @@ export default async function handler(req, res) {
       .from('screen_sessions_table')
       .select('*')
       .eq('UserId', safeUserId)
+      .not('Date', 'is', null)
       .gte('Date', startDateStr)
       .lte('Date', endDateStr)
       .order('Date', { ascending: false });

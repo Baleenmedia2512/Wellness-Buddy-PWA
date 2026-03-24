@@ -413,7 +413,7 @@ const Header = ({
                             <Clock3 className="h-5 w-5 text-amber-700" />
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Time Report
+                            Activity Report
                           </span>
                         </TouchFeedbackButton>
                       )}

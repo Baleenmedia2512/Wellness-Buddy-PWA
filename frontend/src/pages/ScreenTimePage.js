@@ -5,9 +5,10 @@ import {
   hasScreenTimePermission,
   requestScreenTimePermission,
   getTodayScreenTime,
-  refreshAndSaveScreenTime,
+  saveScreenTime,
   fetchScreenTimeHistory,
-  formatScreenTime
+  formatScreenTime,
+  syncAccurateHistoryFromInstall
 } from '../services/screenTimeService';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -85,7 +86,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
 
       if (resolvedUserId) {
         try {
-          const history = await fetchScreenTimeHistory(resolvedUserId, 30);
+          const history = await fetchScreenTimeHistory(resolvedUserId, 30, toDateKey());
           if (history?.success && Array.isArray(history.data)) {
             setHistoryData(history.data);
             setAvgSeconds(history.summary?.averageSeconds || 0);
@@ -93,8 +94,16 @@ const ScreenTimePage = ({ userId, onBack }) => {
         } catch (err) {
           console.warn('[ScreenTime] History fetch failed:', err.message);
         }
+        // Save using already-fetched deviceData — no second plugin call
         if (deviceData?.totalScreenTimeSeconds > 0) {
-          try { await refreshAndSaveScreenTime(resolvedUserId); } catch (err) {
+          const localDate = deviceData.date || toDateKey();
+          try {
+            await saveScreenTime({
+              userId: resolvedUserId,
+              date: localDate,
+              totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+            });
+          } catch (err) {
             console.warn('[ScreenTime] Save failed:', err.message);
           }
         }
@@ -134,7 +143,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
   // Reload history when resolvedUserId becomes available
   useEffect(() => {
     if (resolvedUserId && permissionGranted) {
-      fetchScreenTimeHistory(resolvedUserId, 30)
+      fetchScreenTimeHistory(resolvedUserId, 30, toDateKey())
         .then(h => {
           if (h?.success && Array.isArray(h.data)) {
             setHistoryData(h.data);
@@ -145,18 +154,44 @@ const ScreenTimePage = ({ userId, onBack }) => {
     }
   }, [resolvedUserId, permissionGranted]);
 
+  // On app open: sync accurate UsageStats history from install day → today
+  // Covers: Req 1 (from install day), Req 3 (correct on every open), Req 4 (accurate DB values)
+  // Also handles Req 5 (reinstall): DB already has old data; this re-syncs recent days
+  useEffect(() => {
+    if (!isNative || !permissionGranted || !resolvedUserId) return;
+
+    syncAccurateHistoryFromInstall(resolvedUserId)
+      .then((synced) => {
+        if (synced.length === 0) return;
+        console.log('✅ [ScreenTime] Synced', synced.length, 'day(s) from install date');
+        fetchScreenTimeHistory(resolvedUserId, 30, toDateKey()).then(h => {
+          if (h?.success && Array.isArray(h.data)) {
+            setHistoryData(h.data);
+            setAvgSeconds(h.summary?.averageSeconds || 0);
+          }
+        });
+      })
+      .catch(err => console.warn('⚠️ [ScreenTime] Sync failed:', err));
+  }, [resolvedUserId, permissionGranted, isNative]);
+
   const handleRefresh = async () => {
     if (!resolvedUserId) return;
     setIsRefreshing(true);
     try {
-      const result = await refreshAndSaveScreenTime(resolvedUserId);
-      if (result.success) {
-        setTodayData(result.deviceData);
-        const history = await fetchScreenTimeHistory(resolvedUserId, 30);
-        if (history?.success && Array.isArray(history.data)) {
-          setHistoryData(history.data);
-          setAvgSeconds(history.summary?.averageSeconds || 0);
-        }
+      const deviceData = await getTodayScreenTime();
+      if (deviceData?.totalScreenTimeSeconds > 0) {
+        const localDate = deviceData.date || toDateKey();
+        await saveScreenTime({
+          userId: resolvedUserId,
+          date: localDate,
+          totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+        });
+      }
+      setTodayData(deviceData);
+      const history = await fetchScreenTimeHistory(resolvedUserId, 30, toDateKey());
+      if (history?.success && Array.isArray(history.data)) {
+        setHistoryData(history.data);
+        setAvgSeconds(history.summary?.averageSeconds || 0);
       }
     } catch (err) {
       setError('Failed to refresh');
@@ -181,7 +216,9 @@ const ScreenTimePage = ({ userId, onBack }) => {
   const isOverLimit = todaySeconds > SCREEN_TIME_LIMIT;
 
   // History slicing
-  const sortedHistory = [...historyData].sort((a, b) => a.Date.localeCompare(b.Date));
+  const sortedHistory = [...historyData]
+    .filter(r => r.Date)  // skip rows with NULL Date (old broken records)
+    .sort((a, b) => a.Date.localeCompare(b.Date));
   const displayHistory = historyView === 'week' ? sortedHistory.slice(-7) : sortedHistory;
 
   if (loading && !permissionChecked) {

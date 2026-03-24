@@ -294,4 +294,146 @@ public class ScreenTimePlugin extends Plugin {
         int day = cal.get(Calendar.DAY_OF_MONTH);
         return String.format("%04d-%02d-%02d", year, month, day);
     }
+
+    /**
+     * Returns the app install date and how many days to sync.
+     * Used by JS to dynamically calculate history range from install day → today.
+     *
+     * Output: { installDate: "YYYY-MM-DD", syncDays: number (1-14) }
+     * syncDays is capped at 14 because UsageStatsManager reliably holds ~14 days of events.
+     */
+    @PluginMethod
+    public void getInstallDate(PluginCall call) {
+        try {
+            android.content.pm.PackageInfo info = getContext().getPackageManager()
+                    .getPackageInfo(getContext().getPackageName(), 0);
+            long firstInstallMs = info.firstInstallTime;
+
+            // Days since install, minimum 1 (today), max 14 (UsageStatsManager limit)
+            long daysSinceInstall = (System.currentTimeMillis() - firstInstallMs) / (1000L * 60 * 60 * 24);
+            int syncDays = (int) Math.min(Math.max(daysSinceInstall + 1, 1), 14);
+
+            Calendar cal = Calendar.getInstance();
+            cal.setTimeInMillis(firstInstallMs);
+            String installDate = String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                    cal.get(Calendar.YEAR),
+                    cal.get(Calendar.MONTH) + 1,
+                    cal.get(Calendar.DAY_OF_MONTH));
+
+            JSObject ret = new JSObject();
+            ret.put("installDate", installDate);
+            ret.put("syncDays", syncDays);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.w(TAG, "getInstallDate failed, defaulting to 14 days: " + e.getMessage());
+            JSObject ret = new JSObject();
+            ret.put("installDate", null);
+            ret.put("syncDays", 14);
+            call.resolve(ret);
+        }
+    }
+
+    /**
+     * Returns per-day screen time by querying UsageStatsManager directly for each day.
+     * This gives ACCURATE OS-level data (same source as Android Digital Wellbeing),
+     * not the stale values the background service may have written before being killed.
+     *
+     * Input:  { days: number }  — how many days back (default 7, max 14). Today is index 0.
+     * Output: { history: [ { date: "YYYY-MM-DD", seconds: number } ] }
+     */
+    @PluginMethod
+    public void getAccurateScreenTimeHistory(PluginCall call) {
+        if (!hasUsageStatsPermission()) {
+            JSObject ret = new JSObject();
+            ret.put("history", new JSArray());
+            call.resolve(ret);
+            return;
+        }
+
+        int days = Math.min(call.getInt("days", 7), 14);
+        UsageStatsManager usm = (UsageStatsManager)
+                getContext().getSystemService(Context.USAGE_STATS_SERVICE);
+
+        JSArray history = new JSArray();
+        java.util.Calendar now = java.util.Calendar.getInstance();
+
+        for (int i = days - 1; i >= 0; i--) {
+            java.util.Calendar dayStart = (java.util.Calendar) now.clone();
+            dayStart.add(java.util.Calendar.DAY_OF_YEAR, -i);
+            dayStart.set(java.util.Calendar.HOUR_OF_DAY, 0);
+            dayStart.set(java.util.Calendar.MINUTE, 0);
+            dayStart.set(java.util.Calendar.SECOND, 0);
+            dayStart.set(java.util.Calendar.MILLISECOND, 0);
+
+            java.util.Calendar dayEnd;
+            if (i == 0) {
+                dayEnd = (java.util.Calendar) now.clone();
+            } else {
+                dayEnd = (java.util.Calendar) dayStart.clone();
+                dayEnd.add(java.util.Calendar.DAY_OF_YEAR, 1);
+                dayEnd.add(java.util.Calendar.MILLISECOND, -1);
+            }
+
+            String dateKey = String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                    dayStart.get(java.util.Calendar.YEAR),
+                    dayStart.get(java.util.Calendar.MONTH) + 1,
+                    dayStart.get(java.util.Calendar.DAY_OF_MONTH));
+
+            long totalMs = 0;
+            try {
+                Map<String, Long> packageUsage = calculateUsageFromEvents(
+                        usm, dayStart.getTimeInMillis(), dayEnd.getTimeInMillis());
+                for (Map.Entry<String, Long> entry : packageUsage.entrySet()) {
+                    if (!isExcludedPackage(entry.getKey())) {
+                        totalMs += entry.getValue();
+                    }
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "getAccurateScreenTimeHistory: error for " + dateKey + ": " + e.getMessage());
+            }
+
+            JSObject entry = new JSObject();
+            entry.put("date", dateKey);
+            entry.put("seconds", totalMs / 1000);
+            history.put(entry);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("history", history);
+        call.resolve(ret);
+    }
+
+    /**
+     * Returns per-day screen time totals recorded by GalleryMonitorService SharedPreferences.
+     * NOTE: May be lower than actual usage if service was killed mid-day.
+     * Prefer getAccurateScreenTimeHistory() for accurate values.
+     */
+    @PluginMethod
+    public void getBackgroundScreenTimeHistory(PluginCall call) {
+        int days = call.getInt("days", 7);
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessScreen", android.content.Context.MODE_PRIVATE);
+
+        JSArray history = new JSArray();
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+
+        for (int i = days - 1; i >= 0; i--) {
+            java.util.Calendar day = (java.util.Calendar) cal.clone();
+            day.add(java.util.Calendar.DAY_OF_YEAR, -i);
+            String dateKey = String.format(java.util.Locale.US, "%04d-%02d-%02d",
+                    day.get(java.util.Calendar.YEAR),
+                    day.get(java.util.Calendar.MONTH) + 1,
+                    day.get(java.util.Calendar.DAY_OF_MONTH));
+
+            long seconds = prefs.getLong("screen_daily_" + dateKey, 0);
+            JSObject entry = new JSObject();
+            entry.put("date", dateKey);
+            entry.put("seconds", seconds);
+            history.put(entry);
+        }
+
+        JSObject ret = new JSObject();
+        ret.put("history", history);
+        call.resolve(ret);
+    }
 }
