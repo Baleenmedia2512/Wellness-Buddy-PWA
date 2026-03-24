@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import TouchFeedbackButton from "../TouchFeedbackButton";
 
 // --- DateRangePicker Component ---
-const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
+const DateRangePicker = ({ startDate, endDate, onSelect, onClose, singleDay = false }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectingStart, setSelectingStart] = useState(true);
   const [tempStart, setTempStart] = useState(startDate);
@@ -48,6 +48,13 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     if (clickedDate > today) {
+      return;
+    }
+
+    if (singleDay) {
+      setTempStart(clickedDate);
+      setTempEnd(clickedDate);
+      onSelect(clickedDate, clickedDate);
       return;
     }
 
@@ -150,7 +157,7 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
             })}
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            {selectingStart ? "Select start date" : "Select end date"}
+            {singleDay ? "Select a date" : selectingStart ? "Select start date" : "Select end date"}
           </p>
         </div>
         <button
@@ -347,6 +354,7 @@ const HierarchicalReportLayout = ({
   topContent,
   children,
   allowedDateRanges, // Optional array to filter date range options (e.g., ["today", "yesterday"])
+  singleDayCustom,   // If true, custom picker selects a single day only
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -365,13 +373,9 @@ const HierarchicalReportLayout = ({
 
   const getDateRangeLabel = () => {
     if (dateRange === "custom" && customStartDate && customEndDate) {
-      return `${customStartDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })} - ${customEndDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`;
+      const start = customStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const end   = customEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return start === end ? start : `${start} - ${end}`;
     }
     return "Custom";
   };
@@ -508,21 +512,22 @@ const HierarchicalReportLayout = ({
                 </TouchFeedbackButton>
               </div>
             </div>
-
-            {/* Date Picker Dropdown - Outside scrollable container */}
-            <AnimatePresence>
-              {showDatePicker && (
-                <div className="relative">
-                  <DateRangePicker
-                    startDate={customStartDate}
-                    endDate={customEndDate}
-                    onSelect={handleDateRangeSelect}
-                    onClose={() => setShowDatePicker(false)}
-                  />
-                </div>
-              )}
-            </AnimatePresence>
           </div>
+
+          {/* Date Picker Dropdown - Outside overflow container so it's not clipped */}
+          <AnimatePresence>
+            {showDatePicker && (
+              <div className="relative">
+                <DateRangePicker
+                  startDate={customStartDate}
+                  endDate={customEndDate}
+                  onSelect={handleDateRangeSelect}
+                  onClose={() => setShowDatePicker(false)}
+                  singleDay={!!singleDayCustom}
+                />
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 

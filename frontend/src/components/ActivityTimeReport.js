@@ -17,6 +17,7 @@ import HierarchicalReportLayout, {
 } from "./common/HierarchicalReportLayout";
 import HierarchicalNode from "./common/HierarchicalNode";
 import { teamHierarchyService } from "../services/teamHierarchyService";
+import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -70,6 +71,15 @@ function formatDateForApi(d) {
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0")
   );
+}
+
+/** Convert "HH:mm" (24-hr) to "h:mm AM/PM" (12-hr) for display */
+function fmt12(hhmm) {
+  if (!hhmm) return null;
+  const [h, m] = hhmm.split(":").map(Number);
+  const ampm = h >= 12 ? "PM" : "AM";
+  const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
 /** Score: on-time=100, late=50, missed=0  →  averaged across all activity×day cells */
@@ -150,12 +160,12 @@ function DayHeatmapRow({ day }) {
         return (
           <div
             key={key}
-            title={`${ACTIVITY_META[key].label}: ${t ?? "—"} (${s})`}
+            title={`${ACTIVITY_META[key].label}: ${fmt12(t) ?? "—"} (${s})`}
             className={`flex flex-col items-center justify-center rounded-md border px-1 py-0.5 min-w-[36px] ${st.bg} ${st.border}`}
           >
             <StatusDot status={s} />
             <span className={`text-[9px] font-bold mt-0.5 ${st.text}`}>
-              {t ?? "—"}
+              {fmt12(t) ?? "—"}
             </span>
           </div>
         );
@@ -180,7 +190,7 @@ function AvgTimeRow({ averageTimes, consistentlyLate }) {
           >
             <Icon className="w-3 h-3 text-gray-400 shrink-0" />
             <span className="text-[9px] font-semibold text-gray-500 uppercase">{short}</span>
-            <span className="text-[10px] font-bold text-gray-800">{avg ?? "—"}</span>
+            <span className="text-[10px] font-bold text-gray-800">{fmt12(avg) ?? "—"}</span>
             {late && (
               <Flame className="w-3 h-3 text-orange-500 shrink-0" title="Consistently late" />
             )}
@@ -220,7 +230,7 @@ function ScoreRing({ score }) {
 }
 
 /** Expanded details panel shown inside HierarchicalNode */
-function TimeReportDetails({ node }) {
+function TimeReportDetails({ node, dateRange }) {
   const [tab, setTab] = useState("heatmap");
 
   const entry = node.__timeData;
@@ -232,7 +242,7 @@ function TimeReportDetails({ node }) {
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
-      {/* Avg time chips */}
+      {/* Avg time chips — shown for today/yesterday/custom (single day) */}
       <AvgTimeRow averageTimes={entry.averageTimes} consistentlyLate={entry.consistentlyLate} />
 
       {/* Tab toggle */}
@@ -323,7 +333,7 @@ function TimeReportDetails({ node }) {
                           <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${st.bg} ${st.border}`}>
                             <StatusDot status={s} />
                             <span className={`text-[10px] font-semibold ${st.text}`}>
-                              {act?.time ?? "—"}
+                              {fmt12(act?.time) ?? "—"}
                             </span>
                           </div>
                         </td>
@@ -354,6 +364,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [sortOrder, setSortOrder] = useState("desc");
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
+  const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), []);
@@ -554,7 +565,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     );
   }, []);
 
-  const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} />, []);
+  const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} dateRange={dateRange} />, [dateRange]);
 
   // ── Summary stats ──────────────────────────────────────────────────────────
 
@@ -578,27 +589,59 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   // ── Team-view toggle ───────────────────────────────────────────────────────
 
   const teamViewToggle = (
-    <div className="flex items-center justify-end mb-3 gap-2">
-      <span className="text-xs text-gray-500 font-medium">View:</span>
-      {["direct", "full"].map((v) => (
+    <div className="flex justify-end mb-3 sm:mb-4">
+      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
         <button
-          key={v}
-          onClick={() => setTeamView(v)}
-          className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all ${
-            teamView === v
-              ? "bg-green-700 text-white border-green-700 shadow-sm"
-              : "bg-white text-gray-600 border-gray-200 hover:border-green-300"
+          onClick={() => setTeamView("direct")}
+          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+            teamView === "direct"
+              ? "bg-green-600 text-white shadow-sm"
+              : "text-green-700 hover:text-green-800"
           }`}
         >
-          {v === "direct" ? "Direct" : "Full"}
+          Direct
         </button>
-      ))}
+        <button
+          onClick={() => setTeamView("full")}
+          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+            teamView === "full"
+              ? "bg-green-600 text-white shadow-sm"
+              : "text-green-700 hover:text-green-800"
+          }`}
+        >
+          Full
+        </button>
+      </div>
     </div>
   );
 
   const subtitle = `${flatData.length} member${flatData.length === 1 ? "" : "s"} • ${
-    new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }).replace(/\s?(AM|PM)/i, "")
+    new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   }`;
+  // ── Direct / Full hierarchy filter ────────────────────────────────────────
+  const filteredHierarchy = useMemo(() => {
+    if (!hierarchyData) return null;
+    if (teamView === "full") return hierarchyData;
+    // Direct view: strip nested teamMembers from direct reports
+    if (hierarchyData.teamMembers) {
+      return {
+        ...hierarchyData,
+        teamMembers: hierarchyData.teamMembers.map((member) => ({
+          ...member,
+          teamMembers: [],
+        })),
+      };
+    }
+    return hierarchyData;
+  }, [hierarchyData, teamView]);
+  const handleDownload = () => {
+    console.log("Download activity time report");
+    // Implement download logic here
+  };
+
+  const handleSettings = () => {
+    setShowSettings((prev) => !prev);
+  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -608,7 +651,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       subtitle={subtitle}
       onBack={onBack}
       onRefresh={() => fetchData(true)}
-      onDownload={null}
+      onDownload={handleDownload}
+      onSettings={handleSettings}
       loading={loading}
       refreshing={refreshing}
       error={error}
@@ -629,20 +673,21 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onFilterChange={setFilter}
       sortOrder={sortOrder}
       onSortChange={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
-      summaryStats={summaryStats}
-      allowedDateRanges={["today", "yesterday", "week", "month"]}
+      summaryStats={null}
+      allowedDateRanges={["today", "yesterday"]}
+      singleDayCustom={true}
     >
-      {hierarchyData ? (
+      {filteredHierarchy ? (
         <>
           {teamViewToggle}
           <HierarchicalNode
-            node={hierarchyData}
+            node={filteredHierarchy}
             level={0}
             isLastChild={true}
             renderStatus={renderStatus}
             renderStats={renderStats}
             renderExpandedDetails={renderExpandedDetails}
-            isCurrentUser={hierarchyData.userId === user?.id}
+            isCurrentUser={filteredHierarchy.userId === user?.id}
             showTeamCount={true}
             getStatusStyle={getStatusStyle}
             searchQuery={searchQuery}
@@ -662,6 +707,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           </p>
         </div>
       ) : null}
+
+      {/* Time Window Settings Modal */}
+      <TimeWindowSettingsModal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        onUpdate={() => fetchData(true)}
+        userEmail={user?.email}
+      />
     </HierarchicalReportLayout>
   );
 }
