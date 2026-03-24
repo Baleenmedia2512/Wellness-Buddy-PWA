@@ -1,140 +1,599 @@
 // src/pages/WellnessCounselling.js
-import React, { useState } from "react";
-import { FileHeart, Plus, List, ArrowLeft } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import HierarchicalReportLayout, {
+  LoadingSkeleton,
+} from "../components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../components/common/HierarchicalNode";
 import WellnessCounsellingForm from "../components/WellnessCounselling/WellnessCounsellingForm";
 import TouchFeedbackButton from "../components/TouchFeedbackButton";
 
 /**
  * Wellness Counselling Page
- * Main page for wellness counselling assessments
+ * Shows team hierarchy with counselling status and allows starting new assessments
  */
 const WellnessCounselling = ({ user, onBack }) => {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [hierarchyData, setHierarchyData] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [refreshing, setRefreshing] = useState(false);
+  const [teamView, setTeamView] = useState("direct");
+  
+  // Form states
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [viewingAssessment, setViewingAssessment] = useState(null);
+  
+  // Mock assessment data - replace with API call
+  const [assessmentData, setAssessmentData] = useState({});
 
-  // Mock data for previous assessments (will be replaced with real data later)
-  const previousAssessments = [
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+
+  const getUserId = async (email) => {
+    if (!email) {
+      throw new Error("User email is required but not provided");
+    }
+    
+    console.log('🔍 [WellnessCounselling] Looking up user ID for:', email);
+    
+    const response = await fetch(
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
+    );
+    const data = await response.json();
+    
+    console.log('📋 [WellnessCounselling] Lookup response:', data);
+    
+    if (!data.success) {
+      throw new Error(data.message || "User not found");
+    }
+    return data.userId;
+  };
+
+  const fetchData = async (isBackground = false) => {
+    if (!user) {
+      console.warn('⚠️ [WellnessCounselling] No user object provided');
+      setError("User information not available. Please log in again.");
+      return;
+    }
+    
+    if (!user.email) {
+      console.warn('⚠️ [WellnessCounselling] User object missing email:', user);
+      setError("User email not available. Please log in again.");
+      return;
+    }
+
+    console.log('👤 [WellnessCounselling] User object:', { 
+      email: user.email, 
+      name: user.name,
+      id: user.id 
+    });
+
+    if (!isBackground) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+    setError(null);
+
+    try {
+      const userId = await getUserId(user.email);
+      
+      // Fetch hierarchy data - reusing the same hierarchy API
+      const response = await fetch(
+        `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+      );
+      
+      if (!response.ok) {
+        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      }
+      
+      const result = await response.json();
+      
+      console.log('📋 [WellnessCounselling] Full API response:', result);
+      
+      if (!result.success) {
+        throw new Error(result.message || "Failed to fetch team data");
+      }
+      
+      // Check if data exists (could be in result.data or result.hierarchy)
+      const hierarchyData = result.data || result.hierarchy;
+      
+      if (!hierarchyData) {
+        console.error('❌ [WellnessCounselling] API response structure:', Object.keys(result));
+        throw new Error("No team data returned from API");
+      }
+      
+      console.log('📋 [WellnessCounselling] Raw hierarchy data:', hierarchyData);
+
+      // Map field names for HierarchicalNode component
+      const mapFields = (node) => {
+        if (!node) {
+          console.warn('⚠️ [WellnessCounselling] mapFields received null/undefined node');
+          return null;
+        }
+        
+        const mapped = { ...node };
+        mapped.userEmail = node.email || node.userEmail;
+        mapped.uplineCoachName = node.coachName || node.uplineCoachName;
+        mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        
+        // Add counselling status to metrics
+        const hasCounselling = assessmentData[node.userId];
+        mapped.metrics = {
+          ...mapped.metrics,
+          hasCounselling: !!hasCounselling,
+          counsellingDate: hasCounselling?.submittedAt,
+          counsellorName: hasCounselling?.counsellorName,
+        };
+        
+        if (mapped.teamMembers && mapped.teamMembers.length > 0) {
+          mapped.teamMembers = mapped.teamMembers
+            .map(mapFields)
+            .filter(child => child !== null);
+        }
+        return mapped;
+      };
+
+      const mappedData = mapFields(hierarchyData);
+      
+      if (!mappedData) {
+        throw new Error("Failed to process team hierarchy data");
+      }
+      
+      console.log('✅ [WellnessCounselling] Mapped hierarchy:', mappedData);
+      
+      setHierarchyData(mappedData);
+      
+      // Fetch counselling assessments
+      const assessmentsResponse = await fetch(
+        `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+      );
+      
+      if (assessmentsResponse.ok) {
+        const assessmentsResult = await assessmentsResponse.json();
+        if (assessmentsResult.success) {
+          setAssessmentData(assessmentsResult.data);
+        }
+      }
+      
+    } catch (err) {
+      console.error("Error fetching data:", err);
+      setError(err.message || "Failed to load data. Please try again.");
+    } finally {
+      if (!isBackground) {
+        setLoading(false);
+      } else {
+        setRefreshing(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user]);
+
+  const handleManualRefresh = () => {
+    fetchData(true);
+  };
+
+  // Filter options
+  const filterOptions = [
+    { value: "all", label: "All Members", icon: null },
+    { value: "counselled", label: "Counselled", icon: CheckCircle },
+    { value: "pending", label: "Pending", icon: Clock },
+  ];
+
+  // Match filter logic
+  const matchesFilter = (node, filterValue) => {
+    if (filterValue === "all") return true;
+    const hasCounselling = !!assessmentData[node.userId];
+    if (filterValue === "counselled") return hasCounselling;
+    if (filterValue === "pending") return !hasCounselling;
+    return true;
+  };
+
+  // Match search logic
+  const matchesSearch = (node, query) => {
+    if (!query) return true;
+    const lowerQuery = query.toLowerCase();
+    return (
+      node.userName?.toLowerCase().includes(lowerQuery) ||
+      node.userEmail?.toLowerCase().includes(lowerQuery)
+    );
+  };
+
+  // Render status badge
+  const renderStatus = (node) => {
+    const assessment = assessmentData[node.userId];
+    if (assessment) {
+      return (
+        <div className="flex items-center gap-1.5 bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+          <CheckCircle size={14} />
+          <span className="text-xs font-semibold">Counselled</span>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2.5 py-1 rounded-full">
+        <Clock size={14} />
+        <span className="text-xs font-semibold">Pending</span>
+      </div>
+    );
+  };
+
+  // Render stats strip
+  const renderStats = (node) => {
+    const assessment = assessmentData[node.userId];
+    if (!assessment) return null;
+
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-100">
+        <div className="flex items-center gap-2 text-xs text-gray-600">
+          <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
+          <span className="text-gray-400">•</span>
+          <span>{new Date(assessment.submittedAt).toLocaleDateString()}</span>
+        </div>
+      </div>
+    );
+  };
+
+  // Render expanded details when clicking on a node
+  const renderExpandedDetails = (node) => {
+    const assessment = assessmentData[node.userId];
+    
+    return (
+      <div className="mt-3 pt-3 border-t border-gray-100 space-y-3">
+        {assessment ? (
+          <TouchFeedbackButton
+            onClick={() => setViewingAssessment({ node, assessment })}
+            className="w-full bg-green-50 hover:bg-green-100 text-green-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+          >
+            View Assessment Details
+          </TouchFeedbackButton>
+        ) : (
+          <TouchFeedbackButton
+            onClick={() => {
+              setSelectedMember(node);
+              setIsFormOpen(true);
+            }}
+            className="w-full bg-blue-50 hover:bg-blue-100 text-blue-700 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+          >
+            <Plus size={16} />
+            Start Assessment
+          </TouchFeedbackButton>
+        )}
+      </div>
+    );
+  };
+
+  // Get status styling
+  const getStatusStyle = (node, level, isCurrentUser) => {
+    const assessment = assessmentData[node.userId];
+    
+    if (assessment) {
+      return {
+        containerClass: "bg-green-50 border-green-200",
+        avatarClass: "bg-green-100 border-green-300 text-green-600",
+        nameClass: "text-gray-900",
+        statsBorderClass: "border-green-100 divide-green-100",
+      };
+    }
+    
+    return {
+      containerClass: "bg-white border-gray-200",
+      avatarClass: "bg-gray-100 border-gray-300 text-gray-600",
+      nameClass: "text-gray-900",
+      statsBorderClass: "border-gray-100 divide-gray-100",
+    };
+  };
+
+  // Check if hierarchy has visible nodes
+  const hasVisibleNodes = (node) => {
+    if (!node) return false;
+    if (matchesFilter(node, filter) && matchesSearch(node, searchQuery)) {
+      return true;
+    }
+    if (node.teamMembers && node.teamMembers.length > 0) {
+      return node.teamMembers.some(hasVisibleNodes);
+    }
+    return false;
+  };
+
+  // Calculate summary stats
+  const calculateStats = (node) => {
+    let total = 0;
+    let counselled = 0;
+    
+    const count = (n) => {
+      total++;
+      if (assessmentData[n.userId]) {
+        counselled++;
+      }
+      if (n.teamMembers && n.teamMembers.length > 0) {
+        n.teamMembers.forEach(count);
+      }
+    };
+    
+    if (node) count(node);
+    
+    return { total, counselled, pending: total - counselled };
+  };
+
+  const stats = hierarchyData ? calculateStats(hierarchyData) : { total: 0, counselled: 0, pending: 0 };
+
+  const summaryStats = [
     {
-      id: 1,
-      date: "2026-03-10",
-      healthProblems: ["Diabetes", "Back pain", "Tiredness"],
+      label: "Total Members",
+      value: stats.total,
+      color: "blue",
+      icon: Users,
     },
     {
-      id: 2,
-      date: "2026-02-15",
-      healthProblems: ["Headache", "Acidity", "Constipation"],
+      label: "Counselled",
+      value: stats.counselled,
+      color: "green",
+      icon: CheckCircle,
+    },
+    {
+      label: "Pending",
+      value: stats.pending,
+      color: "orange",
+      icon: Clock,
     },
   ];
 
+  if (loading) {
+    return <LoadingSkeleton />;
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-green-50 to-white">
-      <div className="max-w-4xl mx-auto px-4 py-8">
-        {/* Back Button */}
-        {onBack && (
-          <div className="mb-4">
-            <TouchFeedbackButton
-              onClick={onBack}
-              className="flex items-center gap-2 text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              <ArrowLeft size={20} />
-              <span className="font-medium">Back</span>
-            </TouchFeedbackButton>
+    <>
+      <HierarchicalReportLayout
+        title="Wellness Counselling"
+        subtitle={`${stats.total} Members • ${stats.counselled} Counselled`}
+        onBack={onBack}
+        onRefresh={handleManualRefresh}
+        loading={refreshing}
+        error={error}
+        onRetry={fetchData}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        filter={filter}
+        onFilterChange={setFilter}
+        filterOptions={filterOptions}
+        summaryStats={summaryStats}
+        topContent={
+          <TouchFeedbackButton
+            onClick={() => {
+              setSelectedMember(null);
+              setIsFormOpen(true);
+            }}
+            className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white px-4 py-3 rounded-lg font-medium shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 mb-4"
+          >
+            <Plus size={20} />
+            Start New Assessment
+          </TouchFeedbackButton>
+        }
+      >
+        {/* Team View Toggle */}
+        {hierarchyData && (
+          <div className="flex justify-end mb-3 sm:mb-4">
+            <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+              <button
+                onClick={() => setTeamView("direct")}
+                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  teamView === "direct"
+                    ? "bg-green-600 text-white shadow-sm"
+                    : "text-green-700 hover:text-green-800"
+                }`}
+              >
+                Direct
+              </button>
+              <button
+                onClick={() => setTeamView("full")}
+                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                  teamView === "full"
+                    ? "bg-green-600 text-white shadow-sm"
+                    : "text-green-700 hover:text-green-800"
+                }`}
+              >
+                Full
+              </button>
+            </div>
           </div>
         )}
 
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <FileHeart size={32} className="text-green-600" />
-            <h1 className="text-3xl font-bold text-gray-800">
-              Wellness Counselling
-            </h1>
-          </div>
-          <p className="text-gray-600">
-            Comprehensive health assessment and personalized guidance
-          </p>
-        </div>
-
-        {/* New Assessment Button */}
-        <div className="mb-8">
-          <TouchFeedbackButton
-            onClick={() => setIsFormOpen(true)}
-            className="w-full bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-xl font-medium shadow-lg hover:shadow-xl transition-all flex items-center justify-center gap-3"
-          >
-            <Plus size={24} />
-            Start New Assessment
-          </TouchFeedbackButton>
-        </div>
-
-        {/* Previous Assessments */}
-        <div className="bg-white rounded-xl shadow-md p-6">
-          <div className="flex items-center gap-2 mb-4">
-            <List size={20} className="text-gray-600" />
-            <h2 className="text-xl font-semibold text-gray-800">
-              Previous Assessments
-            </h2>
-          </div>
-
-          {previousAssessments.length > 0 ? (
-            <div className="space-y-3">
-              {previousAssessments.map((assessment) => (
-                <div
-                  key={assessment.id}
-                  className="border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors cursor-pointer"
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-sm font-medium text-gray-600">
-                      {new Date(assessment.date).toLocaleDateString("en-US", {
-                        year: "numeric",
-                        month: "long",
-                        day: "numeric",
-                      })}
-                    </span>
-                    <span className="text-xs text-green-600 font-medium">
-                      View Details →
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {assessment.healthProblems.map((problem, idx) => (
-                      <span
-                        key={idx}
-                        className="inline-block bg-gray-100 text-gray-700 text-xs px-3 py-1 rounded-full"
-                      >
-                        {problem}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              ))}
+        {hierarchyData && hasVisibleNodes(hierarchyData) ? (
+          <HierarchicalNode
+            node={hierarchyData}
+            level={0}
+            isLastChild={true}
+            renderStatus={renderStatus}
+            renderStats={renderStats}
+            renderExpandedDetails={renderExpandedDetails}
+            isCurrentUser={true}
+            showTeamCount={true}
+            getStatusStyle={getStatusStyle}
+            searchQuery={searchQuery}
+            filter={filter}
+            matchesFilter={matchesFilter}
+            matchesSearch={matchesSearch}
+          />
+        ) : (
+          <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+              <Users className="w-8 h-8 text-gray-400" />
             </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <FileHeart size={48} className="mx-auto mb-3 opacity-30" />
-              <p>No previous assessments found.</p>
-              <p className="text-sm">Start your first assessment to begin!</p>
-            </div>
-          )}
-        </div>
-
-        {/* Info Card */}
-        <div className="mt-6 bg-blue-50 border border-blue-200 rounded-xl p-4">
-          <h3 className="font-semibold text-blue-900 mb-2">
-            ℹ️ About Wellness Counselling
-          </h3>
-          <p className="text-sm text-blue-800">
-            This comprehensive assessment helps us understand your health conditions,
-            daily habits, and lifestyle patterns. Based on this information, we can
-            provide personalized dietary recommendations and wellness guidance tailored
-            to your specific needs.
-          </p>
-        </div>
-      </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              No members found
+            </h3>
+            <p className="text-sm text-gray-500 max-w-sm">
+              {filter !== "all"
+                ? `No members match the "${
+                    filterOptions.find((f) => f.value === filter)?.label
+                  }" filter.`
+                : searchQuery
+                ? `No members match "${searchQuery}".`
+                : "No team members to display."}
+            </p>
+          </div>
+        )}
+      </HierarchicalReportLayout>
 
       {/* Wellness Counselling Form Modal */}
       <WellnessCounsellingForm
         isOpen={isFormOpen}
-        onClose={() => setIsFormOpen(false)}
+        onClose={() => {
+          setIsFormOpen(false);
+          setSelectedMember(null);
+        }}
         user={user}
+        selectedMember={selectedMember}
+        onSaveSuccess={(data) => {
+          // Update assessment data
+          setAssessmentData(prev => ({
+            ...prev,
+            [data.userId]: data,
+          }));
+          setIsFormOpen(false);
+          setSelectedMember(null);
+          fetchData(true);
+        }}
       />
+
+      {/* Assessment View Modal */}
+      {viewingAssessment && (
+        <AssessmentViewModal
+          assessment={viewingAssessment.assessment}
+          member={viewingAssessment.node}
+          onClose={() => setViewingAssessment(null)}
+        />
+      )}
+    </>
+  );
+};
+
+/**
+ * Assessment View Modal
+ * Shows details of a completed assessment
+ */
+const AssessmentViewModal = ({ assessment, member, onClose }) => {
+  if (!assessment) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+        {/* Header */}
+        <div className="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-t-xl flex items-center justify-between z-10">
+          <div>
+            <h2 className="text-xl font-bold">Assessment Details</h2>
+            <p className="text-sm text-green-100">{member.userName || member.userEmail}</p>
+          </div>
+          <TouchFeedbackButton
+            onClick={onClose}
+            className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
+            ariaLabel="Close"
+          >
+            ✕
+          </TouchFeedbackButton>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-6">
+          {/* Metadata */}
+          <div className="bg-gray-50 rounded-lg p-4">
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-gray-500">Counselled by:</span>
+                <span className="ml-2 font-medium">{assessment.counsellorName}</span>
+              </div>
+              <div>
+                <span className="text-gray-500">Date:</span>
+                <span className="ml-2 font-medium">
+                  {new Date(assessment.submittedAt).toLocaleDateString()}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Health Problems */}
+          {assessment.healthProblems && assessment.healthProblems.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Health Issues</h3>
+              <div className="flex flex-wrap gap-2">
+                {assessment.healthProblems.map((problem, idx) => (
+                  <span
+                    key={idx}
+                    className="bg-red-50 text-red-700 text-xs px-3 py-1 rounded-full border border-red-200"
+                  >
+                    {problem}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Eating Habits */}
+          {assessment.eatingHabits && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-3">Eating Habits</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {Object.entries(assessment.eatingHabits).map(([key, value]) => (
+                  value && (
+                    <div key={key} className="flex justify-between">
+                      <span className="text-gray-600 capitalize">
+                        {key.replace(/([A-Z])/g, ' $1').trim()}:
+                      </span>
+                      <span className="font-medium">{value}</span>
+                    </div>
+                  )
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Sleep Data */}
+          {assessment.sleepData && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Sleep Quality</h3>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Quality:</span>
+                  <span className="font-medium">{assessment.sleepData.quality}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Duration:</span>
+                  <span className="font-medium">{assessment.sleepData.duration}</span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Medication */}
+          {assessment.medicationDetails && (
+            <div>
+              <h3 className="text-sm font-semibold text-gray-700 mb-2">Medication Details</h3>
+              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                {assessment.medicationDetails}
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t p-4 flex justify-end">
+          <TouchFeedbackButton
+            onClick={onClose}
+            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+          >
+            Close
+          </TouchFeedbackButton>
+        </div>
+      </div>
     </div>
   );
 };

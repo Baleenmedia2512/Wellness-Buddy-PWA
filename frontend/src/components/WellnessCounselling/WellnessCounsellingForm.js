@@ -11,7 +11,7 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * Wellness Counselling Form Component
  * Main form for capturing comprehensive wellness assessment data
  */
-const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
+const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }) => {
   const [selectedHealthProblems, setSelectedHealthProblems] = useState([]);
   const [eatingHabits, setEatingHabits] = useState({
     wakeUpTime: "",
@@ -32,6 +32,9 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [error, setError] = useState("");
 
+  // Determine who is being assessed
+  const targetMember = selectedMember || user;
+
   // Handle form submission
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -39,12 +42,15 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
     setIsSaving(true);
 
     try {
-      // Simulate API call
+      // Simulate API call - TODO: Replace with real API endpoint
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      // For now, just log the data (no backend yet)
       const formData = {
-        userId: user?.email,
+        userId: targetMember?.userId || targetMember?.id,
+        userEmail: targetMember?.userEmail || targetMember?.email,
+        userName: targetMember?.userName || targetMember?.name,
+        counsellorId: user?.id,
+        counsellorName: user?.name || user?.email,
         healthProblems: selectedHealthProblems,
         eatingHabits,
         sleepData,
@@ -54,12 +60,33 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
 
       console.log("✅ Wellness Counselling Data:", formData);
 
+      // Save to backend
+      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+      const response = await fetch(`${apiBaseUrl}/api/counselling/save-assessment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      
+      const result = await response.json();
+      
+      if (!result.success) {
+        throw new Error(result.message || 'Failed to save assessment');
+      }
+
       // Show success message
       setSaveSuccess(true);
+      
+      // Call onSaveSuccess callback
+      if (onSaveSuccess) {
+        onSaveSuccess(formData);
+      }
+      
       setTimeout(() => {
         setSaveSuccess(false);
+        resetForm();
         onClose();
-      }, 2000);
+      }, 1500);
     } catch (err) {
       console.error("❌ Error saving data:", err);
       setError("Failed to save. Please try again.");
@@ -69,77 +96,97 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
   };
 
   // Handle form reset
+  const resetForm = () => {
+    setSelectedHealthProblems([]);
+    setEatingHabits({
+      wakeUpTime: "",
+      teaCoffeeTime: "",
+      breakfastTime: "",
+      lunchTime: "",
+      snacksTime: "",
+      dinnerTime: "",
+      dietType: "",
+      waterIntake: "",
+    });
+    setSleepData({ quality: "", duration: "" });
+    setMedicationDetails("");
+    setSaveSuccess(false);
+    setError("");
+  };
+
   const handleReset = () => {
     if (window.confirm("Are you sure you want to clear all data?")) {
-      setSelectedHealthProblems([]);
-      setEatingHabits({
-        wakeUpTime: "",
-        teaCoffeeTime: "",
-        breakfastTime: "",
-        lunchTime: "",
-        snacksTime: "",
-        dinnerTime: "",
-        dietType: "",
-        waterIntake: "",
-      });
-      setSleepData({ quality: "", duration: "" });
-      setMedicationDetails("");
+      resetForm();
     }
   };
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-start justify-center overflow-y-auto">
-      <div className="min-h-screen w-full flex items-start justify-center p-4 py-8">
-        <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl relative">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-start justify-center overflow-y-auto">
+      <div className="min-h-screen w-full flex items-start justify-center p-2 sm:p-4 py-4 sm:py-8">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl relative my-safe">
           {/* Header */}
-          <div className="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-t-xl flex items-center justify-between z-10">
-            <div>
-              <h2 className="text-xl font-bold">Wellness Counselling</h2>
-              <p className="text-sm text-green-100">
+          <div className="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between z-10">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-xl font-bold truncate">Wellness Counselling</h2>
+              <p className="text-xs sm:text-sm text-green-100">
                 Initial Assessment Record
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
+              className="p-1.5 sm:p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors flex-shrink-0 ml-2"
             >
-              <X size={24} />
+              <X size={20} className="sm:w-6 sm:h-6" />
             </button>
           </div>
 
           {/* Form Content */}
-          <form onSubmit={handleSubmit} className="p-6 space-y-8">
+          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 sm:space-y-8">
             {/* Success Message */}
             {saveSuccess && (
-              <div className="flex items-center gap-3 bg-green-50 border border-green-200 text-green-800 px-4 py-3 rounded-lg">
-                <CheckCircle size={20} />
-                <span>Assessment saved successfully!</span>
+              <div className="flex items-center gap-2 sm:gap-3 bg-green-50 border border-green-200 text-green-800 px-3 sm:px-4 py-2 sm:py-3 rounded-lg">
+                <CheckCircle size={18} className="flex-shrink-0" />
+                <span className="text-sm sm:text-base">Assessment saved successfully!</span>
               </div>
             )}
 
             {/* Error Message */}
             {error && (
-              <div className="flex items-center gap-3 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg">
-                <AlertCircle size={20} />
-                <span>{error}</span>
+              <div className="flex items-center gap-2 sm:gap-3 bg-red-50 border border-red-200 text-red-800 px-3 sm:px-4 py-2 sm:py-3 rounded-lg">
+                <AlertCircle size={18} className="flex-shrink-0" />
+                <span className="text-sm sm:text-base">{error}</span>
               </div>
             )}
 
             {/* User Info */}
-            <div className="bg-gray-50 rounded-lg p-4">
-              <h3 className="text-sm font-medium text-gray-700 mb-2">
-                Customer Information
+            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+              <h3 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">
+                Assessment For
               </h3>
-              <div className="grid grid-cols-2 gap-4 text-sm">
-                <div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
+                <div className="flex flex-wrap items-baseline gap-1">
                   <span className="text-gray-500">Name:</span>
-                  <span className="ml-2 font-medium">{user?.name || "N/A"}</span>
+                  <span className="font-medium break-words">
+                    {targetMember?.userName || targetMember?.name || "N/A"}
+                  </span>
                 </div>
-                <div>
+                <div className="flex flex-wrap items-baseline gap-1">
+                  <span className="text-gray-500">Email:</span>
+                  <span className="font-medium break-all text-xs">
+                    {targetMember?.userEmail || targetMember?.email || "N/A"}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-1">
+                  <span className="text-gray-500">Counsellor:</span>
+                  <span className="font-medium break-words">
+                    {user?.name || user?.email}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-baseline gap-1">
                   <span className="text-gray-500">Date:</span>
-                  <span className="ml-2 font-medium">
+                  <span className="font-medium">
                     {new Date().toLocaleDateString()}
                   </span>
                 </div>
@@ -147,7 +194,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {/* Health Problems Section */}
-            <div className="border-t pt-6">
+            <div className="border-t pt-4 sm:pt-6">
               <HealthProblemChips
                 selectedProblems={selectedHealthProblems}
                 onChange={setSelectedHealthProblems}
@@ -155,7 +202,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {/* Eating Habits Section */}
-            <div className="border-t pt-6">
+            <div className="border-t pt-4 sm:pt-6">
               <EatingHabitsSection
                 eatingHabits={eatingHabits}
                 onChange={setEatingHabits}
@@ -163,7 +210,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {/* Sleep Quality Section */}
-            <div className="border-t pt-6">
+            <div className="border-t pt-4 sm:pt-6">
               <SleepQualitySection
                 sleepData={sleepData}
                 onChange={setSleepData}
@@ -171,7 +218,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {/* Medication Section */}
-            <div className="border-t pt-6">
+            <div className="border-t pt-4 sm:pt-6">
               <MedicationSection
                 medicationDetails={medicationDetails}
                 onChange={setMedicationDetails}
@@ -179,12 +226,12 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {/* Form Actions */}
-            <div className="border-t pt-6 flex gap-3">
+            <div className="border-t pt-4 sm:pt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
               <TouchFeedbackButton
                 type="button"
                 onClick={handleReset}
                 variant="outline"
-                className="flex-1 px-6 py-3 border-2 border-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-50"
+                className="w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 border-2 border-gray-300 text-gray-700 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-50"
               >
                 Clear All
               </TouchFeedbackButton>
@@ -192,7 +239,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
                 type="submit"
                 disabled={isSaving || selectedHealthProblems.length === 0}
                 className={`
-                  flex-1 px-6 py-3 rounded-lg font-medium flex items-center justify-center gap-2
+                  w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2
                   ${
                     isSaving || selectedHealthProblems.length === 0
                       ? "bg-gray-300 text-gray-500 cursor-not-allowed"
@@ -215,7 +262,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user }) => {
             </div>
 
             {selectedHealthProblems.length === 0 && (
-              <p className="text-sm text-amber-600 text-center">
+              <p className="text-xs sm:text-sm text-amber-600 text-center px-2">
                 Please select at least one health problem to continue
               </p>
             )}

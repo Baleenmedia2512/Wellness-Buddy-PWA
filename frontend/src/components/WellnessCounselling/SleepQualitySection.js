@@ -22,16 +22,16 @@ const SleepQualitySection = ({ sleepData, onChange }) => {
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       <div className="flex items-center gap-2">
-        <Moon size={20} className="text-indigo-600" />
-        <h3 className="text-lg font-semibold text-gray-800">Sleep Quality & Duration</h3>
+        <Moon size={18} className="text-indigo-600 sm:w-5 sm:h-5" />
+        <h3 className="text-base sm:text-lg font-semibold text-gray-800">Sleep Quality & Duration</h3>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-3 sm:space-y-4">
         {/* Sleep Quality Selector */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700">
             How would you rate your sleep quality?
           </label>
           <div className="grid grid-cols-2 gap-2">
@@ -41,7 +41,7 @@ const SleepQualitySection = ({ sleepData, onChange }) => {
                 type="button"
                 onClick={() => handleChange("quality", value)}
                 className={`
-                  px-4 py-3 rounded-lg text-sm font-medium transition-all
+                  px-3 sm:px-4 py-2 sm:py-3 rounded-lg text-xs sm:text-sm font-medium transition-all
                   ${
                     sleepData.quality === value
                       ? `bg-gradient-to-r ${color} text-white shadow-lg scale-105`
@@ -57,11 +57,11 @@ const SleepQualitySection = ({ sleepData, onChange }) => {
 
         {/* Sleep Duration */}
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">
+          <label className="block text-xs sm:text-sm font-medium text-gray-700">
             Average sleep duration
           </label>
-          <div className="flex items-center gap-3">
-            <Clock size={18} className="text-gray-400" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Clock size={16} className="text-gray-400 flex-shrink-0 sm:w-[18px] sm:h-[18px]" />
             <input
               type="number"
               step="0.5"
@@ -70,11 +70,11 @@ const SleepQualitySection = ({ sleepData, onChange }) => {
               value={sleepData.duration || ""}
               onChange={(e) => handleChange("duration", e.target.value)}
               placeholder="7"
-              className="w-24 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="w-20 sm:w-24 px-2.5 sm:px-3 py-1.5 sm:py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
-            <span className="text-sm text-gray-600">hours per night</span>
+            <span className="text-xs sm:text-sm text-gray-600">hours per night</span>
           </div>
-          <p className="text-xs text-gray-500 ml-7">
+          <p className="text-xs text-gray-500 ml-5 sm:ml-7">
             Recommended: 7-9 hours for adults
           </p>
         </div>

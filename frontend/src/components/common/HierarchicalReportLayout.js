@@ -456,73 +456,75 @@ const HierarchicalReportLayout = ({
             </div>
           </div>
 
-          {/* Date Range Pills */}
-          <div
-            className="relative overflow-x-auto scrollbar-hide"
-            style={{
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-            }}
-          >
-            <div className="flex gap-1.5 sm:gap-2 pb-0 justify-center min-w-max mx-auto px-1">
-              {[
-                { value: "today", label: "Today" },
-                { value: "yesterday", label: "Yesterday" },
-                { value: "week", label: "Week" },
-                { value: "month", label: "Month" },
-              ]
-                .filter(
-                  (range) =>
-                    !allowedDateRanges ||
-                    allowedDateRanges.includes(range.value),
-                )
-                .map((range) => (
+          {/* Date Range Pills - Only show if onDateRangeChange is provided */}
+          {onDateRangeChange && (
+            <div
+              className="relative overflow-x-auto scrollbar-hide"
+              style={{
+                WebkitOverflowScrolling: "touch",
+                scrollbarWidth: "none",
+                msOverflowStyle: "none",
+              }}
+            >
+              <div className="flex gap-1.5 sm:gap-2 pb-0 justify-center min-w-max mx-auto px-1">
+                {[
+                  { value: "today", label: "Today" },
+                  { value: "yesterday", label: "Yesterday" },
+                  { value: "week", label: "Week" },
+                  { value: "month", label: "Month" },
+                ]
+                  .filter(
+                    (range) =>
+                      !allowedDateRanges ||
+                      allowedDateRanges.includes(range.value),
+                  )
+                  .map((range) => (
+                    <TouchFeedbackButton
+                      key={range.value}
+                      id={`date-range-${range.value}`}
+                      onClick={() => onDateRangeChange(range.value)}
+                      className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
+                        dateRange === range.value
+                          ? "bg-green-700 text-white border-green-700 shadow-md"
+                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                      }`}
+                    >
+                      {range.label}
+                    </TouchFeedbackButton>
+                  ))}
+
+                {/* Custom Date Range Button */}
+                <div className="relative flex-shrink-0">
                   <TouchFeedbackButton
-                    key={range.value}
-                    id={`date-range-${range.value}`}
-                    onClick={() => onDateRangeChange(range.value)}
-                    className={`flex-shrink-0 whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border ${
-                      dateRange === range.value
+                    id="date-range-custom"
+                    onClick={() => setShowDatePicker(!showDatePicker)}
+                    className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                      dateRange === "custom"
                         ? "bg-green-700 text-white border-green-700 shadow-md"
                         : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                     }`}
                   >
-                    {range.label}
+                    <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                    {getDateRangeLabel()}
                   </TouchFeedbackButton>
-                ))}
-
-              {/* Custom Date Range Button */}
-              <div className="relative flex-shrink-0">
-                <TouchFeedbackButton
-                  id="date-range-custom"
-                  onClick={() => setShowDatePicker(!showDatePicker)}
-                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
-                    dateRange === "custom"
-                      ? "bg-green-700 text-white border-green-700 shadow-md"
-                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                  }`}
-                >
-                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                  {getDateRangeLabel()}
-                </TouchFeedbackButton>
-              </div>
-            </div>
-
-            {/* Date Picker Dropdown - Outside scrollable container */}
-            <AnimatePresence>
-              {showDatePicker && (
-                <div className="relative">
-                  <DateRangePicker
-                    startDate={customStartDate}
-                    endDate={customEndDate}
-                    onSelect={handleDateRangeSelect}
-                    onClose={() => setShowDatePicker(false)}
-                  />
                 </div>
-              )}
-            </AnimatePresence>
-          </div>
+              </div>
+
+              {/* Date Picker Dropdown - Outside scrollable container */}
+              <AnimatePresence>
+                {showDatePicker && (
+                  <div className="relative">
+                    <DateRangePicker
+                      startDate={customStartDate}
+                      endDate={customEndDate}
+                      onSelect={handleDateRangeSelect}
+                      onClose={() => setShowDatePicker(false)}
+                    />
+                  </div>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
       </div>
 

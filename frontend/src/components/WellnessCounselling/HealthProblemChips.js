@@ -40,19 +40,19 @@ const HealthProblemChips = ({ selectedProblems, onChange }) => {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2 sm:space-y-3">
       <div className="flex items-center justify-between">
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm sm:text-base font-medium text-gray-700">
           Health Problems
         </label>
-        <span className="text-xs text-gray-500">
+        <span className="text-xs sm:text-sm text-gray-500">
           {selectedProblems.length} selected
         </span>
       </div>
-      <p className="text-xs text-gray-500 mb-2">
+      <p className="text-xs sm:text-sm text-gray-500">
         Tap to select health problems. Selected problems appear in green.
       </p>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap gap-1.5 sm:gap-2">
         {healthProblems.map((problem) => {
           const isSelected = selectedProblems.includes(problem);
           return (
@@ -61,7 +61,7 @@ const HealthProblemChips = ({ selectedProblems, onChange }) => {
               type="button"
               onClick={() => toggleProblem(problem)}
               className={`
-                inline-flex items-center gap-1.5 px-3 py-2 rounded-full text-sm font-medium
+                inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-full text-xs sm:text-sm font-medium
                 transition-all duration-200 ease-in-out
                 ${
                   isSelected
@@ -72,7 +72,7 @@ const HealthProblemChips = ({ selectedProblems, onChange }) => {
               `}
             >
               <span>{problem}</span>
-              {isSelected && <X size={14} strokeWidth={3} />}
+              {isSelected && <X size={14} strokeWidth={3} className="flex-shrink-0" />}
             </button>
           );
         })}
