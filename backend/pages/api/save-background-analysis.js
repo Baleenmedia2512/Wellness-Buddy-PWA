@@ -1,6 +1,7 @@
 ﻿import {
   getSupabaseClient,
   getISTTimestamp,
+  convertToIST,
 } from "../../utils/supabaseClient.js";
 import { cache, cacheKeys } from "../../utils/cache.js";
 import { largeBodyConfig as config } from "../../utils/apiConfig.js";
@@ -422,8 +423,22 @@ export default async function handler(req, res) {
 
     // Insert using Supabase - use PascalCase column names as they exist in Supabase
     // Store everything in IST (Indian Standard Time)
-    const currentTime = getISTTimestamp();
-    
+    const currentTime = getISTTimestamp(); // server insert time — used for UpdatedAt only
+
+    // ─── Capture timestamp logic ─────────────────────────────────────────────
+    // clientTimestamp = EXIF photo capture time sent from the app.
+    // We use it for CreatedAt so the meal is categorised by WHEN it was eaten,
+    // not when it was uploaded. Mirrors exactly how save-weight-entry.js works.
+    let createdAtIST;
+    if (clientTimestamp) {
+      const istConversion = convertToIST(clientTimestamp);
+      createdAtIST = istConversion.istTimestamp; // e.g. "2026-03-25 07:30:00"
+      console.log("🍽️ Food CreatedAt set to EXIF capture time (IST):", createdAtIST);
+    } else {
+      createdAtIST = currentTime; // fallback: server insert time
+      console.log("⚠️ No clientTimestamp — using server time for CreatedAt:", createdAtIST);
+    }
+
     // 🔍 DEBUG: Log food analysis upload details with client time comparison
     const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
     console.log('🍽️ Food Analysis Upload:', {
@@ -431,12 +446,10 @@ export default async function handler(req, res) {
       totalCalories,
       processedBy,
       clientUploaded: clientTimestamp || 'Not provided',
-      clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { hour12: true }) : 'N/A',
-      clientTimezoneOffset,
+      createdAtIST,
       serverUTC: new Date().toISOString(),
-      storedIST: currentTime,
       timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
-      note: 'Compare client upload time vs stored IST - this affects meal categorization!'
+      note: 'CreatedAt = EXIF capture time (IST) → meal window check uses this'
     });
     
     const { data, error } = await supabase
@@ -458,8 +471,8 @@ export default async function handler(req, res) {
             ? "Android Background Service"
             : "Wellness Valley Web App"),
         ImageBase64: imageBase64ToSave,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime,
+        CreatedAt: createdAtIST, // EXIF capture time → meal window / discipline score uses this
+        UpdatedAt: currentTime,  // Server insert time
       })
       .select()
       .single();

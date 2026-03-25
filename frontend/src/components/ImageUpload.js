@@ -48,6 +48,8 @@ const ImageUpload = forwardRef(
       imageType = null,
       detectedFoodNames = [],
       onHelpClick,
+      // Live education window from DB passed by App.js — null until fetched
+      educationWindow = null,
     },
     ref,
   ) => {
@@ -105,8 +107,19 @@ const ImageUpload = forwardRef(
 
         // 🚨 VALIDATE IMAGE FRESHNESS (Prevent proxy/old images)
         if (imageType === "education") {
-          // Get education time window (default: 5:00 AM - 11:59 PM)
-          const educationWindow = { start: "05:00:00", end: "23:59:00" };
+          // Block upload if window hasn't loaded from DB yet
+          if (!educationWindow) {
+            setAlertModal({
+              isOpen: true,
+              title: "⏳ Loading",
+              message:
+                "Education schedule is still loading. Please try again in a moment.",
+              type: "info",
+            });
+            event.target.value = "";
+            return;
+          }
+          // Use education time window passed from App.js (fetched live from DB)
           const validation = await validateImageForEducation(
             file,
             educationWindow,
@@ -239,7 +252,18 @@ const ImageUpload = forwardRef(
             // 🚨 Native gallery: use Capacitor's photo.exif for reliable date check
             // (base64ToFile always gives lastModified=now, so file date is useless here)
             if (imageType === "education") {
-              const educationWindow = { start: "05:00:00", end: "23:59:00" };
+              // Block upload if window hasn't loaded from DB yet
+              if (!educationWindow) {
+                setAlertModal({
+                  isOpen: true,
+                  title: "⏳ Loading",
+                  message:
+                    "Education schedule is still loading. Please try again in a moment.",
+                  type: "info",
+                });
+                return;
+              }
+              // Use education time window passed from App.js (fetched live from DB)
 
               // Capacitor exposes EXIF via photo.exif — use it if available
               let photoDate = null;

@@ -105,7 +105,7 @@ export async function lookupUserId(email) {
  * Accepts imageBase64 (data URL or raw base64) and sends it to the backend as ImageBase64
  * Returns: { success, id, ... }
  */
-export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail }) {
+export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail, captureTimestamp = null }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   
   try {
@@ -148,9 +148,11 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
         ImageBase64: imageBase64, 
         analysisResult: transformedAnalysisResult, 
         deviceInfo,
-        userEmail: actualUserEmail, // Include email for backend logging
-        clientTimestamp: new Date().toISOString(), // User's actual upload time
-        clientTimezoneOffset: new Date().getTimezoneOffset() // User's timezone offset
+        userEmail: actualUserEmail,
+        // Use EXIF capture timestamp if available — so meal is categorised by WHEN it was eaten,
+        // not when it was uploaded. Falls back to upload time if EXIF is missing.
+        clientTimestamp: captureTimestamp || new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset()
       })
     });
     
