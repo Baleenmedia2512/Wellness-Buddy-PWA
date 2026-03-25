@@ -539,33 +539,21 @@ export async function validateImageForEducation(file, educationWindow = { start:
         reason: 'proxy',
         message: daysDiff < 0 
           ? '🚨 Image date is in the future. Please check your device clock.'
-          : `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY during education hours.`,
-        details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY during education timing (${educationWindow.start} - ${educationWindow.end}) are allowed.`,
+          : `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
+        details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY are allowed to prevent proxy submissions.`,
         imageDate,
         imageTimestamp: imageTimestampLocal,
         daysDiff
       };
     }
     
-    // Check if image time is within education window
-    if (imageTimeStr < educationWindow.start || imageTimeStr > educationWindow.end) {
-      return {
-        isValid: false,
-        reason: 'proxy',
-        message: `🚨 Image was taken at ${imageTimeStr}, outside education hours (${educationWindow.start} - ${educationWindow.end}).`,
-        details: `Education timing validation failed. Please take a photo during valid education hours only.`,
-        imageDate,
-        imageTimestamp: imageTimestampLocal,
-        imageTime: imageTimeStr,
-        educationWindow
-      };
-    }
-    
-    // Image is valid - from today and within education timing
+    // ✅ Image is valid - from today (no time window restriction on frontend)
+    // Backend will handle on-time vs late marking based on upload time
+    console.log('✅ Education image validated - taken today at', imageTimeStr);
     return {
       isValid: true,
       reason: 'valid',
-      message: '✅ Image verified - taken today during education hours',
+      message: '✅ Image verified - taken today',
       imageDate,
       imageTimestamp: imageTimestampLocal,
       imageTime: imageTimeStr,

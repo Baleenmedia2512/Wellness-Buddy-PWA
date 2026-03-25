@@ -150,11 +150,17 @@ IF FOOD (default):
 }
 
 CRITICAL RULES:
-- If you see MULTIPLE PEOPLE gathered together (not eating) = "education"
+- If you see a WEIGHING SCALE (bathroom scale, body composition scale) with digital/analog display showing numbers = "weight" (HIGHEST PRIORITY)
+- If you see MULTIPLE PEOPLE gathered together (not eating, not on a scale) = "education"
 - If you see food/meals on plates/bowls = "food"
-- If you see a weighing scale with numbers = "weight"
 - For FOOD: MUST return at least ONE food item - NEVER empty array
 - For FOOD: If unclear, describe what you see (Rice, Curry, Mixed meal)
+
+⚠️ WEIGHT SCALE DETECTION:
+- Look for: digital displays with numbers, scale platform, feet on scale, bathroom scale design
+- Common scale types: digital scales, smart scales (with BF%, BMI), analog scales with dial
+- If ANY scale-like device is visible with weight measurement = classify as "weight"
+- Do NOT confuse scales with phones, tablets, or meeting screens
 
 🔥 NUTRITION ESTIMATION RULES (CRITICAL):
 - NEVER return 0 for calories UNLESS truly zero-calorie (water, black tea, black coffee only)
