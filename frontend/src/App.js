@@ -1406,11 +1406,7 @@ function WellnessValleyApp() {
           setWeightDiff({
             previous: parseFloat(diffData.stats.previousWeight.value),
             previousDate: diffData.stats.previousWeight.date,
-            change: parseFloat(
-              (val - parseFloat(diffData.stats.previousWeight.value)).toFixed(
-                2,
-              ),
-            ),
+            change: val - parseFloat(diffData.stats.previousWeight.value),
           });
         }
       } catch (_) {
@@ -3703,9 +3699,7 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
-                              : `${parseFloat(
-                                  Math.abs(weightDiff.change).toFixed(4),
-                                )} ${weightResult.unit}`}
+                              : `${Math.abs(weightDiff.change).toFixed(3)} ${weightResult.unit}`}
                           </p>
                           <p
                             style={{ fontSize: 13, fontWeight: 600, margin: 0 }}
