@@ -100,7 +100,11 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                                  int minute) {
         try {
             String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
-            String message = getActivityMessage(activityType, hour, minute + 15);
+            // Add 15 minutes (the reminder offset) to get the actual activity start time
+            int totalMinutes = hour * 60 + minute + 15;
+            int activityHour   = (totalMinutes / 60) % 24;
+            int activityMinute = totalMinutes % 60;
+            String message = getActivityMessage(activityType, activityHour, activityMinute);
 
             Intent serviceIntent = new Intent(context, AlarmSoundService.class);
             serviceIntent.setAction(AlarmSoundService.ACTION_START);
@@ -134,7 +138,11 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
         ensureChannel(nm);
 
         String title   = "🔔 " + (label != null ? label : capitalize(activityType)) + " Reminder";
-        String message = getActivityMessage(activityType, hour, minute + 15);
+        // Add 15 minutes (the reminder offset) to get the actual activity start time
+        int totalMins = hour * 60 + minute + 15;
+        int actHour   = (totalMins / 60) % 24;
+        int actMinute = totalMins % 60;
+        String message = getActivityMessage(activityType, actHour, actMinute);
 
         // Tap notification → open app
         Intent openApp = new Intent(context, MainActivity.class);
