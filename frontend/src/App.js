@@ -1533,11 +1533,14 @@ function WellnessValleyApp() {
    * Save education meeting log to database (AUTO-SAVE)
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
    * @param {string} imageBase64 - Base64 encoded image
+   * @param {Object|null} selectedClub - Selected club (optional)
+   * @param {string|null} captureTimestamp - EXIF/capture timestamp passed directly to avoid stale state
    */
   const saveEducationLog = async (
     educationData,
     imageBase64,
     selectedClub = null,
+    captureTimestamp = null,
   ) => {
     try {
       console.log("💾 Auto-saving education log:", educationData);
@@ -1598,7 +1601,8 @@ function WellnessValleyApp() {
       ) {
         console.log("🏢 Multiple clubs detected, showing selection modal");
         setNearbyCenters(attendance.nearbyCenters);
-        setPendingEducationData({ educationData, imageBase64, attendance });
+        // Store captureTimestamp so club-selection callback can pass it through
+        setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp });
         setShowClubSelectionModal(true);
         setSaveLoading(false);
         setLoadingState("idle");
@@ -1612,12 +1616,13 @@ function WellnessValleyApp() {
       const finalPlatform =
         attendance.attendanceType === "club" ? "Club" : educationData.platform;
 
-      // Use EXIF timestamp if available, otherwise use current time
-      const logTimestamp = imageTimestamp || new Date().toISOString();
+      // Use captureTimestamp (passed directly) → imageTimestamp state → current time
+      // Using the direct parameter avoids reading stale React state
+      const logTimestamp = captureTimestamp || imageTimestamp || new Date().toISOString();
       console.log(
         "📅 Education log timestamp:",
         logTimestamp,
-        imageTimestamp ? "(from EXIF)" : "(current time)",
+        captureTimestamp ? "(from EXIF param)" : imageTimestamp ? "(from state)" : "(current time)",
       );
 
       const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
@@ -1695,6 +1700,7 @@ function WellnessValleyApp() {
         pendingEducationData.educationData,
         pendingEducationData.imageBase64,
         selectedCenter,
+        pendingEducationData.captureTimestamp || null,
       );
       setPendingEducationData(null);
     }
@@ -2047,7 +2053,8 @@ function WellnessValleyApp() {
             // AUTO-SAVE to database immediately
             setLoadingState("saving");
             setSaveLoading(true);
-            await saveEducationLog(educationData, processedImage);
+            // Pass exifTimestamp directly as captureTimestamp to avoid stale state read
+            await saveEducationLog(educationData, processedImage, null, exifTimestamp);
           } else {
             setError("Unable to analyze meeting screenshot. Please try again.");
           }

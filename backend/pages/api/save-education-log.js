@@ -76,7 +76,9 @@ export default async function handler(req, res) {
     } else {
       // No EXIF - use server time (already in IST)
       logTimestampIST = getISTTimestamp();
-      logTimeOnlyIST = new Date(logTimestampIST).toTimeString().substring(0, 8);
+      // Extract time directly from the already-formatted IST string "YYYY-MM-DD HH:MM:SS.mmm"
+      // Avoids new Date(string).toTimeString() which is server-timezone-dependent
+      logTimeOnlyIST = logTimestampIST.substring(11, 19);
       deviceTime = null;
       
       console.log('🖥️ Using server timestamp (no EXIF available)');

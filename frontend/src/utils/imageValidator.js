@@ -311,43 +311,179 @@ export async function extractImageMetadata(file) {
 }
 
 /**
- * Extract DateTime from EXIF data (simplified parser)
+ * Parse an EXIF date string "YYYY:MM:DD HH:MM:SS" into a local-time Date.
+ * The result is treated as device local time (NOT UTC).
+ * We append a fake UTC marker so JS Date parses it as-is, then we store
+ * the numeric local values explicitly to avoid any UTC shift.
+ */
+function parseExifDateString(dateStr) {
+  // dateStr format: "2026:03:25 07:30:00"
+  const match = dateStr.match(/^(\d{4}):(\d{2}):(\d{2})\s(\d{2}):(\d{2}):(\d{2})$/);
+  if (!match) return null;
+  const [, year, month, day, hour, minute, second] = match.map(Number);
+  // Construct as local time — month is 0-indexed in JS Date
+  return new Date(year, month - 1, day, hour, minute, second);
+}
+
+/**
+ * Read a null-terminated ASCII string from dataView at given offset.
+ */
+function readAsciiString(dataView, offset, maxLen) {
+  let str = '';
+  for (let i = 0; i < maxLen; i++) {
+    const byte = dataView.getUint8(offset + i);
+    if (byte === 0) break;
+    str += String.fromCharCode(byte);
+  }
+  return str;
+}
+
+/**
+ * Extract DateTime from EXIF IFD structure.
+ * Specifically targets:
+ *   1st priority → DateTimeOriginal (tag 0x9003) — actual camera shutter time in LOCAL time
+ *   2nd priority → DateTimeDigitized (tag 0x9004) — digitized time in LOCAL time
+ *   3rd priority → DateTime (tag 0x0132) — file change time in LOCAL time
+ *
+ * GPS timestamps (tag 0x0007 inside GPSInfo IFD) are always UTC and are intentionally
+ * IGNORED here to prevent the 07:07 UTC vs 07:30 IST mismatch.
  */
 function extractDateTime(dataView, offset, length) {
   try {
-    // This is a simplified EXIF parser - for production, consider using a library
-    // Searching for common EXIF date tags (0x9003 - DateTimeOriginal, 0x0132 - DateTime)
-    const maxOffset = offset + Math.min(length, 10000);
-    
-    for (let i = offset; i < maxOffset - 20; i++) {
-      // Look for date pattern: YYYY:MM:DD HH:MM:SS
-      const str = String.fromCharCode(
-        dataView.getUint8(i),
-        dataView.getUint8(i + 1),
-        dataView.getUint8(i + 2),
-        dataView.getUint8(i + 3),
-        dataView.getUint8(i + 4)
-      );
-      
-      if (str.match(/\d{4}:/)) {
-        // Found potential date
-        const dateStr = String.fromCharCode.apply(null,
-          Array.from({ length: 19 }, (_, idx) => dataView.getUint8(i + idx))
-        );
-        
-        if (dateStr.match(/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/)) {
-          // Convert EXIF format (YYYY:MM:DD HH:MM:SS) to JavaScript Date
-          const parts = dateStr.replace(/(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3');
-          return new Date(parts);
+    const end = offset + Math.min(length, dataView.byteLength - offset);
+
+    // ── Step 1: Determine byte-order (endianness) from TIFF header ──────────
+    // TIFF header starts at offset (right after "Exif\0\0")
+    // "II" (0x4949) = little-endian, "MM" (0x4D4D) = big-endian
+    let littleEndian = true;
+    if (offset + 2 <= end) {
+      const bom = dataView.getUint16(offset, false); // always read as big-endian first
+      if (bom === 0x4D4D) littleEndian = false;      // "MM" → big-endian
+      else if (bom === 0x4949) littleEndian = true;  // "II" → little-endian
+    }
+
+    const readUint16 = (off) => dataView.getUint16(off, littleEndian);
+    const readUint32 = (off) => dataView.getUint32(off, littleEndian);
+
+    // ── Step 2: Get IFD0 offset from TIFF header ─────────────────────────────
+    // TIFF header: 2 bytes BOM + 2 bytes magic (0x002A) + 4 bytes IFD0 offset
+    const ifd0Offset = offset + readUint32(offset + 4);
+    if (ifd0Offset + 2 > end) return null;
+
+    // ── Step 3: Walk IFD0 to find Exif SubIFD pointer (tag 0x8769) ───────────
+    const ifd0Count = readUint16(ifd0Offset);
+    let dateTimeVal = null;       // tag 0x0132 fallback
+    let exifSubIFDOffset = null;  // tag 0x8769 → points to Exif SubIFD
+
+    for (let e = 0; e < ifd0Count; e++) {
+      const entryOff = ifd0Offset + 2 + e * 12;
+      if (entryOff + 12 > end) break;
+      const tag = readUint16(entryOff);
+
+      if (tag === 0x0132) {
+        // DateTime tag — value is ASCII string at offset or inline
+        const valueOffset = offset + readUint32(entryOff + 8);
+        if (valueOffset + 19 <= end) {
+          const str = readAsciiString(dataView, valueOffset, 20);
+          if (str.match(/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/)) {
+            dateTimeVal = str;
+          }
+        }
+      } else if (tag === 0x8769) {
+        // Exif SubIFD pointer
+        exifSubIFDOffset = offset + readUint32(entryOff + 8);
+      }
+    }
+
+    // ── Step 4: Walk Exif SubIFD for DateTimeOriginal (0x9003) ───────────────
+    if (exifSubIFDOffset && exifSubIFDOffset + 2 <= end) {
+      const subCount = readUint16(exifSubIFDOffset);
+      let dateTimeOriginal = null;
+      let dateTimeDigitized = null;
+
+      for (let e = 0; e < subCount; e++) {
+        const entryOff = exifSubIFDOffset + 2 + e * 12;
+        if (entryOff + 12 > end) break;
+        const tag = readUint16(entryOff);
+
+        if (tag === 0x9003 || tag === 0x9004) {
+          // DateTimeOriginal (0x9003) or DateTimeDigitized (0x9004)
+          const valueOffset = offset + readUint32(entryOff + 8);
+          if (valueOffset + 19 <= end) {
+            const str = readAsciiString(dataView, valueOffset, 20);
+            if (str.match(/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/)) {
+              if (tag === 0x9003) dateTimeOriginal = str;
+              else dateTimeDigitized = str;
+            }
+          }
+        }
+      }
+
+      // Priority: DateTimeOriginal > DateTimeDigitized > DateTime
+      const best = dateTimeOriginal || dateTimeDigitized || dateTimeVal;
+      if (best) {
+        const parsed = parseExifDateString(best);
+        if (parsed && !isNaN(parsed.getTime())) {
+          console.log('✅ EXIF tag used:', dateTimeOriginal ? 'DateTimeOriginal(0x9003)' : dateTimeDigitized ? 'DateTimeDigitized(0x9004)' : 'DateTime(0x0132)', '→', best);
+          return parsed;
         }
       }
     }
-    
+
+    // ── Step 5: Fallback to DateTime from IFD0 if no SubIFD found ────────────
+    if (dateTimeVal) {
+      const parsed = parseExifDateString(dateTimeVal);
+      if (parsed && !isNaN(parsed.getTime())) {
+        console.log('✅ EXIF fallback DateTime(0x0132) used →', dateTimeVal);
+        return parsed;
+      }
+    }
+
+    // ── Step 6: Last resort — raw byte scan (only for non-standard files) ────
+    console.warn('⚠️ EXIF IFD parse failed, falling back to raw byte scan');
+    const maxOffset = Math.min(end, offset + 10000);
+    for (let i = offset; i < maxOffset - 20; i++) {
+      const c0 = dataView.getUint8(i);
+      // Quick pre-filter: first char must be '2' (year 2xxx)
+      if (c0 !== 50) continue; // '2' = 0x32 = 50
+      const dateStr = String.fromCharCode.apply(null,
+        Array.from({ length: 19 }, (_, idx) => dataView.getUint8(i + idx))
+      );
+      if (dateStr.match(/^\d{4}:\d{2}:\d{2} \d{2}:\d{2}:\d{2}$/)) {
+        // Skip GPS-related UTC patterns (GPS bytes often appear before DateTimeOriginal)
+        // We can't 100% guarantee this is local time in raw scan, but it's a last resort
+        const parsed = parseExifDateString(dateStr);
+        if (parsed && !isNaN(parsed.getTime())) {
+          console.warn('⚠️ Raw byte scan fallback used — time may be UTC:', dateStr);
+          return parsed;
+        }
+      }
+    }
+
     return null;
   } catch (error) {
     console.error('Error parsing DateTime:', error);
     return null;
   }
+}
+
+/**
+ * Convert a local-time Date to an ISO-8601 string that PRESERVES the local time
+ * by appending the device's actual UTC offset (e.g. "+05:30").
+ * This prevents .toISOString() from silently converting local time to UTC.
+ *
+ * Example on IST device: 07:30 local → "2026-03-25T07:30:00+05:30"
+ * The backend receives this, parses the +05:30 correctly, and stores 07:30 IST.
+ */
+function toLocalISOString(date) {
+  const pad = (n) => String(n).padStart(2, '0');
+  const offsetMin = -date.getTimezoneOffset(); // getTimezoneOffset() returns negative for IST
+  const sign = offsetMin >= 0 ? '+' : '-';
+  const absMin = Math.abs(offsetMin);
+  const tzStr = `${sign}${pad(Math.floor(absMin / 60))}:${pad(absMin % 60)}`;
+
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+         `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${tzStr}`;
 }
 
 /**
@@ -380,11 +516,15 @@ export async function validateImageForEducation(file, educationWindow = { start:
     // Calculate days difference
     const daysDiff = Math.floor((todayStart - imageDateOnly) / (1000 * 60 * 60 * 24));
     
-    // Get image time in HH:MM:SS format
+    // Get image time in HH:MM:SS format using LOCAL time (not UTC)
     const imageTimeStr = imageDate.toTimeString().substring(0, 8);
+
+    // Build a timezone-aware ISO string so the backend gets the exact local time
+    // e.g. "2026-03-25T07:30:00+05:30" instead of "2026-03-25T02:00:00.000Z"
+    const imageTimestampLocal = toLocalISOString(imageDate);
     
     console.log('📅 Image Education Timing Check:', {
-      imageDate: imageDate.toISOString(),
+      imageDate: imageTimestampLocal,
       imageTime: imageTimeStr,
       today: todayStart.toISOString(),
       daysDiff,
@@ -402,7 +542,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
           : `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY during education hours.`,
         details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY during education timing (${educationWindow.start} - ${educationWindow.end}) are allowed.`,
         imageDate,
-        imageTimestamp: imageDate.toISOString(),
+        imageTimestamp: imageTimestampLocal,
         daysDiff
       };
     }
@@ -415,7 +555,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
         message: `🚨 Image was taken at ${imageTimeStr}, outside education hours (${educationWindow.start} - ${educationWindow.end}).`,
         details: `Education timing validation failed. Please take a photo during valid education hours only.`,
         imageDate,
-        imageTimestamp: imageDate.toISOString(),
+        imageTimestamp: imageTimestampLocal,
         imageTime: imageTimeStr,
         educationWindow
       };
@@ -427,7 +567,7 @@ export async function validateImageForEducation(file, educationWindow = { start:
       reason: 'valid',
       message: '✅ Image verified - taken today during education hours',
       imageDate,
-      imageTimestamp: imageDate.toISOString(),
+      imageTimestamp: imageTimestampLocal,
       imageTime: imageTimeStr,
       hasExif: metadata.hasExif,
       daysDiff: 0
