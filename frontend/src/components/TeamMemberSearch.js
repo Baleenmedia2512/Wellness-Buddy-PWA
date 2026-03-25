@@ -199,7 +199,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-4 w-4 text-gray-400" />
+              <User className="h-4 w-4 text-gray-400" />
             </div>
             <input
               ref={searchRef}
@@ -229,8 +229,8 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
               placeholder={"Type a name to search members..."}
               className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all cursor-pointer"
             />
-            {/* Clear icon when typing */}
-            {searchQuery && (
+            {/* Right icon: X when typing, Search when not */}
+            {searchQuery ? (
               <button
                 onClick={() => {
                   setSearchQuery('');
@@ -242,6 +242,10 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
               >
                 <X className="h-4 w-4" />
               </button>
+            ) : (
+              <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <Search className="h-4 w-4 text-gray-400" />
+              </div>
             )}
           </div>
           {selectedMember && !selectedMember.isSelf && (

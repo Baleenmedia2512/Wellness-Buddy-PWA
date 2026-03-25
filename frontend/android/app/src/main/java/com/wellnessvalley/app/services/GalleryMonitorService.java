@@ -8,7 +8,9 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.IntentFilter;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Locale;
@@ -70,6 +72,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private String        stepCurrentDate     = "";
     private int           stepLastSensorTotal = -1; // -1 = not yet received any reading
     private int           stepStoredBaseline  = -1; // steps already in SharedPrefs at start of this service session
+    private BroadcastReceiver dateChangeReceiver;
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -178,12 +181,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Gallery Monitor Active")
-                .setContentText("Monitoring camera photos for food analysis")
+                .setContentTitle("Wellness Buddy")
+                .setContentText("Running in background")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                .setSilent(true)
                 .build();
     }
 
@@ -191,13 +196,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Gallery Monitor",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    "Background Service",
+                    NotificationManager.IMPORTANCE_MIN
             );
-            channel.setDescription("Monitors camera photos for food analysis");
-            channel.enableLights(true);
-            channel.enableVibration(true);
-            channel.setShowBadge(true);
+            channel.setDescription("Keeps wellness tracking running in background");
+            channel.enableLights(false);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            channel.setSound(null, null);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
@@ -349,6 +355,33 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         boolean ok = stepSensorManager.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_NORMAL);
         Log.d(TAG, ok ? "✅ Step sensor registered" : "❌ Step sensor registration failed");
         stepCurrentDate = getTodayDateKey();
+
+        // Register for system date/time changes so day rollover works even when no
+        // step fires (e.g. manual date change, midnight crossing without walking).
+        dateChangeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String newDay = getTodayDateKey();
+                if (!newDay.equals(stepCurrentDate)) {
+                    Log.d(TAG, "🌙 [Steps] Date-change broadcast → rolling over " + stepCurrentDate + " → " + newDay);
+                    final String oldDate = stepCurrentDate;
+                    // Save the old day's steps to DB on a background thread (network call)
+                    executorService.execute(() -> saveStepsToDBForDate(oldDate));
+                    // Write 0 for new day and reset in-memory state
+                    SharedPreferences.Editor ed = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE).edit();
+                    ed.putInt("step_daily_" + newDay, 0);
+                    ed.apply();
+                    stepStoredBaseline  = 0;
+                    stepLastSensorTotal = -1; // re-anchors on the first step of the new day
+                    stepCurrentDate     = newDay;
+                }
+            }
+        };
+        android.content.IntentFilter dateFilter = new android.content.IntentFilter();        dateFilter.addAction(Intent.ACTION_DATE_CHANGED);
+        dateFilter.addAction(Intent.ACTION_TIME_CHANGED);
+        dateFilter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+        registerReceiver(dateChangeReceiver, dateFilter);
+        Log.d(TAG, "✅ Date-change receiver registered");
     }
 
     /**
@@ -419,17 +452,20 @@ public class GalleryMonitorService extends Service implements SensorEventListene
      * Called every 60 seconds by scheduledExecutor, and on service destroy.
      */
     private void saveStepsToDB() {
+        saveStepsToDBForDate(getTodayDateKey());
+    }
+
+    private void saveStepsToDBForDate(String date) {
         String userId = getCurrentUserId();
         if (userId == null) return;
 
-        String today = getTodayDateKey();
         SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
-        int steps = prefs.getInt("step_daily_" + today, 0);
+        int steps = prefs.getInt("step_daily_" + date, 0);
         if (steps <= 0) return;
 
         double calories = Math.round(steps * 0.04 * 100.0) / 100.0;
-        Log.d(TAG, "💾 [Steps] Saving to DB: userId=" + userId + " date=" + today + " steps=" + steps);
-        boolean ok = databaseSyncClient.saveDailySteps(userId, today, steps, calories);
+        Log.d(TAG, "💾 [Steps] Saving to DB: userId=" + userId + " date=" + date + " steps=" + steps);
+        boolean ok = databaseSyncClient.saveDailySteps(userId, date, steps, calories);
         Log.d(TAG, ok ? "✅ [Steps] DB save OK" : "❌ [Steps] DB save failed");
     }
 
@@ -565,6 +601,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         }
         if (networkChangeReceiver != null) {
             unregisterReceiver(networkChangeReceiver);
+        }
+        if (dateChangeReceiver != null) {
+            unregisterReceiver(dateChangeReceiver);
         }
         
         // Log final retry queue stats
