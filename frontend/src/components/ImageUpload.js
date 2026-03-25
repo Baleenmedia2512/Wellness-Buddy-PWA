@@ -6,6 +6,27 @@ import React, {
   useEffect,
   useImperativeHandle,
 } from "react";
+
+/**
+ * Convert a local-time Date to an ISO-8601 string that PRESERVES the device's
+ * local time by appending the actual UTC offset (e.g. "+05:30").
+ * This prevents .toISOString() from silently shifting the time to UTC.
+ *
+ * Example on IST (UTC+5:30) device:
+ *   new Date("2026-03-25 07:30").toISOString()    → "2026-03-25T02:00:00.000Z"  ❌ wrong
+ *   toLocalISOString(new Date("2026-03-25 07:30")) → "2026-03-25T07:30:00+05:30" ✅ correct
+ */
+function toLocalISOString(date) {
+  const pad = (n) => String(n).padStart(2, "0");
+  const offsetMin = -date.getTimezoneOffset(); // IST → +330 min
+  const sign = offsetMin >= 0 ? "+" : "-";
+  const absMin = Math.abs(offsetMin);
+  const tzStr = `${sign}${pad(Math.floor(absMin / 60))}:${pad(absMin % 60)}`;
+  return (
+    `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}` +
+    `T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${tzStr}`
+  );
+}
 import { AnimatePresence, motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
@@ -111,13 +132,13 @@ const ImageUpload = forwardRef(
           onImageSelect(
             file,
             validation.imageTimestamp ||
-              new Date(file.lastModified).toISOString(),
+              toLocalISOString(new Date(file.lastModified)),
           );
           return;
         }
 
         // Non-education: use file.lastModified (reflects actual file creation time on web)
-        onImageSelect(file, new Date(file.lastModified).toISOString());
+        onImageSelect(file, toLocalISOString(new Date(file.lastModified)));
       }
     };
 
@@ -141,13 +162,47 @@ const ImageUpload = forwardRef(
               `photo-${Date.now()}.jpg`,
             );
 
-            // ✅ Native camera = user is taking the photo RIGHT NOW — always fresh
-            if (imageType === "education") {
-              onImageSelect(file, new Date().toISOString());
-              return;
+            // ── Extract EXIF capture time from Capacitor photo ──────────────
+            // photo.exif.DateTimeOriginal = actual shutter time in LOCAL time
+            // We must use this instead of new Date() (which is upload time, not capture time)
+            let captureTimestamp = null;
+            if (photo.exif) {
+              const exifDateStr =
+                photo.exif.DateTimeOriginal ||
+                photo.exif.dateTimeOriginal ||
+                photo.exif.DateTime ||
+                photo.exif.dateTime;
+              if (exifDateStr) {
+                // EXIF format: "YYYY:MM:DD HH:MM:SS" → parse as local time
+                const match = exifDateStr.match(
+                  /^(\d{4}):(\d{2}):(\d{2})\s(\d{2}):(\d{2}):(\d{2})$/,
+                );
+                if (match) {
+                  const [, yr, mo, dy, hr, mn, sc] = match.map(Number);
+                  // Build as LOCAL time (month is 0-indexed)
+                  const localDate = new Date(yr, mo - 1, dy, hr, mn, sc);
+                  if (!isNaN(localDate.getTime())) {
+                    captureTimestamp = toLocalISOString(localDate);
+                    console.log(
+                      "📸 Camera EXIF capture time:",
+                      captureTimestamp,
+                    );
+                  }
+                }
+              }
             }
 
-            onImageSelect(file, new Date().toISOString());
+            // Fall back to current time ONLY if EXIF is genuinely missing
+            // (on native camera the photo is just taken, so now ≈ capture time)
+            if (!captureTimestamp) {
+              captureTimestamp = toLocalISOString(new Date());
+              console.log(
+                "📸 No EXIF from camera, using current time:",
+                captureTimestamp,
+              );
+            }
+
+            onImageSelect(file, captureTimestamp);
           }
         } catch (err) {
           console.error("Camera capture failed:", err);
@@ -238,9 +293,9 @@ const ImageUpload = forwardRef(
 
                 console.log(
                   "✅ Gallery image validated via EXIF:",
-                  photoDate.toISOString(),
+                  toLocalISOString(photoDate),
                 );
-                onImageSelect(file, photoDate.toISOString());
+                onImageSelect(file, toLocalISOString(photoDate));
                 return;
               }
 
@@ -299,9 +354,9 @@ const ImageUpload = forwardRef(
 
                 console.log(
                   "✅ Education gallery image validated via Filesystem.stat:",
-                  fileDate.toISOString(),
+                  toLocalISOString(fileDate),
                 );
-                onImageSelect(file, fileDate.toISOString());
+                onImageSelect(file, toLocalISOString(fileDate));
                 return;
               } catch (fsError) {
                 console.error("❌ Filesystem.stat failed:", fsError);
@@ -349,7 +404,7 @@ const ImageUpload = forwardRef(
                     return;
                   }
 
-                  galleryTimestamp = parsed.toISOString();
+                  galleryTimestamp = toLocalISOString(parsed);
                   console.log(
                     "✅ Non-education gallery image validated via EXIF:",
                     galleryTimestamp,
@@ -398,7 +453,7 @@ const ImageUpload = forwardRef(
                   return;
                 }
 
-                galleryTimestamp = fileDate.toISOString();
+                galleryTimestamp = toLocalISOString(fileDate);
                 console.log(
                   "✅ Non-education gallery image validated via Filesystem.stat:",
                   galleryTimestamp,
