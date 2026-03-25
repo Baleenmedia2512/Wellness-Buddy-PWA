@@ -22,7 +22,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, teamFilter = 'direct', scope = 'team', dateRange = 'today', startDate, endDate } = req.query;
+  const { userId, teamFilter = 'direct', scope = 'team', dateRange = 'today', startDate: rawStartDate, endDate: rawEndDate } = req.query;
+  let startDate = rawStartDate;
+  let endDate = rawEndDate;
 
   console.log('🗺️ [get-nutrition-centers] Request:', { userId, teamFilter, scope, dateRange, startDate, endDate });
 

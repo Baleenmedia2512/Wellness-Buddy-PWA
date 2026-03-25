@@ -57,9 +57,14 @@ class LocationAttendanceService {
         accuracy: position.coords.accuracy,
       };
     } catch (error) {
-      console.warn('⚠️ GPS location error:', error.message);
-      console.warn('  Permission denied or not available');
-      return null; // Return null instead of throwing error
+      console.warn('⚠️ GPS location error:', error.message, error.code);
+      // Detect permission denied specifically
+      const isPermissionDenied = 
+        error.code === 1 || // GeolocationPositionError.PERMISSION_DENIED
+        error.message?.toLowerCase().includes('permission') ||
+        error.message?.toLowerCase().includes('denied');
+      console.warn('  Error type:', isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE');
+      return { error: isPermissionDenied ? 'PERMISSION_DENIED' : 'LOCATION_UNAVAILABLE' };
     }
   }
 
@@ -163,9 +168,11 @@ class LocationAttendanceService {
 
       // Fetch nutrition centers
       const centers = await this.fetchNutritionCenters(apiBaseUrl, userId);
+      console.log(`📍 [attendance] Fetched ${centers.length} nutrition centers for proximity check`);
 
       if (centers.length === 0) {
         // No centers registered -> remote with GPS coords
+        console.log('⚠️ [attendance] No nutrition centers found - marking as remote');
         return {
           attendanceType: 'remote',
           latitude: location.latitude,
@@ -175,11 +182,35 @@ class LocationAttendanceService {
         };
       }
 
+      // Filter out centers with missing/invalid coordinates
+      const centersWithCoords = centers.filter(c => {
+        const lat = parseFloat(c.latitude);
+        const lon = parseFloat(c.longitude);
+        const valid = !isNaN(lat) && !isNaN(lon) && lat !== 0 && lon !== 0;
+        if (!valid) {
+          console.warn(`⚠️ [attendance] Center "${c.center_name}" (id:${c.id}) has invalid coordinates: lat=${c.latitude}, lon=${c.longitude}`);
+        }
+        return valid;
+      });
+
+      if (centersWithCoords.length === 0) {
+        console.log('⚠️ [attendance] All centers have missing/invalid coordinates - marking as remote');
+        return {
+          attendanceType: 'remote',
+          latitude: location.latitude,
+          longitude: location.longitude,
+          nutritionCenterId: null,
+          nearbyCenters: [],
+        };
+      }
+
+      console.log(`📍 [attendance] Checking proximity to ${centersWithCoords.length} centers with valid coordinates`);
+
       // Check proximity to centers - get ALL nearby centers
       const nearbyCenters = this.findNearbyCenters(
         location.latitude,
         location.longitude,
-        centers
+        centersWithCoords
       );
 
       if (nearbyCenters.length > 0) {
