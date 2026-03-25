@@ -1,6 +1,6 @@
 // src/components/TeamMemberSearch.js
 import React, { useState, useEffect, useRef } from 'react';
-import { X, User, ChevronDown } from 'lucide-react';
+import { X, User, Search } from 'lucide-react';
 import { teamHierarchyService } from '../services/teamHierarchyService';
 
 /**
@@ -159,10 +159,10 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
   // Handle clear selection
   const handleClearSelection = () => {
-    onMemberSelect(null); // Reset to coach's own data
+    onMemberSelect(null);
     setSearchQuery('');
     setIsOpen(false);
-    setHasCleared(false); // Show the coach's name again
+    setHasCleared(false); // Show own name again after clearing
   };
 
   // Don't render if user is not a coach
@@ -176,7 +176,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
       : selectedMember.userName
     : savedUserName || user?.name || user?.email?.split('@')[0] || 'Me';
 
-  // Show displayName only if user hasn't manually cleared it
+  // Show own name by default; show selected member name when one is picked; empty only when user clears manually
   const inputValue = searchQuery || (hasCleared ? '' : displayName);
 
   // Console logs for debugging
@@ -192,12 +192,14 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
 
   return (
     <div className="relative w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-4 py-3 bg-white border-b border-gray-200">
+      {/* Label */}
+      {/* <p className="text-xs text-gray-400 font-medium mb-1.5 pl-1">Viewing member</p> */}
       {/* Search Input with User Display */}
       <div className="relative">
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <User className="h-5 w-5 text-gray-600" />
+              <Search className="h-4 w-4 text-gray-400" />
             </div>
             <input
               ref={searchRef}
@@ -209,7 +211,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
                 if (newValue === '') {
                   setHasCleared(true);
                 }
-                // Only set searchQuery if different from displayName
+                // Only set searchQuery if different from current display value
                 if (newValue !== displayName) {
                   setSearchQuery(newValue);
                   setIsOpen(true);
@@ -224,16 +226,17 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
                   e.target.select();
                 }
               }}
-              placeholder={hasCleared ? "Search team members..." : ""}
-              className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+              placeholder={"Type a name to search members..."}
+              className="block w-full pl-10 pr-10 py-2.5 border border-gray-300 rounded-xl text-sm font-medium placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all cursor-pointer"
             />
+            {/* Clear icon when typing */}
             {searchQuery && (
               <button
                 onClick={() => {
                   setSearchQuery('');
                   setSuggestions([]);
                   setIsOpen(false);
-                  setHasCleared(true); // Mark as manually cleared
+                  setHasCleared(true);
                 }}
                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
               >
@@ -284,9 +287,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
                         <p className="text-xs text-gray-500 truncate">{member.email}</p>
                       </div>
                       {selectedMember?.userId === member.userId && (
-                        <div className="flex-shrink-0 text-green-600">
-                          <ChevronDown className="h-4 w-4" />
-                        </div>
+                        <div className="flex-shrink-0 w-2 h-2 rounded-full bg-green-500" />
                       )}
                     </button>
                   </li>

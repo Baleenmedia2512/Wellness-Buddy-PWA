@@ -503,19 +503,19 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       containerClass:   "bg-white border-green-200",
       avatarClass:      "bg-green-100 border-green-400 text-green-700",
       nameClass:        "text-green-800",
-      statsBorderClass: "border-green-100",
+      statsBorderClass: "border-green-100 divide-green-100",
     };
     if (s >= 50) return {
       containerClass:   "bg-white border-amber-200",
       avatarClass:      "bg-amber-100 border-amber-400 text-amber-700",
       nameClass:        "text-amber-800",
-      statsBorderClass: "border-amber-100",
+      statsBorderClass: "border-amber-100 divide-amber-100",
     };
     return {
       containerClass:   "bg-white border-red-200",
       avatarClass:      "bg-red-100 border-red-400 text-red-700",
       nameClass:        "text-red-800",
-      statsBorderClass: "border-red-100",
+      statsBorderClass: "border-red-100 divide-red-100",
     };
   }, []);
 
@@ -538,29 +538,24 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     const self      = node.__score ?? 0;
     const directAvg = node.__directAvg;
     const fullAvg   = node.__fullAvg;
-    const hasTeam   = (node.teamMembers?.length ?? 0) > 0;
-    const fmt = (v) => v === null || v === undefined ? "—" : `${v}%`;
+    const fmt = (v) => v === null || v === undefined ? "0%" : `${v}%`;
     return (
       <>
-        <div className="flex flex-col items-center">
-          <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide">Self</span>
-          <span className="text-sm sm:text-base font-bold text-gray-800">{self}%</span>
-          <span className="text-[9px] text-gray-400">score</span>
+        <div className="flex-1 flex flex-col items-center pr-2">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
+            {self}%
+          </span>
         </div>
-        {hasTeam && (
-          <>
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide">Direct</span>
-              <span className="text-sm sm:text-base font-bold text-gray-800">{fmt(directAvg)}</span>
-              <span className="text-[9px] text-gray-400">avg</span>
-            </div>
-            <div className="flex flex-col items-center">
-              <span className="text-[9px] sm:text-[10px] font-bold text-gray-400 uppercase tracking-wide">Full</span>
-              <span className="text-sm sm:text-base font-bold text-gray-800">{fmt(fullAvg)}</span>
-              <span className="text-[9px] text-gray-400">avg</span>
-            </div>
-          </>
-        )}
+        <div className="flex-1 flex flex-col items-center px-2">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
+            {fmt(directAvg)}
+          </span>
+        </div>
+        <div className="flex-1 flex flex-col items-center pl-2">
+          <span className="text-sm sm:text-base font-bold text-gray-900">
+            {fmt(fullAvg)}
+          </span>
+        </div>
       </>
     );
   }, []);

@@ -3187,6 +3187,7 @@ function WellnessValleyApp() {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
         <StepCounter
+          user={user}
           userId={user?.id}
           userRole={userRole}
           onBack={() => {
@@ -3202,6 +3203,8 @@ function WellnessValleyApp() {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
         <ScreenTimePage
+          user={user}
+          userRole={userRole}
           userId={user?.id}
           onBack={() => {
             setShowScreenTime(false);

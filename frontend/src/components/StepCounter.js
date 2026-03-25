@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw, Users } from 'lucide-react';
+import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
-import { teamHierarchyService } from '../services/teamHierarchyService';
-import HierarchicalTeamView from './HierarchicalTeamView';
+import TeamMemberSearch from './TeamMemberSearch';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -67,9 +66,9 @@ const writeBaseline = (dateKey, sensorTotal) => {
 /**
  * Main Step Counter Component
  */
-const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
+const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const isNativePlatform = Capacitor.isNativePlatform();
-  const isCoach = userRole === 'coach' || userRole === 'admin' || userRole === 'developer';
+  const isCoach = userRole === 'coach' || userRole === 'coCoach' || userRole === 'admin' || userRole === 'developer';
 
   // ── UI State (display-only; mutated via setters, never read by callbacks) ──
   const [ready, setReady]                   = useState(false);
@@ -91,13 +90,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
   const [refreshing, setRefreshing]         = useState(false); // manual refresh button
   const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
 
-  // ── Team View State (coaches only) ─────────────────────────────────────────
-  const [activeTab, setActiveTab]           = useState('my-steps');
-  const [teamHierarchy, setTeamHierarchy]   = useState(null);
-  const [stepScoreMap, setStepScoreMap]     = useState({});
-  const [teamLoading, setTeamLoading]       = useState(false);
-  const [teamError, setTeamError]           = useState(null);
-  const [teamDate, setTeamDate]             = useState(toDateKey());
+  // ── Viewing other member (coaches only) ───────────────────────────────────
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [memberData, setMemberData]         = useState({ steps: 0, calories: 0, history: [], loading: false });
 
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
@@ -305,81 +300,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
   // ─────────────────────────────────────────────────────────────────────────
   /**
   // ─────────────────────────────────────────────────────────────────────────
-  // TEAM STEPS: FETCH HIERARCHY + STEP DATA (coaches only)
-  // ─────────────────────────────────────────────────────────────────────────
-  const fetchTeamData = useCallback(async (date) => {
-    const uid = resolvedUserIdRef.current;
-    if (!uid) return;
-    setTeamLoading(true);
-    setTeamError(null);
-    try {
-      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL || '';
-      const [hierarchyRes, stepsRes] = await Promise.all([
-        teamHierarchyService.getTeamHierarchy(uid, false).catch(() => null),
-        fetch(`${apiBaseUrl}/api/coach/team-steps?coachId=${uid}&targetDate=${date}`, { cache: 'no-store' }),
-      ]);
-
-      const stepsJson = stepsRes.ok ? await stepsRes.json() : null;
-      const members = stepsJson?.success ? stepsJson.members : [];
-
-      // Build scoreMap: { userId: stepPercent, "userId": stepPercent }
-      const scoreMap = {};
-      members.forEach((m) => {
-        scoreMap[m.userId] = m.stepPercent;
-        scoreMap[String(m.userId)] = m.stepPercent;
-      });
-      setStepScoreMap(scoreMap);
-
-      if (hierarchyRes?.hierarchy) {
-        // Enrich hierarchy nodes with __score, __directAvg, __fullAvg
-        // following the same pattern as ActivityTimeReport
-        const getAllDescendantScores = (node) => {
-          let scores = [];
-          (node.teamMembers || []).forEach((m) => {
-            scores.push(scoreMap[m.userId] ?? 0);
-            scores = scores.concat(getAllDescendantScores(m));
-          });
-          return scores;
-        };
-
-        const enrichNode = (node) => {
-          const uid2 = node.userId || node.id;
-          const enriched = {
-            ...node,
-            userId: uid2,
-            userName: node.userName || node.name,
-          };
-          enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
-          const directScores = enriched.teamMembers.map((m) => scoreMap[m.userId] ?? 0);
-          enriched.__directAvg = directScores.length
-            ? Math.round(directScores.reduce((a, b) => a + b, 0) / directScores.length)
-            : null;
-          const fullScores = getAllDescendantScores(enriched);
-          enriched.__fullAvg = fullScores.length
-            ? Math.round(fullScores.reduce((a, b) => a + b, 0) / fullScores.length)
-            : null;
-          return enriched;
-        };
-
-        setTeamHierarchy(enrichNode(hierarchyRes.hierarchy));
-      } else {
-        setTeamHierarchy(null);
-      }
-    } catch (err) {
-      console.error('[StepCounter] fetchTeamData failed:', err);
-      setTeamError(err.message || 'Failed to load team data');
-    } finally {
-      setTeamLoading(false);
-    }
-  }, []); // stable — reads uid from ref
-
-  // Load team data when tab is activated or date changes
-  useEffect(() => {
-    if (!isCoach || activeTab !== 'team-steps' || !resolvedUserId) return;
-    fetchTeamData(teamDate);
-  }, [activeTab, teamDate, resolvedUserId, isCoach, fetchTeamData]);
-
-  // ─────────────────────────────────────────────────────────────────────────
   // DATABASE: SAVE STEPS
   // ─────────────────────────────────────────────────────────────────────────
    * FIX 3: Reads todayStepsRef.current (ref) instead of todaySteps (state).
@@ -452,6 +372,33 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
       console.error('❌ [StepCounter] Load history failed:', err);
     }
   }, []); // Stable — reads userId from ref
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MEMBER DATA FETCH (coaches viewing a team member)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedMember || selectedMember.isSelf) {
+      setMemberData({ steps: 0, calories: 0, history: [], loading: false });
+      return;
+    }
+    const memberId = selectedMember.id || selectedMember.userId;
+    setMemberData(prev => ({ ...prev, loading: true }));
+    Promise.all([
+      fetchDailyActivity(memberId, 1, ACTIVITY_TYPE, toDateKey()),
+      fetchDailyActivity(memberId, 30, ACTIVITY_TYPE, toDateKey()),
+    ]).then(([todayRes, histRes]) => {
+      const todayTrend  = todayRes.trend || todayRes.data || [];
+      const todayEntry  = todayTrend.find(d => d.date === toDateKey());
+      const steps       = todayEntry?.steps || 0;
+      const calories    = todayEntry?.caloriesBurned ?? todayEntry?.calories ?? calcCalories(steps);
+      const histTrend   = histRes.trend || histRes.data || [];
+      const history     = histTrend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 }));
+      setMemberData({ steps, calories, history, loading: false });
+    }).catch(err => {
+      console.error('[StepCounter] Failed to load member data:', err);
+      setMemberData({ steps: 0, calories: 0, history: [], loading: false });
+    });
+  }, [selectedMember]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // MANUAL REFRESH (Requirement 6)
@@ -855,9 +802,15 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DISPLAY VALUES
   // ─────────────────────────────────────────────────────────────────────────
-  const stepProgress = Math.min(todaySteps / STEP_GOAL, 1);
+  const isViewingOther  = !!(selectedMember && !selectedMember.isSelf);
+  const displaySteps    = isViewingOther ? memberData.steps    : todaySteps;
+  const displayCalories = isViewingOther ? memberData.calories : todayCalories;
+  const displayHistory  = isViewingOther ? memberData.history  : dailyHistory;
+  const displayLoading  = isViewingOther ? memberData.loading  : loading;
+
+  const stepProgress = Math.min(displaySteps / STEP_GOAL, 1);
   const ringOffset   = RING_CIRCUMFERENCE * (1 - stepProgress);
-  const historyData  = historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory;
+  const historyData  = historyView === 'week' ? displayHistory.slice(-7) : displayHistory;
 
   if (loading && !ready) {
     return <LoadingSpinner context="steps" />;
@@ -885,11 +838,16 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
             <div className="bg-gradient-to-br from-emerald-500 to-teal-500 p-2 rounded-xl shadow-sm">
               <Footprints className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
+              {isViewingOther && (
+                <p className="text-xs text-emerald-600 font-medium">Viewing {selectedMember.userName}'s data</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Manual Refresh Button — fallback for Android Doze delays */}
-            {isNativePlatform && permissionGranted && (
+            {isNativePlatform && permissionGranted && !isViewingOther && (
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshing}
@@ -921,95 +879,18 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
         </div>
       </div>
 
-      {/* ──── Tab Navigation (coaches only) ──── */}
+      {/* ──── Team Member Search (coaches only) ──── */}
       {isCoach && (
-        <div className="bg-white border-b border-gray-100">
-          <div className="max-w-2xl mx-auto px-4 flex gap-0">
-            <button
-              onClick={() => setActiveTab('my-steps')}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
-                activeTab === 'my-steps'
-                  ? 'border-emerald-500 text-emerald-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Footprints className="w-4 h-4" />
-              My Steps
-            </button>
-            <button
-              onClick={() => setActiveTab('team-steps')}
-              className={`flex items-center gap-2 px-5 py-3 text-sm font-semibold border-b-2 transition-colors ${
-                activeTab === 'team-steps'
-                  ? 'border-emerald-500 text-emerald-700'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Users className="w-4 h-4" />
-              Team Steps
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ──── Team Steps Tab ──── */}
-      {isCoach && activeTab === 'team-steps' && (
-        <div className="max-w-2xl mx-auto px-4 pt-4 pb-8">
-          {/* Date picker */}
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-              <Users className="w-4 h-4 text-emerald-500" />
-              Team Step Performance
-            </h2>
-            <input
-              type="date"
-              value={teamDate}
-              max={toDateKey()}
-              onChange={(e) => setTeamDate(e.target.value)}
-              className="border border-gray-200 rounded-xl px-3 py-1.5 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-400"
-            />
-          </div>
-
-          {/* Info legend */}
-          <div className="bg-blue-50 border border-blue-100 rounded-xl p-3 mb-4 text-xs text-blue-700">
-            <span className="font-semibold">Each card shows 3 numbers:</span>
-            {' '}1st — Self step %{'  '}·{'  '}2nd — Direct team avg{'  '}·{'  '}3rd — Full team avg
-          </div>
-
-          {teamLoading && (
-            <div className="flex items-center justify-center py-16">
-              <div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-
-          {teamError && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-start gap-2.5 mb-4">
-              <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{teamError}</p>
-            </div>
-          )}
-
-          {!teamLoading && !teamError && teamHierarchy && (
-            <HierarchicalTeamView
-              hierarchy={teamHierarchy}
-              showDisciplineScores={true}
-              disciplineScores={stepScoreMap}
-              memberActivities={{}}
-              emptyMessage="No team members found"
-            />
-          )}
-
-          {!teamLoading && !teamError && !teamHierarchy && (
-            <div className="text-center py-16">
-              <Users className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-              <p className="text-gray-500 font-medium">No team hierarchy found</p>
-              <p className="text-sm text-gray-400 mt-1">You may not have any team members yet</p>
-            </div>
-          )}
-        </div>
+        <TeamMemberSearch
+          user={user}
+          userRole={userRole}
+          selectedMember={selectedMember}
+          onMemberSelect={setSelectedMember}
+        />
       )}
 
       {/* ──── My Steps Content ──── */}
-      {activeTab === 'my-steps' && (
+      {
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
 
         {/* Error banner */}
@@ -1021,7 +902,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
         )}
 
         {/* Permission banner */}
-        {isNativePlatform && sensorAvailable && !permissionGranted && (
+        {!isViewingOther && isNativePlatform && sensorAvailable && !permissionGranted && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -1044,7 +925,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
           <div className="flex flex-col items-center">
             {/* Ring */}
             <div className="relative w-44 h-44 sm:w-52 sm:h-52 mb-4">
-              {loading ? (
+              {displayLoading ? (
                 <div className="w-full h-full rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 animate-pulse" />
               ) : (
                 <>
@@ -1066,7 +947,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <Footprints className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 mb-1" />
                     <p className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-none">
-                      {todaySteps.toLocaleString()}
+                      {displaySteps.toLocaleString()}
                     </p>
                     <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium">
                       / {STEP_GOAL.toLocaleString()}
@@ -1077,7 +958,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
             </div>
 
             {/* Goal progress text */}
-            {!loading && (
+            {!displayLoading && (
               <p className="text-sm text-gray-500 font-medium mb-1">
                 {stepProgress >= 1
                   ? '🎉 Goal reached!'
@@ -1090,26 +971,26 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
           <div className="grid grid-cols-2 gap-3 mt-5">
             <div className="bg-emerald-50 rounded-2xl p-3.5 sm:p-4 text-center">
               <Footprints className="w-4 h-4 text-emerald-600 mx-auto mb-1.5" />
-              {loading ? (
+              {displayLoading ? (
                 <div className="h-6 w-16 bg-emerald-200/60 rounded-lg animate-pulse mx-auto" />
               ) : (
-                <p className="text-lg sm:text-xl font-bold text-emerald-900">{todaySteps.toLocaleString()}</p>
+                <p className="text-lg sm:text-xl font-bold text-emerald-900">{displaySteps.toLocaleString()}</p>
               )}
               <p className="text-xs text-emerald-600 mt-0.5 font-medium">Steps</p>
             </div>
             <div className="bg-rose-50 rounded-2xl p-3.5 sm:p-4 text-center">
               <Flame className="w-4 h-4 text-rose-500 mx-auto mb-1.5" />
-              {loading ? (
+              {displayLoading ? (
                 <div className="h-6 w-16 bg-rose-200/60 rounded-lg animate-pulse mx-auto" />
               ) : (
-                <p className="text-lg sm:text-xl font-bold text-rose-900">{todayCalories}</p>
+                <p className="text-lg sm:text-xl font-bold text-rose-900">{displayCalories}</p>
               )}
               <p className="text-xs text-rose-500 mt-0.5 font-medium">Calories</p>
             </div>
           </div>
 
           {/* DB Sync status row */}
-          {!loading && (
+          {!displayLoading && !isViewingOther && (
             <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
               <div className="flex items-center gap-1.5">
                 {saving ? (
@@ -1180,7 +1061,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
                     {Math.round(
                       historyData.reduce((sum, day) => {
                         const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                        return sum + (isToday ? todaySteps : (day.steps || 0));
+                        return sum + (isToday ? displaySteps : (day.steps || 0));
                       }, 0) / historyData.length
                     ).toLocaleString()}
                   </p>
@@ -1194,7 +1075,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
                     {Math.round(
                       historyData.reduce((sum, day) => {
                         const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                        return sum + (isToday ? todayCalories : (day.calories || 0));
+                        return sum + (isToday ? displayCalories : (day.calories || 0));
                       }, 0)
                     ).toLocaleString()}
                   </p>
@@ -1204,10 +1085,10 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
               {/* Daily List */}
               <div className="mt-4 space-y-2 max-h-64 sm:max-h-80 overflow-y-auto">
                 {[...historyData].reverse().map((day) => {
-                  const date            = new Date(day.date);
-                  const isToday         = toDateKey(date) === toDateKey();
-                  const displaySteps    = isToday ? todaySteps    : (day.steps    || 0);
-                  const displayCalories = isToday ? todayCalories : (day.calories || 0);
+                  const date      = new Date(day.date);
+                  const isToday   = toDateKey(date) === toDateKey();
+                  const rowSteps    = isToday ? displaySteps    : (day.steps    || 0);
+                  const rowCalories = isToday ? displayCalories : (day.calories || 0);
 
                   return (
                     <div
@@ -1231,8 +1112,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-gray-900">{displaySteps.toLocaleString()}</p>
-                        <p className="text-xs text-gray-400">{displayCalories} kcal</p>
+                        <p className="text-sm font-bold text-gray-900">{rowSteps.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{rowCalories} kcal</p>
                       </div>
                     </div>
                   );
@@ -1248,7 +1129,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user' }) => {
           )}
         </div>
       </div>
-      )} {/* end my-steps tab */}
+      }
     </div>
   );
 };
