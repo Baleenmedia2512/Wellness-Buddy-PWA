@@ -1,5 +1,5 @@
 /**
- * GET /api/activity/time-report
+ * GET /api/get-activity-time-report
  *
  * Returns the exact time each user performed their tracked daily activities
  * (weight, breakfast, lunch, dinner, education) and whether those times were
@@ -48,8 +48,8 @@
  * }
  */
 
-import { getSupabaseClient }               from '../../../utils/supabaseClient.js';
-import { getDualCoachingTeamHierarchy }    from '../../../utils/disciplineCalculationsSupabase.js';
+import { getSupabaseClient }               from '../../utils/supabaseClient.js';
+import { getDualCoachingTeamHierarchy }    from '../../utils/disciplineCalculationsSupabase.js';
 import {
   parseDateRangeIST,
   formatDateIST,
@@ -57,7 +57,7 @@ import {
   groupRecordsByDate,
   pickEarliestRecordPerActivity,
   computeAverageTime,
-} from '../../../utils/timeReportHelpers.js';
+} from '../../utils/timeReportHelpers.js';
 
 // ─── Default time-window fallbacks (used when DB has no active window) ────────
 const DEFAULT_WINDOWS = {
@@ -259,10 +259,10 @@ export default async function handler(req, res) {
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
     ]);
 
-    if (twResult.error)        console.error('⚠️ [time-report] time-windows error:',  twResult.error);
-    if (weightResult.error)    console.error('⚠️ [time-report] weight error:',         weightResult.error);
-    if (educationResult.error) console.error('⚠️ [time-report] education error:',      educationResult.error);
-    if (foodResult.error)      console.error('⚠️ [time-report] food error:',           foodResult.error);
+    if (twResult.error)        console.error('⚠️ [get-activity-time-report] time-windows error:',  twResult.error);
+    if (weightResult.error)    console.error('⚠️ [get-activity-time-report] weight error:',         weightResult.error);
+    if (educationResult.error) console.error('⚠️ [get-activity-time-report] education error:',      educationResult.error);
+    if (foodResult.error)      console.error('⚠️ [get-activity-time-report] food error:',           foodResult.error);
 
     // ── Build resolved time-window map (DB values override defaults) ────────
 
@@ -413,7 +413,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('❌ [time-report] Unhandled error:', error);
+    console.error('❌ [get-activity-time-report] Unhandled error:', error);
     return res.status(500).json({
       success: false,
       message: 'Failed to generate time report',

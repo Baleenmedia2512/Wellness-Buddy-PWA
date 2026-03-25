@@ -394,7 +394,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
         const [hierarchyRes, reportRes] = await Promise.all([
           teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
-          fetch(`${apiBaseUrl}/api/activity/time-report?${params}`, { cache: "no-store" }),
+          fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
         ]);
 
         const reportJson = await reportRes.json();
