@@ -134,6 +134,8 @@ function WellnessValleyApp() {
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
+  // Education time window fetched from DB (e.g. 07:15 - 08:45) — no hardcoding
+  const [educationWindow, setEducationWindow] = useState(null);
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
   const savedWeightIdRef = useRef(null); // Ref mirror — always current inside async handlers
@@ -979,6 +981,30 @@ function WellnessValleyApp() {
     }
   }, [user]);
 
+  // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
+  useEffect(() => {
+    const fetchEducationWindow = async () => {
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/get-time-windows`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+
+        // API returns: { success: true, windows: { education: { start, end }, weight: {...}, ... } }
+        if (data.success && data.windows?.education) {
+          const eduWindow = data.windows.education;
+          console.log("✅ Education window fetched from DB:", eduWindow);
+          setEducationWindow(eduWindow);
+        } else {
+          console.warn("⚠️ Education window not found in response:", data);
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to fetch education window from DB:", err.message);
+      }
+    };
+    fetchEducationWindow();
+  }, [apiBaseUrl]);
+
   // Handle OTP user restoration
   useEffect(() => {
     const restoreOtpUser = async () => {
@@ -1293,6 +1319,7 @@ function WellnessValleyApp() {
     weightData,
     imageBase64,
     cachedUserId = null,
+    captureTimestamp = null,
   ) => {
     try {
       // Use cached userId if provided, otherwise get it
@@ -1314,8 +1341,9 @@ function WellnessValleyApp() {
         muscleMass: weightData.muscleMass,
         bmr: weightData.bmr,
         imageBase64ToSave: imageBase64,
-        clientTimestamp: new Date().toISOString(), // User's actual upload time
-        clientTimezoneOffset: new Date().getTimezoneOffset(), // User's timezone offset
+        // Use EXIF capture timestamp if available — otherwise fall back to upload time
+        clientTimestamp: captureTimestamp || new Date().toISOString(),
+        clientTimezoneOffset: new Date().getTimezoneOffset(),
       };
 
       // If we already saved a weight entry today, always update that exact row
@@ -1430,11 +1458,7 @@ function WellnessValleyApp() {
           setWeightDiff({
             previous: parseFloat(diffData.stats.previousWeight.value),
             previousDate: diffData.stats.previousWeight.date,
-            change: parseFloat(
-              (val - parseFloat(diffData.stats.previousWeight.value)).toFixed(
-                2,
-              ),
-            ),
+            change: val - parseFloat(diffData.stats.previousWeight.value),
           });
         }
       } catch (_) {
@@ -1447,7 +1471,7 @@ function WellnessValleyApp() {
     }
   };
 
-  const saveWeightEntry = async (weightData, imageBase64) => {
+  const saveWeightEntry = async (weightData, imageBase64, captureTimestamp = null) => {
     try {
       // Get the actual database UserId from team_table
       let userId = user?.id;
@@ -1478,6 +1502,7 @@ function WellnessValleyApp() {
             weightData: weightData,
             imageBase64: imageBase64,
             userId: userId, // Cache userId for later use
+            captureTimestamp: captureTimestamp, // Preserve EXIF timestamp through duplicate flow
           });
           setShowDuplicateWeightModal(true);
           return; // Stop here to wait for user confirmation
@@ -1491,7 +1516,7 @@ function WellnessValleyApp() {
       }
 
       // No duplicate or duplicate check failed - proceed with save (pass cached userId)
-      await performWeightSave(weightData, imageBase64, userId);
+      await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
       setError(err.message || "Failed to save weight entry");
@@ -1822,6 +1847,7 @@ function WellnessValleyApp() {
           pendingWeightSaveData.weightData,
           pendingWeightSaveData.imageBase64,
           pendingWeightSaveData.userId,
+          pendingWeightSaveData.captureTimestamp || null,
         );
       } catch (err) {
         console.error(
@@ -2127,7 +2153,8 @@ function WellnessValleyApp() {
           setWeightDiff(null);
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
-          await saveWeightEntry(weightToSave, processedImage);
+          // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
+          await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
           setWeightEntrySaved(true);
           // Fetch weight diff (previous vs today) for the share card
           try {
@@ -2479,6 +2506,7 @@ function WellnessValleyApp() {
                 analysisResult: result,
                 deviceInfo: window.navigator.userAgent,
                 userEmail: user?.email || user?.Email || "unknown",
+                captureTimestamp: exifTimestamp || null,
               });
               return;
             }
@@ -2496,6 +2524,7 @@ function WellnessValleyApp() {
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
               userEmail: user?.email || user?.Email || "unknown",
+              captureTimestamp: exifTimestamp || null,
             });
             return;
           }
@@ -2521,6 +2550,7 @@ function WellnessValleyApp() {
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
               userEmail: user?.email || user?.Email || "unknown",
+              captureTimestamp: exifTimestamp || null,
             });
             return;
           }
@@ -2537,6 +2567,7 @@ function WellnessValleyApp() {
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
               userEmail: user?.email || user?.Email || "unknown",
+              captureTimestamp: exifTimestamp || null,
             });
             return;
           }
@@ -2552,6 +2583,7 @@ function WellnessValleyApp() {
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
               userEmail: user?.email || user?.Email || "unknown",
+              captureTimestamp: exifTimestamp || null, // Preserve EXIF time through duplicate flow
             });
             setShowDuplicateModal(true);
             setSaveLoading(false);
@@ -2564,6 +2596,7 @@ function WellnessValleyApp() {
               analysisResult: result,
               deviceInfo: window.navigator.userAgent,
               userEmail: user?.email || user?.Email || "unknown",
+              captureTimestamp: exifTimestamp || null,
             });
           }
         } catch (err) {
@@ -3362,6 +3395,7 @@ function WellnessValleyApp() {
             detectedFoodNames={detectedFoodNames}
             ref={fileInputRef}
             onHelpClick={() => setShowHowToUse(!showHowToUse)}
+            educationWindow={educationWindow}
           />
 
           {error && (
@@ -3692,9 +3726,7 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
-                              : `${parseFloat(
-                                  Math.abs(weightDiff.change).toFixed(4),
-                                )} ${weightResult.unit}`}
+                              : `${Math.abs(weightDiff.change).toFixed(3)} ${weightResult.unit}`}
                           </p>
                           <p
                             style={{ fontSize: 13, fontWeight: 600, margin: 0 }}

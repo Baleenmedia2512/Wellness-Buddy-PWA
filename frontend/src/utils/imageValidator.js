@@ -489,10 +489,20 @@ function toLocalISOString(date) {
 /**
  * Validate if image was taken during valid education timing
  * @param {File} file - Image file to validate
- * @param {Object} educationWindow - Education timing window {start: 'HH:MM:SS', end: 'HH:MM:SS'}
+ * @param {Object|null} educationWindow - Education timing window from DB {start: 'HH:MM:SS', end: 'HH:MM:SS'}. Must be provided — no hardcoded fallback.
  * @returns {Promise<Object>} - Validation result with EXIF timestamp
  */
-export async function validateImageForEducation(file, educationWindow = { start: '05:00:00', end: '23:59:00' }) {
+export async function validateImageForEducation(file, educationWindow = null) {
+  // Guard: window must be loaded from DB before validation can proceed
+  if (!educationWindow || !educationWindow.start || !educationWindow.end) {
+    return {
+      isValid: false,
+      reason: 'window_not_loaded',
+      message: '⏳ Education schedule is still loading. Please try again in a moment.',
+      details: 'Time window not yet fetched from DB.',
+      imageTimestamp: null,
+    };
+  }
   try {
     const metadata = await extractImageMetadata(file);
     

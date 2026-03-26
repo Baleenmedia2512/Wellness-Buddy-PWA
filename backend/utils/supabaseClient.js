@@ -83,7 +83,7 @@ export function getSupabaseClient() {
     }
     
     supabaseInstance = createClient(
-      process.env.SUPABASE_URL || 'https://lnvvaeudhtazvxtmifeg.supabase.co',
+      process.env.SUPABASE_URL ,
       process.env.SUPABASE_ANON_KEY
     );
     

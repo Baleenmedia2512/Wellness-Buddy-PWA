@@ -222,13 +222,13 @@ export async function fetchTimeWindows() {
     return windowMap;
   } catch (err) {
     console.error('[ReminderService] Failed to fetch time windows:', err);
-    // Return sensible defaults so the UI still works offline
+    // Return null windows — callers must handle unavailability; no hardcoded fallbacks
     return {
-      weight:    { start: '03:00:00', end: '06:30:00' },
-      education: { start: '05:00:00', end: '23:59:00' },
-      breakfast: { start: '05:30:00', end: '08:30:00' },
-      lunch:     { start: '12:00:00', end: '16:00:00' },
-      dinner:    { start: '17:30:00', end: '20:30:00' },
+      weight:    null,
+      education: null,
+      breakfast: null,
+      lunch:     null,
+      dinner:    null,
     };
   }
 }
