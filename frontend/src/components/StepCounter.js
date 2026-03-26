@@ -7,7 +7,7 @@ import TeamMemberSearch from './TeamMemberSearch';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS.
+// CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 const CALORIES_PER_STEP    = 0.04;
 const UPDATE_THROTTLE_MS   = 1000;        // Max one UI update per second
