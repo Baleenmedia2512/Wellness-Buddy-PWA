@@ -110,23 +110,12 @@ public class GalleryMonitorPlugin extends Plugin {
 
             editor.apply();
             
-            // Start/update service with new user info
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
-            serviceIntent.putExtra("userId", userId);
-            if (userEmail != null) {
-                serviceIntent.putExtra("userEmail", userEmail);
-            }
-            
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent);
-            } else {
-                context.startService(serviceIntent);
-            }
+            // ❌ Background service disabled — do not start GalleryMonitorService
+            Log.d(TAG, "ℹ️ setCurrentUser: service start skipped (background service disabled)");
             
             JSObject result = new JSObject();
             result.put("success", true);
-            call.resolve(result);
+            call.resolve();
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to set current user", e);
             call.reject("Failed to set current user", e);
@@ -144,22 +133,9 @@ public class GalleryMonitorPlugin extends Plugin {
     
     @PluginMethod
     public void startService(PluginCall call) {
-        try {
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
-            
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent);
-            } else {
-                context.startService(serviceIntent);
-            }
-            
-            Log.d(TAG, "✅ Gallery monitor service started");
-            call.resolve();
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Failed to start service", e);
-            call.reject("Failed to start service", e);
-        }
+        // ❌ Background service disabled
+        Log.d(TAG, "ℹ️ startService called but background service is disabled");
+        call.resolve();
     }
     
     @PluginMethod
@@ -178,24 +154,11 @@ public class GalleryMonitorPlugin extends Plugin {
     
     @PluginMethod
     public void checkGallery(PluginCall call) {
-        // This would trigger an immediate gallery check
-        try {
-            Context context = getContext();
-            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
-            serviceIntent.setAction("CHECK_GALLERY");
-            
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent);
-            } else {
-                context.startService(serviceIntent);
-            }
-            
-            JSObject ret = new JSObject();
-            ret.put("success", true);
-            call.resolve(ret);
-        } catch (Exception e) {
-            call.reject("Failed to check gallery", e);
-        }
+        // ❌ Background service disabled
+        Log.d(TAG, "ℹ️ checkGallery called but background service is disabled");
+        JSObject ret = new JSObject();
+        ret.put("success", true);
+        call.resolve(ret);
     }
 
 

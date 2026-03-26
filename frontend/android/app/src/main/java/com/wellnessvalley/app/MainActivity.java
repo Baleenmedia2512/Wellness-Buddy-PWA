@@ -111,18 +111,8 @@ public class MainActivity extends BridgeActivity {
         // Request battery optimization exemption
         requestBatteryOptimizationExemption();
         
-        // ✅ Start background gallery monitor service
-        Intent serviceIntent = new Intent(this, com.wellnessvalley.app.services.GalleryMonitorService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
-        }
-        android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
-        
-        // ✅ Schedule periodic heartbeat to ensure service stays alive
-        com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
-        android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
+        // ❌ Background service disabled — app will NOT run in background
+        android.util.Log.d("MainActivity", "ℹ️ Background service disabled by design");
         
         // ✅ Check for app updates after app is fully initialized
         checkForAppUpdates();
