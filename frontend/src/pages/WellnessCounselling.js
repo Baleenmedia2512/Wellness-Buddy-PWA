@@ -272,7 +272,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {counts.self.counselled}/{counts.self.total}
           </span>
           {assessment && assessment.medicationDetails && (
-            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes">📝 Notes</span>
+            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes"></span>
           )}
         </div>
 
