@@ -34,26 +34,8 @@ public class BootCompletedReceiver extends BroadcastReceiver {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && 
              Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action))) {
             
-            Log.d(TAG, "📱 Device boot detected (action: " + action + ")");
-            Log.d(TAG, "Starting GalleryMonitorService...");
-            
-            // Start the gallery monitor foreground service
-            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
-            serviceIntent.setPackage(context.getPackageName());
-            
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent);
-                } else {
-                    context.startService(serviceIntent);
-                }
-                Log.d(TAG, "✅ GalleryMonitorService started successfully");
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Failed to start GalleryMonitorService on boot", e);
-            }
-            
-            // Schedule periodic heartbeat to keep service alive
-            scheduleHeartbeat(context);
+            Log.d(TAG, "📱 Device boot detected — background service disabled by design");
+            // ❌ Service auto-start on boot is disabled — app should not run in background
         }
     }
     
@@ -69,17 +51,8 @@ public class BootCompletedReceiver extends BroadcastReceiver {
      * @param context Application context
      */
     public static void scheduleHeartbeat(Context context) {
-        Log.d(TAG, "⏰ Scheduling HYBRID heartbeat system...");
-        
-        // Layer 1: WorkManager (battery-friendly)
-        scheduleWorkManagerHeartbeat(context);
-        
-        // Layer 2: AlarmManager (aggressive fallback)
-        ServiceAlarmReceiver.scheduleAlarmHeartbeat(context);
-        
-        Log.d(TAG, "✅ Hybrid heartbeat system activated");
-        Log.d(TAG, "   → WorkManager: 5-15 min (battery-efficient)");
-        Log.d(TAG, "   → AlarmManager: 15 min (battery-optimized)");
+        // ❌ Background service disabled — heartbeat scheduling is disabled
+        Log.d(TAG, "ℹ️ scheduleHeartbeat called but is disabled — service will not auto-restart");
     }
     
     /**

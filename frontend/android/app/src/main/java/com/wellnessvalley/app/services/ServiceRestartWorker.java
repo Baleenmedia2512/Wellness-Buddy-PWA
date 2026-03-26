@@ -18,22 +18,8 @@ public class ServiceRestartWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        Log.d(TAG, "Restarting GalleryMonitorService via WorkManager...");
-        
-        try {
-            Intent intent = new Intent(getApplicationContext(), GalleryMonitorService.class);
-            intent.setPackage(getApplicationContext().getPackageName());
-            
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                getApplicationContext().startForegroundService(intent);
-            } else {
-                getApplicationContext().startService(intent);
-            }
-            
-            return Result.success();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to restart service", e);
-            return Result.retry();
-        }
+        // ❌ Background service disabled — do NOT restart GalleryMonitorService
+        Log.d(TAG, "ℹ️ ServiceRestartWorker fired but service auto-restart is disabled");
+        return Result.success();
     }
 }

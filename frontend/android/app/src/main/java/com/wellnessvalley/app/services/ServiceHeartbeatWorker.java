@@ -35,36 +35,9 @@ public class ServiceHeartbeatWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        long currentTime = System.currentTimeMillis();
-        Log.d(TAG, "🔄 WorkManager Heartbeat check [" + new java.util.Date(currentTime) + "]");
-        Log.d(TAG, "   Verifying GalleryMonitorService status...");
-        
-        try {
-            // Check if the service is currently running
-            if (!isServiceRunning(getApplicationContext(), GalleryMonitorService.class)) {
-                Log.w(TAG, "⚠️ GalleryMonitorService NOT RUNNING! Initiating restart...");
-                Log.w(TAG, "   Time since last check: ~5-15 minutes");
-                restartService();
-                
-                // Ensure AlarmManager backup is also running
-                ServiceAlarmReceiver.scheduleAlarmHeartbeat(getApplicationContext());
-                Log.d(TAG, "   ✅ AlarmManager fallback also scheduled");
-                
-                return Result.success();
-            }
-            
-            Log.d(TAG, "✅ GalleryMonitorService is running normally (WorkManager)");
-            Log.d(TAG, "   Next WorkManager check in ~5-15 minutes");
-            
-            // Ensure AlarmManager is still active as backup
-            ServiceAlarmReceiver.scheduleAlarmHeartbeat(getApplicationContext());
-            
-            return Result.success();
-            
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Error during WorkManager heartbeat check", e);
-            return Result.retry(); // Retry later if something went wrong
-        }
+        // ❌ Background service disabled — do NOT restart GalleryMonitorService
+        Log.d(TAG, "ℹ️ Heartbeat worker fired but service auto-restart is disabled");
+        return Result.success();
     }
 
     /**

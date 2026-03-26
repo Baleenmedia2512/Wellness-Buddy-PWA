@@ -57,10 +57,11 @@ import org.json.JSONArray;
 public class GalleryMonitorService extends Service implements SensorEventListener {
     private static final String TAG = "GalleryMonitorService";
     private static final String CHANNEL_ID = "GalleryMonitorChannel";
+    private static final String NOTIF_CHANNEL_ID = "WellnessNotifications"; // visible channel for food/analysis alerts
     private static final int NOTIFICATION_ID = 101;
     
     // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
-    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
 
     // ── Step Tracking ──────────────────────────────────────────────────────────
     private static final String STEPS_PREFS       = "WellnessSteps";
@@ -102,8 +103,6 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         } else {
             startForeground(NOTIFICATION_ID, createNotification());
         }
-
-        Toast.makeText(this, "Wellness Buddy Service Running", Toast.LENGTH_SHORT).show();
 
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
@@ -181,8 +180,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Wellness Buddy")
-                .setContentText("Running in background")
+                .setContentTitle("")
+                .setContentText("")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -194,21 +193,34 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(
+            // Hidden background service channel — never visible to the user
+            NotificationChannel silentChannel = new NotificationChannel(
                     CHANNEL_ID,
                     "Background Service",
-                    NotificationManager.IMPORTANCE_MIN
+                    NotificationManager.IMPORTANCE_NONE  // Completely hidden from notification shade
             );
-            channel.setDescription("Keeps wellness tracking running in background");
-            channel.enableLights(false);
-            channel.enableVibration(false);
-            channel.setShowBadge(false);
-            channel.setSound(null, null);
+            silentChannel.setDescription("Keeps wellness tracking running in background");
+            silentChannel.enableLights(false);
+            silentChannel.enableVibration(false);
+            silentChannel.setShowBadge(false);
+            silentChannel.setSound(null, null);
+
+            // Visible channel for food analysis results
+            NotificationChannel notifChannel = new NotificationChannel(
+                    NOTIF_CHANNEL_ID,
+                    "Food Analysis",
+                    NotificationManager.IMPORTANCE_DEFAULT
+            );
+            notifChannel.setDescription("Notifications for food analysis results");
+            notifChannel.enableLights(true);
+            notifChannel.enableVibration(false);
+            notifChannel.setShowBadge(true);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
-                manager.createNotificationChannel(channel);
-                Log.d(TAG, "✅ Notification channel created: " + CHANNEL_ID);
+                manager.createNotificationChannel(silentChannel);
+                manager.createNotificationChannel(notifChannel);
+                Log.d(TAG, "✅ Notification channels created");
             }
         }
     }
@@ -730,7 +742,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         if (fiber >= 0) contentTextBuilder.append(" • Fiber: ").append(fiber).append("g");
         String contentText = contentTextBuilder.toString();
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("🍽️ Food Analysis Complete")
                 .setContentText(contentText)
