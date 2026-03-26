@@ -1468,10 +1468,12 @@ function WellnessValleyApp() {
         );
         const diffData = await diffRes.json();
         if (diffData.success && diffData.stats?.previousWeight) {
+          const prevWeight = parseFloat(diffData.stats.previousWeight.value);
+          const weightChange = val - prevWeight;
           setWeightDiff({
-            previous: parseFloat(diffData.stats.previousWeight.value),
+            previous: Math.round(prevWeight * 10) / 10,
             previousDate: diffData.stats.previousWeight.date,
-            change: val - parseFloat(diffData.stats.previousWeight.value),
+            change: Math.round(weightChange * 10) / 10,
           });
         }
       } catch (_) {
@@ -2179,9 +2181,9 @@ function WellnessValleyApp() {
             if (diffData.success && diffData.stats?.previousWeight) {
               const weightChange = parseFloat(diffData.stats.weightChange);
               setWeightDiff({
-                previous: parseFloat(diffData.stats.previousWeight.value),
+                previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
                 previousDate: diffData.stats.previousWeight.date,
-                change: weightChange,
+                change: Math.round(weightChange * 10) / 10,
               });
               // ✅ Immediately inject into leaderboard strip — no API wait needed
               if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
