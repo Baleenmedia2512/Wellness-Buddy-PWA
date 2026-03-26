@@ -190,10 +190,11 @@ function WellnessValleyApp() {
 
   // Profile update trigger - increment this to force Dashboard to refetch BMR
   const [profileUpdateTrigger, setProfileUpdateTrigger] = useState(0);
-  // Initialize showCompleteProfile based on localStorage check to prevent flashing
-  const [showCompleteProfile, setShowCompleteProfile] = useState(
-    !profileCompletedRef.current,
-  );
+  // True while checkProfileCompletion() is in flight — gate must not render during this window.
+  const [profileChecking, setProfileChecking] = useState(false);
+  // Start hidden — only checkProfileCompletion() (called after setup is confirmed complete)
+  // will turn this on, preventing the gate from flashing for new users going through SetupWizard.
+  const [showCompleteProfile, setShowCompleteProfile] = useState(false);
 
   // User context state - stored and reused for AI personalization
   const [userContext, setUserContext] = useState(null);
@@ -761,6 +762,8 @@ function WellnessValleyApp() {
       if (!userEmail) return;
       // Skip if user already completed profile in this session (prevents race conditions)
       if (profileCompletedRef.current) return;
+      // Mark check in-flight so the gate doesn’t render while we’re fetching
+      setProfileChecking(true);
       try {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         let latestData = null;
@@ -782,6 +785,7 @@ function WellnessValleyApp() {
           if (latestData.profileComplete) {
             profileCompletedRef.current = true;
             localStorage.setItem("profileComplete_v2_" + userEmail, "true");
+            setProfileChecking(false);
             setShowCompleteProfile(false);
             return;
           }
@@ -799,9 +803,10 @@ function WellnessValleyApp() {
             phoneNumber: latestData?.phoneNumber ?? null,
           },
         );
-        // setShowCompleteProfile(false);      ---------> change need----------------------------------
+        setProfileChecking(false);
         setShowCompleteProfile(true);
       } catch (err) {
+        setProfileChecking(false);
         console.warn("⚠️ [Profile] Failed to check profile completion:", err);
       }
     },
@@ -4141,7 +4146,7 @@ function WellnessValleyApp() {
            field (height, gender, age, diet) is saved to the database.
            The user cannot dismiss this page until the form is complete.
       ─────────────────────────────────────────────────────────────────── */}
-      {showCompleteProfile && user && (
+      {showCompleteProfile && !profileChecking && user && (
         <CompleteProfilePage
           user={user}
           apiBaseUrl={apiBaseUrl}
