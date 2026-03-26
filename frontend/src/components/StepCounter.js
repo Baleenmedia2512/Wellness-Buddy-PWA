@@ -80,7 +80,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const [dailyHistory, setDailyHistory]     = useState([]);
   const [saving, setSaving]                 = useState(false);
   const [lastSaved, setLastSaved]           = useState(() => {
-    // Restore last save time from localStorage so it's visible on reopen
+    // Restore last save time from localStorage so it's visible on reopen.
     const stored = localStorage.getItem('step_last_saved_time');
     return stored ? new Date(Number(stored)) : null;
   });
