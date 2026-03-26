@@ -3,10 +3,11 @@ import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
+import TeamMemberSearch from './TeamMemberSearch';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CONSTANTS
+// CONSTANTS.
 // ─────────────────────────────────────────────────────────────────────────────
 const CALORIES_PER_STEP    = 0.04;
 const UPDATE_THROTTLE_MS   = 1000;        // Max one UI update per second
@@ -35,6 +36,8 @@ const calcCalories = (steps) => Number((steps * CALORIES_PER_STEP).toFixed(2));
 /** localStorage key for the day's sensor baseline. */
 const getBaselineKey    = (dateKey) => `step_counter_baseline_${dateKey}`;
 const getLastUpdateKey  = ()        => 'step_counter_last_update';
+/** localStorage key for the sensor total at the time of the last DB save. */
+const getSaveSensorKey  = (dateKey) => `step_save_sensor_${dateKey}`;
 
 /** Read today's sensor baseline from localStorage. Returns null if absent/invalid. */
 const readBaseline = (dateKey) => {
@@ -63,8 +66,9 @@ const writeBaseline = (dateKey, sensorTotal) => {
 /**
  * Main Step Counter Component
  */
-const StepCounter = ({ onBack, userId }) => {
+const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const isNativePlatform = Capacitor.isNativePlatform();
+  const isCoach = userRole === 'coach' || userRole === 'coCoach' || userRole === 'admin' || userRole === 'developer';
 
   // ── UI State (display-only; mutated via setters, never read by callbacks) ──
   const [ready, setReady]                   = useState(false);
@@ -77,10 +81,18 @@ const StepCounter = ({ onBack, userId }) => {
   const [error, setError]                   = useState(null);
   const [dailyHistory, setDailyHistory]     = useState([]);
   const [saving, setSaving]                 = useState(false);
-  const [lastSaved, setLastSaved]           = useState(null);
+  const [lastSaved, setLastSaved]           = useState(() => {
+    // Restore last save time from localStorage so it's visible on reopen
+    const stored = localStorage.getItem('step_last_saved_time');
+    return stored ? new Date(Number(stored)) : null;
+  });
   const [historyView, setHistoryView]       = useState('week');
   const [refreshing, setRefreshing]         = useState(false); // manual refresh button
   const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
+
+  // ── Viewing other member (coaches only) ───────────────────────────────────
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [memberData, setMemberData]         = useState({ steps: 0, calories: 0, history: [], loading: false });
 
   // Resolve the real DB userId with multi-source fallback
   const [resolvedUserId, setResolvedUserId] = useState(() => {
@@ -108,6 +120,12 @@ const StepCounter = ({ onBack, userId }) => {
   // Added on top of sensor-based steps so the counter continues from where it
   // left off rather than resetting to 0 on every fresh app open.
   const dbOffsetRef            = useRef(0);
+  // Guard: block UI updates until DB offset is fetched.
+  // Prevents showing a wrong (sensor-only) value before DB data arrives.
+  const dbOffsetLoadedRef      = useRef(false);
+  // Tracks the date string of the last processed sensor event.
+  // Used to detect midnight rollovers when the app spans across days.
+  const currentDateRef         = useRef(toDateKey());
 
   // Timer and listener handles
   const sensorListenerRef  = useRef(null);
@@ -213,7 +231,24 @@ const StepCounter = ({ onBack, userId }) => {
     }
 
     const todayKey = toDateKey();
-    let baseline   = readBaseline(todayKey);
+
+    // ── Midnight / day-rollover detection ────────────────────────────────────
+    // Handles the case where the app is open (or resumed) across midnight and
+    // the midnight timer never fired (background kill, Doze, etc.).
+    if (todayKey !== currentDateRef.current) {
+      console.log('🌙 [StepCounter] Day rollover detected:', currentDateRef.current, '→', todayKey);
+      currentDateRef.current    = todayKey;
+      dbOffsetRef.current       = 0;
+      dbOffsetLoadedRef.current = true;  // new day = 0 DB offset, safe to show
+      lastSavedStepsRef.current = null;
+      todayStepsRef.current     = 0;
+      todayCaloriesRef.current  = 0;
+      setTodaySteps(0);
+      setTodayCalories(0);
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
+    let baseline = readBaseline(todayKey);
 
     // First reading of the day → establish baseline
     if (!baseline) {
@@ -243,6 +278,10 @@ const StepCounter = ({ onBack, userId }) => {
     todayStepsRef.current        = dailySteps;
     todayCaloriesRef.current     = calories;
 
+    // Hold UI update until DB offset is loaded — avoids showing a wrong value
+    // on first open while the DB fetch is still in-flight.
+    if (!dbOffsetLoadedRef.current) return;
+
     // Throttle React state updates to at most once per UPDATE_THROTTLE_MS
     const now = Date.now();
     if (now - lastUIUpdateRef.current >= UPDATE_THROTTLE_MS || lastUIUpdateRef.current === 0) {
@@ -260,6 +299,9 @@ const StepCounter = ({ onBack, userId }) => {
   // DATABASE: SAVE
   // ─────────────────────────────────────────────────────────────────────────
   /**
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE: SAVE STEPS
+  // ─────────────────────────────────────────────────────────────────────────
    * FIX 3: Reads todayStepsRef.current (ref) instead of todaySteps (state).
    *
    *   Old code depended on todaySteps state, so every step update recreated
@@ -296,8 +338,15 @@ const StepCounter = ({ onBack, userId }) => {
       console.log('💾 [StepCounter] Saving to DB:', payload);
       await saveDailyActivity(payload);
       lastSavedStepsRef.current = steps;
-      setLastSaved(new Date());
-      console.log('✅ [StepCounter] Saved:', steps, 'steps');
+      // Record the sensor total at save time — used as baseline on next reopen
+      // so that steps walked-but-unsaved are recovered instead of lost.
+      if (latestSensorTotalRef.current !== null) {
+        localStorage.setItem(getSaveSensorKey(toDateKey()), String(latestSensorTotalRef.current));
+      }
+      const savedAt = new Date();
+      localStorage.setItem('step_last_saved_time', String(savedAt.getTime()));
+      setLastSaved(savedAt);
+      console.log('✅ [StepCounter] Saved:', steps, 'steps at', savedAt.toLocaleTimeString());
     } catch (err) {
       console.error('❌ [StepCounter] Save failed:', err);
       setError(`Save failed: ${err.message}`);
@@ -313,7 +362,8 @@ const StepCounter = ({ onBack, userId }) => {
     const userId = resolvedUserIdRef.current;
     if (!userId) return;
     try {
-      const response = await fetchDailyActivity(userId, 30, ACTIVITY_TYPE);
+      // Pass client's local date so history range ends on device's today, not server UTC today.
+      const response = await fetchDailyActivity(userId, 30, ACTIVITY_TYPE, toDateKey());
       const trend    = response.trend || response.data;
       if (response.success && Array.isArray(trend)) {
         setDailyHistory(trend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 })));
@@ -322,6 +372,33 @@ const StepCounter = ({ onBack, userId }) => {
       console.error('❌ [StepCounter] Load history failed:', err);
     }
   }, []); // Stable — reads userId from ref
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MEMBER DATA FETCH (coaches viewing a team member)
+  // ─────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!selectedMember || selectedMember.isSelf) {
+      setMemberData({ steps: 0, calories: 0, history: [], loading: false });
+      return;
+    }
+    const memberId = selectedMember.id || selectedMember.userId;
+    setMemberData(prev => ({ ...prev, loading: true }));
+    Promise.all([
+      fetchDailyActivity(memberId, 1, ACTIVITY_TYPE, toDateKey()),
+      fetchDailyActivity(memberId, 30, ACTIVITY_TYPE, toDateKey()),
+    ]).then(([todayRes, histRes]) => {
+      const todayTrend  = todayRes.trend || todayRes.data || [];
+      const todayEntry  = todayTrend.find(d => d.date === toDateKey());
+      const steps       = todayEntry?.steps || 0;
+      const calories    = todayEntry?.caloriesBurned ?? todayEntry?.calories ?? calcCalories(steps);
+      const histTrend   = histRes.trend || histRes.data || [];
+      const history     = histTrend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 }));
+      setMemberData({ steps, calories, history, loading: false });
+    }).catch(err => {
+      console.error('[StepCounter] Failed to load member data:', err);
+      setMemberData({ steps: 0, calories: 0, history: [], loading: false });
+    });
+  }, [selectedMember]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // MANUAL REFRESH (Requirement 6)
@@ -498,6 +575,9 @@ const StepCounter = ({ onBack, userId }) => {
       todayStepsRef.current     = 0;
       todayCaloriesRef.current  = 0;
       lastSavedStepsRef.current = null;
+      dbOffsetRef.current       = 0;
+      dbOffsetLoadedRef.current = true;  // new day = 0 offset, sensor steps shown immediately
+      currentDateRef.current    = toDateKey();
       setTodaySteps(0);
       setTodayCalories(0);
 
@@ -569,7 +649,9 @@ const StepCounter = ({ onBack, userId }) => {
     // Load today's DB steps as the starting offset for this session.
     // This ensures the counter shows the correct cumulative total on fresh
     // app opens instead of starting from 0 each time.
-    fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE)
+    // Pass client's local date so the backend doesn't use server UTC (fixes
+    // the 5.5-hour window each day where IST != UTC date).
+    fetchDailyActivity(resolvedUserId, 1, ACTIVITY_TYPE, toDateKey())
       .then((response) => {
         const trend = response.trend || response.data;
         if (response.success && Array.isArray(trend)) {
@@ -581,8 +663,26 @@ const StepCounter = ({ onBack, userId }) => {
             // re-save the same DB value we just loaded.
             lastSavedStepsRef.current = todayEntry.steps;
             console.log('🗄️ [StepCounter] DB offset loaded:', todayEntry.steps);
-            // If sensor hasn't fired yet (still on 0), seed the UI now
-            if (todayStepsRef.current === 0) {
+            // Unlock UI — from this point processSensorValue will update the display
+            dbOffsetLoadedRef.current = true;
+            if (latestSensorTotalRef.current !== null) {
+              // Use sensor-at-last-save as the new baseline (not current sensor).
+              // This means sensorSteps = currentSensor - sensorAtSave = only the
+              // NEW steps walked since last save, recovering any unsaved steps.
+              // Fallback to current sensor if no save record exists or sensor reset.
+              const savedSensorStr = localStorage.getItem(getSaveSensorKey(toDateKey()));
+              const savedSensor    = savedSensorStr ? Number(savedSensorStr) : null;
+              const baselineToUse  =
+                (savedSensor !== null &&
+                 Number.isFinite(savedSensor) &&
+                 savedSensor <= latestSensorTotalRef.current)
+                  ? savedSensor
+                  : latestSensorTotalRef.current;
+              writeBaseline(toDateKey(), baselineToUse);
+              // Reprocess with the corrected baseline
+              processSensorValueRef.current?.(latestSensorTotalRef.current);
+            } else {
+              // Sensor hasn't fired yet — seed UI directly from DB
               const offsetCalories = calcCalories(todayEntry.steps);
               todayStepsRef.current    = todayEntry.steps;
               todayCaloriesRef.current = offsetCalories;
@@ -590,13 +690,83 @@ const StepCounter = ({ onBack, userId }) => {
               setTodayCalories(offsetCalories);
               setLoading(false);
             }
+          } else {
+            // New day or first use — DB has 0 steps (or no entry yet).
+            // dbOffset stays 0; just unlock the UI so sensor steps are shown.
+            dbOffsetLoadedRef.current = true;
+            if (latestSensorTotalRef.current !== null) {
+              processSensorValueRef.current?.(latestSensorTotalRef.current);
+            } else {
+              setLoading(false);
+            }
           }
         }
       })
-      .catch((err) => console.warn('⚠️ [StepCounter] Failed to load DB offset:', err));
+      .catch((err) => {
+        console.warn('⚠️ [StepCounter] Failed to load DB offset:', err);
+        // DB fetch failed — unlock UI anyway so sensor value is shown
+        dbOffsetLoadedRef.current = true;
+        if (latestSensorTotalRef.current !== null) {
+          processSensorValueRef.current?.(latestSensorTotalRef.current);
+        } else {
+          setLoading(false);
+        }
+      });
 
     loadDailyHistoryRef.current?.();
     setupAutoSave(); // starts the 60-second save interval
+
+    // ── Background service backfill + correction ─────────────────────────────
+    // GalleryMonitorService records per-day steps in SharedPreferences.
+    // On app open we:
+    //   (a) Fill any DB days that show 0 steps (app was never opened that day)
+    //   (b) Correct any DB days that are inflated beyond what the background
+    //       service actually measured — those are corrupted by the old
+    //       double-counting bug (multiple sessions pre-fix) and should be reset
+    //       to the accurate value from SharedPreferences.
+    if (isNativePlatform) {
+      StepCounterPlugin.getBackgroundStepHistory(7).then(({ history }) => {
+        if (!Array.isArray(history) || history.length === 0) return;
+        const bgDays = history.filter(e => e.steps > 0);
+        if (bgDays.length === 0) return;
+
+        // Re-fetch DB history to compare against background service values
+        fetchDailyActivity(resolvedUserId, 7, ACTIVITY_TYPE, toDateKey())
+          .then((dbResponse) => {
+            const dbTrend = dbResponse.trend || dbResponse.data || [];
+            const dbMap   = new Map(dbTrend.map(d => [d.date, d.steps]));
+
+            // Only backfill days where DB has 0 steps but background service recorded real
+            // steps (app was never opened that day so no in-app save happened).
+            //
+            // Do NOT overwrite days where DB already has steps — the background service is
+            // often killed by Android Doze mid-day and its count can be much lower than what
+            // the in-app sensor saved. Always trust the higher (DB) value.
+            const toFix = bgDays.filter(e => {
+              const dbSteps = dbMap.get(e.date) || 0;
+              return dbSteps === 0;  // only fill completely missing days.
+            });
+
+            if (toFix.length === 0) return;
+
+            console.log('🔄 [StepCounter] Fixing', toFix.length, 'day(s) from background service:', toFix);
+            Promise.all(toFix.map(e =>
+              saveDailyActivity({
+                userId:          resolvedUserId,
+                activityDate:    e.date,
+                steps:           e.steps,
+                activityType:    ACTIVITY_TYPE,
+                caloriesBurned:  Number((e.steps * CALORIES_PER_STEP).toFixed(2))
+              })
+            )).then(() => {
+              console.log('✅ [StepCounter] Backfill/correction complete');
+              loadDailyHistoryRef.current?.(); // refresh chart
+            }).catch(err => console.warn('⚠️ [StepCounter] Backfill failed:', err));
+          })
+          .catch(err => console.warn('⚠️ [StepCounter] Backfill DB fetch failed:', err));
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
   }, [resolvedUserId, setupAutoSave]); // setupAutoSave is stable (deps: [])
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -632,9 +802,15 @@ const StepCounter = ({ onBack, userId }) => {
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DISPLAY VALUES
   // ─────────────────────────────────────────────────────────────────────────
-  const stepProgress = Math.min(todaySteps / STEP_GOAL, 1);
+  const isViewingOther  = !!(selectedMember && !selectedMember.isSelf);
+  const displaySteps    = isViewingOther ? memberData.steps    : todaySteps;
+  const displayCalories = isViewingOther ? memberData.calories : todayCalories;
+  const displayHistory  = isViewingOther ? memberData.history  : dailyHistory;
+  const displayLoading  = isViewingOther ? memberData.loading  : loading;
+
+  const stepProgress = Math.min(displaySteps / STEP_GOAL, 1);
   const ringOffset   = RING_CIRCUMFERENCE * (1 - stepProgress);
-  const historyData  = historyView === 'week' ? dailyHistory.slice(-7) : dailyHistory;
+  const historyData  = historyView === 'week' ? displayHistory.slice(-7) : displayHistory;
 
   if (loading && !ready) {
     return <LoadingSpinner context="steps" />;
@@ -662,11 +838,16 @@ const StepCounter = ({ onBack, userId }) => {
             <div className="bg-gradient-to-br from-emerald-500 to-teal-500 p-2 rounded-xl shadow-sm">
               <Footprints className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Step Counter</h1>
+              {isViewingOther && (
+                <p className="text-xs text-emerald-600 font-medium">Viewing {selectedMember.userName}'s data</p>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {/* Manual Refresh Button — fallback for Android Doze delays */}
-            {isNativePlatform && permissionGranted && (
+            {isNativePlatform && permissionGranted && !isViewingOther && (
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshing}
@@ -698,7 +879,18 @@ const StepCounter = ({ onBack, userId }) => {
         </div>
       </div>
 
-      {/* ──── Content ──── */}
+      {/* ──── Team Member Search (coaches only) ──── */}
+      {isCoach && (
+        <TeamMemberSearch
+          user={user}
+          userRole={userRole}
+          selectedMember={selectedMember}
+          onMemberSelect={setSelectedMember}
+        />
+      )}
+
+      {/* ──── My Steps Content ──── */}
+      {
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
 
         {/* Error banner */}
@@ -710,7 +902,7 @@ const StepCounter = ({ onBack, userId }) => {
         )}
 
         {/* Permission banner */}
-        {isNativePlatform && sensorAvailable && !permissionGranted && (
+        {!isViewingOther && isNativePlatform && sensorAvailable && !permissionGranted && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -733,7 +925,7 @@ const StepCounter = ({ onBack, userId }) => {
           <div className="flex flex-col items-center">
             {/* Ring */}
             <div className="relative w-44 h-44 sm:w-52 sm:h-52 mb-4">
-              {loading ? (
+              {displayLoading ? (
                 <div className="w-full h-full rounded-full bg-gradient-to-br from-emerald-100 to-teal-100 animate-pulse" />
               ) : (
                 <>
@@ -755,7 +947,7 @@ const StepCounter = ({ onBack, userId }) => {
                   <div className="absolute inset-0 flex flex-col items-center justify-center">
                     <Footprints className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 mb-1" />
                     <p className="text-3xl sm:text-4xl font-extrabold text-gray-900 leading-none">
-                      {todaySteps.toLocaleString()}
+                      {displaySteps.toLocaleString()}
                     </p>
                     <p className="text-xs sm:text-sm text-gray-400 mt-1 font-medium">
                       / {STEP_GOAL.toLocaleString()}
@@ -766,7 +958,7 @@ const StepCounter = ({ onBack, userId }) => {
             </div>
 
             {/* Goal progress text */}
-            {!loading && (
+            {!displayLoading && (
               <p className="text-sm text-gray-500 font-medium mb-1">
                 {stepProgress >= 1
                   ? '🎉 Goal reached!'
@@ -779,30 +971,56 @@ const StepCounter = ({ onBack, userId }) => {
           <div className="grid grid-cols-2 gap-3 mt-5">
             <div className="bg-emerald-50 rounded-2xl p-3.5 sm:p-4 text-center">
               <Footprints className="w-4 h-4 text-emerald-600 mx-auto mb-1.5" />
-              {loading ? (
+              {displayLoading ? (
                 <div className="h-6 w-16 bg-emerald-200/60 rounded-lg animate-pulse mx-auto" />
               ) : (
-                <p className="text-lg sm:text-xl font-bold text-emerald-900">{todaySteps.toLocaleString()}</p>
+                <p className="text-lg sm:text-xl font-bold text-emerald-900">{displaySteps.toLocaleString()}</p>
               )}
               <p className="text-xs text-emerald-600 mt-0.5 font-medium">Steps</p>
             </div>
             <div className="bg-rose-50 rounded-2xl p-3.5 sm:p-4 text-center">
               <Flame className="w-4 h-4 text-rose-500 mx-auto mb-1.5" />
-              {loading ? (
+              {displayLoading ? (
                 <div className="h-6 w-16 bg-rose-200/60 rounded-lg animate-pulse mx-auto" />
               ) : (
-                <p className="text-lg sm:text-xl font-bold text-rose-900">{todayCalories}</p>
+                <p className="text-lg sm:text-xl font-bold text-rose-900">{displayCalories}</p>
               )}
               <p className="text-xs text-rose-500 mt-0.5 font-medium">Calories</p>
             </div>
           </div>
 
-          {/* Last updated / saved status line */}
-          {!loading && (lastUpdated || lastSaved) && (
-            <p className="text-center text-xs text-gray-400 mt-3">
-              {lastUpdated && `Updated ${lastUpdated.toLocaleTimeString()}`}
-              {lastSaved   && ` · Saved ${lastSaved.toLocaleTimeString()}`}
-            </p>
+          {/* DB Sync status row */}
+          {!displayLoading && !isViewingOther && (
+            <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
+              <div className="flex items-center gap-1.5">
+                {saving ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                    <span className="text-xs text-emerald-600 font-medium">Saving to DB…</span>
+                  </>
+                ) : lastSaved ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                    <span className="text-xs text-gray-500 font-medium">
+                      DB saved&nbsp;
+                      <span className="text-emerald-600 font-semibold">
+                        {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                      </span>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-gray-300" />
+                    <span className="text-xs text-gray-400">Not saved yet</span>
+                  </>
+                )}
+              </div>
+              {lastUpdated && (
+                <span className="text-xs text-gray-400">
+                  Live {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                </span>
+              )}
+            </div>
           )}
         </div>
 
@@ -843,7 +1061,7 @@ const StepCounter = ({ onBack, userId }) => {
                     {Math.round(
                       historyData.reduce((sum, day) => {
                         const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                        return sum + (isToday ? todaySteps : (day.steps || 0));
+                        return sum + (isToday ? displaySteps : (day.steps || 0));
                       }, 0) / historyData.length
                     ).toLocaleString()}
                   </p>
@@ -857,7 +1075,7 @@ const StepCounter = ({ onBack, userId }) => {
                     {Math.round(
                       historyData.reduce((sum, day) => {
                         const isToday = toDateKey(new Date(day.date)) === toDateKey();
-                        return sum + (isToday ? todayCalories : (day.calories || 0));
+                        return sum + (isToday ? displayCalories : (day.calories || 0));
                       }, 0)
                     ).toLocaleString()}
                   </p>
@@ -867,10 +1085,10 @@ const StepCounter = ({ onBack, userId }) => {
               {/* Daily List */}
               <div className="mt-4 space-y-2 max-h-64 sm:max-h-80 overflow-y-auto">
                 {[...historyData].reverse().map((day) => {
-                  const date            = new Date(day.date);
-                  const isToday         = toDateKey(date) === toDateKey();
-                  const displaySteps    = isToday ? todaySteps    : (day.steps    || 0);
-                  const displayCalories = isToday ? todayCalories : (day.calories || 0);
+                  const date      = new Date(day.date);
+                  const isToday   = toDateKey(date) === toDateKey();
+                  const rowSteps    = isToday ? displaySteps    : (day.steps    || 0);
+                  const rowCalories = isToday ? displayCalories : (day.calories || 0);
 
                   return (
                     <div
@@ -894,8 +1112,8 @@ const StepCounter = ({ onBack, userId }) => {
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-gray-900">{displaySteps.toLocaleString()}</p>
-                        <p className="text-xs text-gray-400">{displayCalories} kcal</p>
+                        <p className="text-sm font-bold text-gray-900">{rowSteps.toLocaleString()}</p>
+                        <p className="text-xs text-gray-400">{rowCalories} kcal</p>
                       </div>
                     </div>
                   );
@@ -911,6 +1129,7 @@ const StepCounter = ({ onBack, userId }) => {
           )}
         </div>
       </div>
+      }
     </div>
   );
 };

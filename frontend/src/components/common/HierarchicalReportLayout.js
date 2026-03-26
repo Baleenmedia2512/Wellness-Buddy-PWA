@@ -22,7 +22,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import TouchFeedbackButton from "../TouchFeedbackButton";
 
 // --- DateRangePicker Component ---
-const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
+const DateRangePicker = ({ startDate, endDate, onSelect, onClose, singleDay = false }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [selectingStart, setSelectingStart] = useState(true);
   const [tempStart, setTempStart] = useState(startDate);
@@ -48,6 +48,13 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
     const today = new Date();
     today.setHours(23, 59, 59, 999);
     if (clickedDate > today) {
+      return;
+    }
+
+    if (singleDay) {
+      setTempStart(clickedDate);
+      setTempEnd(clickedDate);
+      onSelect(clickedDate, clickedDate);
       return;
     }
 
@@ -150,7 +157,7 @@ const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
             })}
           </h3>
           <p className="text-xs text-gray-500 mt-1">
-            {selectingStart ? "Select start date" : "Select end date"}
+            {singleDay ? "Select a date" : selectingStart ? "Select start date" : "Select end date"}
           </p>
         </div>
         <button
@@ -347,6 +354,7 @@ const HierarchicalReportLayout = ({
   topContent,
   children,
   allowedDateRanges, // Optional array to filter date range options (e.g., ["today", "yesterday"])
+  singleDayCustom,   // If true, custom picker selects a single day only
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -365,13 +373,9 @@ const HierarchicalReportLayout = ({
 
   const getDateRangeLabel = () => {
     if (dateRange === "custom" && customStartDate && customEndDate) {
-      return `${customStartDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })} - ${customEndDate.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      })}`;
+      const start = customStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      const end   = customEndDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return start === end ? start : `${start} - ${end}`;
     }
     return "Custom";
   };
@@ -493,38 +497,39 @@ const HierarchicalReportLayout = ({
                     </TouchFeedbackButton>
                   ))}
 
-                {/* Custom Date Range Button */}
-                <div className="relative flex-shrink-0">
-                  <TouchFeedbackButton
-                    id="date-range-custom"
-                    onClick={() => setShowDatePicker(!showDatePicker)}
-                    className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
-                      dateRange === "custom"
-                        ? "bg-green-700 text-white border-green-700 shadow-md"
-                        : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                    }`}
-                  >
-                    <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                    {getDateRangeLabel()}
-                  </TouchFeedbackButton>
-                </div>
+              {/* Custom Date Range Button */}
+              <div className="relative flex-shrink-0">
+                <TouchFeedbackButton
+                  id="date-range-custom"
+                  onClick={() => setShowDatePicker(!showDatePicker)}
+                  className={`whitespace-nowrap px-3 sm:px-4 py-1.5 rounded-full text-xs sm:text-sm font-medium transition-all border flex items-center gap-1.5 ${
+                    dateRange === "custom"
+                      ? "bg-green-700 text-white border-green-700 shadow-md"
+                      : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+                  }`}
+                >
+                  <CalendarIcon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                  {getDateRangeLabel()}
+                </TouchFeedbackButton>
               </div>
-
-              {/* Date Picker Dropdown - Outside scrollable container */}
-              <AnimatePresence>
-                {showDatePicker && (
-                  <div className="relative">
-                    <DateRangePicker
-                      startDate={customStartDate}
-                      endDate={customEndDate}
-                      onSelect={handleDateRangeSelect}
-                      onClose={() => setShowDatePicker(false)}
-                    />
-                  </div>
-                )}
-              </AnimatePresence>
             </div>
-          )}
+          </div>
+        )}
+
+          {/* Date Picker Dropdown - Outside overflow container so it's not clipped */}
+          <AnimatePresence>
+            {showDatePicker && (
+              <div className="relative">
+                <DateRangePicker
+                  startDate={customStartDate}
+                  endDate={customEndDate}
+                  onSelect={handleDateRangeSelect}
+                  onClose={() => setShowDatePicker(false)}
+                  singleDay={!!singleDayCustom}
+                />
+              </div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
@@ -550,9 +555,11 @@ const HierarchicalReportLayout = ({
             {/* Summary Stats */}
             {summaryStats && summaryStats.items?.length > 0 && (
               <div className="bg-white rounded-xl sm:rounded-2xl p-4 sm:p-6 shadow-sm border border-gray-100 mb-2 sm:mb-4">
-                <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
-                  {summaryStats.title || "Team Hierarchy"}
-                </h2>
+                {(summaryStats.title !== "" && summaryStats.title !== null && summaryStats.title !== undefined) && (
+                  <h2 className="text-sm sm:text-base font-bold text-gray-800 mb-4 sm:mb-6 text-center">
+                    {summaryStats.title}
+                  </h2>
+                )}
                 {summaryStats.description && (
                   <div className="text-xs sm:text-sm text-gray-600 mb-3 text-center">
                     <p>{summaryStats.description}</p>

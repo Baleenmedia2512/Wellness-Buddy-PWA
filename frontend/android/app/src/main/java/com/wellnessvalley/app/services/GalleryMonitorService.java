@@ -2,6 +2,19 @@ package com.wellnessvalley.app.services;
 import com.wellnessvalley.app.R;
 import com.wellnessvalley.app.BuildConfig;
 
+import android.app.usage.UsageStats;
+import android.app.usage.UsageStatsManager;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.IntentFilter;
+import java.util.Calendar;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -41,13 +54,25 @@ import java.util.function.Consumer;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
-public class GalleryMonitorService extends Service {
+public class GalleryMonitorService extends Service implements SensorEventListener {
     private static final String TAG = "GalleryMonitorService";
     private static final String CHANNEL_ID = "GalleryMonitorChannel";
     private static final int NOTIFICATION_ID = 101;
     
     // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
     private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
+
+    // ── Step Tracking ──────────────────────────────────────────────────────────
+    private static final String STEPS_PREFS       = "WellnessSteps";
+
+    // ── Screen Time Tracking ───────────────────────────────────────────────────
+    private static final String SCREEN_PREFS      = "WellnessScreen";
+    private SensorManager stepSensorManager;
+    private Sensor        stepSensor;
+    private String        stepCurrentDate     = "";
+    private int           stepLastSensorTotal = -1; // -1 = not yet received any reading
+    private int           stepStoredBaseline  = -1; // steps already in SharedPrefs at start of this service session
+    private BroadcastReceiver dateChangeReceiver;
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -62,7 +87,7 @@ public class GalleryMonitorService extends Service {
     // Database API configuration
     // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
     // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
-    private static final String API_BASE_URL = "https://wellness-valley-pwa-eta.vercel.app/"; // Replace with your actual Vercel URL
+    private static final String API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
 
     @Override
     public void onCreate() {
@@ -71,20 +96,14 @@ public class GalleryMonitorService extends Service {
 
         createNotificationChannel();
 
-        int foregroundServiceType = 0;
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING;
-            }
-
-            startForeground(NOTIFICATION_ID, createNotification(), foregroundServiceType);
+            // Only DATA_SYNC — MEDIA_PROCESSING requires its own permission and crashes without it
+            startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
         } else {
             startForeground(NOTIFICATION_ID, createNotification());
         }
 
-        Toast.makeText(this, "GalleryMonitorService Running", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, "Wellness Buddy Service Running", Toast.LENGTH_SHORT).show();
 
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
@@ -122,9 +141,17 @@ public class GalleryMonitorService extends Service {
             }, 30, 30, TimeUnit.MINUTES);
             
         } catch (Exception e) {
-            Log.e(TAG, "❌ Error initializing Gemini API client", e);
-            throw new RuntimeException("Failed to initialize Gemini API client", e);
+            Log.w(TAG, "⚠️ Gemini API not available, food AI disabled: " + e.getMessage());
+            geminiApiClient = null;
+            retryQueue = null;
         }
+
+        // ✅ Step tracking — start sensor + schedule 60-sec DB saves
+        initStepTracking();
+        scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 60, 60, TimeUnit.SECONDS);
+
+        // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
+        scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
 
         // ✅ Register ContentObserver to detect image changes
         imageObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -154,12 +181,14 @@ public class GalleryMonitorService extends Service {
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("Gallery Monitor Active")
-                .setContentText("Monitoring camera photos for food analysis")
+                .setContentTitle("Wellness Buddy")
+                .setContentText("Running in background")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(NotificationCompat.PRIORITY_MIN)
+                .setVisibility(NotificationCompat.VISIBILITY_SECRET)
+                .setSilent(true)
                 .build();
     }
 
@@ -167,13 +196,14 @@ public class GalleryMonitorService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
-                    "Gallery Monitor",
-                    NotificationManager.IMPORTANCE_DEFAULT
+                    "Background Service",
+                    NotificationManager.IMPORTANCE_MIN
             );
-            channel.setDescription("Monitors camera photos for food analysis");
-            channel.enableLights(true);
-            channel.enableVibration(true);
-            channel.setShowBadge(true);
+            channel.setDescription("Keeps wellness tracking running in background");
+            channel.enableLights(false);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            channel.setSound(null, null);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
@@ -258,6 +288,10 @@ public class GalleryMonitorService extends Service {
     // No longer needed: JS will poll for queued images
     private void processQueuedImages() {
         Log.d(TAG, "Processing queued images for Gemini analysis...");
+        if (geminiApiClient == null) {
+            Log.d(TAG, "Gemini API not available, skipping image analysis.");
+            return;
+        }
         if (!isNetworkAvailable()) {
             Log.d(TAG, "Network unavailable, skipping analysis.");
             return;
@@ -304,6 +338,208 @@ public class GalleryMonitorService extends Service {
         }
     }
     
+    // ── STEP TRACKING IMPLEMENTATION ────────────────────────────────────────────────
+
+    /** Register the hardware TYPE_STEP_COUNTER sensor. */
+    private void initStepTracking() {
+        stepSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        if (stepSensorManager == null) {
+            Log.w(TAG, "⚠️ SensorManager unavailable - step tracking disabled");
+            return;
+        }
+        stepSensor = stepSensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
+        if (stepSensor == null) {
+            Log.w(TAG, "⚠️ No TYPE_STEP_COUNTER sensor - step tracking disabled");
+            return;
+        }
+        boolean ok = stepSensorManager.registerListener(this, stepSensor, SensorManager.SENSOR_DELAY_NORMAL);
+        Log.d(TAG, ok ? "✅ Step sensor registered" : "❌ Step sensor registration failed");
+        stepCurrentDate = getTodayDateKey();
+
+        // Register for system date/time changes so day rollover works even when no
+        // step fires (e.g. manual date change, midnight crossing without walking).
+        dateChangeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                String newDay = getTodayDateKey();
+                if (!newDay.equals(stepCurrentDate)) {
+                    Log.d(TAG, "🌙 [Steps] Date-change broadcast → rolling over " + stepCurrentDate + " → " + newDay);
+                    final String oldDate = stepCurrentDate;
+                    // Save the old day's steps to DB on a background thread (network call)
+                    executorService.execute(() -> saveStepsToDBForDate(oldDate));
+                    // Write 0 for new day and reset in-memory state
+                    SharedPreferences.Editor ed = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE).edit();
+                    ed.putInt("step_daily_" + newDay, 0);
+                    ed.apply();
+                    stepStoredBaseline  = 0;
+                    stepLastSensorTotal = -1; // re-anchors on the first step of the new day
+                    stepCurrentDate     = newDay;
+                }
+            }
+        };
+        android.content.IntentFilter dateFilter = new android.content.IntentFilter();        dateFilter.addAction(Intent.ACTION_DATE_CHANGED);
+        dateFilter.addAction(Intent.ACTION_TIME_CHANGED);
+        dateFilter.addAction(Intent.ACTION_TIMEZONE_CHANGED);
+        registerReceiver(dateChangeReceiver, dateFilter);
+        Log.d(TAG, "✅ Date-change receiver registered");
+    }
+
+    /**
+     * Called by the hardware sensor on every step.
+     * Persists a per-day step count in SharedPreferences under
+     * key "step_daily_YYYY-MM-DD" so the front-end can read it via
+     * StepCounterPlugin.getBackgroundStepHistory().
+     */
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) return;
+
+        int sensorTotal = (int) event.values[0];
+        String today    = getTodayDateKey();
+
+        // Day rollover: reset baseline at midnight
+        if (!today.equals(stepCurrentDate)) {
+            Log.d(TAG, "🌙 [Steps] Day rollover " + stepCurrentDate + " → " + today);
+            // Note: saveStepsToDB() always reads getTodayDateKey() (= new day = 0 steps),
+            // so this call returns early. Yesterday's final steps were already saved by
+            // the 60-second scheduled timer. No data is lost.
+            saveStepsToDB();
+            stepLastSensorTotal = sensorTotal; // new day baseline = current total
+            stepStoredBaseline  = 0;           // new day starts with 0 accumulated steps
+            stepCurrentDate = today;
+            SharedPreferences.Editor ed = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE).edit();
+            ed.putInt("step_daily_" + today, 0);
+            ed.apply();
+            return;
+        }
+
+        // Sensor reset (device reboot): cumulative sensor total decreased.
+        // Re-anchor both baselines so new steps accumulate correctly.
+        if (stepLastSensorTotal > 0 && sensorTotal < stepLastSensorTotal) {
+            Log.d(TAG, "🔄 [Steps] Sensor reset detected (" + stepLastSensorTotal + " → " + sensorTotal + ")");
+            SharedPreferences resetPrefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+            stepStoredBaseline  = resetPrefs.getInt("step_daily_" + today, 0);
+            stepLastSensorTotal = sensorTotal;
+        }
+
+        // First reading of this service session — capture what is already recorded in
+        // SharedPrefs (from a previous session today) so new steps are added on top,
+        // not compared with Math.max (which dropped steps when service restarted).
+        if (stepLastSensorTotal < 0) {
+            SharedPreferences initPrefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+            stepStoredBaseline  = initPrefs.getInt("step_daily_" + today, 0);
+            stepLastSensorTotal = sensorTotal;
+            Log.d(TAG, "📍 [Steps] Session start — stored baseline: " + stepStoredBaseline + " sensorTotal: " + sensorTotal);
+        }
+
+        // Steps walked since THIS service session started
+        int stepsThisSession = Math.max(0, sensorTotal - stepLastSensorTotal);
+
+        // Total today = steps already recorded before this session + steps this session.
+        // This correctly handles service restarts: prior sessions' steps are in
+        // stepStoredBaseline, so we never lose them and never double-count.
+        int newTotal = stepStoredBaseline + stepsThisSession;
+
+        SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+        prefs.edit().putInt("step_daily_" + today, newTotal).apply();
+    }
+
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) { /* not used */ }
+
+    /**
+     * POST today's step count to the backend DB.
+     * Called every 60 seconds by scheduledExecutor, and on service destroy.
+     */
+    private void saveStepsToDB() {
+        saveStepsToDBForDate(getTodayDateKey());
+    }
+
+    private void saveStepsToDBForDate(String date) {
+        String userId = getCurrentUserId();
+        if (userId == null) return;
+
+        SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+        int steps = prefs.getInt("step_daily_" + date, 0);
+        if (steps <= 0) return;
+
+        double calories = Math.round(steps * 0.04 * 100.0) / 100.0;
+        Log.d(TAG, "💾 [Steps] Saving to DB: userId=" + userId + " date=" + date + " steps=" + steps);
+        boolean ok = databaseSyncClient.saveDailySteps(userId, date, steps, calories);
+        Log.d(TAG, ok ? "✅ [Steps] DB save OK" : "❌ [Steps] DB save failed");
+    }
+
+    /** Returns today's date as YYYY-MM-DD in the device's local timezone. */
+    private String getTodayDateKey() {
+        Calendar cal = Calendar.getInstance();
+        return String.format(Locale.US, "%04d-%02d-%02d",
+                cal.get(Calendar.YEAR),
+                cal.get(Calendar.MONTH) + 1,
+                cal.get(Calendar.DAY_OF_MONTH));
+    }
+
+    // ── END STEP TRACKING ─────────────────────────────────────────────────────
+
+    // ── SCREEN TIME TRACKING IMPLEMENTATION ──────────────────────────────────
+
+    /**
+     * Queries UsageStatsManager for total screen time today across all apps.
+     * Returns total seconds, or -1 if permission not granted.
+     */
+    private long queryTodayScreenTimeSeconds() {
+        UsageStatsManager usm = (UsageStatsManager) getSystemService(Context.USAGE_STATS_SERVICE);
+        if (usm == null) return -1;
+
+        // Window: start of today (midnight) to now
+        Calendar startOfDay = Calendar.getInstance();
+        startOfDay.set(Calendar.HOUR_OF_DAY, 0);
+        startOfDay.set(Calendar.MINUTE, 0);
+        startOfDay.set(Calendar.SECOND, 0);
+        startOfDay.set(Calendar.MILLISECOND, 0);
+
+        long startMs = startOfDay.getTimeInMillis();
+        long endMs   = System.currentTimeMillis();
+
+        Map<String, UsageStats> statsMap = usm.queryAndAggregateUsageStats(startMs, endMs);
+        if (statsMap == null || statsMap.isEmpty()) {
+            Log.w(TAG, "⚠️ [ScreenTime] UsageStats empty — permission may not be granted");
+            return -1;
+        }
+
+        long totalMs = 0;
+        for (UsageStats stats : statsMap.values()) {
+            totalMs += stats.getTotalTimeInForeground();
+        }
+        return totalMs / 1000; // convert ms → seconds
+    }
+
+    /**
+     * POST today's screen time to the backend DB.
+     * Called every 60 seconds by scheduledExecutor.
+     */
+    private void saveScreenTimeToDB() {
+        String userId = getCurrentUserId();
+        if (userId == null) return;
+
+        long totalSeconds = queryTodayScreenTimeSeconds();
+        if (totalSeconds < 0) {
+            Log.w(TAG, "⚠️ [ScreenTime] Permission not granted — skipping save");
+            return;
+        }
+        if (totalSeconds == 0) return;
+
+        String today = getTodayDateKey();
+        // Cache in SharedPreferences so UI can read without network
+        getSharedPreferences(SCREEN_PREFS, MODE_PRIVATE)
+            .edit().putLong("screen_daily_" + today, totalSeconds).apply();
+
+        Log.d(TAG, "💾 [ScreenTime] Saving to DB: userId=" + userId + " date=" + today + " seconds=" + totalSeconds);
+        boolean ok = databaseSyncClient.saveScreenTime(userId, today, totalSeconds);
+        Log.d(TAG, ok ? "✅ [ScreenTime] DB save OK" : "❌ [ScreenTime] DB save failed");
+    }
+
+    // ── END SCREEN TIME TRACKING ──────────────────────────────────────────────
+
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
         android.content.SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_PRIVATE);
@@ -348,6 +584,15 @@ public class GalleryMonitorService extends Service {
             getContentResolver().unregisterContentObserver(imageObserver);
         }
 
+        // Unregister step sensor
+        if (stepSensorManager != null) {
+            stepSensorManager.unregisterListener(this);
+        }
+        // Save final step count before dying
+        saveStepsToDB();
+        // Save final screen time before dying
+        saveScreenTimeToDB();
+
         if (executorService != null) {
             executorService.shutdown();
         }
@@ -356,6 +601,9 @@ public class GalleryMonitorService extends Service {
         }
         if (networkChangeReceiver != null) {
             unregisterReceiver(networkChangeReceiver);
+        }
+        if (dateChangeReceiver != null) {
+            unregisterReceiver(dateChangeReceiver);
         }
         
         // Log final retry queue stats
@@ -414,11 +662,8 @@ public class GalleryMonitorService extends Service {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 int foregroundServiceType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
-                
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    foregroundServiceType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING;
-                }
-                
+                // NOTE: FOREGROUND_SERVICE_TYPE_MEDIA_PROCESSING requires its own manifest permission
+                // and was causing crashes — removed intentionally.
                 stopForeground(true);
                 startForeground(NOTIFICATION_ID, createNotification(), foregroundServiceType);
             } catch (Exception e) {

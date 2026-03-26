@@ -76,6 +76,7 @@ import TouchFeedbackButton from "./components/TouchFeedbackButton";
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const ActivityTimeReport = lazy(() => import("./components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
 const ClubAttendanceReport = lazy(() =>
   import("./components/ClubAttendanceReport"),
@@ -207,6 +208,9 @@ function WellnessValleyApp() {
   // Discipline report state (for coaches) - with localStorage persistence
   const [showDisciplineReport, setShowDisciplineReport] = useState(
     localStorage.getItem("currentPage") === "discipline-report",
+  );
+  const [showActivityTimeReport, setShowActivityTimeReport] = useState(
+    localStorage.getItem("currentPage") === "activity-time-report",
   );
 
   // Step Counter state
@@ -392,6 +396,10 @@ function WellnessValleyApp() {
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
+      if (showActivityTimeReport) {
+        showMainPage();
+        return true;
+      }
       if (showDisciplineReport) {
         showMainPage();
         return true;
@@ -417,6 +425,7 @@ function WellnessValleyApp() {
       goBack,
       showToast,
       !showDashboard &&
+        !showActivityTimeReport &&
         !showDisciplineReport &&
         !showStepCounter &&
         !showScreenTime,
@@ -425,6 +434,7 @@ function WellnessValleyApp() {
   }, [
     ionRouter,
     showDashboard,
+    showActivityTimeReport,
     showDisciplineReport,
     showStepCounter,
     showScreenTime,
@@ -575,6 +585,7 @@ function WellnessValleyApp() {
 
   const showMainPage = () => {
     setShowDashboard(false);
+    setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
     setShowStepCounter(false);
     setShowScreenTime(false);
@@ -3244,7 +3255,9 @@ function WellnessValleyApp() {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
         <StepCounter
+          user={user}
           userId={user?.id}
+          userRole={userRole}
           onBack={() => {
             setShowStepCounter(false);
           }}
@@ -3258,6 +3271,8 @@ function WellnessValleyApp() {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
         <ScreenTimePage
+          user={user}
+          userRole={userRole}
           userId={user?.id}
           onBack={() => {
             setShowScreenTime(false);
@@ -3297,6 +3312,25 @@ function WellnessValleyApp() {
     );
   }
 
+  // Activity Time Report
+  if (showActivityTimeReport) {
+    return (
+      <Suspense
+        fallback={<LoadingSpinner message="Loading activity time report..." />}
+      >
+        <ActivityTimeReport
+          user={user}
+          onBack={() => {
+            setShowActivityTimeReport(false);
+            localStorage.setItem("currentPage", "main");
+          }}
+          apiBaseUrl={apiBaseUrl}
+          userRole={userRole}
+        />
+      </Suspense>
+    );
+  }
+
   // Wellness Counselling - Full page view
   if (showWellnessCounselling) {
     return (
@@ -3327,6 +3361,10 @@ function WellnessValleyApp() {
         onShowDisciplineReport={() => {
           setShowDisciplineReport(true);
           localStorage.setItem("currentPage", "discipline-report");
+        }}
+        onShowActivityTimeReport={() => {
+          setShowActivityTimeReport(true);
+          localStorage.setItem("currentPage", "activity-time-report");
         }}
         onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
         onShowWellnessReport={

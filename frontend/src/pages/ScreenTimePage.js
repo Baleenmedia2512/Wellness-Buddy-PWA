@@ -5,10 +5,12 @@ import {
   hasScreenTimePermission,
   requestScreenTimePermission,
   getTodayScreenTime,
-  refreshAndSaveScreenTime,
+  saveScreenTime,
   fetchScreenTimeHistory,
-  formatScreenTime
+  formatScreenTime,
+  syncAccurateHistoryFromInstall
 } from '../services/screenTimeService';
+import TeamMemberSearch from '../components/TeamMemberSearch';
 import LoadingSpinner from '../components/LoadingSpinner';
 
 const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit (in seconds)
@@ -22,8 +24,9 @@ const toDateKey = (date = new Date()) => {
   return `${y}-${m}-${d}`;
 };
 
-const ScreenTimePage = ({ userId, onBack }) => {
+const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
   const isNative = Capacitor.isNativePlatform();
+  const isCoach = userRole === 'coach' || userRole === 'coCoach' || userRole === 'admin' || userRole === 'developer';
 
   const [loading, setLoading] = useState(true);
   const [permissionGranted, setPermissionGranted] = useState(false);
@@ -35,6 +38,34 @@ const ScreenTimePage = ({ userId, onBack }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [historyView, setHistoryView] = useState('week');
   const [showAppBreakdown, setShowAppBreakdown] = useState(false);
+
+  // Viewing other member (coaches only)
+  const [selectedMember, setSelectedMember] = useState(null);
+  const [memberData, setMemberData] = useState({ todaySeconds: 0, history: [], avg: 0, loading: false });
+
+  useEffect(() => {
+    if (!selectedMember || selectedMember.isSelf) {
+      setMemberData({ todaySeconds: 0, history: [], avg: 0, loading: false });
+      return;
+    }
+    const memberId = selectedMember.id || selectedMember.userId;
+    setMemberData(prev => ({ ...prev, loading: true }));
+    fetchScreenTimeHistory(memberId, 30, toDateKey())
+      .then(res => {
+        if (res?.success && Array.isArray(res.data)) {
+          const todayRecord = res.data.find(r => r.Date === toDateKey());
+          setMemberData({
+            todaySeconds: todayRecord?.TotalScreenTimeSeconds || 0,
+            history: res.data,
+            avg: res.summary?.averageSeconds || 0,
+            loading: false,
+          });
+        } else {
+          setMemberData({ todaySeconds: 0, history: [], avg: 0, loading: false });
+        }
+      })
+      .catch(() => setMemberData({ todaySeconds: 0, history: [], avg: 0, loading: false }));
+  }, [selectedMember]);
 
   const [resolvedUserId, setResolvedUserId] = useState(() => {
     if (userId) return userId;
@@ -85,7 +116,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
 
       if (resolvedUserId) {
         try {
-          const history = await fetchScreenTimeHistory(resolvedUserId, 30);
+          const history = await fetchScreenTimeHistory(resolvedUserId, 30, toDateKey());
           if (history?.success && Array.isArray(history.data)) {
             setHistoryData(history.data);
             setAvgSeconds(history.summary?.averageSeconds || 0);
@@ -93,8 +124,16 @@ const ScreenTimePage = ({ userId, onBack }) => {
         } catch (err) {
           console.warn('[ScreenTime] History fetch failed:', err.message);
         }
+        // Save using already-fetched deviceData — no second plugin call
         if (deviceData?.totalScreenTimeSeconds > 0) {
-          try { await refreshAndSaveScreenTime(resolvedUserId); } catch (err) {
+          const localDate = deviceData.date || toDateKey();
+          try {
+            await saveScreenTime({
+              userId: resolvedUserId,
+              date: localDate,
+              totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+            });
+          } catch (err) {
             console.warn('[ScreenTime] Save failed:', err.message);
           }
         }
@@ -134,7 +173,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
   // Reload history when resolvedUserId becomes available
   useEffect(() => {
     if (resolvedUserId && permissionGranted) {
-      fetchScreenTimeHistory(resolvedUserId, 30)
+      fetchScreenTimeHistory(resolvedUserId, 30, toDateKey())
         .then(h => {
           if (h?.success && Array.isArray(h.data)) {
             setHistoryData(h.data);
@@ -145,18 +184,44 @@ const ScreenTimePage = ({ userId, onBack }) => {
     }
   }, [resolvedUserId, permissionGranted]);
 
+  // On app open: sync accurate UsageStats history from install day → today
+  // Covers: Req 1 (from install day), Req 3 (correct on every open), Req 4 (accurate DB values)
+  // Also handles Req 5 (reinstall): DB already has old data; this re-syncs recent days
+  useEffect(() => {
+    if (!isNative || !permissionGranted || !resolvedUserId) return;
+
+    syncAccurateHistoryFromInstall(resolvedUserId)
+      .then((synced) => {
+        if (synced.length === 0) return;
+        console.log('✅ [ScreenTime] Synced', synced.length, 'day(s) from install date');
+        fetchScreenTimeHistory(resolvedUserId, 30, toDateKey()).then(h => {
+          if (h?.success && Array.isArray(h.data)) {
+            setHistoryData(h.data);
+            setAvgSeconds(h.summary?.averageSeconds || 0);
+          }
+        });
+      })
+      .catch(err => console.warn('⚠️ [ScreenTime] Sync failed:', err));
+  }, [resolvedUserId, permissionGranted, isNative]);
+
   const handleRefresh = async () => {
     if (!resolvedUserId) return;
     setIsRefreshing(true);
     try {
-      const result = await refreshAndSaveScreenTime(resolvedUserId);
-      if (result.success) {
-        setTodayData(result.deviceData);
-        const history = await fetchScreenTimeHistory(resolvedUserId, 30);
-        if (history?.success && Array.isArray(history.data)) {
-          setHistoryData(history.data);
-          setAvgSeconds(history.summary?.averageSeconds || 0);
-        }
+      const deviceData = await getTodayScreenTime();
+      if (deviceData?.totalScreenTimeSeconds > 0) {
+        const localDate = deviceData.date || toDateKey();
+        await saveScreenTime({
+          userId: resolvedUserId,
+          date: localDate,
+          totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+        });
+      }
+      setTodayData(deviceData);
+      const history = await fetchScreenTimeHistory(resolvedUserId, 30, toDateKey());
+      if (history?.success && Array.isArray(history.data)) {
+        setHistoryData(history.data);
+        setAvgSeconds(history.summary?.averageSeconds || 0);
       }
     } catch (err) {
       setError('Failed to refresh');
@@ -170,7 +235,12 @@ const ScreenTimePage = ({ userId, onBack }) => {
   };
 
   // Derived values
-  const todaySeconds = todayData?.totalScreenTimeSeconds || 0;
+  const isViewingOther = !!(selectedMember && !selectedMember.isSelf);
+  const todaySeconds = isViewingOther ? memberData.todaySeconds : (todayData?.totalScreenTimeSeconds || 0);
+  const displayAvgSeconds = isViewingOther ? memberData.avg : avgSeconds;
+  const rawHistoryData = isViewingOther ? memberData.history : historyData;
+  const displayLoading = isViewingOther ? memberData.loading : loading;
+
   const appUsage = todayData?.appUsage || [];
   const trackedApps = appUsage.filter(a => a.isTrackedApp);
   const otherApps = appUsage.filter(a => !a.isTrackedApp && !a.isSystemApp);
@@ -181,7 +251,9 @@ const ScreenTimePage = ({ userId, onBack }) => {
   const isOverLimit = todaySeconds > SCREEN_TIME_LIMIT;
 
   // History slicing
-  const sortedHistory = [...historyData].sort((a, b) => a.Date.localeCompare(b.Date));
+  const sortedHistory = [...rawHistoryData]
+    .filter(r => r.Date)
+    .sort((a, b) => a.Date.localeCompare(b.Date));
   const displayHistory = historyView === 'week' ? sortedHistory.slice(-7) : sortedHistory;
 
   if (loading && !permissionChecked) {
@@ -202,11 +274,16 @@ const ScreenTimePage = ({ userId, onBack }) => {
             <div className="bg-gradient-to-br from-blue-500 to-indigo-500 p-2 rounded-xl shadow-sm">
               <Smartphone className="w-5 h-5 text-white" />
             </div>
-            <h1 className="text-lg font-bold text-gray-900">Screen Time</h1>
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">Screen Time</h1>
+              {isViewingOther && (
+                <p className="text-xs text-blue-600 font-medium">Viewing {selectedMember.userName}'s data</p>
+              )}
+            </div>
           </div>
           <button
             onClick={handleRefresh}
-            disabled={isRefreshing || !resolvedUserId}
+            disabled={isRefreshing || !resolvedUserId || isViewingOther}
             className="p-2 rounded-xl hover:bg-blue-50 active:bg-blue-100 transition-colors disabled:opacity-40"
             aria-label="Refresh"
           >
@@ -214,6 +291,16 @@ const ScreenTimePage = ({ userId, onBack }) => {
           </button>
         </div>
       </div>
+
+      {/* ──── Team Member Search (coaches only) ──── */}
+      {isCoach && (
+        <TeamMemberSearch
+          user={user}
+          userRole={userRole}
+          selectedMember={selectedMember}
+          onMemberSelect={setSelectedMember}
+        />
+      )}
 
       {/* ──── Content ──── */}
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
@@ -235,7 +322,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
         )}
 
         {/* Permission prompt */}
-        {isNative && permissionChecked && !permissionGranted && (
+        {isNative && permissionChecked && !permissionGranted && !isViewingOther && (
           <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4">
             <div className="flex items-start gap-3">
               <ShieldAlert className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
@@ -251,12 +338,12 @@ const ScreenTimePage = ({ userId, onBack }) => {
         )}
 
         {/* ──── Circular Progress Ring + Stats ──── */}
-        {isNative && permissionGranted && (
+        {(isViewingOther || (isNative && permissionGranted)) && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
             <div className="flex flex-col items-center">
               {/* Ring */}
               <div className="relative w-44 h-44 sm:w-52 sm:h-52 mb-4">
-                {loading ? (
+                {displayLoading ? (
                   <div className="w-full h-full rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 animate-pulse" />
                 ) : (
                   <>
@@ -293,7 +380,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
               </div>
 
               {/* Status text */}
-              {!loading && (
+              {!displayLoading && (
                 <p className={`text-sm font-medium mb-1 ${isOverLimit ? 'text-red-500' : 'text-gray-500'}`}>
                   {isOverLimit
                     ? `⚠️ Over limit by ${formatScreenTime(todaySeconds - SCREEN_TIME_LIMIT)}`
@@ -308,7 +395,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
             <div className="grid grid-cols-2 gap-3 mt-5">
               <div className="bg-blue-50 rounded-2xl p-3.5 sm:p-4 text-center">
                 <Clock className="w-4 h-4 text-blue-600 mx-auto mb-1.5" />
-                {loading ? (
+                {displayLoading ? (
                   <div className="h-6 w-16 bg-blue-200/60 rounded-lg animate-pulse mx-auto" />
                 ) : (
                   <p className="text-lg sm:text-xl font-bold text-blue-900">{formatScreenTime(todaySeconds)}</p>
@@ -317,10 +404,10 @@ const ScreenTimePage = ({ userId, onBack }) => {
               </div>
               <div className="bg-indigo-50 rounded-2xl p-3.5 sm:p-4 text-center">
                 <TrendingUp className="w-4 h-4 text-indigo-500 mx-auto mb-1.5" />
-                {loading ? (
+                {displayLoading ? (
                   <div className="h-6 w-16 bg-indigo-200/60 rounded-lg animate-pulse mx-auto" />
                 ) : (
-                  <p className="text-lg sm:text-xl font-bold text-indigo-900">{formatScreenTime(avgSeconds)}</p>
+                  <p className="text-lg sm:text-xl font-bold text-indigo-900">{formatScreenTime(displayAvgSeconds)}</p>
                 )}
                 <p className="text-xs text-indigo-500 mt-0.5 font-medium">Daily Avg</p>
               </div>
@@ -329,7 +416,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
         )}
 
         {/* ──── App Breakdown ──── */}
-        {isNative && permissionGranted && appUsage.length > 0 && (
+        {!isViewingOther && isNative && permissionGranted && appUsage.length > 0 && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
             <button
               onClick={() => setShowAppBreakdown(!showAppBreakdown)}
@@ -359,7 +446,7 @@ const ScreenTimePage = ({ userId, onBack }) => {
         )}
 
         {/* ──── History Section ──── */}
-        {isNative && permissionGranted && (
+        {(isViewingOther || (isNative && permissionGranted)) && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">

@@ -5,10 +5,18 @@ import {
   hasScreenTimePermission,
   requestScreenTimePermission,
   getTodayScreenTime,
-  refreshAndSaveScreenTime,
+  saveScreenTime,
   fetchScreenTimeHistory,
-  formatScreenTime
+  formatScreenTime,
+  syncAccurateHistoryFromInstall
 } from '../services/screenTimeService';
+
+const toDateKey = (date = new Date()) => {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 const PERIOD_OPTIONS = [
   { label: 'Today', days: 1 },
@@ -134,16 +142,21 @@ const ScreenTimeCard = ({ userId }) => {
       // Try backend operations separately — don't let them block device data
       if (resolvedUserId) {
         try {
-          const history = await fetchScreenTimeHistory(resolvedUserId, selectedPeriod);
+          const history = await fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey());
           if (history) setHistoryData(history);
         } catch (err) {
           console.warn('[ScreenTimeCard] Backend history fetch failed:', err.message);
         }
 
-        // Auto-save today's data
+        // Save using already-fetched deviceData — no second plugin call
         if (deviceData?.totalScreenTimeSeconds > 0) {
+          const localDate = deviceData.date || toDateKey();
           try {
-            await refreshAndSaveScreenTime(resolvedUserId);
+            await saveScreenTime({
+              userId: resolvedUserId,
+              date: localDate,
+              totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+            });
           } catch (err) {
             console.warn('[ScreenTimeCard] Backend save failed:', err.message);
           }
@@ -160,23 +173,41 @@ const ScreenTimeCard = ({ userId }) => {
   // Reload history when period changes
   useEffect(() => {
     if (permissionGranted && resolvedUserId) {
-      fetchScreenTimeHistory(resolvedUserId, selectedPeriod)
+      fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey())
         .then(setHistoryData)
         .catch(err => console.error('[ScreenTimeCard] History fetch error:', err));
     }
   }, [selectedPeriod, permissionGranted, resolvedUserId]);
 
+  // On app open: sync accurate UsageStats from install date → today
+  useEffect(() => {
+    if (!isNative || !permissionGranted || !resolvedUserId) return;
+
+    syncAccurateHistoryFromInstall(resolvedUserId)
+      .then((synced) => {
+        if (synced.length === 0) return;
+        console.log('✅ [ScreenTimeCard] Synced', synced.length, 'day(s) from install date');
+        fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey()).then(setHistoryData);
+      })
+      .catch(err => console.warn('⚠️ [ScreenTimeCard] Sync failed:', err));
+  }, [resolvedUserId, permissionGranted, isNative, selectedPeriod]);
+
   const handleRefresh = async () => {
     if (!resolvedUserId) return;
     setIsRefreshing(true);
     try {
-      const result = await refreshAndSaveScreenTime(resolvedUserId);
-      if (result.success) {
-        setTodayData(result.deviceData);
-        // Refresh history too
-        const history = await fetchScreenTimeHistory(resolvedUserId, selectedPeriod);
-        setHistoryData(history);
+      const deviceData = await getTodayScreenTime();
+      if (deviceData?.totalScreenTimeSeconds > 0) {
+        const localDate = deviceData.date || toDateKey();
+        await saveScreenTime({
+          userId: resolvedUserId,
+          date: localDate,
+          totalScreenTimeSeconds: deviceData.totalScreenTimeSeconds
+        });
       }
+      setTodayData(deviceData);
+      const history = await fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey());
+      setHistoryData(history);
     } catch (err) {
       console.error('[ScreenTimeCard] Refresh error:', err);
       setError('Failed to refresh screen time');
@@ -315,6 +346,7 @@ const ScreenTimeCard = ({ userId }) => {
           </div>
           <div className="flex items-end gap-0.5 h-16">
             {historyData.data
+              .filter(r => r.Date)  // skip NULL-date rows (old broken records)
               .slice()
               .sort((a, b) => a.Date.localeCompare(b.Date))
               .slice(-selectedPeriod)

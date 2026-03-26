@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import {
   LogOut,
-  User,
   LayoutDashboard,
   Shield,
   FileBarChart,
+  Clock3,
   Footprints,
   GraduationCap,
   TrendingUp,
@@ -28,6 +28,7 @@ const Header = ({
   onShowBackgroundHistory,
   onShowAdminDashboard,
   onShowDisciplineReport,
+  onShowActivityTimeReport,
   onShowStepCounter,
   onShowScreenTime,
   onShowReminders,
@@ -417,6 +418,25 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             Discipline
+                          </span>
+                        </TouchFeedbackButton>
+                      )}
+
+                      {/* Activity Time Report */}
+                      {onShowActivityTimeReport && (
+                        <TouchFeedbackButton
+                          onClick={() => {
+                            onShowActivityTimeReport();
+                            closeMenu();
+                          }}
+                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
+                          ariaLabel="Activity Time Report"
+                        >
+                          <div className="h-10 w-10 rounded-2xl bg-amber-100 flex items-center justify-center">
+                            <Clock3 className="h-5 w-5 text-amber-700" />
+                          </div>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
+                            Activity Report
                           </span>
                         </TouchFeedbackButton>
                       )}

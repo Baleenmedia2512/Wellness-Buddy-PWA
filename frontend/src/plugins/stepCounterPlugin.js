@@ -90,6 +90,22 @@ const wrappedPlugin = {
     }
   },
 
+  /**
+   * Returns per-day step totals recorded by the background service.
+   * Reads the "WellnessSteps" SharedPreferences written by GalleryMonitorService.
+   * Used by StepCounter.js to backfill DB days that show 0 when the app was closed.
+   */
+  async getBackgroundStepHistory(days = 7) {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return { history: [] };
+      return await StepCounter.getBackgroundStepHistory({ days });
+    } catch (error) {
+      console.warn('[StepCounter] getBackgroundStepHistory failed:', error);
+      return { history: [] };
+    }
+  },
+
   addListener(eventName, listenerFunc) {
     if (!Capacitor.isNativePlatform()) {
       return { remove: async () => {} };
