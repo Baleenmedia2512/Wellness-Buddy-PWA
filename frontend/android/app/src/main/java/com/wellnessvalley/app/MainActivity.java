@@ -111,8 +111,11 @@ public class MainActivity extends BridgeActivity {
         // Request battery optimization exemption
         requestBatteryOptimizationExemption();
         
-        // ❌ Background service disabled — app will NOT run in background
-        android.util.Log.d("MainActivity", "ℹ️ Background service disabled by design");
+        // ✅ Background service enabled — will run silently without notifications
+        android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
+        
+        // Schedule heartbeat for service persistence
+        com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
         
         // ✅ Check for app updates after app is fully initialized
         checkForAppUpdates();

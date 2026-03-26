@@ -110,8 +110,19 @@ public class GalleryMonitorPlugin extends Plugin {
 
             editor.apply();
             
-            // ❌ Background service disabled — do not start GalleryMonitorService
-            Log.d(TAG, "ℹ️ setCurrentUser: service start skipped (background service disabled)");
+            // ✅ Background service enabled — start GalleryMonitorService silently
+            try {
+                Context context = getContext();
+                Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent);
+                } else {
+                    context.startService(serviceIntent);
+                }
+                Log.d(TAG, "✅ Background service started silently for user: " + userEmail);
+            } catch (Exception e) {
+                Log.e(TAG, "❌ Failed to start background service", e);
+            }
             
             JSObject result = new JSObject();
             result.put("success", true);
@@ -133,9 +144,21 @@ public class GalleryMonitorPlugin extends Plugin {
     
     @PluginMethod
     public void startService(PluginCall call) {
-        // ❌ Background service disabled
-        Log.d(TAG, "ℹ️ startService called but background service is disabled");
-        call.resolve();
+        // ✅ Background service enabled
+        try {
+            Context context = getContext();
+            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            Log.d(TAG, "✅ Background service started silently");
+            call.resolve();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to start service", e);
+            call.reject("Failed to start service", e);
+        }
     }
     
     @PluginMethod
@@ -154,8 +177,8 @@ public class GalleryMonitorPlugin extends Plugin {
     
     @PluginMethod
     public void checkGallery(PluginCall call) {
-        // ❌ Background service disabled
-        Log.d(TAG, "ℹ️ checkGallery called but background service is disabled");
+        // ✅ Background service enabled
+        Log.d(TAG, "✅ Manual gallery check triggered");
         JSObject ret = new JSObject();
         ret.put("success", true);
         call.resolve(ret);

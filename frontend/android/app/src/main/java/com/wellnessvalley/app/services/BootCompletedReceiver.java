@@ -34,8 +34,20 @@ public class BootCompletedReceiver extends BroadcastReceiver {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && 
              Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action))) {
             
-            Log.d(TAG, "📱 Device boot detected — background service disabled by design");
-            // ❌ Service auto-start on boot is disabled — app should not run in background
+            Log.d(TAG, "📱 Device boot detected — starting background service silently");
+            
+            // ✅ Start GalleryMonitorService silently on boot
+            Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
+            }
+            
+            // Schedule heartbeat system to keep service alive
+            scheduleHeartbeat(context);
+            
+            Log.d(TAG, "✅ Background service started and heartbeat scheduled");
         }
     }
     
@@ -51,8 +63,16 @@ public class BootCompletedReceiver extends BroadcastReceiver {
      * @param context Application context
      */
     public static void scheduleHeartbeat(Context context) {
-        // ❌ Background service disabled — heartbeat scheduling is disabled
-        Log.d(TAG, "ℹ️ scheduleHeartbeat called but is disabled — service will not auto-restart");
+        // ✅ Background service enabled — schedule heartbeat for auto-restart
+        Log.d(TAG, "⏰ Scheduling heartbeat system for service auto-restart");
+        
+        // Schedule WorkManager heartbeat (every 15 minutes)
+        scheduleWorkManagerHeartbeat(context);
+        
+        // Schedule AlarmManager heartbeat (every 20 minutes, survives force-stop better)
+        scheduleAlarmManagerHeartbeat(context);
+        
+        Log.d(TAG, "✅ Hybrid heartbeat system scheduled");
     }
     
     /**
@@ -93,5 +113,14 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         } catch (Exception e) {
             Log.e(TAG, "   ❌ Failed to schedule WorkManager heartbeat", e);
         }
+    }
+    
+    /**
+     * Schedule AlarmManager heartbeat (Layer 2 - Aggressive Persistence)
+     * Uses AlarmManager for more reliable execution that survives force-stop better
+     * Delegates to existing ServiceAlarmReceiver for 15-minute heartbeat
+     */
+    private static void scheduleAlarmManagerHeartbeat(Context context) {
+        ServiceAlarmReceiver.scheduleAlarmHeartbeat(context);
     }
 }

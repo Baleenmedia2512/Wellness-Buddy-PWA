@@ -35,8 +35,16 @@ public class ServiceHeartbeatWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        // ❌ Background service disabled — do NOT restart GalleryMonitorService
-        Log.d(TAG, "ℹ️ Heartbeat worker fired but service auto-restart is disabled");
+        // ✅ Background service enabled — check and restart if needed
+        Context context = getApplicationContext();
+        
+        if (!isServiceRunning(context, GalleryMonitorService.class)) {
+            Log.d(TAG, "⚠️ Service not running - restarting silently");
+            restartService();
+        } else {
+            Log.d(TAG, "✅ Service is running");
+        }
+        
         return Result.success();
     }
 
