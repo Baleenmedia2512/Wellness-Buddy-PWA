@@ -236,9 +236,6 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
 
         {/* AM / PM */}
         <div className="flex flex-col gap-1 justify-center items-center px-1">
-          <div className="text-[10px] font-bold text-gray-400 text-center py-1 tracking-widest">
-            AM/PM
-          </div>
           {['AM', 'PM'].map((period) => (
             <button
               key={period}
