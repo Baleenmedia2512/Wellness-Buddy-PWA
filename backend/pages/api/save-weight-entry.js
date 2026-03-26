@@ -151,10 +151,6 @@ export default async function handler(req, res) {
     // Derive the calendar date for this entry from the capture time (not upload time).
     const entryDate = createdAtIST.substring(0, 10); // "YYYY-MM-DD"
 
-    // Day window in IST for duplicate detection
-    const dayStart = entryDate + 'T00:00:00';
-    const dayEnd   = entryDate + 'T23:59:59';
-
     let data, error;
     let wasUpdated = false;
 
@@ -184,64 +180,29 @@ export default async function handler(req, res) {
       }
       wasUpdated = true;
     } else {
-      // 🔄 CHECK-THEN-INSERT/UPDATE: find existing entry for today, update if
-      // found, insert if not — works without the EntryDate column.
-      console.log(`🔄 [save-weight-entry] Check-upsert for user ${userId} on ${entryDate}`);
+      // 🆕 ALWAYS INSERT NEW ENTRY: Each weight upload creates a new record
+      // This allows multiple weight entries at different times using EXIF timestamps
+      console.log(`🆕 [save-weight-entry] Inserting new entry for user ${userId} at ${createdAtIST}`);
 
-      const { data: existing } = await supabase
+      const insertPayload = {
+        UserId: parseInt(userId),
+        Weight: weight,
+        Bmi: bmiValue,
+        BodyFat: bodyFatValue,
+        MuscleMass: muscleMassValue,
+        Bmr: bmrValue,
+        WeightImageBase64: imageBase64ToSave,
+        CreatedAt: createdAtIST, // EXIF capture time → discipline score uses this
+        UpdatedAt: currentTime,  // Server insert time
+      };
+
+      ({ data, error } = await supabase
         .from('weight_records_table')
-        .select('ID')
-        .eq('UserId', parseInt(userId))
-        .gte('CreatedAt', dayStart)
-        .lte('CreatedAt', dayEnd)
-        .or('IsDeleted.is.null,IsDeleted.eq.0')
-        .order('CreatedAt', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .insert(insertPayload)
+        .select()
+        .single());
 
-      if (existing?.ID) {
-        // Update the existing today-entry
-        const updateFields = {
-          Weight: weight,
-          UpdatedAt: currentTime
-        };
-        if (bmiValue !== null) updateFields.Bmi = bmiValue;
-        if (bodyFatValue !== null) updateFields.BodyFat = bodyFatValue;
-        if (muscleMassValue !== null) updateFields.MuscleMass = muscleMassValue;
-        if (bmrValue !== null) updateFields.Bmr = bmrValue;
-        if (imageBase64ToSave !== null) updateFields.WeightImageBase64 = imageBase64ToSave;
-
-        ({ data, error } = await supabase
-          .from('weight_records_table')
-          .update(updateFields)
-          .eq('ID', existing.ID)
-          .select()
-          .single());
-
-        wasUpdated = true;
-        console.log(`✅ [save-weight-entry] Updated existing entry ID=${existing.ID}`);
-      } else {
-        // Insert a fresh entry
-        const insertPayload = {
-          UserId: parseInt(userId),
-          Weight: weight,
-          Bmi: bmiValue,
-          BodyFat: bodyFatValue,
-          MuscleMass: muscleMassValue,
-          Bmr: bmrValue,
-          WeightImageBase64: imageBase64ToSave,
-          CreatedAt: createdAtIST, // EXIF capture time → discipline score uses this
-          UpdatedAt: currentTime,  // Server insert time
-        };
-
-        ({ data, error } = await supabase
-          .from('weight_records_table')
-          .insert(insertPayload)
-          .select()
-          .single());
-
-        console.log(`✅ [save-weight-entry] Inserted new entry`);
-      }
+      console.log(`✅ [save-weight-entry] Inserted new entry with ID=${data?.ID}`);
     }
     
     if (error) throw error;
@@ -262,7 +223,7 @@ export default async function handler(req, res) {
       success: true,
       id: data?.ID || data?.id,
       updated: wasUpdated,
-      message: wasUpdated ? "Today's weight entry updated successfully" : 'Weight entry saved successfully',
+      message: wasUpdated ? "Weight entry updated successfully" : 'Weight entry saved successfully',
       data: {
         userId,
         weightValue: weight,

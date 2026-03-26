@@ -1357,14 +1357,12 @@ function WellnessValleyApp() {
         clientTimezoneOffset: new Date().getTimezoneOffset(),
       };
 
-      // If we already saved a weight entry today, always update that exact row
-      if (savedWeightIdRef.current) {
-        payload.entryId = savedWeightIdRef.current;
-        console.log(
-          "🔄 Reusing existing weight entry ID:",
-          savedWeightIdRef.current,
-        );
-      }
+      // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
+      // This allows multiple weight entries per day with different timestamps
+      // if (savedWeightIdRef.current) {
+      //   payload.entryId = savedWeightIdRef.current;
+      //   console.log("🔄 Reusing existing weight entry ID:", savedWeightIdRef.current);
+      // }
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
@@ -1430,9 +1428,8 @@ function WellnessValleyApp() {
       let userId = user?.id;
       if (!userId) userId = await getUserId(user);
 
-      // Build payload — always include entryId if we have it so the backend
-      // updates that exact row; otherwise the backend looks up today's entry
-      // and updates it (upsert-by-date). No new rows are ever created.
+      // Build payload — include entryId to update the specific weight entry.
+      // If no entryId, backend will create a new entry instead of updating.
       const payload = {
         userId,
         weightValue: val,
