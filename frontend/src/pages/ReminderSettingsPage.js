@@ -121,24 +121,48 @@ const Toggle = ({ enabled, onChange, disabled = false }) => (
 // ── Scroll-wheel Time Picker ──────────────────────────────────────────────────
 
 const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
-  const hours   = Array.from({ length: 24 }, (_, i) => i);
-  const minutes = Array.from({ length: 60 }, (_, i) => i);
+  // 12-hour display values: 1..12
+  const displayHours = Array.from({ length: 12 }, (_, i) => i + 1);
+  const minutes      = Array.from({ length: 60 }, (_, i) => i);
+
+  // Convert 24h hour → 12h display & period
+  const isPM         = hour >= 12;
+  const display12    = hour % 12 === 0 ? 12 : hour % 12;
 
   const hoursRef   = useRef(null);
   const minutesRef = useRef(null);
 
-  // Scroll to selected values on mount
+  // Scroll to selected values on mount (12 items, index 0-based = display12 - 1)
   useEffect(() => {
-    scrollToSelected(hoursRef,   hour,   44);
-    scrollToSelected(minutesRef, minute, 44);
+    if (hoursRef.current) {
+      hoursRef.current.scrollTop = (display12 - 1) * 44;
+    }
+    if (minutesRef.current) {
+      minutesRef.current.scrollTop = minute * 44;
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function scrollToSelected(ref, value, itemHeight) {
-    if (ref.current) {
-      // +32 to skip the "HOUR"/"MIN" header row
-      ref.current.scrollTop = value * itemHeight;
+  // Convert selected 12h display + period → 24h and fire onChange
+  function handleHourClick(h12) {
+    let h24;
+    if (isPM) {
+      h24 = h12 === 12 ? 12 : h12 + 12;
+    } else {
+      h24 = h12 === 12 ? 0 : h12;
     }
+    onChange(h24, minute);
+  }
+
+  function handlePeriodClick(period) {
+    const newIsPM = period === 'PM';
+    let h24;
+    if (newIsPM) {
+      h24 = display12 === 12 ? 12 : display12 + 12;
+    } else {
+      h24 = display12 === 12 ? 0 : display12;
+    }
+    onChange(h24, minute);
   }
 
   return (
@@ -160,7 +184,7 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
       </div>
 
       <div className="flex h-44 p-3 gap-2">
-        {/* Hours */}
+        {/* Hours (1–12) */}
         <div
           ref={hoursRef}
           className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar"
@@ -169,12 +193,12 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
           <div className="text-[10px] font-bold text-gray-400 text-center sticky top-0 bg-white py-1 z-10 tracking-widest">
             HOUR
           </div>
-          {hours.map((h) => (
+          {displayHours.map((h) => (
             <button
               key={h}
-              onClick={() => onChange(h, minute)}
+              onClick={() => handleHourClick(h)}
               className={`py-2.5 rounded-xl text-sm font-semibold transition-all shrink-0
-                ${h === hour
+                ${h === display12
                   ? 'bg-green-500 text-white shadow-sm scale-105'
                   : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'}`}
             >
@@ -206,6 +230,25 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
                   : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'}`}
             >
               {String(m).padStart(2, '0')}
+            </button>
+          ))}
+        </div>
+
+        {/* AM / PM */}
+        <div className="flex flex-col gap-1 justify-center items-center px-1">
+          <div className="text-[10px] font-bold text-gray-400 text-center py-1 tracking-widest">
+            AM/PM
+          </div>
+          {['AM', 'PM'].map((period) => (
+            <button
+              key={period}
+              onClick={() => handlePeriodClick(period)}
+              className={`px-3 py-2.5 rounded-xl text-sm font-semibold transition-all
+                ${(period === 'PM') === isPM
+                  ? 'bg-green-500 text-white shadow-sm scale-105'
+                  : 'text-gray-600 hover:bg-gray-50 active:bg-gray-100'}`}
+            >
+              {period}
             </button>
           ))}
         </div>
