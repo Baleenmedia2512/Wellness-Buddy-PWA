@@ -35,36 +35,17 @@ public class ServiceHeartbeatWorker extends Worker {
     @NonNull
     @Override
     public Result doWork() {
-        long currentTime = System.currentTimeMillis();
-        Log.d(TAG, "🔄 WorkManager Heartbeat check [" + new java.util.Date(currentTime) + "]");
-        Log.d(TAG, "   Verifying GalleryMonitorService status...");
+        // ✅ Background service enabled — check and restart if needed
+        Context context = getApplicationContext();
         
-        try {
-            // Check if the service is currently running
-            if (!isServiceRunning(getApplicationContext(), GalleryMonitorService.class)) {
-                Log.w(TAG, "⚠️ GalleryMonitorService NOT RUNNING! Initiating restart...");
-                Log.w(TAG, "   Time since last check: ~5-15 minutes");
-                restartService();
-                
-                // Ensure AlarmManager backup is also running
-                ServiceAlarmReceiver.scheduleAlarmHeartbeat(getApplicationContext());
-                Log.d(TAG, "   ✅ AlarmManager fallback also scheduled");
-                
-                return Result.success();
-            }
-            
-            Log.d(TAG, "✅ GalleryMonitorService is running normally (WorkManager)");
-            Log.d(TAG, "   Next WorkManager check in ~5-15 minutes");
-            
-            // Ensure AlarmManager is still active as backup
-            ServiceAlarmReceiver.scheduleAlarmHeartbeat(getApplicationContext());
-            
-            return Result.success();
-            
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Error during WorkManager heartbeat check", e);
-            return Result.retry(); // Retry later if something went wrong
+        if (!isServiceRunning(context, GalleryMonitorService.class)) {
+            Log.d(TAG, "⚠️ Service not running - restarting silently");
+            restartService();
+        } else {
+            Log.d(TAG, "✅ Service is running");
         }
+        
+        return Result.success();
     }
 
     /**

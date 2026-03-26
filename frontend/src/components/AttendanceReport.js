@@ -458,6 +458,7 @@ const AttendanceReport = ({ user, onBack }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       allowedDateRanges={["today", "yesterday"]}
+      singleDayCustom={true}
       summaryStats={summaryStats}
     >
       {/* Team View Toggle */}

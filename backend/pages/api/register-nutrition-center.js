@@ -54,10 +54,10 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
-    // Check if owner is a coach
+    // Verify user exists in database
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"Role"')
+      .select('"UserId"')
       .eq('"UserId"', ownerUserId)
       .single();
 
@@ -65,13 +65,7 @@ export default async function handler(req, res) {
       throw new Error('User not found');
     }
 
-    if (user.Role !== 'coach' && user.Role !== 'admin' && user.Role !== 'developer') {
-      res.status(403).json({
-        success: false,
-        message: 'Only coaches can register nutrition centers',
-      });
-      return;
-    }
+    // ✅ Any user can register a nutrition center (no coach restriction)
 
     // Check for duplicate centre name (case-insensitive, across all active centres)
     const { data: existing, error: dupError } = await supabase
