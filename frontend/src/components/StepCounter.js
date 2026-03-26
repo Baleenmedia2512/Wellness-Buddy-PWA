@@ -34,10 +34,9 @@ const toDateKey = (date = new Date()) => {
 const calcCalories = (steps) => Number((steps * CALORIES_PER_STEP).toFixed(2));
 
 /** localStorage key for the day's sensor baseline. */
-const getBaselineKey    = (dateKey) => `step_counter_baseline_${dateKey}`;
-const getLastUpdateKey  = ()        => 'step_counter_last_update';
+const getBaselineKey   = (dateKey) => `step_counter_baseline_${dateKey}`;
 /** localStorage key for the sensor total at the time of the last DB save. */
-const getSaveSensorKey  = (dateKey) => `step_save_sensor_${dateKey}`;
+const getSaveSensorKey = (dateKey) => `step_save_sensor_${dateKey}`;
 
 /** Read today's sensor baseline from localStorage. Returns null if absent/invalid. */
 const readBaseline = (dateKey) => {
@@ -57,7 +56,6 @@ const writeBaseline = (dateKey, sensorTotal) => {
     getBaselineKey(dateKey),
     JSON.stringify({ sensorTotal, savedAt: Date.now(), date: dateKey })
   );
-  localStorage.setItem(getLastUpdateKey(), Date.now().toString());
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -133,6 +131,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const autoSaveTimerRef   = useRef(null);
   const midnightTimerRef   = useRef(null);
   const resolveIntervalRef = useRef(null);
+  const lastPushTimestampRef = useRef(0);  // track last push event time — used to skip redundant polls
+  const lastResumeTimeRef    = useRef(0);  // debounce double-resume (Capacitor 'resume' + window 'focus')
 
   // Stable function refs — intervals/cleanup always call the LATEST function
   // version without needing it in their dependency arrays.
@@ -474,7 +474,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       sensorListenerRef.current = await StepCounterPlugin.addListener('stepUpdate', (event) => {
         const steps = Number.parseInt(event?.totalSteps, 10);
         if (Number.isFinite(steps)) {
-          // Call via ref so the listener never holds a stale closure
+          lastPushTimestampRef.current = Date.now(); // record push time so poll can skip
           processSensorValueRef.current?.(steps);
         } else {
           console.warn('⚠️ [StepCounter] Invalid stepUpdate payload:', event);
@@ -495,8 +495,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
       // Pull-based fallback: handles Android Doze / background throttle where
       // push events are delayed. Polls every POLL_INTERVAL_MS.
+      // Skipped when push events are actively firing to avoid redundant native bridge calls.
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = setInterval(async () => {
+        // If a push event fired within the last 2 poll cycles, the sensor is active — skip poll
+        if (Date.now() - lastPushTimestampRef.current < POLL_INTERVAL_MS * 2) return;
         try {
           const c = await StepCounterPlugin.getCurrentStepCount();
           const v = Number.parseInt(c?.totalSteps, 10);
@@ -615,6 +618,26 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
    *   warning to make the intent clear.
    */
   useEffect(() => {
+    // Cleanup localStorage keys older than 7 days to prevent unbounded accumulation.
+    // Runs once on mount — safe to do synchronously since localStorage access is cheap.
+    const cleanupOldKeys = () => {
+      const now = Date.now();
+      const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+      const keysToRemove = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (!key) continue;
+        const match = key.match(/^step_(?:counter_baseline|save_sensor)_(\d{4}-\d{2}-\d{2})$/);
+        if (match) {
+          const keyDate = new Date(match[1]).getTime();
+          if (now - keyDate > SEVEN_DAYS_MS) keysToRemove.push(key);
+        }
+      }
+      keysToRemove.forEach(k => localStorage.removeItem(k));
+      if (keysToRemove.length > 0) console.log(`🧹 [StepCounter] Cleaned up ${keysToRemove.length} old localStorage key(s)`);
+    };
+    cleanupOldKeys();
+
     if (isNativePlatform) {
       initStepTracking();
     } else {
@@ -761,6 +784,31 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             )).then(() => {
               console.log('✅ [StepCounter] Backfill/correction complete');
               loadDailyHistoryRef.current?.(); // refresh chart
+
+              // ── Critical fix: if TODAY was backfilled, update dbOffset immediately.
+              // Without this, the in-app session still thinks dbOffset = 0 and will
+              // overwrite the backfilled value on next auto-save (e.g. saves 20 in-app
+              // steps instead of the correct 2000 + 20).
+              const todayKey = toDateKey();
+              const todayBackfill = toFix.find(e => e.date === todayKey);
+              if (todayBackfill && todayBackfill.steps > dbOffsetRef.current) {
+                console.log('🔄 [StepCounter] Updating dbOffset after today backfill:', dbOffsetRef.current, '→', todayBackfill.steps);
+                dbOffsetRef.current       = todayBackfill.steps;
+                lastSavedStepsRef.current = todayBackfill.steps;
+                // Re-anchor baseline to current sensor so only steps walked AFTER
+                // this moment are counted as new (avoids double-counting bg steps).
+                if (latestSensorTotalRef.current !== null) {
+                  localStorage.setItem(getSaveSensorKey(todayKey), String(latestSensorTotalRef.current));
+                  writeBaseline(todayKey, latestSensorTotalRef.current);
+                  processSensorValueRef.current?.(latestSensorTotalRef.current);
+                } else {
+                  // Sensor hasn't fired yet — seed UI directly from backfill value
+                  todayStepsRef.current    = todayBackfill.steps;
+                  todayCaloriesRef.current = calcCalories(todayBackfill.steps);
+                  setTodaySteps(todayBackfill.steps);
+                  setTodayCalories(calcCalories(todayBackfill.steps));
+                }
+              }
             }).catch(err => console.warn('⚠️ [StepCounter] Backfill failed:', err));
           })
           .catch(err => console.warn('⚠️ [StepCounter] Backfill DB fetch failed:', err));
@@ -776,6 +824,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     if (!isNativePlatform) return;
 
     const handleResume = async () => {
+      // Debounce: Capacitor 'resume' and window 'focus' both fire when the app
+      // comes to foreground, often within milliseconds. Ignore the second one.
+      const now = Date.now();
+      if (now - lastResumeTimeRef.current < 2000) return;
+      lastResumeTimeRef.current = now;
       console.log('📱 [StepCounter] App resumed — refreshing sensor');
       try {
         const current      = await StepCounterPlugin.getCurrentStepCount();
