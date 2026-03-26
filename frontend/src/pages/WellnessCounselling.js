@@ -82,8 +82,8 @@ const WellnessCounselling = ({ user, onBack }) => {
       
       // Fetch hierarchy data - reusing the same hierarchy API
       const response = await fetch(
-        `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}&includeInactive=false`,
+        { cache: "no-store" },
       );
       
       if (!response.ok) {
@@ -148,7 +148,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       // Fetch counselling assessments
       const assessmentsResponse = await fetch(
         `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        { cache: "no-store" },
       );
       
       if (assessmentsResponse.ok) {
