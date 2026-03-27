@@ -124,20 +124,44 @@ export default async function handler(req, res) {
 
     console.log(`✅ [hierarchical-assessments] Found ${Object.keys(assessmentMap).length} assessments`);
 
-    // Step 5: Add assessment status to each team member
-    const membersWithAssessments = teamHierarchy.map(member => ({
-      ...member,
-      hasCounselling: !!assessmentMap[member.UserId],
-      counsellingDate: assessmentMap[member.UserId]?.submittedAt,
-      counsellorName: assessmentMap[member.UserId]?.counsellorName,
-    }));
+    // Step 5: Create a Map for use with buildHierarchyWithMetricCounts
+    const assessmentDataMap = new Map();
+    Object.keys(assessmentMap).forEach(userId => {
+      assessmentDataMap.set(parseInt(userId), assessmentMap[userId]);
+    });
 
-    // Step 6: Build nested hierarchy with metric counts
+    // Step 6: Transform function - adds metrics to each node
+    const transformAssessmentFn = (userId, map, data) => {
+      return {
+        hasCounselling: !!data,
+        counsellingDate: data?.submittedAt || null,
+        counsellorName: data?.counsellorName || null,
+        assessmentId: data?.id || null,
+      };
+    };
+
+    // Step 7: Condition function - checks if someone has been counselled
+    const counselledConditionFn = (child) => child.metrics?.hasCounselling === true;
+
+    // Step 8: Build nested hierarchy with metric counts
     const hierarchy = buildHierarchyWithMetricCounts(
-      membersWithAssessments,
-      userIdInt,
-      'hasCounselling' // metric property to count
+      teamHierarchy,
+      assessmentDataMap,
+      transformAssessmentFn,
+      counselledConditionFn
     );
+
+    if (!hierarchy) {
+      console.warn('⚠️ [hierarchical-assessments] Failed to build hierarchy');
+      return res.status(200).json({
+        success: true,
+        data: null,
+        assessments: assessmentMap,
+        totalMembers: teamHierarchy.length,
+        totalAssessments: Object.keys(assessmentMap).length,
+        message: 'Could not build hierarchy structure'
+      });
+    }
 
     console.log('✅ [hierarchical-assessments] Built hierarchy successfully');
 
