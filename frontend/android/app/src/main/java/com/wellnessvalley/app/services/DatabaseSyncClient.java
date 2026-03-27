@@ -154,6 +154,11 @@ public class DatabaseSyncClient {
     
     // Save daily step count to the backend (called by GalleryMonitorService step tracker)
     public boolean saveDailySteps(String userId, String activityDate, int steps, double calories) {
+        return saveDailySteps(userId, activityDate, steps, calories, false);
+    }
+
+    // forceWrite=true bypasses the Math.max guard so a correction can lower an inflated DB value.
+    public boolean saveDailySteps(String userId, String activityDate, int steps, double calories, boolean forceWrite) {
         try {
             JSONObject body = new JSONObject();
             body.put("userId", userId);
@@ -161,6 +166,9 @@ public class DatabaseSyncClient {
             body.put("steps", steps);
             body.put("activityType", "walking");
             body.put("caloriesBurned", calories);
+            if (forceWrite) {
+                body.put("forceWrite", true);
+            }
 
             Request request = new Request.Builder()
                 .url(apiBaseUrl + "/api/save-daily-activity")

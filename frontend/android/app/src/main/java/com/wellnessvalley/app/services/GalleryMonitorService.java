@@ -50,6 +50,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import org.json.JSONObject;
 import org.json.JSONArray;
@@ -57,14 +58,15 @@ import org.json.JSONArray;
 public class GalleryMonitorService extends Service implements SensorEventListener {
     private static final String TAG = "GalleryMonitorService";
     private static final String CHANNEL_ID = "GalleryMonitorChannel";
-    private static final String NOTIF_CHANNEL_ID = "WellnessNotifications"; // visible channel for food/analysis alerts
     private static final int NOTIFICATION_ID = 101;
     
     // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
-    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
 
     // ── Step Tracking ──────────────────────────────────────────────────────────
     private static final String STEPS_PREFS       = "WellnessSteps";
+    // Last successfully persisted step total per day (single-writer dedup guard).
+    private static final String STEP_LAST_SAVED_PREFIX = "step_last_saved_";
 
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
@@ -74,6 +76,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private int           stepLastSensorTotal = -1; // -1 = not yet received any reading
     private int           stepStoredBaseline  = -1; // steps already in SharedPrefs at start of this service session
     private BroadcastReceiver dateChangeReceiver;
+    // Prevent overlapping step-save API calls from timer/destroy/intent paths.
+    private final AtomicBoolean stepSaveInProgress = new AtomicBoolean(false);
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -86,9 +90,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private RetryQueue retryQueue;
     
     // Database API configuration
-    // private static final String API_BASE_URL = "http://10.0.2.2:5000"; // For Android emulator (localhost:5000)
-    // private static final String API_BASE_URL = "http://192.168.1.100:5000"; // For physical device (replace with your PC IP)
-    private static final String API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
+    private static final String DEFAULT_API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
 
     @Override
     public void onCreate() {
@@ -104,6 +106,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             startForeground(NOTIFICATION_ID, createNotification());
         }
 
+        Toast.makeText(this, "Wellness Valley Service Running", Toast.LENGTH_SHORT).show();
+
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
         foodImageQueue = new FoodImageQueue(this);
@@ -111,7 +115,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         registerReceiver(networkChangeReceiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
         
         // Initialize database sync client
-        databaseSyncClient = new DatabaseSyncClient(API_BASE_URL, this);
+        String apiBaseUrl = resolveApiBaseUrl();
+        databaseSyncClient = new DatabaseSyncClient(apiBaseUrl, this);
+        Log.d(TAG, "Using API_BASE_URL for background sync: " + apiBaseUrl);
         
         // Test database connection
         executorService.execute(() -> {
@@ -145,9 +151,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             retryQueue = null;
         }
 
-        // ✅ Step tracking — start sensor + schedule 60-sec DB saves
+        // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
-        scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 60, 60, TimeUnit.SECONDS);
+        scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
@@ -180,8 +186,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         );
 
         return new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setContentTitle("")
-                .setContentText("")
+                .setContentTitle("Wellness Valley")
+                .setContentText("Running in background")
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentIntent(pendingIntent)
                 .setOngoing(true)
@@ -193,34 +199,21 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Hidden background service channel — never visible to the user
-            NotificationChannel silentChannel = new NotificationChannel(
+            NotificationChannel channel = new NotificationChannel(
                     CHANNEL_ID,
                     "Background Service",
-                    NotificationManager.IMPORTANCE_NONE  // Completely hidden from notification shade
+                    NotificationManager.IMPORTANCE_MIN
             );
-            silentChannel.setDescription("Keeps wellness tracking running in background");
-            silentChannel.enableLights(false);
-            silentChannel.enableVibration(false);
-            silentChannel.setShowBadge(false);
-            silentChannel.setSound(null, null);
-
-            // Visible channel for food analysis results
-            NotificationChannel notifChannel = new NotificationChannel(
-                    NOTIF_CHANNEL_ID,
-                    "Food Analysis",
-                    NotificationManager.IMPORTANCE_DEFAULT
-            );
-            notifChannel.setDescription("Notifications for food analysis results");
-            notifChannel.enableLights(true);
-            notifChannel.enableVibration(false);
-            notifChannel.setShowBadge(true);
+            channel.setDescription("Keeps wellness tracking running in background");
+            channel.enableLights(false);
+            channel.enableVibration(false);
+            channel.setShowBadge(false);
+            channel.setSound(null, null);
 
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
-                manager.createNotificationChannel(silentChannel);
-                manager.createNotificationChannel(notifChannel);
-                Log.d(TAG, "✅ Notification channels created");
+                manager.createNotificationChannel(channel);
+                Log.d(TAG, "✅ Notification channel created: " + CHANNEL_ID);
             }
         }
     }
@@ -379,11 +372,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                     final String oldDate = stepCurrentDate;
                     // Save the old day's steps to DB on a background thread (network call)
                     executorService.execute(() -> saveStepsToDBForDate(oldDate));
-                    // Write 0 for new day and reset in-memory state
-                    SharedPreferences.Editor ed = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE).edit();
-                    ed.putInt("step_daily_" + newDay, 0);
-                    ed.apply();
-                    stepStoredBaseline  = 0;
+                    // Preserve existing value if user manually jumps back to an old date.
+                    // Resetting to 0 here would erase valid history for that day.
+                    SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+                    int existing = prefs.getInt("step_daily_" + newDay, 0);
+                    stepStoredBaseline  = existing;
                     stepLastSensorTotal = -1; // re-anchors on the first step of the new day
                     stepCurrentDate     = newDay;
                 }
@@ -412,16 +405,17 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // Day rollover: reset baseline at midnight
         if (!today.equals(stepCurrentDate)) {
             Log.d(TAG, "🌙 [Steps] Day rollover " + stepCurrentDate + " → " + today);
-            // Note: saveStepsToDB() always reads getTodayDateKey() (= new day = 0 steps),
-            // so this call returns early. Yesterday's final steps were already saved by
-            // the 60-second scheduled timer. No data is lost.
-            saveStepsToDB();
+            // Save the OLD day's final value explicitly before switching day.
+            final String oldDate = stepCurrentDate;
+            if (executorService != null) {
+                executorService.execute(() -> saveStepsToDBForDate(oldDate));
+            } else {
+                saveStepsToDBForDate(oldDate);
+            }
             stepLastSensorTotal = sensorTotal; // new day baseline = current total
-            stepStoredBaseline  = 0;           // new day starts with 0 accumulated steps
+            SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+            stepStoredBaseline  = prefs.getInt("step_daily_" + today, 0);
             stepCurrentDate = today;
-            SharedPreferences.Editor ed = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE).edit();
-            ed.putInt("step_daily_" + today, 0);
-            ed.apply();
             return;
         }
 
@@ -463,22 +457,77 @@ public class GalleryMonitorService extends Service implements SensorEventListene
      * POST today's step count to the backend DB.
      * Called every 60 seconds by scheduledExecutor, and on service destroy.
      */
+    /**
+     * Called via intent from GalleryMonitorPlugin.syncDailySteps() when React
+     * detects that SharedPreferences holds stale/phantom data for a day.
+     * Resets both the on-disk (SharedPrefs) value and the in-memory baseline so
+     * the service stops broadcasting the wrong step count to the backend.
+     */
+    private synchronized void resetStepsBaseline(String date, int steps) {
+        Log.w(TAG, "🔧 [Steps] Baseline reset for " + date + ": " + steps + " (React correction)");
+        getSharedPreferences(STEPS_PREFS, MODE_PRIVATE)
+                .edit().putInt("step_daily_" + date, steps).apply();
+        // If this is today's date, also fix the in-memory tracking state so the
+        // next scheduled save uses the corrected baseline instead of the stale one.
+        if (date.equals(stepCurrentDate)) {
+            stepStoredBaseline = steps;
+            // stepLastSensorTotal stays unchanged: sessions steps accumulated since
+            // service start are still valid, they just now add on top of `steps`.
+        }
+    }
+
     private void saveStepsToDB() {
-        saveStepsToDBForDate(getTodayDateKey());
+        saveStepsToDBForDate(getTodayDateKey(), false);
     }
 
     private void saveStepsToDBForDate(String date) {
+        saveStepsToDBForDate(date, false);
+    }
+
+    /**
+     * @param forceWrite true for correction saves (React syncDailySteps) so the API
+     *                   allows writing a lower value to fix inflated DB data.
+     *                   false for normal 60-second scheduled saves.
+     */
+    private void saveStepsToDBForDate(String date, boolean forceWrite) {
         String userId = getCurrentUserId();
-        if (userId == null) return;
+        if (userId == null) {
+            Log.w(TAG, "⏭️ [Steps] Skip DB save (no valid userId)");
+            return;
+        }
 
         SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
         int steps = prefs.getInt("step_daily_" + date, 0);
-        if (steps <= 0) return;
+        if (steps <= 0) {
+            Log.d(TAG, "⏭️ [Steps] Skip DB save (steps<=0): date=" + date + " steps=" + steps);
+            return;
+        }
 
-        double calories = Math.round(steps * 0.04 * 100.0) / 100.0;
-        Log.d(TAG, "💾 [Steps] Saving to DB: userId=" + userId + " date=" + date + " steps=" + steps);
-        boolean ok = databaseSyncClient.saveDailySteps(userId, date, steps, calories);
-        Log.d(TAG, ok ? "✅ [Steps] DB save OK" : "❌ [Steps] DB save failed");
+        // Single-writer dedup: skip unchanged values to avoid redundant 60s posts.
+        // Always proceed for forceWrite (correction) even if value looks the same.
+        int lastSaved = prefs.getInt(STEP_LAST_SAVED_PREFIX + date, -1);
+        if (!forceWrite && lastSaved == steps) {
+            Log.d(TAG, "⏭️ [Steps] Skip DB save (unchanged): date=" + date + " steps=" + steps);
+            return;
+        }
+
+        // Parallel protection: if one save is already running, skip this tick.
+        if (!stepSaveInProgress.compareAndSet(false, true)) {
+            Log.d(TAG, "⏭️ [Steps] Skip DB save (save already in progress)");
+            return;
+        }
+
+        try {
+            double calories = Math.round(steps * 0.04 * 100.0) / 100.0;
+            Log.d(TAG, "💾 [Steps] Saving to DB: userId=" + userId + " date=" + date + " steps=" + steps + (forceWrite ? " [forceWrite]" : ""));
+            boolean ok = databaseSyncClient.saveDailySteps(userId, date, steps, calories, forceWrite);
+            if (ok) {
+                prefs.edit().putInt(STEP_LAST_SAVED_PREFIX + date, steps).apply();
+            }
+            Log.d(TAG, ok ? "✅ [Steps] DB save OK" : "❌ [Steps] DB save failed");
+        } finally {
+            stepSaveInProgress.set(false);
+        }
     }
 
     /** Returns today's date as YYYY-MM-DD in the device's local timezone. */
@@ -551,6 +600,16 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     }
 
     // ── END SCREEN TIME TRACKING ──────────────────────────────────────────────
+
+    // Get current user ID from SharedPreferences and lookup database UserId
+    private String resolveApiBaseUrl() {
+        SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_PRIVATE);
+        String configured = prefs.getString("api_base_url", null);
+        if (configured != null && !configured.trim().isEmpty()) {
+            return configured.trim();
+        }
+        return DEFAULT_API_BASE_URL;
+    }
 
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
@@ -669,7 +728,35 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand called");
-        
+
+        // React-side correction: when backfill detects stale SharedPrefs data
+        // (e.g. after manual date testing), it sends an intent to reset the
+        // per-day baseline so the service stops saving the wrong high value.
+        if (intent != null && intent.hasExtra("resetStepsDate")) {
+            String date  = intent.getStringExtra("resetStepsDate");
+            int    steps = intent.getIntExtra("resetStepsValue", -1);
+            if (date != null && steps >= 0) {
+                resetStepsBaseline(date, steps);
+                // Correction: use forceWrite=true so the API allows writing a lower
+                // value to fix phantom/inflated DB data from previous sessions.
+                if (executorService != null) {
+                    executorService.execute(() -> saveStepsToDBForDate(date, true));
+                } else {
+                    saveStepsToDBForDate(date, true);
+                }
+            }
+        }
+
+        // Explicit flush request from React "Refresh" button.
+        // Still single-writer: the service performs the save itself.
+        if (intent != null && intent.getBooleanExtra("forceSaveTodaySteps", false)) {
+            if (executorService != null) {
+                executorService.execute(this::saveStepsToDB);
+            } else {
+                saveStepsToDB();
+            }
+        }
+
         // Ensure proper foreground service type for Android 10+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
@@ -742,7 +829,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         if (fiber >= 0) contentTextBuilder.append(" • Fiber: ").append(fiber).append("g");
         String contentText = contentTextBuilder.toString();
 
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, NOTIF_CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle("🍽️ Food Analysis Complete")
                 .setContentText(contentText)
