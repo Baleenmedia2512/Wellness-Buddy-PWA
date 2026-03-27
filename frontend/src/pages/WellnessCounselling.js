@@ -1,6 +1,7 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "../components/common/HierarchicalReportLayout";
@@ -38,10 +39,10 @@ const WellnessCounselling = ({ user, onBack }) => {
     
     console.log('🔍 [WellnessCounselling] Looking up user ID for:', email);
     
-    const response = await fetch(
-      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
-    );
-    const data = await response.json();
+    const response = await CapacitorHttp.get({
+      url: `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
+    });
+    const data = response.data;
     
     console.log('📋 [WellnessCounselling] Lookup response:', data);
     
@@ -81,16 +82,16 @@ const WellnessCounselling = ({ user, onBack }) => {
       const userId = await getUserId(user.email);
       
       // Fetch hierarchy data - reusing the same hierarchy API
-      const response = await fetch(
-        `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
-      );
+      const response = await CapacitorHttp.get({
+        url: `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
+        headers: { "Cache-Control": "no-cache" }
+      });
       
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      if (response.status !== 200) {
+        throw new Error(`API returned ${response.status}`);
       }
       
-      const result = await response.json();
+      const result = response.data;
       
       console.log('📋 [WellnessCounselling] Full API response:', result);
       
@@ -146,13 +147,13 @@ const WellnessCounselling = ({ user, onBack }) => {
       setHierarchyData(mappedData);
       
       // Fetch counselling assessments
-      const assessmentsResponse = await fetch(
-        `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
-      );
+      const assessmentsResponse = await CapacitorHttp.get({
+        url: `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
+        headers: { "Cache-Control": "no-cache" }
+      });
       
-      if (assessmentsResponse.ok) {
-        const assessmentsResult = await assessmentsResponse.json();
+      if (assessmentsResponse.status === 200) {
+        const assessmentsResult = assessmentsResponse.data;
         if (assessmentsResult.success) {
           setAssessmentData(assessmentsResult.data);
         }

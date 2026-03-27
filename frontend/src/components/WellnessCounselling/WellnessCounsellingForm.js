@@ -1,6 +1,7 @@
 // src/components/WellnessCounselling/WellnessCounsellingForm.js
 import React, { useState } from "react";
 import { X, Save, CheckCircle, AlertCircle } from "lucide-react";
+import { CapacitorHttp } from '@capacitor/core';
 import HealthProblemChips from "./HealthProblemChips";
 import EatingHabitsSection from "./EatingHabitsSection";
 import SleepQualitySection from "./SleepQualitySection";
@@ -57,15 +58,15 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSave
 
       console.log("✅ Wellness Counselling Data:", formData);
 
-      // Save to backend
+      // Save to backend using CapacitorHttp (works on both web and mobile)
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const response = await fetch(`${apiBaseUrl}/api/counselling/save-assessment`, {
-        method: 'POST',
+      const response = await CapacitorHttp.post({
+        url: `${apiBaseUrl}/api/counselling/save-assessment`,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        data: formData
       });
       
-      const result = await response.json();
+      const result = response.data;
       
       if (!result.success) {
         throw new Error(result.message || 'Failed to save assessment');
