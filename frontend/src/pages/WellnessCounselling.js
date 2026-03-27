@@ -81,9 +81,10 @@ const WellnessCounselling = ({ user, onBack }) => {
     try {
       const userId = await getUserId(user.email);
       
-      // Fetch hierarchy data - reusing the same hierarchy API
+      // Use new dual coaching hierarchy endpoint that fetches both hierarchy and assessments
+      console.log('📋 [WellnessCounselling] Fetching hierarchical assessments...');
       const response = await CapacitorHttp.get({
-        url: `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
+        url: `${apiBaseUrl}/api/counselling/hierarchical-assessments?userId=${userId}`,
         headers: { "Cache-Control": "no-cache" }
       });
       
@@ -99,12 +100,30 @@ const WellnessCounselling = ({ user, onBack }) => {
         throw new Error(result.message || "Failed to fetch team data");
       }
       
-      // Check if data exists (could be in result.data or result.hierarchy)
-      const hierarchyData = result.data || result.hierarchy;
+      // Extract hierarchy and assessments from response
+      const hierarchyData = result.data;
+      const assessments = result.assessments || {};
+      
+      console.log('✅ [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
+      console.log('🔍 [WellnessCounselling] Assessment userIds (types):', 
+        Object.keys(assessments).map(k => `${k} (${typeof k})`).join(', '));
+      
+      // IMPORTANT: Ensure assessment keys are numbers to match node.userId
+      const normalizedAssessments = {};
+      Object.keys(assessments).forEach(key => {
+        const numKey = parseInt(key);
+        normalizedAssessments[numKey] = assessments[key];
+      });
+      
+      console.log('🔧 [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
+      
+      // Set assessment data first
+      setAssessmentData(normalizedAssessments);
       
       if (!hierarchyData) {
-        console.error('❌ [WellnessCounselling] API response structure:', Object.keys(result));
-        throw new Error("No team data returned from API");
+        console.warn('⚠️ [WellnessCounselling] No hierarchy data returned');
+        setHierarchyData(null);
+        return;
       }
       
       console.log('📋 [WellnessCounselling] Raw hierarchy data:', hierarchyData);
@@ -119,14 +138,16 @@ const WellnessCounselling = ({ user, onBack }) => {
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
         
-        // Add counselling status to metrics
-        const hasCounselling = assessmentData[node.userId];
-        mapped.metrics = {
-          ...mapped.metrics,
-          hasCounselling: !!hasCounselling,
-          counsellingDate: hasCounselling?.submittedAt,
-          counsellorName: hasCounselling?.counsellorName,
-        };
+        // Metrics already added by backend, but ensure consistency
+        if (!mapped.metrics) {
+          const hasCounselling = normalizedAssessments[node.userId];
+          console.log(`🔍 [WellnessCounselling] Checking userId ${node.userId} (${typeof node.userId}):`, hasCounselling ? 'HAS assessment' : 'NO assessment');
+          mapped.metrics = {
+            hasCounselling: !!hasCounselling,
+            counsellingDate: hasCounselling?.submittedAt,
+            counsellorName: hasCounselling?.counsellorName,
+          };
+        }
         
         if (mapped.teamMembers && mapped.teamMembers.length > 0) {
           mapped.teamMembers = mapped.teamMembers
@@ -145,19 +166,6 @@ const WellnessCounselling = ({ user, onBack }) => {
       console.log('✅ [WellnessCounselling] Mapped hierarchy:', mappedData);
       
       setHierarchyData(mappedData);
-      
-      // Fetch counselling assessments
-      const assessmentsResponse = await CapacitorHttp.get({
-        url: `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
-        headers: { "Cache-Control": "no-cache" }
-      });
-      
-      if (assessmentsResponse.status === 200) {
-        const assessmentsResult = assessmentsResponse.data;
-        if (assessmentsResult.success) {
-          setAssessmentData(assessmentsResult.data);
-        }
-      }
       
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -506,15 +514,13 @@ const WellnessCounselling = ({ user, onBack }) => {
         }}
         user={user}
         selectedMember={selectedMember}
-        onSaveSuccess={(data) => {
-          // Update assessment data
-          setAssessmentData(prev => ({
-            ...prev,
-            [data.userId]: data,
-          }));
+        onSaveSuccess={async () => {
+          // Refresh data from API first, THEN close form
+          console.log('💾 [WellnessCounselling] Assessment saved, refreshing data...');
+          await fetchData(true);
+          console.log('✅ [WellnessCounselling] Data refreshed, closing form');
           setIsFormOpen(false);
           setSelectedMember(null);
-          fetchData(true);
         }}
       />
 
