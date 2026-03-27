@@ -391,11 +391,11 @@ const ReminderSettingsPage = ({ onBack }) => {
   // ── Compute "default reminder time" label ────────────────────────────
 
   function getDefaultLabel(activity) {
-    if (!activity?.windowStart) return null;
-    const parsed = parseTimeString(activity.windowStart);
-    if (!parsed) return null;
-    const def = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
-    return formatReminderTime(def.hour, def.minute);
+  if (!activity?.windowEnd) return null;
+  const parsed = parseTimeString(activity.windowEnd);
+  if (!parsed) return null;
+  const def = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
+  return formatReminderTime(def.hour, def.minute);
   }
 
   // ── Loading state ─────────────────────────────────────────────────────
@@ -639,7 +639,7 @@ const ReminderSettingsPage = ({ onBack }) => {
                     {/* hint row */}
                     {(() => {
                       if (!defaultTime) return null;
-                      const p = parseTimeString(activity.windowStart);
+                      const p = parseTimeString(activity.windowEnd);
                       if (!p) return null;
                       const d = subtractMinutes(p.hour, p.minute, REMINDER_OFFSET);
                       const isCustom = activity.hour !== d.hour || activity.minute !== d.minute;
