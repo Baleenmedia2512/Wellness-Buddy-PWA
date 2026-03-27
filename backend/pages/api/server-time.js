@@ -24,6 +24,7 @@ export default function handler(req, res) {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const istDate = new Date(now + IST_OFFSET_MS).toISOString().split('T')[0];
 
+  
   return res.status(200).json({
     date:     istDate,
     ts:       now,
