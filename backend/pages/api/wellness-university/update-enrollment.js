@@ -5,6 +5,7 @@
  * Allows users to update their enrolled programs
  */
 
+
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
 
 export default async function handler(req, res) {
