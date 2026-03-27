@@ -198,7 +198,7 @@ export function groupRecordsByDate(records, userTimezoneOffset) {
  * @param {{ start: string, end: string }|null} window  "HH:mm:ss" strings
  * @returns {{ timeHHMM: string|null, status: "on-time"|"late"|"missed" }}
  */
-export function pickEarliestRecordPerActivity(dayRecords, window) {
+export function pickEarliestRecordPerActivity(dayRecords, window, nextWindowStart = null) {
   if (!dayRecords || dayRecords.length === 0) {
     return { timeHHMM: null, status: 'missed' };
   }
@@ -220,18 +220,21 @@ export function pickEarliestRecordPerActivity(dayRecords, window) {
       return { timeHHMM: extractTimeHHMM(withinWindow._localDate), status: 'on-time' };
     }
 
-    // Priority 2: earliest after window end → late
+    // Priority 2: earliest after window end but BEFORE next meal's window start → late
+    // (prevents a dinner-time entry from being counted as late breakfast/lunch)
     const afterWindow = sorted.find((r) => {
       const t = extractTimeHHMM(r._localDate);
       if (!t) return false;
-      return (t + ':00') > window.end;
+      const ts = t + ':00';
+      if (ts <= window.end) return false;
+      if (nextWindowStart && ts >= nextWindowStart) return false;
+      return true;
     });
     if (afterWindow) {
       return { timeHHMM: extractTimeHHMM(afterWindow._localDate), status: 'late' };
     }
 
-    // All records are before window.start (e.g. only a breakfast log exists
-    // when assessing dinner) → treat as missed for this activity
+    // All records are before window.start or belong to a later activity
     return { timeHHMM: null, status: 'missed' };
   }
 

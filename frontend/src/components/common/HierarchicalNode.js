@@ -33,6 +33,7 @@ const HierarchicalNode = ({
   isCurrentUser,
   showTeamCount = true,
   showFullTeam = true,
+  defaultShowDetails = false,
   getStatusStyle,
   searchQuery,
   filter,
@@ -40,7 +41,7 @@ const HierarchicalNode = ({
   matchesSearch,
 }) => {
   const [expanded, setExpanded] = useState(true);
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(defaultShowDetails);
 
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
 
@@ -318,6 +319,7 @@ const HierarchicalNode = ({
                   filter={filter}
                   matchesFilter={matchesFilter}
                   matchesSearch={matchesSearch}
+                  defaultShowDetails={defaultShowDetails}
                 />
               ))}
           </div>

@@ -12,6 +12,9 @@ import {
   TrendingDown,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -71,6 +74,36 @@ function formatDateForApi(d) {
     String(d.getMonth() + 1).padStart(2, "0") + "-" +
     String(d.getDate()).padStart(2, "0")
   );
+}
+
+function formatDateForFile(d = new Date()) {
+  return (
+    d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0")
+  );
+}
+
+function escapeCsv(value) {
+  const normalized = value == null ? "" : String(value);
+  if (/[",\n]/.test(normalized)) {
+    return `"${normalized.replace(/"/g, "\"\"")}"`;
+  }
+  return normalized;
+}
+
+function escapeHtml(value) {
+  const normalized = value == null ? "" : String(value);
+  return normalized
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function utf8ToBase64(input) {
+  return btoa(unescape(encodeURIComponent(input)));
 }
 
 /** Convert "HH:mm" (24-hr) to "h:mm AM/PM" (12-hr) for display */
@@ -231,121 +264,54 @@ function ScoreRing({ score }) {
 
 /** Expanded details panel shown inside HierarchicalNode */
 function TimeReportDetails({ node, dateRange }) {
-  const [tab, setTab] = useState("heatmap");
-
   const entry = node.__timeData;
   if (!entry) return null;
 
-  const hasAny = (entry.days || []).some((d) =>
-    ACTIVITY_KEYS.some((k) => d.activities?.[k]?.status !== "missed"),
-  );
-
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
-      {/* Avg time chips — shown for today/yesterday/custom (single day) */}
-      <AvgTimeRow averageTimes={entry.averageTimes} consistentlyLate={entry.consistentlyLate} />
-
-      {/* Tab toggle */}
-      <div className="flex items-center gap-2 px-3 pt-2">
-        {["heatmap", "table"].map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`px-3 py-1 rounded-full text-[10px] font-semibold border transition-all ${
-              tab === t
-                ? "bg-green-700 text-white border-green-700"
-                : "bg-white text-gray-600 border-gray-200"
-            }`}
-          >
-            {t === "heatmap" ? "Heatmap" : "Day-wise Table"}
-          </button>
-        ))}
-      </div>
-
-      <AnimatePresence mode="wait">
-        {tab === "heatmap" ? (
-          <motion.div
-            key="heatmap"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className="px-3 py-3 space-y-1.5"
-          >
-            {/* Column headers */}
-            <div className="flex items-center gap-1 mb-1">
-              <span className="w-16 shrink-0" />
+      {/* Day-wise Table */}
+      <div className="overflow-x-auto px-3 pb-3 pt-2">
+        <table className="w-full min-w-[560px] text-[11px] sm:text-xs border-collapse">
+          <thead>
+            <tr className="bg-green-50">
+              <th className="text-left px-2 py-1.5 font-semibold text-gray-600 rounded-tl-lg">Date</th>
               {ACTIVITY_KEYS.map((key) => {
-                const { Icon, short } = ACTIVITY_META[key];
+                const { Icon, label } = ACTIVITY_META[key];
                 return (
-                  <div
-                    key={key}
-                    className="flex flex-col items-center min-w-[36px] gap-0.5"
-                  >
-                    <Icon className="w-3 h-3 text-gray-400" />
-                    <span className="text-[8px] text-gray-400 font-semibold uppercase">{short}</span>
-                  </div>
+                  <th key={key} className="px-2 py-1.5 font-semibold text-gray-600">
+                    <div className="flex items-center justify-start gap-1">
+                      <Icon className="w-3 h-3 text-gray-400" />
+                      <span>{label}</span>
+                    </div>
+                  </th>
                 );
               })}
-            </div>
-            {hasAny ? (
-              (entry.days || []).map((day) => (
-                <DayHeatmapRow key={day.date} day={day} />
-              ))
-            ) : (
-              <p className="text-xs text-gray-400 text-center py-4">No activity data for this period.</p>
-            )}
-          </motion.div>
-        ) : (
-          <motion.div
-            key="table"
-            initial={{ opacity: 0, y: 4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            className="overflow-x-auto px-3 pb-3 pt-2"
-          >
-            <table className="w-full min-w-[560px] text-[11px] sm:text-xs border-collapse">
-              <thead>
-                <tr className="bg-green-50">
-                  <th className="text-left px-2 py-1.5 font-semibold text-gray-600 rounded-tl-lg">Date</th>
-                  {ACTIVITY_KEYS.map((key) => {
-                    const { Icon, label } = ACTIVITY_META[key];
-                    return (
-                      <th key={key} className="px-2 py-1.5 font-semibold text-gray-600">
-                        <div className="flex items-center justify-start gap-1">
-                          <Icon className="w-3 h-3 text-gray-400" />
-                          <span>{label}</span>
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {(entry.days || []).map((day, i) => (
-                  <tr key={day.date} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
-                    <td className="px-2 py-1.5 font-medium text-gray-700 text-[11px]">{day.date}</td>
-                    {ACTIVITY_KEYS.map((key) => {
-                      const act = day.activities?.[key];
-                      const s   = act?.status ?? "missed";
-                      const st  = STATUS_TEXT[s];
-                      return (
-                        <td key={key} className="px-2 py-1.5">
-                          <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${st.bg} ${st.border}`}>
-                            <StatusDot status={s} />
-                            <span className={`text-[10px] font-semibold ${st.text}`}>
-                              {fmt12(act?.time) ?? "—"}
-                            </span>
-                          </div>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </tr>
+          </thead>
+          <tbody>
+            {(entry.days || []).map((day, i) => (
+              <tr key={day.date} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
+                <td className="px-2 py-1.5 font-medium text-gray-700 text-[11px]">{day.date}</td>
+                {ACTIVITY_KEYS.map((key) => {
+                  const act = day.activities?.[key];
+                  const s   = act?.status ?? "missed";
+                  const st  = STATUS_TEXT[s];
+                  return (
+                    <td key={key} className="px-2 py-1.5">
+                      <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${st.bg} ${st.border}`}>
+                        <StatusDot status={s} />
+                        <span className={`text-[10px] font-semibold ${st.text}`}>
+                          {fmt12(act?.time) ?? "—"}
+                        </span>
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -365,6 +331,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [teamView, setTeamView] = useState("direct");
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), []);
@@ -521,44 +488,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
   // ── HierarchicalNode render props ──────────────────────────────────────────
 
-  const renderStatus = useCallback((node) => {
-    const score   = node.__score ?? 0;
-    const hasLate = Object.values(node.__timeData?.consistentlyLate || {}).some(Boolean);
-    return (
-      <div className="flex items-center gap-1.5">
-        <ScoreRing score={score} />
-        {hasLate && (
-          <Flame className="w-4 h-4 text-orange-500 shrink-0" title="Consistently late on some activities" />
-        )}
-      </div>
-    );
-  }, []);
+  const renderStatus = useCallback(() => null, []);
 
-  const renderStats = useCallback((node) => {
-    const self      = node.__score ?? 0;
-    const directAvg = node.__directAvg;
-    const fullAvg   = node.__fullAvg;
-    const fmt = (v) => v === null || v === undefined ? "0%" : `${v}%`;
-    return (
-      <>
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {self}%
-          </span>
-        </div>
-        <div className="flex-1 flex flex-col items-center px-2">
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {fmt(directAvg)}
-          </span>
-        </div>
-        <div className="flex-1 flex flex-col items-center pl-2">
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {fmt(fullAvg)}
-          </span>
-        </div>
-      </>
-    );
-  }, []);
+  const renderStats = useCallback(() => null, []);
 
   const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} dateRange={dateRange} />, [dateRange]);
 
@@ -614,9 +546,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   }`;
   // ── Direct / Full hierarchy filter ────────────────────────────────────────
-  const filteredHierarchy = useMemo(() => {
+  const buildHierarchyForView = useCallback((view) => {
     if (!hierarchyData) return null;
-    if (teamView === "full") return hierarchyData;
+    if (view === "full") return hierarchyData;
     // Direct view: strip nested teamMembers from direct reports
     if (hierarchyData.teamMembers) {
       return {
@@ -628,10 +560,234 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       };
     }
     return hierarchyData;
-  }, [hierarchyData, teamView]);
+  }, [hierarchyData]);
+
+  const filteredHierarchy = useMemo(() => {
+    return buildHierarchyForView(teamView);
+  }, [buildHierarchyForView, teamView]);
+
+  const saveOrShareFile = useCallback(async ({ content, fileName, mimeType, title }) => {
+    const isNative = Capacitor.isNativePlatform();
+
+    if (isNative) {
+      const result = await Filesystem.writeFile({
+        path: fileName,
+        data: utf8ToBase64(content),
+        directory: Directory.Cache,
+      });
+
+      await Share.share({
+        title: title || "Activity Time Report",
+        text: "Save or share your report file",
+        files: [result.uri],
+        dialogTitle: "Save or Share Report",
+      });
+      return;
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  }, []);
+
+  const getMergedExportRows = useCallback(() => {
+    const viewsToExport = ["direct", "full"];
+
+    const passes = (node) => matchesFilter(node) && matchesSearch(node, searchQuery);
+
+    const collectRows = (node) => {
+      const descendants = (node.teamMembers || []).flatMap(collectRows);
+      if (!passes(node) && descendants.length === 0) return [];
+
+      const entry = node.__timeData || {};
+      const row = {
+        memberName: node.userName || node.name || "-",
+        email: node.email || "-",
+        role: node.role || "-",
+        averageWeightTime: fmt12(entry.averageTimes?.weight) || "-",
+        averageBreakfastTime: fmt12(entry.averageTimes?.breakfast) || "-",
+        averageLunchTime: fmt12(entry.averageTimes?.lunch) || "-",
+        averageDinnerTime: fmt12(entry.averageTimes?.dinner) || "-",
+        averageEducationTime: fmt12(entry.averageTimes?.education) || "-",
+      };
+
+      return [row, ...descendants];
+    };
+
+    const mergedRows = [];
+    viewsToExport.forEach((view) => {
+      const sourceRoot = buildHierarchyForView(view);
+      if (!sourceRoot) return;
+
+      const rows = collectRows(sourceRoot);
+      if (rows.length === 0) return;
+      rows.forEach((row) => {
+        mergedRows.push({
+          reportView: view === "direct" ? "Direct" : "Full",
+          ...row,
+        });
+      });
+    });
+
+    return mergedRows;
+  }, [buildHierarchyForView, matchesFilter, matchesSearch, searchQuery]);
+
+  const handleCsvDownload = useCallback(async () => {
+    const mergedRows = getMergedExportRows();
+    if (mergedRows.length === 0) return;
+
+    const headers = [
+      "Report Type",
+      "Member Name",
+      "Email",
+      "Role",
+      "Weight Time",
+      "Breakfast Time",
+      "Lunch Time",
+      "Dinner Time",
+      "Education Time",
+    ];
+
+    const csv = [
+      headers.join(","),
+      ...mergedRows.map((row) =>
+        [
+          row.reportView,
+          row.memberName,
+          row.email,
+          row.role,
+          row.averageWeightTime,
+          row.averageBreakfastTime,
+          row.averageLunchTime,
+          row.averageDinnerTime,
+          row.averageEducationTime,
+        ]
+          .map(escapeCsv)
+          .join(","),
+      ),
+    ].join("\n");
+
+    const fileDate = formatDateForFile(new Date());
+    try {
+      await saveOrShareFile({
+        content: csv,
+        fileName: `activity-time-report-merged-${dateRange}-${fileDate}.csv`,
+        mimeType: "text/csv;charset=utf-8;",
+        title: "Activity Time Report (CSV)",
+      });
+      setShowDownloadOptions(false);
+    } catch (err) {
+      console.error("CSV download/share failed:", err);
+      alert("Unable to download CSV right now. Please try again.");
+    }
+  }, [getMergedExportRows, dateRange, saveOrShareFile]);
+
+  const handlePdfDownload = useCallback(async () => {
+    const mergedRows = getMergedExportRows();
+    if (mergedRows.length === 0) return;
+
+    const now = new Date();
+    const generatedAt = now.toLocaleString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "2-digit",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    const tableRows = mergedRows
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHtml(row.reportView)}</td>
+            <td>${escapeHtml(row.memberName)}</td>
+            <td>${escapeHtml(row.email)}</td>
+            <td>${escapeHtml(row.role)}</td>
+            <td>${escapeHtml(row.averageWeightTime)}</td>
+            <td>${escapeHtml(row.averageBreakfastTime)}</td>
+            <td>${escapeHtml(row.averageLunchTime)}</td>
+            <td>${escapeHtml(row.averageDinnerTime)}</td>
+            <td>${escapeHtml(row.averageEducationTime)}</td>
+          </tr>
+        `,
+      )
+      .join("");
+
+    const html = `
+      <html>
+        <head>
+          <title>Activity Time Report PDF</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
+            h1 { margin: 0 0 6px; font-size: 22px; }
+            p.meta { margin: 0 0 18px; color: #4b5563; font-size: 12px; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #d1d5db; padding: 6px; text-align: left; }
+            th { background: #f3f4f6; font-weight: 700; }
+            tr:nth-child(even) { background: #f9fafb; }
+            .note { margin-top: 12px; font-size: 11px; color: #6b7280; }
+          </style>
+        </head>
+        <body>
+          <h1>Activity Time Report</h1>
+          <p class="meta">Date Range: ${escapeHtml(dateRange)} | Generated: ${escapeHtml(generatedAt)}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>Report Type</th>
+                <th>Member Name</th>
+                <th>Email</th>
+                <th>Role</th>
+                <th>Weight Time</th>
+                <th>Breakfast Time</th>
+                <th>Lunch Time</th>
+                <th>Dinner Time</th>
+                <th>Education Time</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${tableRows}
+            </tbody>
+          </table>
+          <p class="note">Tip: In the print dialog, choose "Save as PDF".</p>
+        </body>
+      </html>
+    `;
+
+    try {
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) {
+        throw new Error("Print window blocked");
+      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+      }, 350);
+      setShowDownloadOptions(false);
+    } catch (err) {
+      const fileDate = formatDateForFile(new Date());
+      await saveOrShareFile({
+        content: html,
+        fileName: `activity-time-report-${dateRange}-${fileDate}.html`,
+        mimeType: "text/html;charset=utf-8;",
+        title: "Activity Time Report (PDF View)",
+      });
+      alert("Report shared as HTML. Open it and choose Print > Save as PDF.");
+      setShowDownloadOptions(false);
+    }
+  }, [getMergedExportRows, dateRange, saveOrShareFile]);
+
   const handleDownload = () => {
-    console.log("Download activity time report");
-    // Implement download logic here
+    setShowDownloadOptions(true);
   };
 
   const handleSettings = () => {
@@ -646,7 +802,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       subtitle={subtitle}
       onBack={onBack}
       onRefresh={() => fetchData(true)}
-      onDownload={handleDownload}
+      // onDownload={handleDownload}
       onSettings={handleSettings}
       loading={loading}
       refreshing={refreshing}
@@ -689,6 +845,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             filter={filter}
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
+            defaultShowDetails={true}
           />
         </>
       ) : !loading && !error ? (
@@ -710,6 +867,38 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         onUpdate={() => fetchData(true)}
         userEmail={user?.email}
       />
+
+      {/* Download Options Modal */}
+      {showDownloadOptions && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white border border-gray-200 shadow-xl p-4">
+            <h3 className="text-base font-bold text-gray-900">Download Report</h3>
+            <p className="text-xs text-gray-600 mt-1">
+              Choose a format. Both Direct and Full report data will be included.
+            </p>
+            <div className="mt-4 space-y-2">
+              <button
+                onClick={handleCsvDownload}
+                className="w-full rounded-xl bg-green-600 text-white py-2.5 text-sm font-semibold hover:bg-green-700 transition-colors"
+              >
+                Download as CSV
+              </button>
+              <button
+                onClick={handlePdfDownload}
+                className="w-full rounded-xl bg-blue-600 text-white py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors"
+              >
+                Download as PDF
+              </button>
+              <button
+                onClick={() => setShowDownloadOptions(false)}
+                className="w-full rounded-xl border border-gray-300 bg-white text-gray-700 py-2.5 text-sm font-semibold hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </HierarchicalReportLayout>
   );
 }
