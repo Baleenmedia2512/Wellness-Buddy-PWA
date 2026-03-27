@@ -1036,6 +1036,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 })}
                                 {points.map((point, index) => {
                                   if (!shouldRenderMarker(point, index)) return null;
+                                  if (point.value === 0) return null;
 
                                   const isFirst = index === firstVisibleIndex;
                                   const isLast = index === lastVisibleIndex;
