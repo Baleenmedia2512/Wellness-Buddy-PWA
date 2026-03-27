@@ -1339,46 +1339,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             </div>
           </div>
 
-          {/* DB Sync status row */}
-          {!isViewingOther && (
-            <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
-              <div className="flex items-center gap-1.5">
-                {displayLoading ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-gray-300 animate-pulse" />
-                    <span className="text-xs text-gray-400">Syncing DB status...</span>
-                  </>
-                ) : saving ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs text-emerald-600 font-medium">Saving to DB…</span>
-                  </>
-                ) : lastSaved ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs text-gray-500 font-medium">
-                      DB saved&nbsp;
-                      <span className="text-emerald-600 font-semibold">
-                        {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </span>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-gray-300" />
-                    <span className="text-xs text-gray-400">Not saved yet</span>
-                  </>
-                )}
-              </div>
-              {lastUpdated ? (
-                <span className="text-xs text-gray-400">
-                  Live {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-              ) : (
-                <span className="text-xs text-gray-300">Live --:--:--</span>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* ──── History Section ──── */}
