@@ -96,7 +96,7 @@ export default async function handler(req, res) {
       userTimezoneOffset,
     } = req.query;
 
-    // ── Input validation ────────────────────────────────────────────────────
+    // ── Input validation ─────────────────────────────────────────────────..see 
 
     if (!userId) {
       return res.status(400).json({ success: false, message: 'userId is required' });
@@ -241,14 +241,14 @@ export default async function handler(req, res) {
         .lte('CreatedAt', endStr + 'T23:59:59')
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
-      // Education logs – UserId is an integer in this table
+      // Education logs – UserId is stored as STRING in this table  ⚠️
       supabase
         .from('education_logs_table')
-        .select('UserId, CreatedAt')
-        .in('UserId', targetUserIds)
-        .gte('CreatedAt', startStr)
-        .lte('CreatedAt', endStr + 'T23:59:59')
-        .or('IsDeleted.is.null,IsDeleted.eq.0'),
+        .select('"UserId", "CreatedAt"')
+        .in('"UserId"', targetUserIds.map(String))
+        .gte('"CreatedAt"', startStr)
+        .lte('"CreatedAt"', endStr + 'T23:59:59')
+        .or('"IsDeleted".is.null,"IsDeleted".eq.0'),
 
       // Food / nutrition records – UserID is stored as a string in this table
       supabase
@@ -264,6 +264,8 @@ export default async function handler(req, res) {
     if (weightResult.error)    console.error('⚠️ [get-activity-time-report] weight error:',         weightResult.error);
     if (educationResult.error) console.error('⚠️ [get-activity-time-report] education error:',      educationResult.error);
     if (foodResult.error)      console.error('⚠️ [get-activity-time-report] food error:',           foodResult.error);
+
+    console.log(`✅ [get-activity-time-report] Fetched data: ${weightResult.data?.length || 0} weight, ${educationResult.data?.length || 0} education, ${foodResult.data?.length || 0} food records`);
 
     // ── Build resolved time-window map (DB values override defaults) ────────
 
@@ -299,9 +301,9 @@ export default async function handler(req, res) {
     }
 
     for (const r of (educationResult.data || [])) {
-      const uid = r.UserId;
+      const uid = parseInt(r.UserId, 10); // Convert string to number
       if (!educationByUser.has(uid)) educationByUser.set(uid, []);
-      educationByUser.get(uid).push(r);
+      educationByUser.get(uid).push({ CreatedAt: r.CreatedAt });
     }
 
     for (const r of (foodResult.data || [])) {

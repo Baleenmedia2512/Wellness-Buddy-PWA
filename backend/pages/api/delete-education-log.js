@@ -51,6 +51,7 @@ export default async function handler(req, res) {
       return;
     }
 
+    
     // Clear cache
     cache.delete(cacheKeys.educationSummary(userId));
     console.log('🗑️ [delete-education-log] Cache cleared for user:', userId);

@@ -210,17 +210,17 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
     });
 
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full"
+          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-4"
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-green-400 to-green-400 p-6 rounded-t-2xl">
+          <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
             <div className="flex justify-between items-center">
               <div>
-                <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                   Your Enrollment
                 </h2>
                 {/* <p className="text-white text-sm mt-1">Wellness University Program</p> */}
@@ -247,25 +247,25 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           </div>
 
           {/* Content */}
-          <div className="p-6 space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <p className="text-sm text-gray-600 mb-1">Enrolled on</p>
-              <p className="text-lg font-semibold text-gray-800">
+          <div className="p-4 sm:p-6 space-y-3 sm:space-y-4 overflow-y-auto flex-1">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+              <p className="text-xs sm:text-sm text-gray-600 mb-1">Enrolled on</p>
+              <p className="text-base sm:text-lg font-semibold text-gray-800">
                 {enrollmentDate}
               </p>
             </div>
 
             {coachName && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <p className="text-sm text-gray-600 mb-1">Invited By</p>
-                <p className="text-lg font-semibold text-gray-800">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4">
+                <p className="text-xs sm:text-sm text-gray-600 mb-1">Invited By</p>
+                <p className="text-base sm:text-lg font-semibold text-gray-800">
                   {coachName}
                 </p>
               </div>
             )}
 
             <div>
-              <p className="text-sm text-gray-600 mb-3 font-semibold">
+              <p className="text-xs sm:text-sm text-gray-600 mb-2 sm:mb-3 font-semibold">
                 Your Programs:
               </p>
               <div className="space-y-2">
@@ -274,12 +274,12 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                   return (
                     <div
                       key={index}
-                      className="flex items-center gap-3 bg-gradient-to-r from-green-50 to-teal-50 p-3 rounded-lg border border-green-200"
+                      className="flex items-center gap-2 sm:gap-3 bg-gradient-to-r from-green-50 to-teal-50 p-2.5 sm:p-3 rounded-lg border border-green-200"
                     >
-                      <span className="text-2xl">
+                      <span className="text-xl sm:text-2xl flex-shrink-0">
                         {programData?.icon || "✓"}
                       </span>
-                      <span className="text-gray-800 font-medium">
+                      <span className="text-sm sm:text-base text-gray-800 font-medium break-words">
                         {program}
                       </span>
                     </div>
@@ -290,17 +290,17 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           </div>
 
           {/* Footer */}
-          <div className="p-6 bg-gray-50 rounded-b-2xl">
-            <div className="flex gap-3">
+          <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
+            <div className="flex gap-2 sm:gap-3">
               <button
                 onClick={onClose}
-                className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors"
+                className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors"
               >
                 Close
               </button>
               <button
                 onClick={() => setIsEditMode(true)}
-                className="flex-1 bg-gradient-to-r from-green-400 to-green-400 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all"
+                className="flex-1 bg-gradient-to-r from-green-400 to-green-400 text-white py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:shadow-lg transition-all"
               >
                 Edit
               </button>
@@ -313,20 +313,20 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
   // Show enrollment form (new enrollment or edit mode)
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4 overflow-y-auto">
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full my-8"
+        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-8"
       >
         {/* Header */}
-        <div className="bg-gradient-to-r from-green-400 to-green-400 p-6 rounded-t-2xl">
+        <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
           <div className="flex justify-between items-center">
-            <div>
-              <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-lg sm:text-2xl font-bold text-white flex items-center gap-2">
                 🎓 {isEditMode ? "Edit Enrollment" : "Wellness University"}
               </h2>
-              <p className="text-white text-sm mt-1">
+              <p className="text-white text-xs sm:text-sm mt-1">
                 {isEditMode
                   ? "Update your selected programs"
                   : "Select programs you're interested in"}
@@ -360,26 +360,26 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         </div>
 
         {/* Form Content */}
-        <div className="p-6 max-h-[60vh] overflow-y-auto">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1">
           {/* User Info */}
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+          <div className="bg-gray-50 rounded-lg p-3 sm:p-4 mb-4 sm:mb-6">
             <div className="flex items-center gap-2 mb-2">
-              <span className="text-sm text-gray-600 font-semibold">Name:</span>
-              <span className="text-gray-800">
+              <span className="text-xs sm:text-sm text-gray-600 font-semibold">Name:</span>
+              <span className="text-xs sm:text-sm text-gray-800 break-words">
                 {user?.displayName || user?.email?.split("@")[0]}
               </span>
             </div>
             {coachName && (
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-sm text-gray-600 font-semibold">
+                <span className="text-xs sm:text-sm text-gray-600 font-semibold">
                   Invited By:
                 </span>
-                <span className="text-gray-800">{coachName}</span>
+                <span className="text-xs sm:text-sm text-gray-800 break-words">{coachName}</span>
               </div>
             )}
             <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600 font-semibold">Date:</span>
-              <span className="text-gray-800">
+              <span className="text-xs sm:text-sm text-gray-600 font-semibold">Date:</span>
+              <span className="text-xs sm:text-sm text-gray-800">
                 {new Date().toLocaleDateString("en-US", {
                   year: "numeric",
                   month: "long",
@@ -390,22 +390,22 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
           </div>
 
           {/* Programs Grid */}
-          <div className="space-y-3">
-            <h3 className="text-lg font-semibold text-gray-800 mb-3">
+          <div className="space-y-2 sm:space-y-3">
+            <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">
               I would like more information about:
             </h3>
             {PROGRAMS.map((program) => (
               <div
                 key={program.id}
                 onClick={() => handleProgramToggle(program.name)}
-                className={`flex items-center gap-4 p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                className={`flex items-center gap-2 sm:gap-4 p-3 sm:p-4 rounded-xl border-2 cursor-pointer transition-all ${
                   selectedPrograms.includes(program.name)
                     ? "border-green-400 bg-gradient-to-r from-green-50 to-teal-50 shadow-md"
                     : "border-gray-200 hover:border-green-300 hover:bg-gray-50"
                 }`}
               >
                 <div
-                  className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${
+                  className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md border-2 flex items-center justify-center flex-shrink-0 transition-all ${
                     selectedPrograms.includes(program.name)
                       ? "border-green-500 bg-green-500"
                       : "border-gray-300"
@@ -413,7 +413,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                 >
                   {selectedPrograms.includes(program.name) && (
                     <svg
-                      className="w-4 h-4 text-white"
+                      className="w-3 h-3 sm:w-4 sm:h-4 text-white"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -427,13 +427,13 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                     </svg>
                   )}
                 </div>
-                <span className="text-2xl">{program.icon}</span>
-                <div className="flex-1">
-                  <div className="text-gray-800 font-medium">
+                <span className="text-xl sm:text-2xl flex-shrink-0">{program.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm sm:text-base text-gray-800 font-medium break-words">
                     {program.name}
                   </div>
                   {program.description && (
-                    <div className="text-xs text-gray-500 mt-0.5">
+                    <div className="text-xs text-gray-500 mt-0.5 break-words">
                       {program.description}
                     </div>
                   )}
@@ -470,8 +470,8 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         </div>
 
         {/* Footer */}
-        <div className="p-6 bg-gray-50 rounded-b-2xl">
-          <div className="flex gap-3">
+        <div className="p-4 sm:p-6 bg-gray-50 rounded-b-2xl flex-shrink-0">
+          <div className="flex gap-2 sm:gap-3">
             <button
               onClick={() => {
                 if (isEditMode) {
@@ -481,14 +481,14 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                 }
               }}
               disabled={loading}
-              className="flex-1 bg-gray-200 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
+              className="flex-1 bg-gray-200 text-gray-700 py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:bg-gray-300 transition-colors disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
               disabled={loading || selectedPrograms.length === 0}
-              className="flex-1 bg-gradient-to-r from-green-400 to-teal-400 text-white py-3 rounded-xl font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 bg-gradient-to-r from-green-400 to-teal-400 text-white py-2.5 sm:py-3 rounded-xl text-sm sm:text-base font-semibold hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {loading ? (
                 <span className="flex items-center justify-center gap-2">

@@ -1358,14 +1358,12 @@ function WellnessValleyApp() {
         clientTimezoneOffset: new Date().getTimezoneOffset(),
       };
 
-      // If we already saved a weight entry today, always update that exact row
-      if (savedWeightIdRef.current) {
-        payload.entryId = savedWeightIdRef.current;
-        console.log(
-          "🔄 Reusing existing weight entry ID:",
-          savedWeightIdRef.current,
-        );
-      }
+      // ❌ REMOVED: Don't reuse weight entry IDs - always create new records
+      // This allows multiple weight entries per day with different timestamps
+      // if (savedWeightIdRef.current) {
+      //   payload.entryId = savedWeightIdRef.current;
+      //   console.log("🔄 Reusing existing weight entry ID:", savedWeightIdRef.current);
+      // }
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
@@ -1431,9 +1429,8 @@ function WellnessValleyApp() {
       let userId = user?.id;
       if (!userId) userId = await getUserId(user);
 
-      // Build payload — always include entryId if we have it so the backend
-      // updates that exact row; otherwise the backend looks up today's entry
-      // and updates it (upsert-by-date). No new rows are ever created.
+      // Build payload — include entryId to update the specific weight entry.
+      // If no entryId, backend will create a new entry instead of updating.
       const payload = {
         userId,
         weightValue: val,
@@ -1467,10 +1464,12 @@ function WellnessValleyApp() {
         );
         const diffData = await diffRes.json();
         if (diffData.success && diffData.stats?.previousWeight) {
+          const prevWeight = parseFloat(diffData.stats.previousWeight.value);
+          const weightChange = val - prevWeight;
           setWeightDiff({
-            previous: parseFloat(diffData.stats.previousWeight.value),
+            previous: Math.round(prevWeight * 10) / 10,
             previousDate: diffData.stats.previousWeight.date,
-            change: val - parseFloat(diffData.stats.previousWeight.value),
+            change: Math.round(weightChange * 10) / 10,
           });
         }
       } catch (_) {
@@ -2178,9 +2177,9 @@ function WellnessValleyApp() {
             if (diffData.success && diffData.stats?.previousWeight) {
               const weightChange = parseFloat(diffData.stats.weightChange);
               setWeightDiff({
-                previous: parseFloat(diffData.stats.previousWeight.value),
+                previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
                 previousDate: diffData.stats.previousWeight.date,
-                change: weightChange,
+                change: Math.round(weightChange * 10) / 10,
               });
               // ✅ Immediately inject into leaderboard strip — no API wait needed
               if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
