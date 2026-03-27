@@ -50,6 +50,7 @@
 
 import { getSupabaseClient }               from '../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy }    from '../../utils/disciplineCalculationsSupabase.js';
+import { isExemptedBeverageOnly }          from '../../utils/foodTypeDetection.js';
 import {
   parseDateRangeIST,
   formatDateIST,
@@ -252,7 +253,7 @@ export default async function handler(req, res) {
       // Food / nutrition records – UserID is stored as a string in this table
       supabase
         .from('food_nutrition_data_table')
-        .select('UserID, CreatedAt')
+        .select('UserID, CreatedAt, AnalysisData')
         .in('UserID', targetUserIds.map(String))
         .gte('CreatedAt', startStr)
         .lte('CreatedAt', endStr + 'T23:59:59')
@@ -305,6 +306,8 @@ export default async function handler(req, res) {
 
     for (const r of (foodResult.data || [])) {
       // food_nutrition_data_table stores UserID as a string
+      // Skip water-only / beverage-only entries (e.g. water, coffee, tea)
+      if (isExemptedBeverageOnly(r.AnalysisData)) continue;
       const uid = parseInt(r.UserID, 10);
       if (!foodByUser.has(uid)) foodByUser.set(uid, []);
       foodByUser.get(uid).push({ CreatedAt: r.CreatedAt });
@@ -337,10 +340,10 @@ export default async function handler(req, res) {
           weightDateMap.get(date)    || [], windows.weight,
         );
         const b = pickEarliestRecordPerActivity(
-          foodDateMap.get(date)      || [], windows.breakfast,
+          foodDateMap.get(date)      || [], windows.breakfast, windows.lunch.start,
         );
         const l = pickEarliestRecordPerActivity(
-          foodDateMap.get(date)      || [], windows.lunch,
+          foodDateMap.get(date)      || [], windows.lunch, windows.dinner.start,
         );
         const d = pickEarliestRecordPerActivity(
           foodDateMap.get(date)      || [], windows.dinner,

@@ -207,12 +207,8 @@ function WellnessValleyApp() {
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Discipline report state (for coaches) - with localStorage persistence
-  const [showDisciplineReport, setShowDisciplineReport] = useState(
-    localStorage.getItem("currentPage") === "discipline-report",
-  );
-  const [showActivityTimeReport, setShowActivityTimeReport] = useState(
-    localStorage.getItem("currentPage") === "activity-time-report",
-  );
+  const [showDisciplineReport, setShowDisciplineReport] = useState(false);
+  const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
   // Step Counter state
   const showStepCounterPage = useCallback(() => {
