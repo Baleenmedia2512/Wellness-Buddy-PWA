@@ -131,15 +131,15 @@ export function buildDefaultPreferences(timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.start) {
-      const parsed = parseTimeString(window.start);
+    if (window && window.end) {
+      const parsed = parseTimeString(window.end);
       if (parsed) {
         const reminder = subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET);
         activities[type] = {
           enabled:      true,
           hour:         reminder.hour,
           minute:       reminder.minute,
-          // Store the original window start so the UI can show "15 min before X"
+          // Store the original window end so the UI can show "15 min before X"
           windowStart:  window.start,
           windowEnd:    window.end,
         };
@@ -172,7 +172,7 @@ export function mergePreferencesWithWindows(savedPrefs, timeWindowMap) {
 
   for (const type of ACTIVITY_TYPES) {
     const window = timeWindowMap[type];
-    if (window && window.start) {
+    if (window && window.end) {
       if (merged.activities[type]) {
         // Update window info but keep user's custom time & enabled state
         merged.activities[type] = {
@@ -182,7 +182,7 @@ export function mergePreferencesWithWindows(savedPrefs, timeWindowMap) {
         };
       } else {
         // Activity not in saved prefs — add it with default reminder time
-        const parsed   = parseTimeString(window.start);
+        const parsed   = parseTimeString(window.end);
         const reminder = parsed
           ? subtractMinutes(parsed.hour, parsed.minute, REMINDER_OFFSET)
           : { hour: 7, minute: 0 };

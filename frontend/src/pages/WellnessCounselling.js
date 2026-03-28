@@ -1,6 +1,7 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "../components/common/HierarchicalReportLayout";
@@ -38,10 +39,10 @@ const WellnessCounselling = ({ user, onBack }) => {
     
     console.log('🔍 [WellnessCounselling] Looking up user ID for:', email);
     
-    const response = await fetch(
-      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
-    );
-    const data = await response.json();
+    const response = await CapacitorHttp.get({
+      url: `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
+    });
+    const data = response.data;
     
     console.log('📋 [WellnessCounselling] Lookup response:', data);
     
@@ -80,17 +81,18 @@ const WellnessCounselling = ({ user, onBack }) => {
     try {
       const userId = await getUserId(user.email);
       
-      // Fetch hierarchy data - reusing the same hierarchy API
-      const response = await fetch(
-        `${apiBaseUrl}/api/coach/team-hierarchy?coachId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
-      );
+      // Use new dual coaching hierarchy endpoint that fetches both hierarchy and assessments
+      console.log('📋 [WellnessCounselling] Fetching hierarchical assessments...');
+      const response = await CapacitorHttp.get({
+        url: `${apiBaseUrl}/api/counselling/hierarchical-assessments?userId=${userId}`,
+        headers: { "Cache-Control": "no-cache" }
+      });
       
-      if (!response.ok) {
-        throw new Error(`API returned ${response.status}: ${response.statusText}`);
+      if (response.status !== 200) {
+        throw new Error(`API returned ${response.status}`);
       }
       
-      const result = await response.json();
+      const result = response.data;
       
       console.log('📋 [WellnessCounselling] Full API response:', result);
       
@@ -98,12 +100,30 @@ const WellnessCounselling = ({ user, onBack }) => {
         throw new Error(result.message || "Failed to fetch team data");
       }
       
-      // Check if data exists (could be in result.data or result.hierarchy)
-      const hierarchyData = result.data || result.hierarchy;
+      // Extract hierarchy and assessments from response
+      const hierarchyData = result.data;
+      const assessments = result.assessments || {};
+      
+      console.log('✅ [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
+      console.log('🔍 [WellnessCounselling] Assessment userIds (types):', 
+        Object.keys(assessments).map(k => `${k} (${typeof k})`).join(', '));
+      
+      // IMPORTANT: Ensure assessment keys are numbers to match node.userId
+      const normalizedAssessments = {};
+      Object.keys(assessments).forEach(key => {
+        const numKey = parseInt(key);
+        normalizedAssessments[numKey] = assessments[key];
+      });
+      
+      console.log('🔧 [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
+      
+      // Set assessment data first
+      setAssessmentData(normalizedAssessments);
       
       if (!hierarchyData) {
-        console.error('❌ [WellnessCounselling] API response structure:', Object.keys(result));
-        throw new Error("No team data returned from API");
+        console.warn('⚠️ [WellnessCounselling] No hierarchy data returned');
+        setHierarchyData(null);
+        return;
       }
       
       console.log('📋 [WellnessCounselling] Raw hierarchy data:', hierarchyData);
@@ -118,14 +138,16 @@ const WellnessCounselling = ({ user, onBack }) => {
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
         
-        // Add counselling status to metrics
-        const hasCounselling = assessmentData[node.userId];
-        mapped.metrics = {
-          ...mapped.metrics,
-          hasCounselling: !!hasCounselling,
-          counsellingDate: hasCounselling?.submittedAt,
-          counsellorName: hasCounselling?.counsellorName,
-        };
+        // Metrics already added by backend, but ensure consistency
+        if (!mapped.metrics) {
+          const hasCounselling = normalizedAssessments[node.userId];
+          console.log(`🔍 [WellnessCounselling] Checking userId ${node.userId} (${typeof node.userId}):`, hasCounselling ? 'HAS assessment' : 'NO assessment');
+          mapped.metrics = {
+            hasCounselling: !!hasCounselling,
+            counsellingDate: hasCounselling?.submittedAt,
+            counsellorName: hasCounselling?.counsellorName,
+          };
+        }
         
         if (mapped.teamMembers && mapped.teamMembers.length > 0) {
           mapped.teamMembers = mapped.teamMembers
@@ -144,19 +166,6 @@ const WellnessCounselling = ({ user, onBack }) => {
       console.log('✅ [WellnessCounselling] Mapped hierarchy:', mappedData);
       
       setHierarchyData(mappedData);
-      
-      // Fetch counselling assessments
-      const assessmentsResponse = await fetch(
-        `${apiBaseUrl}/api/counselling/get-assessments?userId=${userId}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
-      );
-      
-      if (assessmentsResponse.ok) {
-        const assessmentsResult = await assessmentsResponse.json();
-        if (assessmentsResult.success) {
-          setAssessmentData(assessmentsResult.data);
-        }
-      }
       
     } catch (err) {
       console.error("Error fetching data:", err);
@@ -272,7 +281,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {counts.self.counselled}/{counts.self.total}
           </span>
           {assessment && assessment.medicationDetails && (
-            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes">📝 Notes</span>
+            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes"></span>
           )}
         </div>
 
@@ -505,15 +514,13 @@ const WellnessCounselling = ({ user, onBack }) => {
         }}
         user={user}
         selectedMember={selectedMember}
-        onSaveSuccess={(data) => {
-          // Update assessment data
-          setAssessmentData(prev => ({
-            ...prev,
-            [data.userId]: data,
-          }));
+        onSaveSuccess={async () => {
+          // Refresh data from API first, THEN close form
+          console.log('💾 [WellnessCounselling] Assessment saved, refreshing data...');
+          await fetchData(true);
+          console.log('✅ [WellnessCounselling] Data refreshed, closing form');
           setIsFormOpen(false);
           setSelectedMember(null);
-          fetchData(true);
         }}
       />
 
@@ -537,13 +544,13 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
   if (!assessment) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+    <div className="fixed inset-0 bg-black bg-opacity-50 z-[60] flex items-center justify-center p-2 sm:p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-4 rounded-t-xl flex items-center justify-between z-10">
-          <div>
-            <h2 className="text-xl font-bold">Assessment Details</h2>
-            <p className="text-sm text-green-100">{member.userName || member.userEmail}</p>
+        <div className="flex-shrink-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold">Assessment Details</h2>
+            <p className="text-xs sm:text-sm text-green-100 truncate">{member.userName || member.userEmail}</p>
           </div>
           <TouchFeedbackButton
             onClick={onClose}
@@ -555,13 +562,13 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Metadata */}
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="grid grid-cols-2 gap-4 text-sm">
+          <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-4 text-xs sm:text-sm">
               <div>
                 <span className="text-gray-500">Counselled by:</span>
-                <span className="ml-2 font-medium">{assessment.counsellorName}</span>
+                <span className="ml-2 font-medium break-words">{assessment.counsellorName}</span>
               </div>
               <div>
                 <span className="text-gray-500">Date:</span>
@@ -575,12 +582,12 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
           {/* Health Problems */}
           {assessment.healthProblems && assessment.healthProblems.length > 0 && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Health Issues</h3>
-              <div className="flex flex-wrap gap-2">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Health Issues</h3>
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {assessment.healthProblems.map((problem, idx) => (
                   <span
                     key={idx}
-                    className="bg-red-50 text-red-700 text-xs px-3 py-1 rounded-full border border-red-200"
+                    className="bg-red-50 text-red-700 text-xs px-2 sm:px-3 py-1 rounded-full border border-red-200"
                   >
                     {problem}
                   </span>
@@ -592,15 +599,15 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
           {/* Eating Habits */}
           {assessment.eatingHabits && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">Eating Habits</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2 sm:mb-3">Eating Habits</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
                 {Object.entries(assessment.eatingHabits).map(([key, value]) => (
                   value && (
-                    <div key={key} className="flex justify-between">
-                      <span className="text-gray-600 capitalize">
+                    <div key={key} className="flex justify-between gap-2">
+                      <span className="text-gray-600 capitalize flex-shrink-0">
                         {key.replace(/([A-Z])/g, ' $1').trim()}:
                       </span>
-                      <span className="font-medium">{value}</span>
+                      <span className="font-medium text-right break-words">{value}</span>
                     </div>
                   )
                 ))}
@@ -611,15 +618,15 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
           {/* Sleep Data */}
           {assessment.sleepData && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Sleep Quality</h3>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex justify-between">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Sleep Quality</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3 text-xs sm:text-sm">
+                <div className="flex justify-between gap-2">
                   <span className="text-gray-600">Quality:</span>
-                  <span className="font-medium">{assessment.sleepData.quality}</span>
+                  <span className="font-medium break-words">{assessment.sleepData.quality}</span>
                 </div>
-                <div className="flex justify-between">
+                <div className="flex justify-between gap-2">
                   <span className="text-gray-600">Duration:</span>
-                  <span className="font-medium">{assessment.sleepData.duration}</span>
+                  <span className="font-medium break-words">{assessment.sleepData.duration}</span>
                 </div>
               </div>
             </div>
@@ -628,8 +635,8 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
           {/* Medication */}
           {assessment.medicationDetails && (
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-2">Medication Details</h3>
-              <p className="text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+              <h3 className="text-xs sm:text-sm font-semibold text-gray-700 mb-2">Medication Details</h3>
+              <p className="text-xs sm:text-sm text-gray-600 bg-gray-50 p-2.5 sm:p-3 rounded-lg break-words">
                 {assessment.medicationDetails}
               </p>
             </div>
@@ -637,10 +644,10 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
         </div>
 
         {/* Footer */}
-        <div className="border-t p-4 flex justify-end">
+        <div className="flex-shrink-0 border-t p-3 sm:p-4 flex justify-end">
           <TouchFeedbackButton
             onClick={onClose}
-            className="px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
+            className="px-4 sm:px-6 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm sm:text-base font-medium transition-colors"
           >
             Close
           </TouchFeedbackButton>
