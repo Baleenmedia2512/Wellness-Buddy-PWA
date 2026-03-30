@@ -26,6 +26,7 @@ const formatTime = (dateString) => {
   });
 };
 
+
 const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
   if (!log) return null;
 
