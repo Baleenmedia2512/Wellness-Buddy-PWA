@@ -253,10 +253,10 @@ export default async function handler(req, res) {
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
-      // Food/nutrition records (include AnalysisData to filter out beverage-only entries)
+      // Food/nutrition records (include AnalysisData to filter out beverage-only entries, TotalCalories for calorie discipline)
       supabase
         .from("food_nutrition_data_table")
-        .select("UserID, CreatedAt, AnalysisData")
+        .select("UserID, CreatedAt, AnalysisData, TotalCalories")
         .in("UserID", allUserIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
@@ -286,23 +286,28 @@ export default async function handler(req, res) {
       console.log('💧 No water records found. Sample food AnalysisData:', (foodData.data || []).concat(waterFoodData.data || [])[0]?.AnalysisData?.substring?.(0, 200));
     }
 
-    // Fetch latest body weight for each user from ANY date (no date restriction)
+    // Fetch latest body weight AND BMR for each user from ANY date (no date restriction)
     // Uses most recent weight ever recorded — no need to upload weight today
     // Falls back to 2500ml ONLY if user has never logged a weight at all
     const DEFAULT_WATER_REQUIRED_ML = 2500;
     const { data: latestWeightRows } = await supabase
       .from('weight_records_table')
-      .select('UserId, Weight, CreatedAt')
+      .select('UserId, Weight, Bmr, CreatedAt')
       .in('UserId', allUserIds)
       .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
       .order('CreatedAt', { ascending: false });
     // Build map: userId → latest body weight kg
     const userBodyWeightMap = {};
+    const userBmrMap = {}; // BMR (calorie target) per userId
     (latestWeightRows || []).forEach(row => {
       const uid = row.UserId;
       if (!(uid in userBodyWeightMap)) {
         const w = parseFloat(row.Weight);
         userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
+      }
+      if (!(uid in userBmrMap)) {
+        const b = parseFloat(row.Bmr);
+        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
       }
     });
     
@@ -574,20 +579,76 @@ export default async function handler(req, res) {
         if (totalMl >= requiredWaterMl) waterDates.add(date);
       });
 
-      // Calories burned: count unique dates where user logged steps/activity
+      // Calories discipline:
+      // If user has a BMR target: net calories (consumed - burned) <= BMR = disciplined
+      // If no BMR target set: fall back to original logic (any step/activity logged = disciplined)
+      const userBmrTarget = userBmrMap[userId] || null;
       const caloriesBurnedDates = new Set();
-      (stepData.data || []).forEach((r) => {
-        if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
-          const date = new Date(r.CreatedAt);
-          const dateStr =
-            date.getFullYear() +
-            "-" +
-            String(date.getMonth() + 1).padStart(2, "0") +
-            "-" +
-            String(date.getDate()).padStart(2, "0");
-          caloriesBurnedDates.add(dateStr);
-        }
-      });
+
+      if (userBmrTarget && userBmrTarget > 0) {
+        // --- BMR-target-aware path ---
+        // Sum calories consumed per date from non-beverage nutrition records (foodData already filtered)
+        const caloriesConsumedByDate = {};
+        (foodData.data || []).forEach((r) => {
+          if (r.UserID == userId) {
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            const cal = parseFloat(r.TotalCalories) || 0;
+            caloriesConsumedByDate[dateStr] = (caloriesConsumedByDate[dateStr] || 0) + cal;
+          }
+        });
+
+        // Sum calories burned per date (keep highest cumulative value per day)
+        const caloriesBurnedByDate = {};
+        (stepData.data || []).forEach((r) => {
+          if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            const burned = parseFloat(r.CaloriesBurned) || 0;
+            if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
+              caloriesBurnedByDate[dateStr] = burned;
+            }
+          }
+        });
+
+        // A day is disciplined if net calories (consumed - burned) <= BMR target
+        const allActivityDates = new Set([
+          ...Object.keys(caloriesConsumedByDate),
+          ...Object.keys(caloriesBurnedByDate),
+        ]);
+        allActivityDates.forEach((dateStr) => {
+          const consumed = caloriesConsumedByDate[dateStr] || 0;
+          const burned   = caloriesBurnedByDate[dateStr]   || 0;
+          const netCalories = consumed - burned;
+          if (netCalories <= userBmrTarget) {
+            caloriesBurnedDates.add(dateStr);
+          }
+        });
+      } else {
+        // --- Fallback: no BMR set — original logic (any step/activity logged = disciplined) ---
+        (stepData.data || []).forEach((r) => {
+          if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            caloriesBurnedDates.add(dateStr);
+          }
+        });
+      }
 
       // 🔍 DEBUG: Log meal data summary for USA users
       if (tzOffset === 300 || tzOffset >= 240) {
