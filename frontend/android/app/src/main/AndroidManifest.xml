@@ -141,6 +141,7 @@
         <service
             android:name=".services.GalleryMonitorService"
             android:exported="false"
+            android:process=":background"
             android:foregroundServiceType="dataSync"
             android:stopWithTask="false" />
 

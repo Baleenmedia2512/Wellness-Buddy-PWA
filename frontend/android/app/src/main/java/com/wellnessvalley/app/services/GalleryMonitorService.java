@@ -613,7 +613,10 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
     // Get current user ID from SharedPreferences and lookup database UserId
     private String getCurrentUserId() {
-        android.content.SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_PRIVATE);
+        // MODE_MULTI_PROCESS forces a re-read from disk each call so the :background
+        // process always sees the latest value written by the main process.
+        @SuppressWarnings("deprecation")
+        android.content.SharedPreferences prefs = getSharedPreferences("WellnessValley", MODE_MULTI_PROCESS);
         String userEmail = prefs.getString("current_user_email", null);
         // Log all stored preferences for debugging
         Log.d(TAG, "🔍 SharedPreferences Debug:");
