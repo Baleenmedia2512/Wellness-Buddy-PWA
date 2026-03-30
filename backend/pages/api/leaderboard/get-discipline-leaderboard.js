@@ -1,5 +1,6 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
+import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
 import {
   parseDateRange,
   calculateDisciplinePercentage,
@@ -160,7 +161,7 @@ export default async function handler(req, res) {
     // Step 5: Fetch all activity data in bulk
     const allUserIds = activeUsers.map((u) => u.UserId);
 
-    const [weightData, educationData, foodData] = await Promise.all([
+    const [weightData, educationData, foodData, stepData] = await Promise.all([
       // Weight records
       supabase
         .from("weight_records_table")
@@ -179,15 +180,46 @@ export default async function handler(req, res) {
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or("IsDeleted.is.null,IsDeleted.eq.0"),
 
-      // Food/nutrition records
+      // Food/nutrition records (include AnalysisData to split meal vs water entries)
       supabase
         .from("food_nutrition_data_table")
-        .select("UserID, CreatedAt")
+        .select("UserID, CreatedAt, AnalysisData")
         .in("UserID", allUserIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or("IsDeleted.is.null,IsDeleted.eq.0"),
+
+      // Step activity records (for Calories Burned discipline)
+      supabase
+        .from("daily_step_activity")
+        .select("UserId, CreatedAt, Steps, CaloriesBurned")
+        .in("UserId", allUserIds)
+        .gte("CreatedAt", startDateStr)
+        .lte("CreatedAt", endDateStr + "T23:59:59"),
     ]);
+
+    // Separate water (beverage-only) from meal food records
+    const waterFoodRecords = (foodData.data || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
+    const mealFoodRecords = (foodData.data || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
+
+    // Fetch latest body weight per user from ANY date (no date restriction)
+    // Uses most recent weight ever recorded — no need to upload weight today
+    // Falls back to 2500ml ONLY if user has never logged a weight at all
+    const DEFAULT_WATER_REQUIRED_ML = 2500;
+    const { data: latestWeightRows } = await supabase
+      .from('weight_records_table')
+      .select('UserId, Weight, CreatedAt')
+      .in('UserId', allUserIds)
+      .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+      .order('CreatedAt', { ascending: false });
+    const userBodyWeightMap = {};
+    (latestWeightRows || []).forEach(row => {
+      const uid = row.UserId;
+      if (!(uid in userBodyWeightMap)) {
+        const w = parseFloat(row.Weight);
+        userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
+      }
+    });
 
     // Helper to check if time is within window
     // ✅ TIMEZONE FIX: Database stores in IST, but check against user's local time
@@ -228,7 +260,7 @@ export default async function handler(req, res) {
       const educationDays = getUniqueDates(educationData.data, userId);
 
       // Count on-time meals
-      const userFoodRecords = (foodData.data || []).filter(
+      const userFoodRecords = mealFoodRecords.filter(
         (r) => r.UserID === userId || r.UserID === String(userId),
       );
 
@@ -268,14 +300,55 @@ export default async function handler(req, res) {
         }
       });
 
+      // Water intake: quantity-based — sum volume_ml per date, achieved only if >= requiredWaterMl
+      // requiredWaterMl = (latestBodyWeightKg / 20) * 1000, uses most recent weight from ANY date
+      // Falls back to 2500ml ONLY if user has never logged a weight at all
+      const userBodyWeight = userBodyWeightMap[userId] || null;
+      const requiredWaterMl = userBodyWeight
+        ? Math.round((userBodyWeight / 20) * 1000)
+        : DEFAULT_WATER_REQUIRED_ML;
+      const waterVolumeByDate = {};
+      waterFoodRecords
+        .filter((r) => r.UserID === userId || r.UserID === String(userId))
+        .forEach((r) => {
+          const dateStr = formatDateForMySQL(new Date(r.CreatedAt));
+          if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
+          try {
+            const analysisData = typeof r.AnalysisData === 'string'
+              ? JSON.parse(r.AnalysisData)
+              : r.AnalysisData;
+            (analysisData?.foods || []).forEach(food => {
+              if (isExemptedFood(food.name)) {
+                // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
+                const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
+                waterVolumeByDate[dateStr] += ml;
+              }
+            });
+          } catch (e) { /* skip malformed */ }
+        });
+      const waterDays = new Set();
+      Object.entries(waterVolumeByDate).forEach(([date, totalMl]) => {
+        if (totalMl >= requiredWaterMl) waterDays.add(date);
+      });
+
+      // Calories burned: count unique dates where user logged steps/activity
+      const caloriesBurnedDays = new Set();
+      (stepData.data || [])
+        .filter((r) => r.UserId === userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0))
+        .forEach((r) => {
+          caloriesBurnedDays.add(formatDateForMySQL(new Date(r.CreatedAt)));
+        });
+
       // Calculate total on-time posts
       const onTimePosts =
         weightDays +
         educationDays +
         breakfastDays.size +
         lunchDays.size +
-        dinnerDays.size;
-      const expectedPosts = daysInPeriod * 5; // 5 activities per day
+        dinnerDays.size +
+        waterDays.size +
+        caloriesBurnedDays.size;
+      const expectedPosts = daysInPeriod * 7; // 7 activities per day
       const disciplinePercentage = calculateDisciplinePercentage(
         onTimePosts,
         expectedPosts,
@@ -296,6 +369,8 @@ export default async function handler(req, res) {
           breakfast: breakfastDays.size,
           lunch: lunchDays.size,
           dinner: dinnerDays.size,
+          water: waterDays.size,
+          caloriesBurned: caloriesBurnedDays.size,
         },
       });
     }

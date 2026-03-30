@@ -76,7 +76,7 @@ export function parseDateRange(range, customStart, customEnd) {
 export function calculateExpectedPosts(startDate, endDate) {
   const oneDay = 24 * 60 * 60 * 1000;
   const days = Math.round(Math.abs((endDate - startDate) / oneDay)) + 1;
-  const activitiesPerDay = 5; // Weight, Education, Breakfast, Lunch, Dinner
+  const activitiesPerDay = 7; // Weight, Education, Breakfast, Lunch, Dinner, Water Intake, Calories Burned
   return days * activitiesPerDay;
 }
 

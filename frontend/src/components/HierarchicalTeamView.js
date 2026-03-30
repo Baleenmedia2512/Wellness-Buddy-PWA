@@ -12,6 +12,8 @@ import {
   Coffee,
   Utensils,
   Moon,
+  Droplets,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -128,6 +130,8 @@ const TeamNode = ({
     breakfast: <Coffee className="w-4 h-4" />,
     lunch: <Utensils className="w-4 h-4" />,
     dinner: <Moon className="w-4 h-4" />,
+    water: <Droplets className="w-4 h-4" />,
+    caloriesBurned: <Flame className="w-4 h-4" />,
   };
 
   const getScoreColorText = (score) => {

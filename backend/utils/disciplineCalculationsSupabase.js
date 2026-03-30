@@ -7,7 +7,10 @@ import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
-import { isExemptedBeverageOnly } from './foodTypeDetection.js';
+import { isExemptedBeverageOnly, isExemptedFood } from './foodTypeDetection.js';
+
+// Default required water when no weight is recorded (2.5 L)
+const DEFAULT_WATER_REQUIRED_ML = 2500;
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
@@ -166,7 +169,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
   
-  // Get weight records
+  // Get weight records (discipline check: logged weight today)
   const { data: weightRecords } = await supabase
     .from('weight_records_table')
     .select('"CreatedAt"')
@@ -174,6 +177,23 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .eq('"IsDeleted"', false)
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+
+  // Get user's latest body weight from ANY date (no date restriction)
+  // Uses most recent weight ever recorded — no need to upload weight today
+  // Falls back to DEFAULT_WATER_REQUIRED_ML (2500ml) ONLY if zero weight records exist
+  const { data: latestWeightRows } = await supabase
+    .from('weight_records_table')
+    .select('UserId, Weight')
+    .eq('UserId', userId)
+    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+    .order('CreatedAt', { ascending: false })
+    .limit(1);
+  const latestBodyWeight = latestWeightRows && latestWeightRows.length > 0
+    ? parseFloat(latestWeightRows[0].Weight)
+    : null;
+  const requiredWaterMl = (latestBodyWeight && latestBodyWeight > 0)
+    ? Math.round((latestBodyWeight / 20) * 1000)
+    : DEFAULT_WATER_REQUIRED_ML;
   
   // Get education logs
   const { data: educationLogs } = await supabase
@@ -195,6 +215,17 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   
   // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh etc.)
   const nutritionRecords = (nutritionRecordsRaw || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
+
+  // Get water intake records (food entries that are ONLY water/exempted beverages — opposite filter)
+  const waterRecords = (nutritionRecordsRaw || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
+
+  // Get calories burned records (daily step activity - any day with a step entry counts)
+  const { data: stepRecords } = await supabase
+    .from('daily_step_activity')
+    .select('"CreatedAt", "Steps", "CaloriesBurned"')
+    .eq('"UserId"', userId)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
   
   // Helper to check Database stores in IST, but check against user's local time
   // Converts IST timestamp to user's local timezone before checking
@@ -288,7 +319,47 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     mealStats.lunch = { totalDays: mealDates.lunch.size, onTimeDays: mealDates.lunch.size };
     mealStats.dinner = { totalDays: mealDates.dinner.size, onTimeDays: mealDates.dinner.size };
   }
-  
+
+  // Calculate water intake discipline (quantity-based: total volume_ml must meet requiredWaterMl)
+  // requiredWaterMl = (latestBodyWeightKg / 20) * 1000 — uses most recent weight from ANY date
+  // Falls back to 2500ml ONLY if user has never logged a weight at all
+  const waterDates = new Set();
+  // Group water volume by date
+  const waterVolumeByDate = {};
+  (waterRecords || []).forEach(r => {
+    const normalizedDate = normalizeTimestamp(r.CreatedAt);
+    const date = normalizedDate.split('T')[0];
+    if (!waterVolumeByDate[date]) waterVolumeByDate[date] = 0;
+    try {
+      const analysisData = typeof r.AnalysisData === 'string'
+        ? JSON.parse(r.AnalysisData)
+        : r.AnalysisData;
+      (analysisData?.foods || []).forEach(food => {
+        if (isExemptedFood(food.name)) {
+          // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
+          const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
+          waterVolumeByDate[date] += ml;
+        }
+      });
+    } catch (e) { /* skip malformed records */ }
+  });
+  // A day counts only if total water ml >= required
+  Object.entries(waterVolumeByDate).forEach(([date, totalMl]) => {
+    if (totalMl >= requiredWaterMl) waterDates.add(date);
+  });
+  const waterStats = { totalDays: waterDates.size, onTimeDays: waterDates.size };
+
+  // Calculate calories burned discipline (days where user logged steps/activity)
+  const caloriesBurnedDates = new Set();
+  (stepRecords || []).forEach(r => {
+    if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
+      const normalizedDate = normalizeTimestamp(r.CreatedAt);
+      const date = normalizedDate.split('T')[0];
+      caloriesBurnedDates.add(date);
+    }
+  });
+  const caloriesBurnedStats = { totalDays: caloriesBurnedDates.size, onTimeDays: caloriesBurnedDates.size };
+
   return {
     weight: {
       totalPosts: weightStats.totalDays,
@@ -313,6 +384,16 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     dinner: {
       totalPosts: mealStats.dinner.totalDays,
       onTimePosts: mealStats.dinner.onTimeDays,
+      expectedPosts: daysInPeriod
+    },
+    water: {
+      totalPosts: waterStats.totalDays,
+      onTimePosts: waterStats.onTimeDays,
+      expectedPosts: daysInPeriod
+    },
+    caloriesBurned: {
+      totalPosts: caloriesBurnedStats.totalDays,
+      onTimePosts: caloriesBurnedStats.onTimeDays,
       expectedPosts: daysInPeriod
     }
   };
