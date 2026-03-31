@@ -16,7 +16,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
-// xlsx removed — export uses built-in CSV (no external dependency)
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -132,88 +131,6 @@ function computeUserScore(entry) {
     });
   });
   return count > 0 ? Math.round(total / count) : 0;
-}
-
-// ── Dummy preview data ───────────────────────────────────────────────────────
-// Set USE_DUMMY_DATA = false (or delete this block) to restore real API data
-const USE_DUMMY_DATA = true;
-
-function getDummyEntries() {
-  const today = new Date().toISOString().slice(0, 10);
-  const d = (acts) => ({ date: today, activities: acts });
-  const a = (time, status) => ({ time, status });
-  return [
-    // ── Level 0: You (root coach) ──────────────────────────────────────────
-    {
-      userId: 501, name: "Ravi Kumar (You)", email: "ravi@demo.com", role: "coach",
-      coachId: null,
-      averageTimes:    { weight: "07:10", breakfast: "08:05", lunch: "13:00", dinner: "19:30", education: "09:15" },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a("07:10","on-time"), breakfast: a("08:05","on-time"), lunch: a("13:00","on-time"), dinner: a("19:30","on-time"), education: a("09:15","on-time") })],
-    },
-
-    // ── Level 1: Your direct reports (sub-coaches + members) ───────────────
-    {
-      userId: 502, name: "Priya Menon (Sub-Coach)", email: "priya@demo.com", role: "coach",
-      coachId: 501,
-      averageTimes:    { weight: "07:45", breakfast: "09:30", lunch: "13:50", dinner: "20:30", education: null     },
-      consistentlyLate:{ weight: false,   breakfast: true,    lunch: false,   dinner: true,    education: false   },
-      days: [d({ weight: a("07:45","on-time"), breakfast: a("09:30","late"),    lunch: a("13:50","late"),    dinner: a("20:30","late"),    education: a(null,"missed")   })],
-    },
-    {
-      userId: 503, name: "Arjun Singh (Sub-Coach)", email: "arjun@demo.com", role: "coach",
-      coachId: 501,
-      averageTimes:    { weight: null,    breakfast: "08:20", lunch: null,    dinner: "19:10", education: "10:00" },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a(null,"missed"),   breakfast: a("08:20","on-time"), lunch: a(null,"missed"),   dinner: a("19:10","on-time"), education: a("10:00","on-time") })],
-    },
-    {
-      userId: 504, name: "Meena Iyer", email: "meena@demo.com", role: "member",
-      coachId: 501,
-      averageTimes:    { weight: "06:55", breakfast: null,    lunch: "14:20", dinner: null,    education: null    },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: true,    dinner: false,   education: false   },
-      days: [d({ weight: a("06:55","on-time"), breakfast: a(null,"missed"),   lunch: a("14:20","late"),    dinner: a(null,"missed"),   education: a(null,"missed")   })],
-    },
-
-    // ── Level 2: Priya's team (visible only in Full view) ──────────────────
-    {
-      userId: 511, name: "Sunita Rao", email: "sunita@demo.com", role: "member",
-      coachId: 502,
-      averageTimes:    { weight: "07:00", breakfast: "08:10", lunch: "13:10", dinner: "19:45", education: "09:30" },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a("07:00","on-time"), breakfast: a("08:10","on-time"), lunch: a("13:10","on-time"), dinner: a("19:45","on-time"), education: a("09:30","on-time") })],
-    },
-    {
-      userId: 512, name: "Deepak Verma", email: "deepak@demo.com", role: "member",
-      coachId: 502,
-      averageTimes:    { weight: null,    breakfast: "10:00", lunch: "15:00", dinner: null,    education: null    },
-      consistentlyLate:{ weight: false,   breakfast: true,    lunch: true,    dinner: false,   education: false   },
-      days: [d({ weight: a(null,"missed"),   breakfast: a("10:00","late"),    lunch: a("15:00","late"),    dinner: a(null,"missed"),   education: a(null,"missed")   })],
-    },
-    {
-      userId: 513, name: "Anjali Das", email: "anjali@demo.com", role: "member",
-      coachId: 502,
-      averageTimes:    { weight: "07:30", breakfast: null,    lunch: "13:20", dinner: "20:00", education: "10:15" },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a("07:30","on-time"), breakfast: a(null,"missed"),   lunch: a("13:20","on-time"), dinner: a("20:00","late"),    education: a("10:15","on-time") })],
-    },
-
-    // ── Level 2: Arjun's team (visible only in Full view) ──────────────────
-    {
-      userId: 521, name: "Lakshmi Nair", email: "lakshmi@demo.com", role: "member",
-      coachId: 503,
-      averageTimes:    { weight: "08:00", breakfast: "08:30", lunch: null,    dinner: "19:20", education: null    },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a("08:00","late"),    breakfast: a("08:30","on-time"), lunch: a(null,"missed"),   dinner: a("19:20","on-time"), education: a(null,"missed")   })],
-    },
-    {
-      userId: 522, name: "Ramesh Pillai", email: "ramesh@demo.com", role: "member",
-      coachId: 503,
-      averageTimes:    { weight: null,    breakfast: null,    lunch: null,    dinner: null,    education: null    },
-      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
-      days: [d({ weight: a(null,"missed"),   breakfast: a(null,"missed"),   lunch: a(null,"missed"),   dinner: a(null,"missed"),   education: a(null,"missed")   })],
-    },
-  ];
 }
 
 /**
@@ -450,7 +367,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [teamView, setTeamView] = useState("direct");
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
@@ -470,36 +386,27 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       setError("");
 
       try {
-        // ── DUMMY OVERRIDE — remove when done previewing ───────────────────
-        let flat;
-        let hierarchyRes = null;
-        if (USE_DUMMY_DATA) {
-          flat = getDummyEntries();
-        } else {
-          const params = new URLSearchParams({
-            userId: String(user.id),
-            role: mapRoleForApi(userRole),
-            dateRange: mapUiRangeToApiRange(dateRange),
-            userTimezoneOffset: String(timezoneOffset),
-          });
-          if (dateRange === "custom") {
-            params.set("startDate", formatDateForApi(customStartDate));
-            params.set("endDate", formatDateForApi(customEndDate));
-          }
-
-          const [hRes, reportRes] = await Promise.all([
-            teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
-            fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
-          ]);
-          hierarchyRes = hRes;
-
-          const reportJson = await reportRes.json();
-          if (!reportRes.ok || !reportJson?.success) {
-            throw new Error(reportJson?.message || "Failed to fetch time report");
-          }
-          flat = Array.isArray(reportJson.data) ? reportJson.data : [];
+        const params = new URLSearchParams({
+          userId: String(user.id),
+          role: mapRoleForApi(userRole),
+          dateRange: mapUiRangeToApiRange(dateRange),
+          userTimezoneOffset: String(timezoneOffset),
+        });
+        if (dateRange === "custom") {
+          params.set("startDate", formatDateForApi(customStartDate));
+          params.set("endDate", formatDateForApi(customEndDate));
         }
-        // ── end dummy override ───────────────────────────────────────────────
+
+        const [hierarchyRes, reportRes] = await Promise.all([
+          teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
+          fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
+        ]);
+
+        const reportJson = await reportRes.json();
+        if (!reportRes.ok || !reportJson?.success) {
+          throw new Error(reportJson?.message || "Failed to fetch time report");
+        }
+        const flat = Array.isArray(reportJson.data) ? reportJson.data : [];
 
         setFlatData(flat);
 
@@ -824,140 +731,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     return sorted;
   }, [activityRowSortBy, activityRowSortOrder]);
 
-  // ── Excel export with sorted daily activity data ───────────────────────────
-
-  const handleExcelDownload = useCallback(async () => {
-    if (!flatData || flatData.length === 0) return;
-
-    try {
-      const workbook = XLSX.utils.book_new();
-
-      // Create one sheet per user with their daily activity data
-      flatData.forEach((entry) => {
-        const userName = entry.name || "User";
-        const sheetName = String(userName).slice(0, 31); // Excel max sheet name = 31 chars
-
-        // Get sorted daily activities
-        const sortedActivities = getSortedDailyActivities(entry);
-
-        if (sortedActivities.length === 0) return;
-
-        // Build sheet data
-        const sheetData = [
-          ["Activity Time Report - " + userName],
-          ["Email:", entry.email],
-          ["Role:", entry.role],
-          [],
-          ["Date", "Activity", "Time", "Status"],
-          ...sortedActivities.map((row) => [
-            row.date,
-            row.label,
-            row.time ? fmt12(row.time) : "—",
-            row.status === "on-time" ? "On-time" : row.status === "late" ? "Late" : "Missed",
-          ]),
-        ];
-
-        const sheet = XLSX.utils.aoa_to_sheet(sheetData);
-
-        // Style the sheet
-        sheet["!cols"] = [
-          { wch: 12 }, // Date
-          { wch: 15 }, // Activity
-          { wch: 12 }, // Time
-          { wch: 12 }, // Status
-        ];
-
-        XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
-      });
-
-      // Create summary sheet
-      const summaryData = [
-        ["Activity Time Report Summary"],
-        ["Date Range:", dateRange.toUpperCase()],
-        ["Total Members:", flatData.length],
-        ["Generated:", new Date().toLocaleString()],
-        [],
-        ["Member", "Email", "Role", "Avg Weight Time", "Avg Breakfast Time", "Avg Lunch Time", "Avg Dinner Time", "Avg Education Time"],
-        ...flatData.map((entry) => [
-          entry.name,
-          entry.email,
-          entry.role,
-          fmt12(entry.averageTimes?.weight) || "—",
-          fmt12(entry.averageTimes?.breakfast) || "—",
-          fmt12(entry.averageTimes?.lunch) || "—",
-          fmt12(entry.averageTimes?.dinner) || "—",
-          fmt12(entry.averageTimes?.education) || "—",
-        ]),
-      ];
-
-      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-      summarySheet["!cols"] = [
-        { wch: 20 },
-        { wch: 20 },
-        { wch: 10 },
-        { wch: 16 },
-        { wch: 18 },
-        { wch: 14 },
-        { wch: 14 },
-        { wch: 18 },
-      ];
-
-      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary", 0);
-
-      // Download
-      const fileDate = formatDateForFile(new Date());
-      const fileName = `activity-time-report-${dateRange}-${fileDate}.xlsx`;
-
-      XLSX.writeFile(workbook, fileName);
-      setShowDownloadOptions(false);
-    } catch (err) {
-      console.error("Excel download failed:", err);
-      alert("Unable to download Excel right now. Please try again.");
-    }
-  }, [flatData, dateRange, getSortedDailyActivities]);
-
-  const getMergedExportRows = useCallback(() => {
-    const viewsToExport = ["direct", "full"];
-
-    const passes = (node) => matchesFilter(node) && matchesSearch(node, searchQuery);
-
-    const collectRows = (node) => {
-      const descendants = (node.teamMembers || []).flatMap(collectRows);
-      if (!passes(node) && descendants.length === 0) return [];
-
-      const entry = node.__timeData || {};
-      const row = {
-        memberName: node.userName || node.name || "-",
-        email: node.email || "-",
-        role: node.role || "-",
-        averageWeightTime: fmt12(entry.averageTimes?.weight) || "-",
-        averageBreakfastTime: fmt12(entry.averageTimes?.breakfast) || "-",
-        averageLunchTime: fmt12(entry.averageTimes?.lunch) || "-",
-        averageDinnerTime: fmt12(entry.averageTimes?.dinner) || "-",
-        averageEducationTime: fmt12(entry.averageTimes?.education) || "-",
-      };
-
-      return [row, ...descendants];
-    };
-
-    const mergedRows = [];
-    viewsToExport.forEach((view) => {
-      const sourceRoot = buildHierarchyForView(view);
-      if (!sourceRoot) return;
-
-      const rows = collectRows(sourceRoot);
-      if (rows.length === 0) return;
-      rows.forEach((row) => {
-        mergedRows.push({
-          reportView: view === "direct" ? "Direct" : "Full",
-          ...row,
-        });
-      });
-    });
-
-    return mergedRows;
-  }, [buildHierarchyForView, matchesFilter, matchesSearch, searchQuery]);
-
   const handleCsvDownload = useCallback(async () => {
     if (!filteredHierarchy || !filteredHierarchy.__timeData) return;
 
@@ -1047,7 +820,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           mimeType: "text/csv;charset=utf-8;",
           title: "Activity Time Report (CSV)",
         });
-        setShowDownloadOptions(false);
       } catch (err) {
         console.error("CSV download/share failed:", err);
         alert("Unable to download CSV right now. Please try again.");
@@ -1058,106 +830,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     }
   }, [filteredHierarchy, teamView, filter, dateRange, getSortedDailyActivities, activityRowSortBy, activityRowSortOrder, saveOrShareFile, matchesFilter, matchesSearch, searchQuery]);
 
-  const handlePdfDownload = useCallback(async () => {
-    const mergedRows = getMergedExportRows();
-    if (mergedRows.length === 0) return;
-
-    const now = new Date();
-    const generatedAt = now.toLocaleString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "2-digit",
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
-
-    const tableRows = mergedRows
-      .map(
-        (row) => `
-          <tr>
-            <td>${escapeHtml(row.reportView)}</td>
-            <td>${escapeHtml(row.memberName)}</td>
-            <td>${escapeHtml(row.email)}</td>
-            <td>${escapeHtml(row.role)}</td>
-            <td>${escapeHtml(row.averageWeightTime)}</td>
-            <td>${escapeHtml(row.averageBreakfastTime)}</td>
-            <td>${escapeHtml(row.averageLunchTime)}</td>
-            <td>${escapeHtml(row.averageDinnerTime)}</td>
-            <td>${escapeHtml(row.averageEducationTime)}</td>
-          </tr>
-        `,
-      )
-      .join("");
-
-    const html = `
-      <html>
-        <head>
-          <title>Activity Time Report PDF</title>
-          <style>
-            body { font-family: Arial, sans-serif; margin: 24px; color: #111827; }
-            h1 { margin: 0 0 6px; font-size: 22px; }
-            p.meta { margin: 0 0 18px; color: #4b5563; font-size: 12px; }
-            table { width: 100%; border-collapse: collapse; font-size: 11px; }
-            th, td { border: 1px solid #d1d5db; padding: 6px; text-align: left; }
-            th { background: #f3f4f6; font-weight: 700; }
-            tr:nth-child(even) { background: #f9fafb; }
-            .note { margin-top: 12px; font-size: 11px; color: #6b7280; }
-          </style>
-        </head>
-        <body>
-          <h1>Activity Time Report</h1>
-          <p class="meta">Date Range: ${escapeHtml(dateRange)} | Generated: ${escapeHtml(generatedAt)}</p>
-          <table>
-            <thead>
-              <tr>
-                <th>Report Type</th>
-                <th>Member Name</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Weight Time</th>
-                <th>Breakfast Time</th>
-                <th>Lunch Time</th>
-                <th>Dinner Time</th>
-                <th>Education Time</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tableRows}
-            </tbody>
-          </table>
-          <p class="note">Tip: In the print dialog, choose "Save as PDF".</p>
-        </body>
-      </html>
-    `;
-
-    try {
-      const printWindow = window.open("", "_blank");
-      if (!printWindow) {
-        throw new Error("Print window blocked");
-      }
-      printWindow.document.write(html);
-      printWindow.document.close();
-      printWindow.focus();
-      setTimeout(() => {
-        printWindow.print();
-      }, 350);
-      setShowDownloadOptions(false);
-    } catch (err) {
-      const fileDate = formatDateForFile(new Date());
-      await saveOrShareFile({
-        content: html,
-        fileName: `activity-time-report-${dateRange}-${fileDate}.html`,
-        mimeType: "text/html;charset=utf-8;",
-        title: "Activity Time Report (PDF View)",
-      });
-      alert("Report shared as HTML. Open it and choose Print > Save as PDF.");
-      setShowDownloadOptions(false);
-    }
-  }, [getMergedExportRows, dateRange, saveOrShareFile]);
-
   const handleDownload = () => {
-    setShowDownloadOptions(true);
+    handleCsvDownload();
   };
 
   const handleSettings = () => {
@@ -1301,31 +975,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         userEmail={user?.email}
       />
 
-      {/* Download Options Modal */}
-      {showDownloadOptions && (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-sm rounded-2xl bg-white border border-gray-200 shadow-xl p-4">
-            <h3 className="text-base font-bold text-gray-900">Download Report</h3>
-            <p className="text-xs text-gray-600 mt-1">
-              Downloading {teamView === "direct" ? "Direct" : "Full"} team members {filter !== "all" ? `with ${filter} activities` : "with all activities"} sorted by {activityRowSortBy}.
-            </p>
-            <div className="mt-4 space-y-2">
-              <button
-                onClick={handleCsvDownload}
-                className="w-full rounded-xl bg-green-600 text-white py-2.5 text-sm font-semibold hover:bg-green-700 transition-colors"
-              >
-                📥 Download as CSV
-              </button>
-              <button
-                onClick={() => setShowDownloadOptions(false)}
-                className="w-full rounded-xl border border-gray-300 bg-white text-gray-700 py-2.5 text-sm font-semibold hover:bg-gray-50 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
     </HierarchicalReportLayout>
   );
 }
