@@ -891,6 +891,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
           unit: food.unit || (food.volume_ml ? "ml" : "g"),
           isLiquid: food.isLiquid || false,
+          // 🔴 CRITICAL: Preserve volume_ml for water discipline tracking
+          volume_ml: food.volume_ml || null,
+          weight_g: food.weight_g || null,
           calories: Math.round(food.nutrition.calories || 0),
           protein: Math.round(food.nutrition.protein || 0),
           carbs: Math.round(food.nutrition.carbs || 0),

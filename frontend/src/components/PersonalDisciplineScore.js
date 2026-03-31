@@ -5,11 +5,11 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Scale, BookOpen, Coffee, Utensils, Moon } from "lucide-react";
+import { Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame } from "lucide-react";
 
 /**
  * PersonalDisciplineScore - Displays user's personal discipline breakdown by category
- * Shows WEI (Weight), EDU (Education), BRE (Breakfast), LUN (Lunch), DIN (Dinner)
+ * Shows WEI (Weight), EDU (Education), BRE (Breakfast), LUN (Lunch), DIN (Dinner), WAT (Water), CAL (Calories)
  * Uses coach/discipline-report API and reads from coachPerformance.activities field
  */
 const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
@@ -83,6 +83,8 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           breakfast: activities.breakfast || { percentage: 0 },
           lunch: activities.lunch || { percentage: 0 },
           dinner: activities.dinner || { percentage: 0 },
+          water: activities.water || { percentage: 0 },
+          caloriesBurned: activities.caloriesBurned || { percentage: 0 },
         };
 
         console.log(
@@ -127,6 +129,8 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     breakfast: <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     lunch: <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     dinner: <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
+    water: <Droplets className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
+    caloriesBurned: <Flame className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
   };
 
   // Don't render if loading
@@ -154,7 +158,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           {/* Header - Overall Score Removed */}
 
           {/* Categories Grid */}
-          <div className="grid grid-cols-5 divide-x divide-gray-200">
+          <div className="grid grid-cols-7 divide-x divide-gray-200">
             {Object.entries(categories).map(([key, data]) => (
               <div
                 key={key}
