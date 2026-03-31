@@ -50,7 +50,6 @@
 
 import { getSupabaseClient }               from '../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy }    from '../../utils/disciplineCalculationsSupabase.js';
-import { isExemptedBeverageOnly }          from '../../utils/foodTypeDetection.js';
 import { isExemptedBeverageOnly, isExemptedFood } from '../../utils/foodTypeDetection.js';
 import {
   parseDateRangeIST,
