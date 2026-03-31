@@ -354,16 +354,13 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   const waterStats = { totalDays: waterDates.size, onTimeDays: waterDates.size };
 
   // Calculate calories discipline:
-  // If the user has a BMR target set:
-  //   Net calories = calories consumed (from all non-beverage meals) - calories burned (from steps)
-  //   A day is disciplined ONLY IF net calories <= BMR target
-  //   This also handles smartwatch/app burn: e.g. target 1300, consumed 1500, burned 200 → net 1300 ✅
-  // If no BMR target is set (user never saved a BMR):
-  //   Fall back to the original logic — any day with steps or CaloriesBurned > 0 counts
+  // User MUST have a BMR target set to earn calorie discipline points.
+  // Net calories = calories consumed (meals) - calories burned (steps/activity)
+  // A day is disciplined ONLY IF net calories <= BMR target.
+  // If no BMR is set, calorie discipline = 0 (user must set BMR in their profile).
   const caloriesBurnedDates = new Set();
 
   if (userBmrTarget && userBmrTarget > 0) {
-    // --- BMR-target-aware path ---
     // Sum calories consumed per date from non-beverage nutrition records
     const caloriesConsumedByDate = {};
     (nutritionRecords || []).forEach(r => {
@@ -401,16 +398,8 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
         caloriesBurnedDates.add(date);
       }
     });
-  } else {
-    // --- Fallback: no BMR set — original logic (any step/activity logged = disciplined) ---
-    (stepRecords || []).forEach(r => {
-      if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
-        const normalizedDate = normalizeTimestamp(r.CreatedAt);
-        const date = normalizedDate.split('T')[0];
-        caloriesBurnedDates.add(date);
-      }
-    });
   }
+  // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
 
   const caloriesBurnedStats = { totalDays: caloriesBurnedDates.size, onTimeDays: caloriesBurnedDates.size };
 
