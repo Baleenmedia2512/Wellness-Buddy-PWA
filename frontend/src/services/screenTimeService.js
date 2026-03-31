@@ -6,7 +6,20 @@ import { ScreenTimePlugin } from '../plugins/screenTimePlugin';
  */
 export async function hasScreenTimePermission() {
   const result = await ScreenTimePlugin.hasPermission();
-  return result.granted;
+  return !!result.granted;
+}
+
+/**
+ * Detailed permission status for restricted/unsupported device handling.
+ */
+export async function getScreenTimePermissionStatus() {
+  const result = await ScreenTimePlugin.hasPermission();
+  return {
+    granted: !!result?.granted,
+    restricted: !!result?.restricted,
+    canOpenSettings: result?.canOpenSettings !== false,
+    message: result?.message || null
+  };
 }
 
 /**

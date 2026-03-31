@@ -42,44 +42,23 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const now = getISTTimestamp();
 
-    // Upsert: insert or update if exists for same user+date
-    const { data: existing, error: lookupError } = await supabase
+    // Atomic upsert on (UserId, Date) — prevents duplicate rows from concurrent calls
+    const { data: upserted, error: upsertError } = await supabase
       .from('screen_sessions_table')
-      .select('Id')
-      .eq('UserId', safeUserId)
-      .eq('Date', safeDate)
-      .maybeSingle();
-
-    if (lookupError) throw lookupError;
-
-    let savedRow;
-
-    if (existing) {
-      const { data, error } = await supabase
-        .from('screen_sessions_table')
-        .update({
-          TotalScreenTimeSeconds: safeSeconds,
-          CreatedAt: now
-        })
-        .eq('Id', existing.Id)
-        .select('*')
-        .single();
-      if (error) throw error;
-      savedRow = data;
-    } else {
-      const { data, error } = await supabase
-        .from('screen_sessions_table')
-        .insert({
+      .upsert(
+        {
           UserId: safeUserId,
           Date: safeDate,
           TotalScreenTimeSeconds: safeSeconds,
           CreatedAt: now
-        })
-        .select('*')
-        .single();
-      if (error) throw error;
-      savedRow = data;
-    }
+        },
+        { onConflict: 'UserId,Date', ignoreDuplicates: false }
+      )
+      .select('*')
+      .single();
+
+    if (upsertError) throw upsertError;
+    const savedRow = upserted;
 
     res.status(200).json({
       success: true,

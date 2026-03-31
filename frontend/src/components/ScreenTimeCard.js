@@ -3,6 +3,7 @@ import { Smartphone, RefreshCw, Clock, BarChart3, Shield, ChevronDown, ChevronUp
 import { Capacitor } from '@capacitor/core';
 import {
   hasScreenTimePermission,
+  getScreenTimePermissionStatus,
   requestScreenTimePermission,
   getTodayScreenTime,
   saveScreenTime,
@@ -34,6 +35,7 @@ const ScreenTimeCard = ({ userId }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [showAppBreakdown, setShowAppBreakdown] = useState(false);
   const [error, setError] = useState(null);
+  const [permissionIssue, setPermissionIssue] = useState(null);
 
   const isNative = Capacitor.isNativePlatform();
 
@@ -100,10 +102,11 @@ const ScreenTimeCard = ({ userId }) => {
     }
 
     const checkPermission = async () => {
-      const granted = await hasScreenTimePermission();
-      setPermissionGranted(granted);
+      const status = await getScreenTimePermissionStatus();
+      setPermissionGranted(status.granted);
+      setPermissionIssue(status.granted ? null : (status.message || null));
       setPermissionChecked(true);
-      if (granted) {
+      if (status.granted) {
         await loadData();
       } else {
         setIsLoading(false);
@@ -118,10 +121,13 @@ const ScreenTimeCard = ({ userId }) => {
     if (!isNative) return;
 
     const handleResume = async () => {
-      const granted = await hasScreenTimePermission();
-      if (granted && !permissionGranted) {
+      const status = await getScreenTimePermissionStatus();
+      if (status.granted && !permissionGranted) {
         setPermissionGranted(true);
+        setPermissionIssue(null);
         await loadData();
+      } else if (!status.granted) {
+        setPermissionIssue(status.message || null);
       }
     };
 
@@ -217,7 +223,16 @@ const ScreenTimeCard = ({ userId }) => {
   };
 
   const handleRequestPermission = async () => {
-    await requestScreenTimePermission();
+    const result = await requestScreenTimePermission();
+    if (result?.message) setPermissionIssue(result.message);
+
+    // Some devices return immediately from settings; re-check after a short delay.
+    setTimeout(async () => {
+      const status = await getScreenTimePermissionStatus();
+      setPermissionGranted(status.granted);
+      setPermissionIssue(status.granted ? null : (status.message || permissionIssue));
+      if (status.granted) await loadData();
+    }, 1200);
     // Permission is granted in system settings, check on resume
   };
 
@@ -247,12 +262,20 @@ const ScreenTimeCard = ({ userId }) => {
         <p className="text-sm text-gray-600 mb-3">
           Grant usage access permission to track your daily screen time.
         </p>
+        {permissionIssue && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-3">
+            {permissionIssue}
+          </p>
+        )}
         <button
           onClick={handleRequestPermission}
           className="w-full py-2 px-4 bg-blue-500 text-white text-sm font-medium rounded-xl hover:bg-blue-600 active:bg-blue-700 transition-colors"
         >
-          Grant Permission
+          Open Usage Access Settings
         </button>
+        <p className="text-[11px] text-gray-500 mt-2">
+          If your phone is managed/restricted and does not allow Usage Access, this module cannot read device screen time.
+        </p>
       </div>
     );
   }

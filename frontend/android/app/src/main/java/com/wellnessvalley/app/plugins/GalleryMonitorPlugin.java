@@ -77,6 +77,7 @@ public class GalleryMonitorPlugin extends Plugin {
 
             String userEmail = call.getString("userEmail");
             String cachedDbUserId = call.getString("cachedDbUserId");
+            String apiBaseUrl = call.getString("apiBaseUrl");
 
             if (cachedDbUserId == null) {
                 Integer cachedDbUserIdNum = call.getInt("cachedDbUserId");
@@ -107,6 +108,11 @@ public class GalleryMonitorPlugin extends Plugin {
             } else {
                 editor.remove("cached_db_user_id");
                 Log.d(TAG, "✅ Current user set - ID: " + userId + ", Email: " + userEmail + " (DB cache cleared)");
+            }
+
+            if (apiBaseUrl != null && !apiBaseUrl.isEmpty()) {
+                editor.putString("api_base_url", apiBaseUrl);
+                Log.d(TAG, "✅ API base URL cached for service: " + apiBaseUrl);
             }
 
             editor.apply();
@@ -212,6 +218,7 @@ public class GalleryMonitorPlugin extends Plugin {
                 .remove("current_user_id")
                 .remove("current_user_email")
                 .remove("cached_db_user_id")  // Clear cached database UserId
+                .remove("api_base_url")
                 .apply();
             
             Log.d(TAG, "✅ Current user, email, and cached DB UserId cleared");
@@ -219,6 +226,63 @@ public class GalleryMonitorPlugin extends Plugin {
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to clear current user", e);
             call.reject("Failed to clear current user", e);
+        }
+    }
+
+    /**
+     * Called by React StepCounter backfill when it detects that SharedPreferences
+     * holds a value much larger than the DB (stale phantom data from testing).
+     * Sends an Intent to the running service so it resets both its on-disk
+     * SharedPreferences key AND its in-memory stepStoredBaseline for today.
+     */
+    @PluginMethod
+    public void syncDailySteps(PluginCall call) {
+        try {
+            String date  = call.getString("date");
+            int    steps = call.getInt("steps", 0);
+            if (date == null || date.isEmpty()) {
+                call.reject("date is required");
+                return;
+            }
+            Context context = getContext();
+            Intent intent = new Intent(context, GalleryMonitorService.class);
+            intent.putExtra("resetStepsDate", date);
+            intent.putExtra("resetStepsValue", steps);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to sync daily steps", e);
+            call.reject("Failed to sync daily steps", e);
+        }
+    }
+
+    /**
+     * Request an immediate service-side flush of today's steps to DB.
+     * Useful for manual refresh while keeping service as the single writer.
+     */
+    @PluginMethod
+    public void forceSaveTodaySteps(PluginCall call) {
+        try {
+            Context context = getContext();
+            Intent intent = new Intent(context, GalleryMonitorService.class);
+            intent.putExtra("forceSaveTodaySteps", true);
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent);
+            } else {
+                context.startService(intent);
+            }
+            JSObject ret = new JSObject();
+            ret.put("success", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Failed to force-save today steps", e);
+            call.reject("Failed to force-save today steps", e);
         }
     }
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   Scale,
@@ -14,8 +14,9 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import { Filesystem, Directory } from "@capacitor/filesystem";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
+import * as XLSX from "xlsx";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -50,10 +51,12 @@ const STATUS_TEXT = {
 };
 
 const FILTER_OPTIONS = [
-  { value: "all",      label: "All Members"      },
-  { value: "strong",   label: "Strong (≥80%)"    },
-  { value: "moderate", label: "Moderate (50–79%)" },
-  { value: "risk",     label: "At Risk (<50%)"    },
+  { value: "all",       label: "All Activities" },
+  { value: "weight",    label: "Weight"         },
+  { value: "breakfast", label: "Breakfast"      },
+  { value: "lunch",     label: "Lunch"          },
+  { value: "dinner",    label: "Dinner"         },
+  { value: "education", label: "Education"      },
 ];
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -129,6 +132,106 @@ function computeUserScore(entry) {
     });
   });
   return count > 0 ? Math.round(total / count) : 0;
+}
+
+// ── Dummy preview data ───────────────────────────────────────────────────────
+// Set USE_DUMMY_DATA = false (or delete this block) to restore real API data
+const USE_DUMMY_DATA = true;
+
+function getDummyEntries() {
+  const today = new Date().toISOString().slice(0, 10);
+  const d = (acts) => ({ date: today, activities: acts });
+  const a = (time, status) => ({ time, status });
+  return [
+    // ── Level 0: You (root coach) ──────────────────────────────────────────
+    {
+      userId: 501, name: "Ravi Kumar (You)", email: "ravi@demo.com", role: "coach",
+      coachId: null,
+      averageTimes:    { weight: "07:10", breakfast: "08:05", lunch: "13:00", dinner: "19:30", education: "09:15" },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a("07:10","on-time"), breakfast: a("08:05","on-time"), lunch: a("13:00","on-time"), dinner: a("19:30","on-time"), education: a("09:15","on-time") })],
+    },
+
+    // ── Level 1: Your direct reports (sub-coaches + members) ───────────────
+    {
+      userId: 502, name: "Priya Menon (Sub-Coach)", email: "priya@demo.com", role: "coach",
+      coachId: 501,
+      averageTimes:    { weight: "07:45", breakfast: "09:30", lunch: "13:50", dinner: "20:30", education: null     },
+      consistentlyLate:{ weight: false,   breakfast: true,    lunch: false,   dinner: true,    education: false   },
+      days: [d({ weight: a("07:45","on-time"), breakfast: a("09:30","late"),    lunch: a("13:50","late"),    dinner: a("20:30","late"),    education: a(null,"missed")   })],
+    },
+    {
+      userId: 503, name: "Arjun Singh (Sub-Coach)", email: "arjun@demo.com", role: "coach",
+      coachId: 501,
+      averageTimes:    { weight: null,    breakfast: "08:20", lunch: null,    dinner: "19:10", education: "10:00" },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a(null,"missed"),   breakfast: a("08:20","on-time"), lunch: a(null,"missed"),   dinner: a("19:10","on-time"), education: a("10:00","on-time") })],
+    },
+    {
+      userId: 504, name: "Meena Iyer", email: "meena@demo.com", role: "member",
+      coachId: 501,
+      averageTimes:    { weight: "06:55", breakfast: null,    lunch: "14:20", dinner: null,    education: null    },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: true,    dinner: false,   education: false   },
+      days: [d({ weight: a("06:55","on-time"), breakfast: a(null,"missed"),   lunch: a("14:20","late"),    dinner: a(null,"missed"),   education: a(null,"missed")   })],
+    },
+
+    // ── Level 2: Priya's team (visible only in Full view) ──────────────────
+    {
+      userId: 511, name: "Sunita Rao", email: "sunita@demo.com", role: "member",
+      coachId: 502,
+      averageTimes:    { weight: "07:00", breakfast: "08:10", lunch: "13:10", dinner: "19:45", education: "09:30" },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a("07:00","on-time"), breakfast: a("08:10","on-time"), lunch: a("13:10","on-time"), dinner: a("19:45","on-time"), education: a("09:30","on-time") })],
+    },
+    {
+      userId: 512, name: "Deepak Verma", email: "deepak@demo.com", role: "member",
+      coachId: 502,
+      averageTimes:    { weight: null,    breakfast: "10:00", lunch: "15:00", dinner: null,    education: null    },
+      consistentlyLate:{ weight: false,   breakfast: true,    lunch: true,    dinner: false,   education: false   },
+      days: [d({ weight: a(null,"missed"),   breakfast: a("10:00","late"),    lunch: a("15:00","late"),    dinner: a(null,"missed"),   education: a(null,"missed")   })],
+    },
+    {
+      userId: 513, name: "Anjali Das", email: "anjali@demo.com", role: "member",
+      coachId: 502,
+      averageTimes:    { weight: "07:30", breakfast: null,    lunch: "13:20", dinner: "20:00", education: "10:15" },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a("07:30","on-time"), breakfast: a(null,"missed"),   lunch: a("13:20","on-time"), dinner: a("20:00","late"),    education: a("10:15","on-time") })],
+    },
+
+    // ── Level 2: Arjun's team (visible only in Full view) ──────────────────
+    {
+      userId: 521, name: "Lakshmi Nair", email: "lakshmi@demo.com", role: "member",
+      coachId: 503,
+      averageTimes:    { weight: "08:00", breakfast: "08:30", lunch: null,    dinner: "19:20", education: null    },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a("08:00","late"),    breakfast: a("08:30","on-time"), lunch: a(null,"missed"),   dinner: a("19:20","on-time"), education: a(null,"missed")   })],
+    },
+    {
+      userId: 522, name: "Ramesh Pillai", email: "ramesh@demo.com", role: "member",
+      coachId: 503,
+      averageTimes:    { weight: null,    breakfast: null,    lunch: null,    dinner: null,    education: null    },
+      consistentlyLate:{ weight: false,   breakfast: false,   lunch: false,   dinner: false,   education: false   },
+      days: [d({ weight: a(null,"missed"),   breakfast: a(null,"missed"),   lunch: a(null,"missed"),   dinner: a(null,"missed"),   education: a(null,"missed")   })],
+    },
+  ];
+}
+
+/**
+ * Sort key for a node based on selected activity filter.
+ * desc = correct takers first (higher on-time count).
+ * asc  = complete untakers (missed) first, then late, then on-time.
+ * Weighted: on-time = 2pts, late = 1pt, missed = 0pts — summed across all days.
+ */
+function computeActivitySortKey(node, activity) {
+  if (!activity || activity === "all") return node.__score ?? 0;
+  let score = 0;
+  (node.__timeData?.days || []).forEach((day) => {
+    const s = day.activities?.[activity]?.status;
+    if (s === "on-time") score += 2;
+    else if (s === "late") score += 1;
+    // missed = 0
+  });
+  return score;
 }
 
 /** Build HierarchicalNode-compatible tree from flat API list enriched with scores */
@@ -266,25 +369,38 @@ function ScoreRing({ score }) {
 }
 
 /** Expanded details panel shown inside HierarchicalNode */
-function TimeReportDetails({ node, dateRange }) {
+function TimeReportDetails({ node, dateRange, filter }) {
   const entry = node.__timeData;
+  const scrollRef = useRef(null);
+
+  useEffect(() => {
+    if (!filter || filter === "all" || !scrollRef.current) return;
+    const th = scrollRef.current.querySelector(`[data-key="${filter}"]`);
+    if (!th) return;
+    const container = scrollRef.current;
+    const targetLeft = th.offsetLeft - container.offsetWidth / 2 + th.offsetWidth / 2;
+    container.scrollTo({ left: Math.max(0, targetLeft), behavior: "smooth" });
+  }, [filter]);
+
   if (!entry) return null;
+
+  const visibleKeys = filter && filter !== "all" ? [filter] : ACTIVITY_KEYS;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
       {/* Day-wise Table */}
-      <div className="overflow-x-auto px-3 pb-3 pt-2">
-        <table className="w-full min-w-[560px] text-[11px] sm:text-xs border-collapse">
+      <div ref={scrollRef} className="px-2 pb-2 pt-1.5">
+        <table className="w-full text-[10px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr className="bg-green-50">
-              <th className="text-left px-2 py-1.5 font-semibold text-gray-600 rounded-tl-lg">Date</th>
-              {ACTIVITY_KEYS.map((key) => {
-                const { Icon, label } = ACTIVITY_META[key];
+              <th className="text-left px-1 py-1 font-semibold text-gray-600 rounded-tl-lg w-[44px]">Date</th>
+              {visibleKeys.map((key) => {
+                const { Icon, short } = ACTIVITY_META[key];
                 return (
-                  <th key={key} className="px-2 py-1.5 font-semibold text-gray-600">
-                    <div className="flex items-center justify-start gap-1">
-                      <Icon className="w-3 h-3 text-gray-400" />
-                      <span>{label}</span>
+                  <th key={key} data-key={key} title={ACTIVITY_META[key].label} className="px-1 py-1 font-semibold transition-colors text-center text-gray-600">
+                    <div className="flex items-center justify-center gap-0.5">
+                      <Icon className="w-2.5 h-2.5 shrink-0" />
+                      <span className="text-[9px]">{short}</span>
                     </div>
                   </th>
                 );
@@ -294,16 +410,16 @@ function TimeReportDetails({ node, dateRange }) {
           <tbody>
             {(entry.days || []).map((day, i) => (
               <tr key={day.date} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
-                <td className="px-2 py-1.5 font-medium text-gray-700 text-[11px]">{day.date}</td>
-                {ACTIVITY_KEYS.map((key) => {
+                <td className="px-1 py-1 font-medium text-gray-600 text-[9px] w-[44px]">{day.date?.slice(5)}</td>
+                {visibleKeys.map((key) => {
                   const act = day.activities?.[key];
                   const s   = act?.status ?? "missed";
                   const st  = STATUS_TEXT[s];
                   return (
-                    <td key={key} className="px-2 py-1.5">
-                      <div className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border ${st.bg} ${st.border}`}>
+                    <td key={key} className="px-0.5 py-1 text-center">
+                      <div className={`inline-flex items-center justify-center gap-0.5 px-1 py-0.5 rounded border w-full ${st.bg} ${st.border}`}>
                         <StatusDot status={s} />
-                        <span className={`text-[10px] font-semibold ${st.text}`}>
+                        <span className={`text-[9px] font-semibold ${st.text} whitespace-nowrap`}>
                           {fmt12(act?.time) ?? "—"}
                         </span>
                       </div>
@@ -336,6 +452,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [showSettings, setShowSettings] = useState(false);
   const [showDownloadOptions, setShowDownloadOptions] = useState(false);
   const [teamView, setTeamView] = useState("direct");
+  const [filterBehavior, setFilterBehavior] = useState("all");
+  const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
+  const [activityRowSortOrder, setActivityRowSortOrder] = useState("asc"); // "asc", "desc"
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), []);
 
@@ -351,28 +470,37 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       setError("");
 
       try {
-        const params = new URLSearchParams({
-          userId: String(user.id),
-          role: mapRoleForApi(userRole),
-          dateRange: mapUiRangeToApiRange(dateRange),
-          userTimezoneOffset: String(timezoneOffset),
-        });
-        if (dateRange === "custom") {
-          params.set("startDate", formatDateForApi(customStartDate));
-          params.set("endDate", formatDateForApi(customEndDate));
+        // ── DUMMY OVERRIDE — remove when done previewing ───────────────────
+        let flat;
+        let hierarchyRes = null;
+        if (USE_DUMMY_DATA) {
+          flat = getDummyEntries();
+        } else {
+          const params = new URLSearchParams({
+            userId: String(user.id),
+            role: mapRoleForApi(userRole),
+            dateRange: mapUiRangeToApiRange(dateRange),
+            userTimezoneOffset: String(timezoneOffset),
+          });
+          if (dateRange === "custom") {
+            params.set("startDate", formatDateForApi(customStartDate));
+            params.set("endDate", formatDateForApi(customEndDate));
+          }
+
+          const [hRes, reportRes] = await Promise.all([
+            teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
+            fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
+          ]);
+          hierarchyRes = hRes;
+
+          const reportJson = await reportRes.json();
+          if (!reportRes.ok || !reportJson?.success) {
+            throw new Error(reportJson?.message || "Failed to fetch time report");
+          }
+          flat = Array.isArray(reportJson.data) ? reportJson.data : [];
         }
+        // ── end dummy override ───────────────────────────────────────────────
 
-        const [hierarchyRes, reportRes] = await Promise.all([
-          teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
-          fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
-        ]);
-
-        const reportJson = await reportRes.json();
-        if (!reportRes.ok || !reportJson?.success) {
-          throw new Error(reportJson?.message || "Failed to fetch time report");
-        }
-
-        const flat = Array.isArray(reportJson.data) ? reportJson.data : [];
         setFlatData(flat);
 
         // Build score + data maps
@@ -417,35 +545,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           return enriched;
         };
 
-        const sortNode = (node) => {
-          const members = [...(node.teamMembers || [])];
-          
-          // Separate coaches/co-coaches from regular members
-          const coaches = members.filter(m => 
-            m.role === "coach" || m.isCoach || m.isCoCoach
-          );
-          const regularMembers = members.filter(m => 
-            m.role !== "coach" && !m.isCoach && !m.isCoCoach
-          );
-          
-          // Sort only regular members by score
-          regularMembers.sort((a, b) => 
-            sortOrder === "desc" ? b.__score - a.__score : a.__score - b.__score
-          );
-          
-          // Keep coaches at top, then sorted regular members, recursively sort children
-          return {
-            ...node,
-            teamMembers: [...coaches, ...regularMembers].map(sortNode),
-          };
-        };
-
         if (hierarchyRes?.hierarchy) {
-          setHierarchyData(sortNode(enrichNode(hierarchyRes.hierarchy)));
+          setHierarchyData(enrichNode(hierarchyRes.hierarchy));
         } else if (flat.length > 0) {
           // No hierarchy service — build synthetic tree from flat list
           const syn = buildHierarchyFromFlat(flat, scoreMap, user.id);
-          if (syn) setHierarchyData(sortNode(enrichNode(syn)));
+          if (syn) setHierarchyData(enrichNode(syn));
         }
       } catch (err) {
         setError(err.message || "Unable to load report");
@@ -455,24 +560,50 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate, timezoneOffset, sortOrder],
+    [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate, timezoneOffset],
   );
 
   useEffect(() => { fetchData(false); }, [fetchData]);
 
+  // ── Activity sort (reacts to filter category + sort direction) ───────────
+
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const sortNode = (node) => ({
+      ...node,
+      teamMembers: [...(node.teamMembers || [])]
+        .sort((a, b) => {
+          const ka = computeActivitySortKey(a, filter);
+          const kb = computeActivitySortKey(b, filter);
+          return sortOrder === "desc" ? kb - ka : ka - kb;
+        })
+        .map(sortNode),
+    });
+    return sortNode(hierarchyData);
+  }, [hierarchyData, filter, sortOrder]);
+
   // ── Filter / search / style helpers ───────────────────────────────────────
 
-  const matchesFilter = useCallback(
-    (node) => {
-      if (filter === "all") return true;
+  // Filter now controls sort category; filterBehavior controls member visibility
+  const matchesFilter = useCallback((node) => {
+    if (filterBehavior === "all") return true;
+    const activity = filter === "all" ? null : filter;
+    if (!activity) {
+      // "all activities" + behavior: use overall score
       const s = node.__score ?? 0;
-      if (filter === "strong")   return s >= 80;
-      if (filter === "moderate") return s >= 50 && s < 80;
-      if (filter === "risk")     return s < 50;
-      return true;
-    },
-    [filter],
-  );
+      if (filterBehavior === "correct") return s >= 50;
+      if (filterBehavior === "late")    return s > 0 && s < 50;
+      if (filterBehavior === "missed")  return s === 0;
+    }
+    // specific activity: check that day's status
+    const statuses = (node.__timeData?.days || []).map(
+      (day) => day.activities?.[activity]?.status ?? "missed"
+    );
+    if (filterBehavior === "correct") return statuses.some((s) => s === "on-time");
+    if (filterBehavior === "late")    return statuses.some((s) => s === "late") && !statuses.some((s) => s === "on-time");
+    if (filterBehavior === "missed")  return statuses.every((s) => s === "missed");
+    return true;
+  }, [filter, filterBehavior]);
 
   const matchesSearch = useCallback((node, query) => {
     if (!query) return true;
@@ -511,7 +642,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
   const renderStats = useCallback(() => null, []);
 
-  const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} dateRange={dateRange} />, [dateRange]);
+  const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} dateRange={dateRange} filter={filter} />, [dateRange, filter]);
 
   // ── Summary stats ──────────────────────────────────────────────────────────
 
@@ -561,50 +692,89 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     </div>
   );
 
-  const subtitle = `${flatData.length} member${flatData.length === 1 ? "" : "s"} • ${
-    new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
-  }`;
   // ── Direct / Full hierarchy filter ────────────────────────────────────────
   const buildHierarchyForView = useCallback((view) => {
-    if (!hierarchyData) return null;
-    if (view === "full") return hierarchyData;
+    if (!sortedHierarchyData) return null;
+    if (view === "full") return sortedHierarchyData;
     // Direct view: strip nested teamMembers from direct reports
-    if (hierarchyData.teamMembers) {
+    if (sortedHierarchyData.teamMembers) {
       return {
-        ...hierarchyData,
-        teamMembers: hierarchyData.teamMembers.map((member) => ({
+        ...sortedHierarchyData,
+        teamMembers: sortedHierarchyData.teamMembers.map((member) => ({
           ...member,
           teamMembers: [],
         })),
       };
     }
-    return hierarchyData;
-  }, [hierarchyData]);
+    return sortedHierarchyData;
+  }, [sortedHierarchyData]);
 
   const filteredHierarchy = useMemo(() => {
     return buildHierarchyForView(teamView);
   }, [buildHierarchyForView, teamView]);
 
+  // ── Count members in filtered hierarchy ────────────────────────────────────
+
+  const visibleMemberCount = useMemo(() => {
+    if (!filteredHierarchy) return 0;
+
+    const countMembers = (node) => {
+      let count = 1; // Count the node itself if it passes filters
+      (node.teamMembers || []).forEach((member) => {
+        count += countMembers(member);
+      });
+      return count;
+    };
+
+    return countMembers(filteredHierarchy);
+  }, [filteredHierarchy]);
+
+  const subtitle = `${visibleMemberCount} member${visibleMemberCount === 1 ? "" : "s"} • ${
+    new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
+  }`;
+
   const saveOrShareFile = useCallback(async ({ content, fileName, mimeType, title }) => {
     const isNative = Capacitor.isNativePlatform();
 
     if (isNative) {
+      // Write as UTF-8 text directly — no base64 needed for CSV files
       const result = await Filesystem.writeFile({
         path: fileName,
-        data: utf8ToBase64(content),
+        data: content,
         directory: Directory.Cache,
+        encoding: Encoding.UTF8,
       });
 
-      await Share.share({
-        title: title || "Activity Time Report",
-        text: "Save or share your report file",
-        files: [result.uri],
-        dialogTitle: "Save or Share Report",
-      });
+      const canShare = await Share.canShare().catch(() => ({ value: false }));
+      if (canShare.value) {
+        await Share.share({
+          title: title || "Activity Time Report",
+          text: "Save or share your report file",
+          files: [result.uri],
+          dialogTitle: "Save or Share Report",
+        });
+      } else {
+        alert(`File saved to: ${result.uri}`);
+      }
       return;
     }
 
+    // Web Share API — works on Android Chrome PWA and iOS Safari PWA
     const blob = new Blob([content], { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mimeType })] })) {
+      try {
+        await navigator.share({
+          title: title || "Activity Time Report",
+          files: [new File([blob], fileName, { type: mimeType })],
+        });
+        return;
+      } catch (err) {
+        if (err.name === "AbortError") return; // user cancelled — do nothing
+        // fall through to anchor download
+      }
+    }
+
+    // Desktop / fallback: anchor click download
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -614,6 +784,137 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     document.body.removeChild(a);
     window.URL.revokeObjectURL(url);
   }, []);
+
+  // ── Helper: Sort daily activity rows by date, activity, or status ────────────
+
+  const getSortedDailyActivities = useCallback((entry) => {
+    if (!entry || !entry.days) return [];
+
+    // Expand days into individual activity rows
+    const activityRows = [];
+    (entry.days || []).forEach((day) => {
+      ACTIVITY_KEYS.forEach((actKey) => {
+        const activity = day.activities?.[actKey];
+        activityRows.push({
+          date: day.date,
+          activity: actKey,
+          time: activity?.time || null,
+          status: activity?.status || "missed",
+          label: ACTIVITY_META[actKey].label,
+        });
+      });
+    });
+
+    // Sort based on current sort settings
+    const sorted = [...activityRows].sort((a, b) => {
+      let cmp = 0;
+
+      if (activityRowSortBy === "date") {
+        cmp = a.date.localeCompare(b.date);
+      } else if (activityRowSortBy === "activity") {
+        cmp = a.activity.localeCompare(b.activity);
+      } else if (activityRowSortBy === "status") {
+        const statusOrder = { "on-time": 0, late: 1, missed: 2 };
+        cmp = (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3);
+      }
+
+      return activityRowSortOrder === "desc" ? -cmp : cmp;
+    });
+
+    return sorted;
+  }, [activityRowSortBy, activityRowSortOrder]);
+
+  // ── Excel export with sorted daily activity data ───────────────────────────
+
+  const handleExcelDownload = useCallback(async () => {
+    if (!flatData || flatData.length === 0) return;
+
+    try {
+      const workbook = XLSX.utils.book_new();
+
+      // Create one sheet per user with their daily activity data
+      flatData.forEach((entry) => {
+        const userName = entry.name || "User";
+        const sheetName = String(userName).slice(0, 31); // Excel max sheet name = 31 chars
+
+        // Get sorted daily activities
+        const sortedActivities = getSortedDailyActivities(entry);
+
+        if (sortedActivities.length === 0) return;
+
+        // Build sheet data
+        const sheetData = [
+          ["Activity Time Report - " + userName],
+          ["Email:", entry.email],
+          ["Role:", entry.role],
+          [],
+          ["Date", "Activity", "Time", "Status"],
+          ...sortedActivities.map((row) => [
+            row.date,
+            row.label,
+            row.time ? fmt12(row.time) : "—",
+            row.status === "on-time" ? "On-time" : row.status === "late" ? "Late" : "Missed",
+          ]),
+        ];
+
+        const sheet = XLSX.utils.aoa_to_sheet(sheetData);
+
+        // Style the sheet
+        sheet["!cols"] = [
+          { wch: 12 }, // Date
+          { wch: 15 }, // Activity
+          { wch: 12 }, // Time
+          { wch: 12 }, // Status
+        ];
+
+        XLSX.utils.book_append_sheet(workbook, sheet, sheetName);
+      });
+
+      // Create summary sheet
+      const summaryData = [
+        ["Activity Time Report Summary"],
+        ["Date Range:", dateRange.toUpperCase()],
+        ["Total Members:", flatData.length],
+        ["Generated:", new Date().toLocaleString()],
+        [],
+        ["Member", "Email", "Role", "Avg Weight Time", "Avg Breakfast Time", "Avg Lunch Time", "Avg Dinner Time", "Avg Education Time"],
+        ...flatData.map((entry) => [
+          entry.name,
+          entry.email,
+          entry.role,
+          fmt12(entry.averageTimes?.weight) || "—",
+          fmt12(entry.averageTimes?.breakfast) || "—",
+          fmt12(entry.averageTimes?.lunch) || "—",
+          fmt12(entry.averageTimes?.dinner) || "—",
+          fmt12(entry.averageTimes?.education) || "—",
+        ]),
+      ];
+
+      const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+      summarySheet["!cols"] = [
+        { wch: 20 },
+        { wch: 20 },
+        { wch: 10 },
+        { wch: 16 },
+        { wch: 18 },
+        { wch: 14 },
+        { wch: 14 },
+        { wch: 18 },
+      ];
+
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "Summary", 0);
+
+      // Download
+      const fileDate = formatDateForFile(new Date());
+      const fileName = `activity-time-report-${dateRange}-${fileDate}.xlsx`;
+
+      XLSX.writeFile(workbook, fileName);
+      setShowDownloadOptions(false);
+    } catch (err) {
+      console.error("Excel download failed:", err);
+      alert("Unable to download Excel right now. Please try again.");
+    }
+  }, [flatData, dateRange, getSortedDailyActivities]);
 
   const getMergedExportRows = useCallback(() => {
     const viewsToExport = ["direct", "full"];
@@ -658,54 +959,104 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   }, [buildHierarchyForView, matchesFilter, matchesSearch, searchQuery]);
 
   const handleCsvDownload = useCallback(async () => {
-    const mergedRows = getMergedExportRows();
-    if (mergedRows.length === 0) return;
+    if (!filteredHierarchy || !filteredHierarchy.__timeData) return;
 
-    const headers = [
-      "Report Type",
-      "Member Name",
-      "Email",
-      "Role",
-      "Weight Time",
-      "Breakfast Time",
-      "Lunch Time",
-      "Dinner Time",
-      "Education Time",
-    ];
-
-    const csv = [
-      headers.join(","),
-      ...mergedRows.map((row) =>
-        [
-          row.reportView,
-          row.memberName,
-          row.email,
-          row.role,
-          row.averageWeightTime,
-          row.averageBreakfastTime,
-          row.averageLunchTime,
-          row.averageDinnerTime,
-          row.averageEducationTime,
-        ]
-          .map(escapeCsv)
-          .join(","),
-      ),
-    ].join("\n");
-
-    const fileDate = formatDateForFile(new Date());
     try {
-      await saveOrShareFile({
-        content: csv,
-        fileName: `activity-time-report-merged-${dateRange}-${fileDate}.csv`,
-        mimeType: "text/csv;charset=utf-8;",
-        title: "Activity Time Report (CSV)",
+      // Determine which activity to filter by
+      const selectedActivity = filter === "all" ? null : filter;
+
+      // Recursive function to collect members from the current view
+      const collectMembers = (node) => {
+        const members = [];
+
+        // Check if current node passes filter
+        if (matchesFilter(node) && matchesSearch(node, searchQuery)) {
+          members.push(node);
+        }
+
+        // Add team members
+        (node.teamMembers || []).forEach((member) => {
+          members.push(...collectMembers(member));
+        });
+
+        return members;
+      };
+
+      let members = collectMembers(filteredHierarchy);
+
+      if (members.length === 0) {
+        alert("No members found matching your filters.");
+        return;
+      }
+
+      // Sort members by name if name sort is selected
+      if (activityRowSortBy === "name") {
+        members = [...members].sort((a, b) => {
+          const nameA = (a.userName || a.name || "").toLowerCase();
+          const nameB = (b.userName || b.name || "").toLowerCase();
+          const cmp = nameA.localeCompare(nameB);
+          return activityRowSortOrder === "desc" ? -cmp : cmp;
+        });
+      }
+
+      const headers = ["Member Name", "Email", "Role", "Date", "Activity", "Time", "Status"];
+      const csvRows = [headers.map(escapeCsv).join(",")];
+
+      // Build CSV from sorted daily activities, filtered by selected activity
+      members.forEach((node) => {
+        const entry = node.__timeData;
+        if (!entry) return;
+
+        const sortedActivities = getSortedDailyActivities(entry);
+
+        // Filter activities if specific activity is selected
+        const filteredActivities = selectedActivity
+          ? sortedActivities.filter((row) => row.activity === selectedActivity)
+          : sortedActivities;
+
+        if (filteredActivities.length === 0) return;
+
+        filteredActivities.forEach((row) => {
+          const cells = [
+            node.userName || node.name || "-",
+            node.email || "-",
+            node.role || "-",
+            row.date ? `="${row.date}"` : "-",   // force Excel to treat as text
+            row.label,
+            row.time ? fmt12(row.time) : "-",
+            row.status === "on-time" ? "On-time" : row.status === "late" ? "Late" : "Missed",
+          ];
+          // Don't run escapeCsv on the date cell (index 3) — it's already formatted
+          const csvLine = cells
+            .map((cell, i) => (i === 3 ? cell : escapeCsv(cell)))
+            .join(",");
+          csvRows.push(csvLine);
+        });
       });
-      setShowDownloadOptions(false);
+
+      const csv = "\uFEFF" + csvRows.join("\n");
+      const fileDate = formatDateForFile(new Date());
+      const viewLabel = teamView === "direct" ? "direct" : "full";
+      const activityLabel = selectedActivity || "all-activities";
+      const sortLabel = `${activityRowSortBy}-${activityRowSortOrder}`;
+
+      try {
+        await saveOrShareFile({
+          content: csv,
+          fileName: `activity-report-${viewLabel}-${activityLabel}-${dateRange}-${sortLabel}-${fileDate}.csv`,
+          mimeType: "text/csv;charset=utf-8;",
+          title: "Activity Time Report (CSV)",
+        });
+        setShowDownloadOptions(false);
+      } catch (err) {
+        console.error("CSV download/share failed:", err);
+        alert("Unable to download CSV right now. Please try again.");
+      }
     } catch (err) {
-      console.error("CSV download/share failed:", err);
-      alert("Unable to download CSV right now. Please try again.");
+      console.error("CSV export failed:", err);
+      alert("Unable to generate CSV right now. Please try again.");
     }
-  }, [getMergedExportRows, dateRange, saveOrShareFile]);
+  }, [filteredHierarchy, teamView, filter, dateRange, getSortedDailyActivities, activityRowSortBy, activityRowSortOrder, saveOrShareFile, matchesFilter, matchesSearch, searchQuery]);
 
   const handlePdfDownload = useCallback(async () => {
     const mergedRows = getMergedExportRows();
@@ -821,7 +1172,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       subtitle={subtitle}
       onBack={onBack}
       onRefresh={() => fetchData(true)}
-      // onDownload={handleDownload}
+      onDownload={handleDownload}
       onSettings={handleSettings}
       loading={loading}
       refreshing={refreshing}
@@ -840,7 +1191,10 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onSearchChange={setSearchQuery}
       filter={filter}
       filterOptions={FILTER_OPTIONS}
-      onFilterChange={setFilter}
+      onFilterChange={(val) => {
+          setFilter(val);
+          setFilterBehavior("all");
+        }}
       sortOrder={sortOrder}
       onSortChange={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
       summaryStats={null}
@@ -850,6 +1204,65 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       {filteredHierarchy ? (
         <>
           {teamViewToggle}
+
+          {/* Daily Activity Sorting Controls
+          <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
+            <div className="flex flex-col gap-2">
+              <div className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Sort Daily Activities By:</div>
+              <div className="flex gap-2 flex-wrap">
+                {[
+                  { value: "name", label: "👤 Name" },
+                  { value: "date", label: "📅 Date" },
+                  { value: "activity", label: "🍽️ Activity" },
+                  { value: "status", label: "✓ Status" },
+                ].map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      if (activityRowSortBy === option.value) {
+                        setActivityRowSortOrder(activityRowSortOrder === "asc" ? "desc" : "asc");
+                      } else {
+                        setActivityRowSortBy(option.value);
+                        setActivityRowSortOrder("asc");
+                      }
+                    }}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-semibold transition-all ${
+                      activityRowSortBy === option.value
+                        ? "bg-blue-600 text-white shadow-sm"
+                        : "bg-white border border-blue-200 text-blue-700 hover:bg-blue-100"
+                    }`}
+                    title={`Sort by ${option.label}${activityRowSortBy === option.value ? ` (${activityRowSortOrder === "asc" ? "ascending" : "descending"})` : ""}`}
+                  >
+                    {option.label} {activityRowSortBy === option.value && (activityRowSortOrder === "asc" ? "↑" : "↓")}
+                  </button>
+                ))}
+              </div>
+              <div className="text-[9px] text-blue-600">💡 Change sort order by clicking the same button again. CSV download will include sorted data.</div>
+            </div>
+          </div> */}
+
+          {/* Behavior filter pills */}
+          <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-full w-fit">
+            {[
+              { value: "all",     label: "All" },
+              { value: "correct", label: "Correct" },
+              { value: "late",    label: "Late" },
+              { value: "missed",  label: "Not Taken" },
+            ].map((b) => (
+              <button
+                key={b.value}
+                onClick={() => setFilterBehavior(b.value)}
+                className={`px-3 py-1.5 rounded-full text-[11px] font-semibold transition-all whitespace-nowrap ${
+                  filterBehavior === b.value
+                    ? "bg-white text-green-700 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                {b.label}
+              </button>
+            ))}
+          </div>
+
           <HierarchicalNode
             key={`hierarchy-${teamView}`}
             node={filteredHierarchy}
@@ -894,20 +1307,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           <div className="w-full max-w-sm rounded-2xl bg-white border border-gray-200 shadow-xl p-4">
             <h3 className="text-base font-bold text-gray-900">Download Report</h3>
             <p className="text-xs text-gray-600 mt-1">
-              Choose a format. Both Direct and Full report data will be included.
+              Downloading {teamView === "direct" ? "Direct" : "Full"} team members {filter !== "all" ? `with ${filter} activities` : "with all activities"} sorted by {activityRowSortBy}.
             </p>
             <div className="mt-4 space-y-2">
               <button
                 onClick={handleCsvDownload}
                 className="w-full rounded-xl bg-green-600 text-white py-2.5 text-sm font-semibold hover:bg-green-700 transition-colors"
               >
-                Download as CSV
-              </button>
-              <button
-                onClick={handlePdfDownload}
-                className="w-full rounded-xl bg-blue-600 text-white py-2.5 text-sm font-semibold hover:bg-blue-700 transition-colors"
-              >
-                Download as PDF
+                📥 Download as CSV
               </button>
               <button
                 onClick={() => setShowDownloadOptions(false)}

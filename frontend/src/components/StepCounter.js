@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
-import { saveDailyActivity, fetchDailyActivity } from '../services/dailyActivityService';
-import TeamMemberSearch from './TeamMemberSearch';
+import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
+import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,11 +12,18 @@ import LoadingSpinner from './LoadingSpinner';
 const CALORIES_PER_STEP    = 0.04;
 const UPDATE_THROTTLE_MS   = 1000;        // Max one UI update per second
 const ACTIVITY_TYPE        = 'walking';
-const AUTO_SAVE_INTERVAL_MS = 60_000;     // Auto-save every 60 seconds
+const AUTO_SAVE_INTERVAL_MS = 30_000;     // Auto-save check interval (every 30 s)
+const AUTO_SAVE_STEP_DELTA  = 10;         // Save when steps increase by this many
 const POLL_INTERVAL_MS     = 5000;        // Fallback sensor poll every 5 seconds
 const STEP_GOAL            = 10000;
 const RING_RADIUS          = 80;
 const RING_CIRCUMFERENCE   = 2 * Math.PI * RING_RADIUS;
+const STEP_TIME_GUARD_LAST_TS_KEY = 'step_time_guard_last_seen_ts';
+const STEP_TIME_GUARD_LAST_DATE_KEY = 'step_time_guard_last_seen_date';
+const STEP_TIME_DRIFT_BACK_MS = 5 * 60 * 1000; // 5 minutes
+const STEP_TIME_JUMP_WINDOW_MS = 36 * 60 * 60 * 1000; // 36 hours
+// Interval (ms) between server-date checks (re-check every 5 minutes while app is open)
+const SERVER_DATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PURE UTILITY FUNCTIONS (no React state, safe to call anywhere)
@@ -87,6 +94,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const [historyView, setHistoryView]       = useState('week');
   const [refreshing, setRefreshing]         = useState(false); // manual refresh button
   const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
+  // null = no problem; string = server date (e.g. "2026-03-27") that differs from device date
+  const [wrongDateWarning, setWrongDateWarning] = useState(null);
+  // Ref mirror — Effect closures (unmount, pause) can't read state directly
+  const wrongDateWarningRef = useRef(null);
+  useEffect(() => { wrongDateWarningRef.current = wrongDateWarning; }, [wrongDateWarning]);
 
   // ── Viewing other member (coaches only) ───────────────────────────────────
   const [selectedMember, setSelectedMember] = useState(null);
@@ -114,6 +126,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const latestSensorTotalRef = useRef(null); // raw cumulative sensor total
   const lastUIUpdateRef      = useRef(0);    // throttle: timestamp of last setState
   const lastSavedStepsRef    = useRef(null); // dedup: prevents redundant DB writes
+  const lastAutoSaveTimeRef   = useRef(0);   // throttle: timestamp of last auto-save
   // DB offset: today's steps already saved in DB before this session opened.
   // Added on top of sensor-based steps so the counter continues from where it
   // left off rather than resetting to 0 on every fresh app open.
@@ -133,6 +146,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const resolveIntervalRef = useRef(null);
   const lastPushTimestampRef = useRef(0);  // track last push event time — used to skip redundant polls
   const lastResumeTimeRef    = useRef(0);  // debounce double-resume (Capacitor 'resume' + window 'focus')
+  const driftDetectedRef     = useRef(false); // silent flag: true when device date/time likely changed manually
 
   // Stable function refs — intervals/cleanup always call the LATEST function
   // version without needing it in their dependency arrays.
@@ -142,6 +156,85 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
   // Sync value mirrors on every render (synchronous, before effects run)
   resolvedUserIdRef.current = resolvedUserId;
+
+  // Keep "DB saved" label aligned with backend timestamps (foreground or background writes).
+  const syncLastSavedFromEntry = useCallback((entry) => {
+    const ts = entry?.savedAt || entry?.updatedAt || entry?.createdAt || null;
+    if (!ts) return;
+    const dt = new Date(ts);
+    if (Number.isNaN(dt.getTime())) return;
+    localStorage.setItem('step_last_saved_time', String(dt.getTime()));
+    setLastSaved(dt);
+  }, []);
+
+  // Silent detection only (no UI warning): if time moves back or date jumps too far
+  // in a very short elapsed real-time window, treat it as manual date/time change.
+  const detectSilentTimeDrift = useCallback(() => {
+    try {
+      const nowMs = Date.now();
+      const nowDate = toDateKey();
+      const previousTsRaw = localStorage.getItem(STEP_TIME_GUARD_LAST_TS_KEY);
+      const previousDate = localStorage.getItem(STEP_TIME_GUARD_LAST_DATE_KEY);
+      const previousTs = previousTsRaw ? Number(previousTsRaw) : null;
+
+      let drift = false;
+
+      if (Number.isFinite(previousTs)) {
+        if (nowMs + STEP_TIME_DRIFT_BACK_MS < previousTs) {
+          drift = true;
+        } else if (previousDate && nowMs >= previousTs) {
+          const elapsedMs = nowMs - previousTs;
+          const prevDateObj = new Date(previousDate);
+          const nowDateObj = new Date(nowDate);
+          if (!Number.isNaN(prevDateObj.getTime()) && !Number.isNaN(nowDateObj.getTime())) {
+            const dayJump = Math.round((nowDateObj.getTime() - prevDateObj.getTime()) / (24 * 60 * 60 * 1000));
+            if ((dayJump > 1 && elapsedMs < STEP_TIME_JUMP_WINDOW_MS) || dayJump < 0) {
+              drift = true;
+            }
+          }
+        }
+      }
+
+      driftDetectedRef.current = drift;
+      localStorage.setItem(STEP_TIME_GUARD_LAST_TS_KEY, String(nowMs));
+      localStorage.setItem(STEP_TIME_GUARD_LAST_DATE_KEY, nowDate);
+    } catch (e) {
+      console.warn('[StepCounter] Silent time drift check failed:', e.message);
+    }
+  }, []);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SERVER DATE CHECK — detects manual device date/time manipulation
+  // Compares server's current date (IST) against the device's local date.
+  // Sets wrongDateWarning to the server date if they don't match.
+  // ─────────────────────────────────────────────────────────────────────────
+  const checkDeviceDateVsServer = useCallback(async () => {
+    try {
+      const baseURL = process.env.REACT_APP_API_BASE_URL || '';
+      const resp = await fetch(`${baseURL}/api/server-time`, { cache: 'no-store' });
+      if (!resp.ok) return; // silently ignore network failures
+      const data = await resp.json();
+      const serverDate = data?.date;  // "YYYY-MM-DD" in IST
+      const deviceDate = toDateKey(); // "YYYY-MM-DD" from device clock
+      if (serverDate && serverDate !== deviceDate) {
+        console.warn(`⚠️ [StepCounter] Device date mismatch: device=${deviceDate} server=${serverDate}`);
+        setWrongDateWarning(serverDate);
+      } else {
+        setWrongDateWarning(null);
+      }
+    } catch (e) {
+      // Network error or offline — do nothing, don't show false warning
+      console.warn('[StepCounter] Server date check failed (offline?):', e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    detectSilentTimeDrift();
+    // Run server-date check on mount and every SERVER_DATE_CHECK_INTERVAL_MS
+    checkDeviceDateVsServer();
+    const timer = setInterval(checkDeviceDateVsServer, SERVER_DATE_CHECK_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [detectSilentTimeDrift, checkDeviceDateVsServer]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // USER-ID RESOLUTION (multi-source fallback: prop → localStorage → API)
@@ -282,6 +375,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     // on first open while the DB fetch is still in-flight.
     if (!dbOffsetLoadedRef.current) return;
 
+    // ── Auto-save trigger: save whenever steps increase by ≥ 10 ─────────────
+    // Runs synchronously in the sensor callback — saveStepsToDatabase has its
+    // own 30-second throttle so this never causes a burst of DB writes.
+    saveStepsToDatabaseRef.current?.();
+
     // Throttle React state updates to at most once per UPDATE_THROTTLE_MS
     const now = Date.now();
     if (now - lastUIUpdateRef.current >= UPDATE_THROTTLE_MS || lastUIUpdateRef.current === 0) {
@@ -298,62 +396,61 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   // ─────────────────────────────────────────────────────────────────────────
   // DATABASE: SAVE
   // ─────────────────────────────────────────────────────────────────────────
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATABASE: AUTO-SAVE STEPS
+  // ─────────────────────────────────────────────────────────────────────────
   /**
-  // ─────────────────────────────────────────────────────────────────────────
-  // DATABASE: SAVE STEPS
-  // ─────────────────────────────────────────────────────────────────────────
-   * FIX 3: Reads todayStepsRef.current (ref) instead of todaySteps (state).
-   *
-   *   Old code depended on todaySteps state, so every step update recreated
-   *   this function → recreated setupAutoSave → re-ran the main useEffect →
-   *   rebuilt the sensor listener. The auto-save interval was reset on every
-   *   step and therefore NEVER fired during normal walking.
-   *
-   *   New code reads from refs: the function reference never changes, the
-   *   auto-save interval runs undisturbed for the full 60 seconds.
+   * Called by the 30-second timer AND by processSensorValue when steps increase
+   * by ≥ AUTO_SAVE_STEP_DELTA (10).
+   * Rules:
+   *   - Only saves when steps actually increased by ≥ 10 since last save
+   *   - Throttled: at most once per 30 s (prevents burst on fast walks)
+   *   - forceWrite: false → backend Math.max guard keeps DB from ever going down
    */
   const saveStepsToDatabase = useCallback(async () => {
-    const userId   = resolvedUserIdRef.current;
-    const steps    = todayStepsRef.current;
-    const calories = todayCaloriesRef.current;
-
-    if (!userId || steps === 0) return;
-
-    // Dedup guard — skip DB write if nothing has changed since last save
-    if (lastSavedStepsRef.current === steps) {
-      console.log('⏭️ [StepCounter] Auto-save skipped — steps unchanged at', steps);
+    const userId = resolvedUserIdRef.current;
+    if (!userId) return;
+    const steps = todayStepsRef.current;
+    if (steps <= 0) return;
+    // Block saves when the device clock has been manually set to a wrong date.
+    // Background service continues independently and is protected by Math.max.
+    if (wrongDateWarningRef.current) {
+      console.warn('⚠️ [StepCounter] Auto-save blocked — device date mismatch (device ≠', wrongDateWarningRef.current, ')');
       return;
     }
 
+    const lastSaved = lastSavedStepsRef.current ?? 0;
+    const delta     = steps - lastSaved;
+    if (delta < AUTO_SAVE_STEP_DELTA) return; // not enough new steps yet
+
+    const now = Date.now();
+    if (now - lastAutoSaveTimeRef.current < AUTO_SAVE_INTERVAL_MS) return; // throttle
+
+    lastAutoSaveTimeRef.current = now;
+    lastSavedStepsRef.current   = steps; // optimistic update to prevent duplicate saves
+
     try {
-      setSaving(true);
-      const payload = {
+      const todayKey = toDateKey();
+      await saveDailyActivity({
         userId,
-        activityDate:        toDateKey(),
+        activityDate:   todayKey,
         steps,
-        activityType:        ACTIVITY_TYPE,
-        caloriesBurned:      calories,
-        currentSensorTotal:  latestSensorTotalRef.current
-      };
-      console.log('💾 [StepCounter] Saving to DB:', payload);
-      await saveDailyActivity(payload);
-      lastSavedStepsRef.current = steps;
-      // Record the sensor total at save time — used as baseline on next reopen
-      // so that steps walked-but-unsaved are recovered instead of lost.
-      if (latestSensorTotalRef.current !== null) {
-        localStorage.setItem(getSaveSensorKey(toDateKey()), String(latestSensorTotalRef.current));
+        activityType:   ACTIVITY_TYPE,
+        caloriesBurned: calcCalories(steps),
+        forceWrite:     false // Math.max in API — DB never decreases
+      });
+      // Keep reopen baseline math aligned with the last successful foreground save.
+      const sensorAtSave = latestSensorTotalRef.current;
+      if (Number.isFinite(sensorAtSave)) {
+        localStorage.setItem(getSaveSensorKey(todayKey), String(sensorAtSave));
       }
-      const savedAt = new Date();
-      localStorage.setItem('step_last_saved_time', String(savedAt.getTime()));
-      setLastSaved(savedAt);
-      console.log('✅ [StepCounter] Saved:', steps, 'steps at', savedAt.toLocaleTimeString());
+      console.log('💾 [StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
     } catch (err) {
-      console.error('❌ [StepCounter] Save failed:', err);
-      setError(`Save failed: ${err.message}`);
-    } finally {
-      setSaving(false);
+      // Roll back optimistic update so next tick retries
+      lastSavedStepsRef.current = lastSaved;
+      console.warn('⚠️ [StepCounter] Auto-save failed:', err?.message || err);
     }
-  }, []); // Stable — reads all values from refs, no state in deps
+  }, []); // Stable — reads only refs
 
   // ─────────────────────────────────────────────────────────────────────────
   // DATABASE: FETCH HISTORY
@@ -408,15 +505,108 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
    * User taps the refresh icon in the header to force an immediate sensor read.
    */
   const handleManualRefresh = useCallback(async () => {
-    if (!isNativePlatform) return;
     setRefreshing(true);
     setRefreshDone(false);
+    if (!isNativePlatform) {
+      // Web: just re-fetch DB history
+      try {
+        await loadDailyHistoryRef.current?.();
+      } catch (err) {
+        console.warn('[StepCounter] Web refresh failed:', err?.message || err);
+      } finally {
+        setRefreshing(false);
+        setRefreshDone(true);
+        setTimeout(() => setRefreshDone(false), 1500);
+      }
+      return;
+    }
     try {
       const current = await StepCounterPlugin.getCurrentStepCount();
       const val     = Number.parseInt(current?.totalSteps, 10);
       if (Number.isFinite(val)) {
+        // Re-anchor only when silent drift detection says date/time was likely changed.
+        if (driftDetectedRef.current && resolvedUserIdRef.current) {
+          try {
+            const todayKey = toDateKey();
+            const response = await fetchDailyActivity(resolvedUserIdRef.current, 1, ACTIVITY_TYPE, todayKey);
+            const trend = response?.trend || response?.data || [];
+            const todayEntry = trend.find((d) => d.date === todayKey);
+            const dbSteps = todayEntry?.steps || 0;
+            syncLastSavedFromEntry(todayEntry);
+
+            dbOffsetRef.current = dbSteps;
+            dbOffsetLoadedRef.current = true;
+            lastSavedStepsRef.current = dbSteps;
+            currentDateRef.current = todayKey;
+
+            // Re-anchor today's baseline to current sensor value.
+            writeBaseline(todayKey, val);
+            localStorage.setItem(getSaveSensorKey(todayKey), String(val));
+
+            todayStepsRef.current = dbSteps;
+            todayCaloriesRef.current = calcCalories(dbSteps);
+            setTodaySteps(dbSteps);
+            setTodayCalories(calcCalories(dbSteps));
+            driftDetectedRef.current = false;
+          } catch (syncErr) {
+            console.warn('[StepCounter] Refresh re-sync failed, continuing normal refresh:', syncErr?.message || syncErr);
+          }
+        }
+
         processSensorValueRef.current?.(val);
-        console.log('🔄 [StepCounter] Manual refresh — sensor total:', val);
+
+        // ── Direct DB save from in-app step count ─────────────────────────
+        // Blocked when device date is wrong — saving under a wrong date key
+        // would corrupt history. Background service is the safety net.
+        if (wrongDateWarningRef.current) {
+          console.warn('⚠️ [StepCounter] Refresh DB save blocked — device date mismatch (device ≠', wrongDateWarningRef.current, ')');
+        } else {
+          const stepsToSave = todayStepsRef.current;
+          if (resolvedUserIdRef.current && stepsToSave > 0) {
+            try {
+              const todayKey = toDateKey();
+              await saveDailyActivity({
+                userId:        resolvedUserIdRef.current,
+                activityDate:  todayKey,
+                steps:         stepsToSave,
+                activityType:  ACTIVITY_TYPE,
+                caloriesBurned: calcCalories(stepsToSave),
+                forceWrite:    false   // Math.max in API — DB never decreases
+              });
+              console.log('💾 [StepCounter] Refresh direct save:', stepsToSave, 'steps');
+            } catch (saveErr) {
+              console.warn('[StepCounter] Refresh direct save failed:', saveErr?.message || saveErr);
+            }
+          }
+          // Ask service (single writer) to also flush its SharedPreferences value.
+          await GalleryMonitorPlugin.forceSaveTodaySteps();
+        }
+        // Brief pause to let the service's network call complete, then re-sync
+        // the DB offset so the display reflects exactly what was just saved.
+        await new Promise((r) => setTimeout(r, 1200));
+        if (resolvedUserIdRef.current) {
+          try {
+            const todayKey   = toDateKey();
+            const freshResp  = await fetchDailyActivity(resolvedUserIdRef.current, 1, ACTIVITY_TYPE, todayKey);
+            const freshTrend = freshResp?.trend || freshResp?.data || [];
+            const freshEntry = freshTrend.find((d) => d.date === todayKey);
+            if (freshEntry?.steps > 0) {
+              dbOffsetRef.current       = freshEntry.steps;
+              lastSavedStepsRef.current = freshEntry.steps;
+              syncLastSavedFromEntry(freshEntry);
+              // Re-anchor baseline to current sensor value so future deltas
+              // add on top of the freshly-confirmed DB total.
+              writeBaseline(todayKey, val);
+              localStorage.setItem(getSaveSensorKey(todayKey), String(val));
+              processSensorValueRef.current?.(val);
+              console.log('🔄 [StepCounter] DB offset synced after refresh:', freshEntry.steps);
+            }
+          } catch (syncErr) {
+            console.warn('[StepCounter] Post-refresh DB sync failed:', syncErr?.message || syncErr);
+          }
+        }
+        await loadDailyHistoryRef.current?.();
+        console.log('🔄 [StepCounter] Manual refresh complete — sensor total:', val);
       }
     } catch (err) {
       console.error('❌ [StepCounter] Manual refresh failed:', err);
@@ -426,7 +616,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       setRefreshDone(true);
       setTimeout(() => setRefreshDone(false), 1500);
     }
-  }, [isNativePlatform]);
+  }, [isNativePlatform, syncLastSavedFromEntry]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // SENSOR INITIALIZATION
@@ -536,19 +726,15 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   // AUTO-SAVE TIMER
   // ─────────────────────────────────────────────────────────────────────────
   /**
-   * FIX 5: Uses saveStepsToDatabaseRef.current in the interval body.
-   *   Old: setInterval called saveStepsToDatabase directly → that function
-   *        depended on todaySteps state → interval was re-created on every step
-   *        → never actually ticked to 60 s during walking.
-   *   New: interval body calls the ref → always latest save function, zero deps,
-   *        interval runs undisturbed for its full 60-second lifetime.
+   * Kept only to preserve existing component lifecycle shape.
+   * saveStepsToDatabaseRef is a no-op under single-writer architecture.
    */
   const setupAutoSave = useCallback(() => {
     if (autoSaveTimerRef.current) clearInterval(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setInterval(() => {
       saveStepsToDatabaseRef.current?.();
     }, AUTO_SAVE_INTERVAL_MS);
-    console.log(`💾 [StepCounter] Auto-save timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
+    console.log(`ℹ️ [StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
   }, []); // Stable — interval body only references a ref
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -566,8 +752,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     midnightTimerRef.current = setTimeout(async () => {
       console.log('🌙 [StepCounter] Midnight reset');
 
-      // Save final steps of the day — reads from refs, not stale state
-      await saveStepsToDatabaseRef.current?.();
+      // Service performs DB save on day rollover; React stays read-only.
 
       // Write new day's baseline using the last known raw sensor total
       if (latestSensorTotalRef.current !== null) {
@@ -647,9 +832,29 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     setReady(true);
 
     return () => {
-      // FIX 7: Save using ref (latest steps), not stale todaySteps state
-      if (todayStepsRef.current > 0) {
-        saveStepsToDatabaseRef.current?.().catch(() => {});
+      // ── Save steps before teardown (user navigates away / back press) ─────
+      // Blocked when device date is wrong — background service is the safety net.
+      const stepsOnClose = todayStepsRef.current;
+      const userOnClose  = resolvedUserIdRef.current;
+      if (userOnClose && stepsOnClose > 0 && !wrongDateWarningRef.current) {
+        const dateOnClose = toDateKey();
+        saveDailyActivity({
+          userId:         userOnClose,
+          activityDate:   dateOnClose,
+          steps:          stepsOnClose,
+          activityType:   ACTIVITY_TYPE,
+          caloriesBurned: calcCalories(stepsOnClose),
+          forceWrite:     false
+        }).then(() => {
+          const sensorAtSave = latestSensorTotalRef.current;
+          if (Number.isFinite(sensorAtSave)) {
+            localStorage.setItem(getSaveSensorKey(dateOnClose), String(sensorAtSave));
+          }
+        }).catch(() => {});
+        GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
+        console.log('💾 [StepCounter] Unmount save:', stepsOnClose, 'steps');
+      } else if (wrongDateWarningRef.current) {
+        console.warn('⚠️ [StepCounter] Unmount save blocked — device date mismatch');
       }
       // Tear down all timers and the native sensor listener
       if (midnightTimerRef.current)  clearTimeout(midnightTimerRef.current);
@@ -680,6 +885,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (response.success && Array.isArray(trend)) {
           const todayKey   = toDateKey();
           const todayEntry = trend.find((d) => d.date === todayKey);
+          syncLastSavedFromEntry(todayEntry);
           if (todayEntry && todayEntry.steps > 0) {
             dbOffsetRef.current = todayEntry.steps;
             // Update lastSavedStepsRef so the first auto-save doesn't
@@ -689,21 +895,27 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             // Unlock UI — from this point processSensorValue will update the display
             dbOffsetLoadedRef.current = true;
             if (latestSensorTotalRef.current !== null) {
-              // Use sensor-at-last-save as the new baseline (not current sensor).
-              // This means sensorSteps = currentSensor - sensorAtSave = only the
-              // NEW steps walked since last save, recovering any unsaved steps.
-              // Fallback to current sensor if no save record exists or sensor reset.
-              const savedSensorStr = localStorage.getItem(getSaveSensorKey(toDateKey()));
-              const savedSensor    = savedSensorStr ? Number(savedSensorStr) : null;
-              const baselineToUse  =
-                (savedSensor !== null &&
-                 Number.isFinite(savedSensor) &&
-                 savedSensor <= latestSensorTotalRef.current)
-                  ? savedSensor
-                  : latestSensorTotalRef.current;
+              const currentSensor  = latestSensorTotalRef.current;
+              // After manual date/time changes, show DB value first by anchoring
+              // baseline to current sensor (no carry-over). Normal case keeps
+              // sensor-at-last-save recovery so same-day reopen remains cumulative.
+              let baselineToUse = currentSensor;
+              if (!driftDetectedRef.current) {
+                const savedSensorStr = localStorage.getItem(getSaveSensorKey(toDateKey()));
+                const savedSensor    = savedSensorStr ? Number(savedSensorStr) : null;
+                const MAX_UNSAVED = 3_000;
+                const unsavedIfTrusted = Math.max(0, currentSensor - (savedSensor ?? currentSensor));
+                baselineToUse =
+                  (savedSensor !== null &&
+                   Number.isFinite(savedSensor) &&
+                   savedSensor <= currentSensor &&
+                   unsavedIfTrusted <= MAX_UNSAVED)
+                    ? savedSensor
+                    : currentSensor;
+              }
               writeBaseline(toDateKey(), baselineToUse);
               // Reprocess with the corrected baseline
-              processSensorValueRef.current?.(latestSensorTotalRef.current);
+              processSensorValueRef.current?.(currentSensor);
             } else {
               // Sensor hasn't fired yet — seed UI directly from DB
               const offsetCalories = calcCalories(todayEntry.steps);
@@ -737,7 +949,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       });
 
     loadDailyHistoryRef.current?.();
-    setupAutoSave(); // starts the 60-second save interval
+    setupAutoSave(); // no-op timer under single-writer rule
 
     // ── Background service backfill + correction ─────────────────────────────
     // GalleryMonitorService records per-day steps in SharedPreferences.
@@ -758,30 +970,59 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           .then((dbResponse) => {
             const dbTrend = dbResponse.trend || dbResponse.data || [];
             const dbMap   = new Map(dbTrend.map(d => [d.date, d.steps]));
+            const todayKey = toDateKey();
 
-            // Only backfill days where DB has 0 steps but background service recorded real
-            // steps (app was never opened that day so no in-app save happened).
+            // Fix days where:
+            //   (a) DB has 0 steps — app was never opened that day, OR
+            //   (b) Background service recorded MORE steps than DB — app was
+            //       opened briefly then kept walking after close.
             //
-            // Do NOT overwrite days where DB already has steps — the background service is
-            // often killed by Android Doze mid-day and its count can be much lower than what
-            // the in-app sensor saved. Always trust the higher (DB) value.
+            // We do NOT update if DB already has a HIGHER value than background
+            // service — that means in-app sensor saved more (trust higher DB value).
+            // We also never overwrite today's non-zero DB value from background
+            // service (today is handled by the live sensor + dbOffset path).
+            const MAX_BACKFILL_DELTA = 5000; // kept for today-stale-SharedPrefs checks below
             const toFix = bgDays.filter(e => {
               const dbSteps = dbMap.get(e.date) || 0;
-              return dbSteps === 0;  // only fill completely missing days.
+              if (e.steps <= dbSteps) return false;
+              // Never overwrite today's non-zero DB value from background service.
+              if (e.date === todayKey && dbSteps > 0) return false;
+              // For all past days, trust background service unconditionally.
+              // Removed the 5 000-step delta cap which was silently dropping full
+              // day backfills for users who never opened the app that day.
+              return true;
             });
+
+            // ── Stale SharedPreferences correction ─────────────────────────
+            // If today's background service value is much larger than DB (and DB
+            // has a real value), it means SharedPreferences has phantom/stale data
+            // (e.g. from manual date testing). Fix it NOW so the background service
+            // stops writing the wrong number to DB every 60 seconds.
+            const todayBg  = bgDays.find(e => e.date === todayKey);
+            if (todayBg) {
+              const todayDb = dbMap.get(todayKey) || 0;
+              if (todayDb > 0 && (todayBg.steps - todayDb) > MAX_BACKFILL_DELTA) {
+                console.warn('🔧 [StepCounter] Correcting stale bgService baseline for today:',
+                  todayBg.steps, '→', todayDb);
+                GalleryMonitorPlugin.syncDailySteps(todayKey, todayDb).catch(() => {});
+              }
+
+              // NOTE: Auto-sanitize block intentionally removed.
+              // On reinstall the cloud DB value is the only surviving source of truth
+              // (SharedPreferences is wiped). Lowering DB to match the local counter
+              // would permanently destroy the user's real step history.
+              // The service catches up to the DB value naturally as new steps are saved.
+            }
+            // ───────────────────────────────────────────────────────────────
 
             if (toFix.length === 0) return;
 
             console.log('🔄 [StepCounter] Fixing', toFix.length, 'day(s) from background service:', toFix);
-            Promise.all(toFix.map(e =>
-              saveDailyActivity({
-                userId:          resolvedUserId,
-                activityDate:    e.date,
-                steps:           e.steps,
-                activityType:    ACTIVITY_TYPE,
-                caloriesBurned:  Number((e.steps * CALORIES_PER_STEP).toFixed(2))
-              })
-            )).then(() => {
+            // Send sequentially so service-side in-flight guard never drops a day.
+            toFix.reduce(
+              (chain, e) => chain.then(() => GalleryMonitorPlugin.syncDailySteps(e.date, e.steps)),
+              Promise.resolve()
+            ).then(() => {
               console.log('✅ [StepCounter] Backfill/correction complete');
               loadDailyHistoryRef.current?.(); // refresh chart
 
@@ -815,7 +1056,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       });
     }
     // ─────────────────────────────────────────────────────────────────────────
-  }, [resolvedUserId, setupAutoSave]); // setupAutoSave is stable (deps: [])
+  }, [resolvedUserId, setupAutoSave, syncLastSavedFromEntry]); // setupAutoSave is stable (deps: [])
 
   // ─────────────────────────────────────────────────────────────────────────
   // EFFECT 3: APP RESUME / FOREGROUND HANDLER (Requirement 7)
@@ -824,33 +1065,92 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     if (!isNativePlatform) return;
 
     const handleResume = async () => {
+      detectSilentTimeDrift();
       // Debounce: Capacitor 'resume' and window 'focus' both fire when the app
       // comes to foreground, often within milliseconds. Ignore the second one.
       const now = Date.now();
       if (now - lastResumeTimeRef.current < 2000) return;
       lastResumeTimeRef.current = now;
-      console.log('📱 [StepCounter] App resumed — refreshing sensor');
+      console.log('📱 [StepCounter] App resumed — refreshing sensor + re-syncing DB offset');
       try {
+        // ── Re-fetch DB offset so this session continues from the latest saved value ──
+        // Critical for multiple opens in one day: each open must start from the
+        // most recent DB total (which background service may have updated while
+        // the app was closed), not the stale value from the first open.
+        if (resolvedUserIdRef.current) {
+          try {
+            const todayKey   = toDateKey();
+            const dbResp     = await fetchDailyActivity(resolvedUserIdRef.current, 1, ACTIVITY_TYPE, todayKey);
+            const dbTrend    = dbResp?.trend || dbResp?.data || [];
+            const dbEntry    = dbTrend.find(d => d.date === todayKey);
+            const latestDb   = dbEntry?.steps || 0;
+            if (latestDb > dbOffsetRef.current) {
+              console.log('🔄 [StepCounter] Resume: DB offset updated', dbOffsetRef.current, '→', latestDb);
+              dbOffsetRef.current       = latestDb;
+              lastSavedStepsRef.current = latestDb;
+              syncLastSavedFromEntry(dbEntry);
+              // Re-anchor baseline so new steps add on top of fresh DB value
+              const sensor = latestSensorTotalRef.current;
+              if (sensor !== null) {
+                writeBaseline(todayKey, sensor);
+                localStorage.setItem(getSaveSensorKey(todayKey), String(sensor));
+              }
+            }
+          } catch (dbErr) {
+            console.warn('[StepCounter] Resume DB sync failed:', dbErr?.message || dbErr);
+          }
+        }
         const current      = await StepCounterPlugin.getCurrentStepCount();
         const currentValue = Number.parseInt(current?.totalSteps, 10);
         if (Number.isFinite(currentValue)) {
-          // Update UI via ref (always calls the latest processSensorValue)
           processSensorValueRef.current?.(currentValue);
-          // Immediately persist — reads from refs so no stale-closure risk
-          await saveStepsToDatabaseRef.current?.();
         }
+        // Re-check device date on every resume (user may have changed date while app was away)
+        checkDeviceDateVsServer();
       } catch (err) {
         console.error('❌ [StepCounter] Resume handler failed:', err);
       }
     };
 
+    // ── Save on app pause/background (home button, switch app) ─────────────
+    // Blocked when device date is wrong — background service is the safety net.
+    const handlePause = () => {
+      const steps  = todayStepsRef.current;
+      const userId = resolvedUserIdRef.current;
+      if (!userId || steps <= 0) return;
+      if (wrongDateWarningRef.current) {
+        console.warn('⚠️ [StepCounter] Pause save blocked — device date mismatch');
+        return;
+      }
+      const dateOnPause = toDateKey();
+      saveDailyActivity({
+        userId,
+        activityDate:   dateOnPause,
+        steps,
+        activityType:   ACTIVITY_TYPE,
+        caloriesBurned: calcCalories(steps),
+        forceWrite:     false
+      }).then(() => {
+        const sensorAtSave = latestSensorTotalRef.current;
+        if (Number.isFinite(sensorAtSave)) {
+          localStorage.setItem(getSaveSensorKey(dateOnPause), String(sensorAtSave));
+        }
+      }).catch(() => {});
+      GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
+      console.log('💾 [StepCounter] Pause save:', steps, 'steps');
+    };
+
     document.addEventListener('resume', handleResume);
-    window.addEventListener('focus', handleResume);
+    document.addEventListener('pause',  handlePause);
+    window.addEventListener('focus',  handleResume);
+    window.addEventListener('blur',   handlePause);
     return () => {
       document.removeEventListener('resume', handleResume);
-      window.removeEventListener('focus', handleResume);
+      document.removeEventListener('pause',  handlePause);
+      window.removeEventListener('focus',  handleResume);
+      window.removeEventListener('blur',   handlePause);
     };
-  }, [isNativePlatform]); // isNativePlatform is a stable constant
+  }, [isNativePlatform, detectSilentTimeDrift, syncLastSavedFromEntry, checkDeviceDateVsServer]);
 
   // ─────────────────────────────────────────────────────────────────────────
   // DERIVED DISPLAY VALUES
@@ -899,8 +1199,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Manual Refresh Button — fallback for Android Doze delays */}
-            {isNativePlatform && permissionGranted && !isViewingOther && (
+            {/* Manual Refresh Button */}
+            {!isViewingOther && (
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshing}
@@ -932,16 +1232,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         </div>
       </div>
 
-      {/* ──── Team Member Search (coaches only) ──── */}
-      {isCoach && (
-        <TeamMemberSearch
-          user={user}
-          userRole={userRole}
-          selectedMember={selectedMember}
-          onMemberSelect={setSelectedMember}
-        />
-      )}
-
       {/* ──── My Steps Content ──── */}
       {
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
@@ -951,6 +1241,31 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           <div className="bg-red-50 border border-red-200 rounded-2xl p-3.5 flex items-start gap-2.5">
             <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
             <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* Wrong device date warning banner */}
+        {wrongDateWarning && (
+          <div className="bg-orange-50 border border-orange-300 rounded-2xl p-4 flex items-start gap-3">
+            <Calendar className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-orange-900">Wrong Device Date Detected</p>
+              <p className="text-xs text-orange-700 mt-0.5">
+                Your device date appears incorrect. The actual date is{' '}
+                <span className="font-bold">{wrongDateWarning}</span>.
+                Step data shown may not match the correct day.
+              </p>
+              <p className="text-xs text-orange-600 mt-1">
+                Please correct your device date in Settings → Date &amp; Time.
+              </p>
+            </div>
+            <button
+              onClick={() => setWrongDateWarning(null)}
+              className="text-orange-400 hover:text-orange-600 active:text-orange-700 text-lg leading-none font-bold flex-shrink-0 -mt-0.5"
+              aria-label="Dismiss"
+            >
+              ×
+            </button>
           </div>
         )}
 
@@ -1042,39 +1357,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             </div>
           </div>
 
-          {/* DB Sync status row */}
-          {!displayLoading && !isViewingOther && (
-            <div className="mt-3 flex items-center justify-between bg-gray-50 rounded-xl px-3 py-2">
-              <div className="flex items-center gap-1.5">
-                {saving ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                    <span className="text-xs text-emerald-600 font-medium">Saving to DB…</span>
-                  </>
-                ) : lastSaved ? (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                    <span className="text-xs text-gray-500 font-medium">
-                      DB saved&nbsp;
-                      <span className="text-emerald-600 font-semibold">
-                        {lastSaved.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                      </span>
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="w-2 h-2 rounded-full bg-gray-300" />
-                    <span className="text-xs text-gray-400">Not saved yet</span>
-                  </>
-                )}
-              </div>
-              {lastUpdated && (
-                <span className="text-xs text-gray-400">
-                  Live {lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                </span>
-              )}
-            </div>
-          )}
+
         </div>
 
         {/* ──── History Section ──── */}
@@ -1188,3 +1471,4 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 };
 
 export default StepCounter;
+

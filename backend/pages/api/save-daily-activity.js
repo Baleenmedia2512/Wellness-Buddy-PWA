@@ -16,7 +16,7 @@ function caloriesFor(activityType, steps) {
   return Number((safeSteps * multiplier).toFixed(2));
 }
 
-async function upsertDailyActivity(supabase, { userId, activityDate, steps, activityType, caloriesBurned, currentSensorTotal }) {
+async function upsertDailyActivity(supabase, { userId, activityDate, steps, activityType, caloriesBurned, currentSensorTotal, forceWrite = false }) {
   const now = getISTTimestamp();
   // Use activityDate (client's date) for the lookup range — NOT server time.
   // This is critical when the phone date is manually set (e.g. for testing) or
@@ -28,19 +28,21 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
   // Check if a row already exists for this user on this date (by CreatedAt date)
   console.log(`[save-daily-activity] 🔍 Looking up existing row for userId=${userId} date=${activityDate} (range: ${dayStart} → ${dayEnd})`);
 
-  // Order by CreatedAt DESC so that if a race condition created duplicate rows
-  // for the same user+date, we always UPDATE the most recently inserted one.
-  const { data: existing, error: lookupError } = await supabase
+  // Order by CreatedAt DESC so that if duplicate rows exist from old races,
+  // we always UPDATE the most recent row.
+  const { data: existingRows, error: lookupError } = await supabase
     .from('daily_step_activity')
     .select('Id, Steps')
     .eq('UserId', userId)
     .gte('CreatedAt', dayStart)
     .lte('CreatedAt', dayEnd)
     .order('CreatedAt', { ascending: false })
-    .limit(1)
-    .maybeSingle();
+    .limit(2);
 
-  console.log(`[save-daily-activity] 🗂️ Existing row:`, existing, '| lookupError:', lookupError);
+  const existing = Array.isArray(existingRows) && existingRows.length > 0 ? existingRows[0] : null;
+  const duplicateSuspected = Array.isArray(existingRows) && existingRows.length > 1;
+
+  console.log(`[save-daily-activity] 🗂️ Existing row:`, existing, '| duplicateSuspected:', duplicateSuspected, '| lookupError:', lookupError);
 
   if (lookupError) throw lookupError;
 
@@ -53,13 +55,13 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
     return existing || null;
   }
 
-  // Allow the correct value to overwrite a previously inflated value.
-  // The old Math.max guard is removed here because the frontend now re-calibrates
-  // its sensor baseline on every DB load (writeBaseline fix), making it impossible
-  // for a fresh session to send an inflated step count. The only time we'd get a
-  // lower value sent is when the app is genuinely correcting corrupted historical data.
-  const effectiveSteps = steps;
-  const effectiveCalories = caloriesBurned;
+  // Math.max guard: normal saves never let DB steps go down.
+  // forceWrite=true bypasses this so correction saves (from React syncDailySteps)
+  // can fix inflated DB values back to the real measured count.
+  const effectiveSteps = forceWrite ? steps : Math.max(steps, existing?.Steps ?? 0);
+  const effectiveCalories = forceWrite
+    ? caloriesBurned
+    : Math.max(caloriesBurned, existing?.CaloriesBurned ?? 0);
 
   const payload = {
     UserId: userId,
@@ -71,7 +73,7 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
 
   if (existing) {
     if (effectiveSteps === existing.Steps) {
-      console.log(`[save-daily-activity] ⏭️ Skipping update — incoming steps (${steps}) not higher than existing (${existing.Steps})`);
+      console.log(`[save-daily-activity] ⏭️ Skipping update — no change: date=${activityDate} steps=${effectiveSteps}`);
       return existing;
     }
     console.log(`[save-daily-activity] ♻️ Updating existing row Id=${existing.Id} with steps=${payload.Steps} (was ${existing.Steps})`);
@@ -96,8 +98,39 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
     .select('*')
     .single();
   console.log(`[save-daily-activity] ✅ Insert result:`, data, '| error:', error);
-  if (error) throw error;
-  return data;
+  if (!error) return data;
+
+  // Retry-safe handling: if insert failed due to near-simultaneous request,
+  // re-check and UPDATE the latest row instead of failing.
+  console.warn(`[save-daily-activity] ⚠️ Insert failed, retrying as update fallback: ${error.message}`);
+  const { data: retryRows, error: retryLookupError } = await supabase
+    .from('daily_step_activity')
+    .select('Id, Steps')
+    .eq('UserId', userId)
+    .gte('CreatedAt', dayStart)
+    .lte('CreatedAt', dayEnd)
+    .order('CreatedAt', { ascending: false })
+    .limit(1);
+
+  if (retryLookupError) throw retryLookupError;
+  const retryExisting = Array.isArray(retryRows) && retryRows.length > 0 ? retryRows[0] : null;
+  if (!retryExisting) throw error;
+
+  if (!forceWrite && effectiveSteps <= retryExisting.Steps) {
+    console.log(`[save-daily-activity] ⏭️ Retry fallback: no improvement needed (${effectiveSteps} <= ${retryExisting.Steps}); returning existing row Id=${retryExisting.Id}`);
+    return retryExisting;
+  }
+
+  const { data: retryUpdated, error: retryUpdateError } = await supabase
+    .from('daily_step_activity')
+    .update(payload)
+    .eq('Id', retryExisting.Id)
+    .select('*')
+    .single();
+
+  if (retryUpdateError) throw retryUpdateError;
+  console.log(`[save-daily-activity] ✅ Retry fallback update result:`, retryUpdated);
+  return retryUpdated;
 }
 
 export default async function handler(req, res) {
@@ -164,7 +197,8 @@ export default async function handler(req, res) {
       steps: safeSteps,
       activityType: safeActivityType,
       caloriesBurned: computedCalories,
-      currentSensorTotal: safeSensorTotal
+      currentSensorTotal: safeSensorTotal,
+      forceWrite: req.body.forceWrite === true
     });
 
     res.status(200).json({
@@ -181,3 +215,4 @@ export default async function handler(req, res) {
     });
   }
 }
+

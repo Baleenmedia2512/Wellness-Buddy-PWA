@@ -646,7 +646,7 @@ const HierarchicalReportLayout = ({
                     >
                       <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
                       <span className="text-xs sm:text-sm font-medium">
-                        Filter
+                        {filterOptions.find((o) => o.value === filter)?.label ?? "Filter"}
                       </span>
                       <ChevronDown
                         className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${

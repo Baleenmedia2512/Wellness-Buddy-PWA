@@ -114,6 +114,9 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     return `${y}-${m}-${day}`;
   };
 
+  const isSmallChartDevice = () =>
+    typeof window !== 'undefined' && window.innerWidth < 380;
+
   /**
    * Group education logs by month
    */
@@ -977,7 +980,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                           key={point.key}
                                           cx={point.x}
                                           cy={point.y}
-                                          r="3"
+                                          r={isSmallChartDevice() ? 2.5 : 3}
                                           fill="#f59e0b"
                                         />
                                       );
@@ -993,9 +996,9 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                         <text
                                           key={`${point.key}-value`}
                                           x={labelX}
-                                          y={Math.max(point.y - 6, -10)}
+                                          y={Math.max(point.y - (isSmallChartDevice() ? 5 : 6), -10)}
                                           textAnchor={textAnchor}
-                                          fontSize="8"
+                                          fontSize={isSmallChartDevice() ? 7 : 8}
                                           fontWeight="500"
                                           fill="#9ca3af"
                                         >
@@ -1006,7 +1009,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                   </svg>
 
                                   <div
-                                    className="relative mt-2 h-4 text-[10px] md:text-xs text-gray-500"
+                                    className={`relative mt-2 h-4 text-gray-500 ${isSmallChartDevice() ? 'text-[8px]' : 'text-[10px] md:text-xs'}`}
                                     style={{
                                       width: '100%'
                                     }}
@@ -1015,7 +1018,6 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                       if (!dateLabelIndices.has(index)) return null;
                                       const isFirst = index === firstDateLabelIndex;
                                       const isLast = index === lastDateLabelIndex;
-                                      const isCompactLabelMode = chartWidth < 380;
 
                                       return (
                                         <span
@@ -1030,7 +1032,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                                 : 'translateX(-50%)'
                                           }}
                                         >
-                                          {isCompactLabelMode ? point.compactLabel : point.label}
+                                          {point.label}
                                         </span>
                                       );
                                     })}

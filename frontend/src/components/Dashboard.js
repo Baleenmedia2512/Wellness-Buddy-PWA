@@ -1,6 +1,6 @@
 // src/components/Dashboard.js
 import React, { useState, lazy, Suspense } from 'react';
-import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import TeamMemberSearch from './TeamMemberSearch';
 
@@ -53,6 +53,8 @@ const EducationIcon = ({ className }) => (
 const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
 const WeightDashboard = lazy(() => import('./WeightDashboard'));
 const EducationDashboard = lazy(() => import('./EducationDashboard'));
+const StepsDashboard = lazy(() => import('./StepsDashboard'));
+const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
 /**
  * Unified Dashboard with tabs for Nutrition and Weight tracking
@@ -64,7 +66,7 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
 const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0 }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
-    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
+    if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education' || initialTab === 'steps' || initialTab === 'screen')) {
       localStorage.setItem('dashboard_activeTab', initialTab);
       return initialTab;
     }
@@ -88,6 +90,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     localStorage.setItem('dashboard_activeTab', tab);
+    if (tab === 'steps' || tab === 'screen') {
+      setSelectedDate(new Date());
+    }
   };
 
   return (
@@ -131,35 +136,34 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               </p>
             </div>
 
-            {/* Calendar button - only show for nutrition tab */}
-            {activeTab === 'nutrition' && (
+            {/* Calendar button - show for steps and screen tabs */}
+            {(activeTab === 'steps' || activeTab === 'screen') && (
               <TouchFeedbackButton 
-                onClick={() => setShowCalendar(!showCalendar)} 
+                onClick={() => { setShowCalendar(!showCalendar); setCalendarMonth(new Date(selectedDate)); }} 
                 className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
                 ariaLabel="Toggle calendar"
               >
                 <Calendar className="h-5 w-5 text-gray-700" />
               </TouchFeedbackButton>
             )}
-            {/* Empty space for weight and education tabs to maintain layou//t */}
             {/* Empty space for tabs without top-right action */}
-            {(activeTab === 'weight' || activeTab === 'education') && (
+            {(activeTab === 'nutrition' || activeTab === 'weight' || activeTab === 'education') && (
               <div className="p-2 md:p-3 w-9 h-9 md:w-11 md:h-11"></div>
             )}
           </div>
 
           {/* Tab navigation */}
-          <div className="flex border-b border-gray-200">
+          <div className="grid grid-cols-5 border-b border-gray-200">
             <TouchFeedbackButton
               onClick={() => handleTabChange('nutrition')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'nutrition'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <AppleIcon 
-                className="h-4 w-4" 
+                className="hidden md:block h-4 w-4" 
                 strokeWidth={3}
                 style={{
                   stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
@@ -171,33 +175,57 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('weight')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'weight'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <WeighingScaleIcon className="h-4 w-4" />
+              <WeighingScaleIcon className="hidden md:block h-4 w-4" />
               <span>Weight</span>
             </TouchFeedbackButton>
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('education')}
-              className={`flex-1 flex items-center justify-center space-x-2 py-3 px-4 text-sm font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'education'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <EducationIcon className="h-4 w-4" />
+              <EducationIcon className="hidden md:block h-4 w-4" />
               <span>Education</span>
+            </TouchFeedbackButton>
+
+            <TouchFeedbackButton
+              onClick={() => handleTabChange('steps')}
+              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+                activeTab === 'steps'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Footprints className="hidden md:block h-4 w-4" />
+              <span>Steps</span>
+            </TouchFeedbackButton>
+
+            <TouchFeedbackButton
+              onClick={() => handleTabChange('screen')}
+              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+                activeTab === 'screen'
+                  ? 'border-green-600 text-green-700'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Smartphone className="hidden md:block h-4 w-4" />
+              <span>Screen</span>
             </TouchFeedbackButton>
           </div>
         </div>
       </div>
 
-      {/* Inline Calendar with Slide Animation - only show for nutrition tab */}
-      {activeTab === 'nutrition' && (
+      {/* Inline Calendar with Slide Animation - only show for steps and screen tabs */}
+      {(activeTab === 'steps' || activeTab === 'screen') && (
         <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
           showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
         }`}>
@@ -392,6 +420,26 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+            />
+          )}
+
+          {activeTab === 'steps' && (
+            <StepsDashboard
+              user={displayUser}
+              apiBaseUrl={apiBaseUrl}
+              hideHeader={true}
+              selectedDate={selectedDate}
+              setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
+            />
+          )}
+
+          {activeTab === 'screen' && (
+            <ScreenDashboard
+              user={displayUser}
+              apiBaseUrl={apiBaseUrl}
+              hideHeader={true}
+              selectedDate={selectedDate}
+              setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
             />
           )}
         </Suspense>

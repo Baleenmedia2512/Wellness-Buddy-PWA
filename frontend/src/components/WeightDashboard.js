@@ -272,6 +272,9 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     return `${y}-${m}-${day}`;
   };
 
+  const isSmallChartDevice = () =>
+    typeof window !== 'undefined' && window.innerWidth < 380;
+
   const weightTrendSeries = useMemo(() => {
     const sorted = (weightHistory || [])
       .filter((entry) => entry && !entry.isUndoPlaceholder && entry.CreatedAt && entry.Weight)
@@ -294,19 +297,37 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     const start = new Date(end);
     start.setDate(end.getDate() - (weightTrendRangeDays - 1));
 
+    const startKey = toDateKey(start);
+    const firstKnownInRange = Array.from(latestByDate.entries())
+      .filter(([key]) => key >= startKey)
+      .sort((a, b) => a[0].localeCompare(b[0]))[0]?.[1];
+
+    let lastKnownWeight = sorted
+      .filter((entry) => toDateKey(entry.createdAt) <= startKey)
+      .slice(-1)[0]?.weight;
+
+    if (!Number.isFinite(lastKnownWeight)) {
+      lastKnownWeight = firstKnownInRange;
+    }
+
     const points = [];
     for (let i = 0; i < weightTrendRangeDays; i++) {
       const d = new Date(start);
       d.setDate(start.getDate() + i);
       const key = toDateKey(d);
+      const hasRecorded = latestByDate.has(key);
+
+      if (hasRecorded) {
+        lastKnownWeight = latestByDate.get(key);
+      }
 
       points.push({
         key,
         date: d,
         label: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
         compactLabel: `${d.toLocaleDateString('en-US', { month: 'short' }).slice(0, 1)} ${d.toLocaleDateString('en-US', { day: 'numeric' })}`,
-        hasRecorded: latestByDate.has(key),
-        value: latestByDate.has(key) ? latestByDate.get(key) : 0,
+        hasRecorded,
+        value: Number.isFinite(lastKnownWeight) ? lastKnownWeight : null,
       });
     }
 
@@ -941,8 +962,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           const maxValue = Math.max(...numericValues);
                           const minValue = Math.min(...numericValues);
                           const spread = Math.max(maxValue - minValue, 0.5);
-                          const plotLeft = 10;
+                          const plotLeft = 30;
                           const plotRight = 14;
+                          const plotTopPad = 8;
+                          const plotBottomPad = 10;
+                          const plottableHeight = chartHeight - plotTopPad - plotBottomPad;
                           const stepX =
                             weightTrendSeries.length > 1
                               ? (chartWidth - plotLeft - plotRight) / (weightTrendSeries.length - 1)
@@ -953,10 +977,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                             const value = hasValue ? point.value : null;
                             const x = plotLeft + index * stepX;
                             const y = hasValue
-                              ? chartHeight - ((value - minValue) / spread) * chartHeight
+                              ? plotTopPad + plottableHeight - ((value - minValue) / spread) * plottableHeight
                               : null;
                             return { ...point, value, hasValue, x, y };
                           });
+
+                          const axisLevels = [maxValue, minValue + spread / 2, minValue]
+                            .map((value) => Number(value.toFixed(1)));
 
                           const markerCountTarget = Math.min(7, points.length);
                           const sampledMarkerIndices = new Set(
@@ -1030,28 +1057,54 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 />
                                 {points.map((point, index) => {
                                   if (!shouldRenderMarker(point, index)) return null;
+                                  if (!point.hasValue) return null;
+
                                   return (
-                                    <circle key={point.key} cx={point.x} cy={point.y} r="3.5" fill="#16a34a" />
+                                    <circle
+                                      key={`weight-point-${point.key}`}
+                                      cx={point.x}
+                                      cy={point.y}
+                                      r={isSmallChartDevice() ? 2.8 : 3.4}
+                                      fill={point.hasRecorded ? '#16a34a' : '#ffffff'}
+                                      stroke="#16a34a"
+                                      strokeWidth={point.hasRecorded ? 0 : 1.2}
+                                    />
+                                  );
+                                })}
+                                {axisLevels.map((level, index) => {
+                                  const y = plotTopPad + plottableHeight - ((level - minValue) / spread) * plottableHeight;
+                                  return (
+                                    <text
+                                      key={`weight-axis-${index}`}
+                                      x={0}
+                                      y={y + 3}
+                                      textAnchor="start"
+                                      fontSize={isSmallChartDevice() ? 7 : 8}
+                                      fontWeight="500"
+                                      fill="#94a3b8"
+                                    >
+                                      {level.toFixed(1)}
+                                    </text>
                                   );
                                 })}
                                 {points.map((point, index) => {
                                   if (!shouldRenderMarker(point, index)) return null;
-                                  if (point.value === 0) return null;
+                                  if (!point.hasRecorded) return null;
 
                                   const isFirst = index === firstVisibleIndex;
                                   const isLast = index === lastVisibleIndex;
                                   const textAnchor = isFirst ? 'start' : isLast ? 'end' : 'middle';
                                   const labelX = isFirst ? point.x + 4 : isLast ? point.x - 4 : point.x;
-                                  const labelY = Math.max(point.y - 7, -16);
+                                  const labelY = Math.max(point.y - 14, -16);
                                   const labelText = `${point.value.toFixed(1)} kg`;
                                   const labelColor = '#9ca3af';
                                   return (
                                     <text
                                       key={`${point.key}-value`}
                                       x={labelX}
-                                      y={labelY}
+                                      y={isSmallChartDevice() ? Math.max(point.y - 12, -16) : labelY}
                                       textAnchor={textAnchor}
-                                      fontSize="9"
+                                      fontSize={isSmallChartDevice() ? 7 : 9}
                                       fontWeight="600"
                                       fill={labelColor}
                                     >
@@ -1062,7 +1115,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                               </svg>
 
                               <div
-                                className="relative mt-2 h-4 text-[10px] md:text-xs text-gray-500"
+                                className={`relative mt-2 h-4 text-gray-500 ${isSmallChartDevice() ? 'text-[8px]' : 'text-[10px] md:text-xs'}`}
                                 style={{
                                   width: '100%'
                                 }}
@@ -1071,14 +1124,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                   if (!dateLabelIndices.has(index)) return null;
                                   const isFirst = index === firstDateLabelIndex;
                                   const isLast = index === lastDateLabelIndex;
-                                  const isCompactLabelMode = chartWidth < 380;
 
                                   return (
                                     <span
                                       key={`${point.key}-label`}
-                                      className={`absolute whitespace-nowrap ${
-                                        isCompactLabelMode ? 'text-[9px]' : ''
-                                      }`}
+                                      className="absolute whitespace-nowrap"
                                       style={{
                                         left: `${(point.x / chartWidth) * 100}%`,
                                         transform: isFirst
@@ -1088,7 +1138,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                             : 'translateX(-50%)'
                                       }}
                                     >
-                                      {isCompactLabelMode ? point.compactLabel : point.label}
+                                      {point.label}
                                     </span>
                                   );
                                 })}
@@ -1119,7 +1169,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           <span>
                             Avg: {Number.isFinite(avgValue) ? avgValue.toFixed(1) : '-'} kg
                           </span>
-                        </div>
+                        </div>  
 
                         {/* <div className="mt-2 flex items-center gap-3 text-[11px] text-gray-500">
                           <span className="inline-flex items-center gap-1">

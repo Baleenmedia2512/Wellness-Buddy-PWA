@@ -26,13 +26,18 @@ function fromTimestampToDateKey(value) {
 }
 function normalizeRow(row) {
   if (!row) return null;
-  const derivedDate = fromTimestampToDateKey(row.CreatedAt);
+  const createdAt = row.CreatedAt ?? row.EntryDateTime ?? row.ActivityDate ?? null;
+  const updatedAt = row.UpdatedAt ?? null;
+  const derivedDate = fromTimestampToDateKey(createdAt);
   return {
     userId: row.UserId ?? null,
     activityDate: derivedDate,
     steps: Number.parseInt(row.Steps ?? 0, 10) || 0,
     activityType: (row.ActivityType ?? 'walking').toLowerCase(),
-    caloriesBurned: Number(row.CaloriesBurned ?? 0) || 0
+    caloriesBurned: Number(row.CaloriesBurned ?? 0) || 0,
+    createdAt,
+    updatedAt,
+    savedAt: updatedAt || createdAt
   };
 }
 
@@ -41,7 +46,10 @@ function buildTrend(rows, todayKey, days) {
   rows.forEach((row) => {
     const normalized = normalizeRow(row);
     if (normalized?.activityDate) {
-      rowMap.set(normalized.activityDate, normalized);
+      const existing = rowMap.get(normalized.activityDate);
+      if (!existing || normalized.steps > existing.steps) {
+        rowMap.set(normalized.activityDate, normalized);
+      }
     }
   });
 
@@ -55,7 +63,10 @@ function buildTrend(rows, todayKey, days) {
       date: dateKey,
       steps: item?.steps || 0,
       caloriesBurned: Number((item?.caloriesBurned || 0).toFixed(2)),
-      activityType: item?.activityType || null
+      activityType: item?.activityType || null,
+      createdAt: item?.createdAt || null,
+      updatedAt: item?.updatedAt || null,
+      savedAt: item?.savedAt || null
     });
   }
 
@@ -168,7 +179,8 @@ export default async function handler(req, res) {
       date: todayKey,
       steps: 0,
       caloriesBurned: 0,
-      activityType: null
+      activityType: null,
+      createdAt: null
     };
 
     res.status(200).json({
@@ -194,7 +206,8 @@ export default async function handler(req, res) {
           date: todayKey,
           steps: 0,
           caloriesBurned: 0,
-          activityType: null
+          activityType: null,
+          createdAt: null
         };
 
         res.status(200).json({
