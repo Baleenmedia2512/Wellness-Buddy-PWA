@@ -50,6 +50,7 @@
 
 import { getSupabaseClient }               from '../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy }    from '../../utils/disciplineCalculationsSupabase.js';
+import { isExemptedBeverageOnly, isExemptedFood } from '../../utils/foodTypeDetection.js';
 import {
   parseDateRangeIST,
   formatDateIST,
@@ -57,6 +58,8 @@ import {
   groupRecordsByDate,
   pickEarliestRecordPerActivity,
   computeAverageTime,
+  convertISTToLocalDate,
+  extractLocalDateString,
 } from '../../utils/timeReportHelpers.js';
 
 // ─── Default time-window fallbacks (used when DB has no active window) ────────
@@ -220,10 +223,10 @@ export default async function handler(req, res) {
     }
 
     // ── Parallel data fetch ─────────────────────────────────────────────────
-    // All four queries run concurrently for maximum performance.
+    // All queries run concurrently for maximum performance.
     // Date filtering happens in SQL to avoid pulling more rows than needed.
 
-    const [twResult, weightResult, educationResult, foodResult] = await Promise.all([
+    const [twResult, weightResult, educationResult, foodResult, waterFoodResult, stepResult, bmrResult] = await Promise.all([
 
       // Active time windows (EffectiveToDate IS NULL means currently in effect)
       supabase
@@ -249,22 +252,49 @@ export default async function handler(req, res) {
         .lte('"CreatedAt"', endStr + 'T23:59:59')
         .or('"IsDeleted".is.null,"IsDeleted".eq.0'),
 
-      // Food / nutrition records – UserID is stored as a string in this table
+      // Food / nutrition records for meal timing (UserID is stored as a string)
       supabase
         .from('food_nutrition_data_table')
-        .select('UserID, CreatedAt')
+        .select('UserID, CreatedAt, TotalCalories, AnalysisData')
         .in('UserID', targetUserIds.map(String))
         .gte('CreatedAt', startStr)
         .lte('CreatedAt', endStr + 'T23:59:59')
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
+
+      // Water food records (beverage-only) – need AnalysisData to detect water
+      supabase
+        .from('food_nutrition_data_table')
+        .select('UserID, CreatedAt, AnalysisData')
+        .in('UserID', targetUserIds.map(String))
+        .gte('CreatedAt', startStr)
+        .lte('CreatedAt', endStr + 'T23:59:59')
+        .or('IsDeleted.is.null,IsDeleted.eq.0'),
+
+      // Step activity – for calories burned per day
+      supabase
+        .from('daily_step_activity')
+        .select('UserId, CreatedAt, CaloriesBurned, Steps')
+        .in('UserId', targetUserIds)
+        .gte('CreatedAt', startStr)
+        .lte('CreatedAt', endStr + 'T23:59:59'),
+
+      // Latest weight per user (for BMR + water requirement) – wider range: any recorded weight
+      supabase
+        .from('weight_records_table')
+        .select('UserId, Weight, Bmr, CreatedAt')
+        .in('UserId', targetUserIds)
+        .order('CreatedAt', { ascending: false }),
     ]);
 
-    if (twResult.error)        console.error('⚠️ [get-activity-time-report] time-windows error:',  twResult.error);
-    if (weightResult.error)    console.error('⚠️ [get-activity-time-report] weight error:',         weightResult.error);
-    if (educationResult.error) console.error('⚠️ [get-activity-time-report] education error:',      educationResult.error);
-    if (foodResult.error)      console.error('⚠️ [get-activity-time-report] food error:',           foodResult.error);
+    if (twResult.error)          console.error('⚠️ [get-activity-time-report] time-windows error:',   twResult.error);
+    if (weightResult.error)      console.error('⚠️ [get-activity-time-report] weight error:',           weightResult.error);
+    if (educationResult.error)   console.error('⚠️ [get-activity-time-report] education error:',        educationResult.error);
+    if (foodResult.error)        console.error('⚠️ [get-activity-time-report] food error:',             foodResult.error);
+    if (waterFoodResult.error)   console.error('⚠️ [get-activity-time-report] water-food error:',       waterFoodResult.error);
+    if (stepResult.error)        console.error('⚠️ [get-activity-time-report] step error:',             stepResult.error);
+    if (bmrResult.error)         console.error('⚠️ [get-activity-time-report] bmr error:',              bmrResult.error);
 
-    console.log(`✅ [get-activity-time-report] Fetched data: ${weightResult.data?.length || 0} weight, ${educationResult.data?.length || 0} education, ${foodResult.data?.length || 0} food records`);
+    console.log(`✅ [get-activity-time-report] Fetched data: ${weightResult.data?.length || 0} weight, ${educationResult.data?.length || 0} education, ${foodResult.data?.length || 0} food, ${stepResult.data?.length || 0} steps records`);
 
     // ── Build resolved time-window map (DB values override defaults) ────────
 
@@ -292,6 +322,13 @@ export default async function handler(req, res) {
     const weightByUser    = new Map();
     const educationByUser = new Map();
     const foodByUser      = new Map();
+    // Water: only beverage-only records
+    const waterFoodByUser = new Map();
+    // Steps / calories burned
+    const stepByUser      = new Map();
+    // Latest BMR and body weight per user
+    const userBmrMap      = {};
+    const userBodyWeightMap = {};
 
     for (const r of (weightResult.data || [])) {
       const uid = r.UserId;
@@ -309,8 +346,44 @@ export default async function handler(req, res) {
       // food_nutrition_data_table stores UserID as a string
       const uid = parseInt(r.UserID, 10);
       if (!foodByUser.has(uid)) foodByUser.set(uid, []);
-      foodByUser.get(uid).push({ CreatedAt: r.CreatedAt });
+      // Store record for meal-timing; also carry AnalysisData to filter beverages from calorie sum
+      foodByUser.get(uid).push({ CreatedAt: r.CreatedAt, TotalCalories: r.TotalCalories, AnalysisData: r.AnalysisData });
     }
+
+    // Filter water records from beverage-only food entries
+    for (const r of (waterFoodResult.data || [])) {
+      if (!isExemptedBeverageOnly(r.AnalysisData)) continue;
+      const uid = parseInt(r.UserID, 10);
+      if (!waterFoodByUser.has(uid)) waterFoodByUser.set(uid, []);
+      waterFoodByUser.get(uid).push(r);
+    }
+
+    for (const r of (stepResult.data || [])) {
+      const uid = r.UserId;
+      if (!stepByUser.has(uid)) stepByUser.set(uid, []);
+      stepByUser.get(uid).push(r);
+    }
+
+    // Build latest BMR and body weight maps (bmrResult is ordered desc by CreatedAt)
+    for (const r of (bmrResult.data || [])) {
+      const uid = r.UserId;
+      if (!(uid in userBmrMap)) {
+        const b = parseFloat(r.Bmr);
+        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
+      }
+      if (!(uid in userBodyWeightMap)) {
+        const w = parseFloat(r.Weight);
+        userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
+      }
+    }
+
+    console.log(`🔍 [get-activity-time-report] BMR map:`, JSON.stringify(userBmrMap));
+    console.log(`🔍 [get-activity-time-report] BodyWeight map:`, JSON.stringify(userBodyWeightMap));
+    console.log(`🔍 [get-activity-time-report] targetUserIds:`, targetUserIds);
+    console.log(`🔍 [get-activity-time-report] stepByUser keys:`, [...stepByUser.keys()]);
+    console.log(`🔍 [get-activity-time-report] foodByUser keys:`, [...foodByUser.keys()]);
+
+    const DEFAULT_WATER_REQUIRED_ML = 2500;
 
     // ── Build per-user, per-day activity report ─────────────────────────────
 
@@ -324,6 +397,77 @@ export default async function handler(req, res) {
       const weightDateMap    = groupRecordsByDate(weightByUser.get(uid)    || [], tzOffset);
       const educationDateMap = groupRecordsByDate(educationByUser.get(uid) || [], tzOffset);
       const foodDateMap      = groupRecordsByDate(foodByUser.get(uid)      || [], tzOffset);
+
+      // ── Pre-compute water achieved dates ──────────────────────────────────
+      const userBodyWeight   = userBodyWeightMap[uid] || null;
+      const requiredWaterMl  = userBodyWeight
+        ? Math.round((userBodyWeight / 20) * 1000)
+        : DEFAULT_WATER_REQUIRED_ML;
+      const waterVolumeByDate = {};
+      for (const r of (waterFoodByUser.get(uid) || [])) {
+        // Use timezone-aware date key so it matches dateList entries
+        const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+        const dateStr   = extractLocalDateString(localDate);
+        if (!dateStr) continue;
+        if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
+        try {
+          const analysisData = typeof r.AnalysisData === 'string'
+            ? JSON.parse(r.AnalysisData)
+            : r.AnalysisData;
+          (analysisData?.foods || []).forEach((food) => {
+            if (isExemptedFood(food.name)) {
+              const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
+              waterVolumeByDate[dateStr] += ml;
+            }
+          });
+        } catch (e) { /* skip malformed */ }
+      }
+      const waterDoneSet = new Set(
+        Object.entries(waterVolumeByDate)
+          .filter(([, ml]) => ml >= requiredWaterMl)
+          .map(([d]) => d)
+      );
+
+      // ── Pre-compute calories-disciplined dates ────────────────────────────
+      const userBmrTarget   = userBmrMap[uid] || null;
+      const calDoneSet      = new Set();
+
+      console.log(`🔍 [CAL] uid=${uid} bmrTarget=${userBmrTarget} foodRecords=${(foodByUser.get(uid) || []).length} stepRecords=${(stepByUser.get(uid) || []).length}`);
+
+      if (userBmrTarget && userBmrTarget > 0) {
+        // Sum calories consumed per date from NON-beverage food records only
+        const calConsumedByDate = {};
+        for (const r of (foodByUser.get(uid) || [])) {
+          // Skip beverage-only records (water, tea, coffee, afresh)
+          if (isExemptedBeverageOnly(r.AnalysisData)) continue;
+          // Use timezone-aware date key
+          const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+          const dateStr   = extractLocalDateString(localDate);
+          if (!dateStr) continue;
+          const cal = parseFloat(r.TotalCalories) || 0;
+          calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
+        }
+        // Max calories burned per date from step activity (cumulative tracker)
+        const calBurnedByDate = {};
+        for (const r of (stepByUser.get(uid) || [])) {
+          if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
+            const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+            const dateStr   = extractLocalDateString(localDate);
+            if (!dateStr) continue;
+            const burned = parseFloat(r.CaloriesBurned) || 0;
+            if ((calBurnedByDate[dateStr] || 0) < burned) {
+              calBurnedByDate[dateStr] = burned;
+            }
+          }
+        }
+        // A day is disciplined if net calories (consumed - burned) <= BMR target
+        for (const dateStr of Object.keys(calConsumedByDate)) {
+          const net = calConsumedByDate[dateStr] - (calBurnedByDate[dateStr] || 0);
+          console.log(`🔍 [CAL] uid=${uid} date=${dateStr} consumed=${calConsumedByDate[dateStr]} burned=${calBurnedByDate[dateStr]||0} net=${net} bmr=${userBmrTarget} pass=${net <= userBmrTarget}`);
+          if (net <= userBmrTarget) calDoneSet.add(dateStr);
+        }
+      }
+      console.log(`🔍 [CAL] uid=${uid} calDoneSet=`, [...calDoneSet], `dateList=`, dateList);
 
       // Accumulators for bonus stats
       const collectedTimes = {
@@ -358,14 +502,20 @@ export default async function handler(req, res) {
         if (d.timeHHMM) { collectedTimes.dinner.push(d.timeHHMM);       if (d.status === 'late') lateCounts.dinner++; }
         if (e.timeHHMM) { collectedTimes.education.push(e.timeHHMM);    if (e.status === 'late') lateCounts.education++; }
 
+        // Water and calories: done/missed only (no time window, no "late" state)
+        const waterStatus = waterDoneSet.has(date) ? 'on-time' : 'missed';
+        const calStatus   = calDoneSet.has(date)   ? 'on-time' : 'missed';
+
         return {
           date,
           activities: {
-            weight:    { time: w.timeHHMM, status: w.status },
-            breakfast: { time: b.timeHHMM, status: b.status },
-            lunch:     { time: l.timeHHMM, status: l.status },
-            dinner:    { time: d.timeHHMM, status: d.status },
-            education: { time: e.timeHHMM, status: e.status },
+            weight:          { time: w.timeHHMM, status: w.status },
+            breakfast:       { time: b.timeHHMM, status: b.status },
+            lunch:           { time: l.timeHHMM, status: l.status },
+            dinner:          { time: d.timeHHMM, status: d.status },
+            education:       { time: e.timeHHMM, status: e.status },
+            water:           { time: null,        status: waterStatus },
+            caloriesBurned:  { time: null,        status: calStatus  },
           },
         };
       });
@@ -377,6 +527,8 @@ export default async function handler(req, res) {
         lunch:     computeAverageTime(collectedTimes.lunch),
         dinner:    computeAverageTime(collectedTimes.dinner),
         education: computeAverageTime(collectedTimes.education),
+        water:     null,
+        caloriesBurned: null,
       };
 
       // Bonus: "consistently late" flag — ≥50 % of submitted days are late
@@ -391,6 +543,8 @@ export default async function handler(req, res) {
         lunch:     isConsistentlyLate('lunch'),
         dinner:    isConsistentlyLate('dinner'),
         education: isConsistentlyLate('education'),
+        water:     false,
+        caloriesBurned: false,
       };
 
       responseData.push({

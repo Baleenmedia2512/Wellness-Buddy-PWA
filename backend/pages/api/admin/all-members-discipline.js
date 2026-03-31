@@ -574,8 +574,10 @@ export default async function handler(req, res) {
       disciplineData[userId].water.onTimePosts = waterDates.size;
 
       // Calories discipline:
-      // If user has a BMR target: net calories (consumed - burned) <= BMR = disciplined
-      // If no BMR target set: fall back to original logic (any step/activity logged = disciplined)
+      // User MUST have a BMR target set to earn calorie discipline points.
+      // Net calories = calories consumed (meals) - calories burned (steps/activity)
+      // A day is disciplined ONLY IF net calories <= BMR target.
+      // If no BMR is set, calorie discipline = 0 (user must set BMR in their profile).
       const userBmrTarget = userBmrMap[userId] || null;
       const caloriesBurnedDates = new Set();
 
@@ -628,21 +630,8 @@ export default async function handler(req, res) {
             caloriesBurnedDates.add(dateStr);
           }
         });
-      } else {
-        // --- Fallback: no BMR set — original logic (any step/activity logged = disciplined) ---
-        (stepData.data || []).forEach((r) => {
-          if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
-            caloriesBurnedDates.add(dateStr);
-          }
-        });
       }
+      // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
 
       disciplineData[userId].caloriesBurned.totalPosts = caloriesBurnedDates.size;
       disciplineData[userId].caloriesBurned.onTimePosts = caloriesBurnedDates.size;

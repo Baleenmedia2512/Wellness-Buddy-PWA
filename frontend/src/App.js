@@ -149,7 +149,7 @@ function WellnessValleyApp() {
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
-  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card
+  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 

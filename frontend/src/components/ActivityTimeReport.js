@@ -10,6 +10,7 @@ import {
   Clock,
   TrendingUp,
   TrendingDown,
+  Droplets,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import HierarchicalReportLayout, {
@@ -21,14 +22,16 @@ import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education"];
+const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:    { label: "Weight",    short: "WGT", Icon: Scale,    color: "blue"   },
-  breakfast: { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
-  lunch:     { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
-  dinner:    { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
-  education: { label: "Education", short: "EDU", Icon: BookOpen, color: "indigo" },
+  weight:         { label: "Weight",    short: "WGT", Icon: Scale,    color: "blue"   },
+  breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
+  lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
+  dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
+  education:      { label: "Education", short: "EDU", Icon: BookOpen, color: "indigo" },
+  water:          { label: "Water",     short: "WAT", Icon: Droplets, color: "cyan"   },
+  caloriesBurned: { label: "Calories",  short: "CAL", Icon: Flame,    color: "red"    },
 };
 
 const STATUS_DOT = {
