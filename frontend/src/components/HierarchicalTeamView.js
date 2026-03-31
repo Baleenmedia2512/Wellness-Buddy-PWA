@@ -139,7 +139,8 @@ const TeamNode = ({
   return (
     <div className="relative flex">
       {/* Tree Connector Lines */}
-      {level > 0 && (
+      {/* Co-coach has no line to show they're at same level as coach */}
+      {level > 0 && !node.isCoCoach && (
         <div className="relative flex-shrink-0" style={{ width: "32px" }}>
           {/* Horizontal line to card */}
           <div
