@@ -714,6 +714,9 @@ const NutritionDashboard = ({
       navigator.userAgent,
     ) || window.innerWidth <= 768;
 
+  const isSmallChartDevice = () =>
+    typeof window !== "undefined" && window.innerWidth < 380;
+
   const generateHorizontalCalendarDates = () => {
     const dates = [];
     const today = new Date();
@@ -1600,13 +1603,15 @@ const NutritionDashboard = ({
       if (!point) return null;
 
       const text = point.hasData ? `${point.calories}` : "0";
+      const labelFontSize = isSmallChartDevice() ? 7 : 9;
+      const labelY = y - (isSmallChartDevice() ? 8 : 11);
       return (
         <text
           x={x}
-          y={y - 11}
+          y={labelY}
           textAnchor="middle"
           fill="#9ca3af"
-          fontSize={9}
+          fontSize={labelFontSize}
           fontWeight={500}
         >
           {text}
@@ -2254,13 +2259,13 @@ const NutritionDashboard = ({
                                   ticks={visibleNutritionTickLabels}
                                   padding={{ left: 6, right: 12 }}
                                   minTickGap={12}
-                                  tick={{ fontSize: 10, fill: "#6b7280" }}
+                                  tick={{ fontSize: isSmallChartDevice() ? 8 : 10, fill: "#6b7280" }}
                                   axisLine={false}
                                   tickLine={false}
                                 />
                                 <YAxis
                                   width={34}
-                                  tick={{ fontSize: 10, fill: "#6b7280" }}
+                                  tick={{ fontSize: isSmallChartDevice() ? 8 : 10, fill: "#6b7280" }}
                                   axisLine={false}
                                   tickLine={false}
                                   domain={[0, "auto"]}
@@ -2299,7 +2304,7 @@ const NutritionDashboard = ({
                                         key={`calorie-dot-${payload.key || index}`}
                                         cx={cx}
                                         cy={cy}
-                                        r={4}
+                                        r={isSmallChartDevice() ? 3 : 4}
                                         fill={isAbove ? "#16a34a" : "#16a34a"}
                                       />
                                     );

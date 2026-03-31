@@ -4,7 +4,6 @@ import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, Trending
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
-import TeamMemberSearch from './TeamMemberSearch';
 import LoadingSpinner from './LoadingSpinner';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -440,6 +439,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         caloriesBurned: calcCalories(steps),
         forceWrite:     false // Math.max in API — DB never decreases
       });
+      // Keep reopen baseline math aligned with the last successful foreground save.
+      const sensorAtSave = latestSensorTotalRef.current;
+      if (Number.isFinite(sensorAtSave)) {
+        localStorage.setItem(getSaveSensorKey(todayKey), String(sensorAtSave));
+      }
       console.log('💾 [StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
     } catch (err) {
       // Roll back optimistic update so next tick retries
@@ -501,9 +505,21 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
    * User taps the refresh icon in the header to force an immediate sensor read.
    */
   const handleManualRefresh = useCallback(async () => {
-    if (!isNativePlatform) return;
     setRefreshing(true);
     setRefreshDone(false);
+    if (!isNativePlatform) {
+      // Web: just re-fetch DB history
+      try {
+        await loadDailyHistoryRef.current?.();
+      } catch (err) {
+        console.warn('[StepCounter] Web refresh failed:', err?.message || err);
+      } finally {
+        setRefreshing(false);
+        setRefreshDone(true);
+        setTimeout(() => setRefreshDone(false), 1500);
+      }
+      return;
+    }
     try {
       const current = await StepCounterPlugin.getCurrentStepCount();
       const val     = Number.parseInt(current?.totalSteps, 10);
@@ -821,13 +837,19 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const stepsOnClose = todayStepsRef.current;
       const userOnClose  = resolvedUserIdRef.current;
       if (userOnClose && stepsOnClose > 0 && !wrongDateWarningRef.current) {
+        const dateOnClose = toDateKey();
         saveDailyActivity({
           userId:         userOnClose,
-          activityDate:   toDateKey(),
+          activityDate:   dateOnClose,
           steps:          stepsOnClose,
           activityType:   ACTIVITY_TYPE,
           caloriesBurned: calcCalories(stepsOnClose),
           forceWrite:     false
+        }).then(() => {
+          const sensorAtSave = latestSensorTotalRef.current;
+          if (Number.isFinite(sensorAtSave)) {
+            localStorage.setItem(getSaveSensorKey(dateOnClose), String(sensorAtSave));
+          }
         }).catch(() => {});
         GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
         console.log('💾 [StepCounter] Unmount save:', stepsOnClose, 'steps');
@@ -1100,13 +1122,19 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         console.warn('⚠️ [StepCounter] Pause save blocked — device date mismatch');
         return;
       }
+      const dateOnPause = toDateKey();
       saveDailyActivity({
         userId,
-        activityDate:   toDateKey(),
+        activityDate:   dateOnPause,
         steps,
         activityType:   ACTIVITY_TYPE,
         caloriesBurned: calcCalories(steps),
         forceWrite:     false
+      }).then(() => {
+        const sensorAtSave = latestSensorTotalRef.current;
+        if (Number.isFinite(sensorAtSave)) {
+          localStorage.setItem(getSaveSensorKey(dateOnPause), String(sensorAtSave));
+        }
       }).catch(() => {});
       GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
       console.log('💾 [StepCounter] Pause save:', steps, 'steps');
@@ -1171,8 +1199,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Manual Refresh Button — fallback for Android Doze delays */}
-            {isNativePlatform && permissionGranted && !isViewingOther && (
+            {/* Manual Refresh Button */}
+            {!isViewingOther && (
               <button
                 onClick={handleManualRefresh}
                 disabled={refreshing}
@@ -1203,16 +1231,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           </div>
         </div>
       </div>
-
-      {/* ──── Team Member Search (coaches only) ──── */}
-      {isCoach && (
-        <TeamMemberSearch
-          user={user}
-          userRole={userRole}
-          selectedMember={selectedMember}
-          onMemberSelect={setSelectedMember}
-        />
-      )}
 
       {/* ──── My Steps Content ──── */}
       {

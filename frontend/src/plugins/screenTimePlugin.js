@@ -6,6 +6,9 @@ const ScreenTime = registerPlugin('ScreenTime', {
 
 const fallback = {
   granted: false,
+  restricted: false,
+  canOpenSettings: true,
+  message: null,
   totalScreenTimeSeconds: 0,
   appUsage: [],
   date: null
@@ -28,7 +31,12 @@ const wrappedPlugin = {
       return await ScreenTime.hasPermission();
     } catch (error) {
       console.warn('[ScreenTime] hasPermission failed:', error);
-      return { granted: false };
+      return {
+        granted: false,
+        restricted: true,
+        canOpenSettings: false,
+        message: 'Usage access is unavailable on this device.'
+      };
     }
   },
 
@@ -36,10 +44,22 @@ const wrappedPlugin = {
     try {
       await this.init();
       if (!Capacitor.isNativePlatform()) return { granted: false };
-      return await ScreenTime.requestPermission();
+      const result = await ScreenTime.requestPermission();
+      if (result?.granted) return result;
+      return {
+        granted: false,
+        restricted: false,
+        canOpenSettings: true,
+        message: result?.message || 'Open Usage Access settings and allow this app.'
+      };
     } catch (error) {
       console.warn('[ScreenTime] requestPermission failed:', error);
-      return { granted: false };
+      return {
+        granted: false,
+        restricted: true,
+        canOpenSettings: false,
+        message: 'This phone blocks Usage Access for this app/device profile.'
+      };
     }
   },
 
@@ -50,7 +70,12 @@ const wrappedPlugin = {
       return await ScreenTime.getTodayScreenTime();
     } catch (error) {
       console.warn('[ScreenTime] getTodayScreenTime failed:', error);
-      return fallback;
+      return {
+        ...fallback,
+        restricted: true,
+        canOpenSettings: false,
+        message: 'Could not read UsageStats on this device.'
+      };
     }
   },
 
