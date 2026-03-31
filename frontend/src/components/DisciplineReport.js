@@ -250,17 +250,30 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       const enriched = enrichHierarchy(hierarchyResponse.hierarchy);
 
-      // Apply sorting to hierarchy
+      // Apply sorting to hierarchy - keep coaches/co-coaches fixed at top
       const sortHierarchy = (node) => {
         const sorted = { ...node };
         if (sorted.teamMembers && sorted.teamMembers.length > 0) {
-          sorted.teamMembers = [...sorted.teamMembers]
-            .map(sortHierarchy)
-            .sort((a, b) => {
-              const scoreA = a.periodDiscipline?.percentage || 0;
-              const scoreB = b.periodDiscipline?.percentage || 0;
-              return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
-            });
+          // Recursively sort children first
+          const members = sorted.teamMembers.map(sortHierarchy);
+          
+          // Separate coaches/co-coaches from regular members
+          const coaches = members.filter(m => 
+            m.role === "coach" || m.isCoach || m.isCoCoach
+          );
+          const regularMembers = members.filter(m => 
+            m.role !== "coach" && !m.isCoach && !m.isCoCoach
+          );
+          
+          // Sort only regular members by score
+          regularMembers.sort((a, b) => {
+            const scoreA = a.periodDiscipline?.percentage || 0;
+            const scoreB = b.periodDiscipline?.percentage || 0;
+            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+          });
+          
+          // Keep coaches at top, then sorted regular members
+          sorted.teamMembers = [...coaches, ...regularMembers];
         }
         return sorted;
       };
@@ -857,6 +870,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
+          key={`hierarchy-${teamView}`}
           node={filteredHierarchy}
           level={0}
           isLastChild={true}

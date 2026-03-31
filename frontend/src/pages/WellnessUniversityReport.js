@@ -683,7 +683,8 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       return (
         <div className="relative flex">
           {/* Tree Connector Lines */}
-          {level > 0 && (
+          {/* Co-coach has no line to show they're at same level as coach */}
+          {level > 0 && !node.isCoCoach && (
             <div className="relative flex-shrink-0" style={{ width: "24px" }}>
               <div
                 className="absolute top-[28px] left-0 h-[2px] bg-gray-400"
