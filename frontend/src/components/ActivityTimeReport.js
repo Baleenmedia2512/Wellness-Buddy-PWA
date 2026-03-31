@@ -414,12 +414,28 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           return enriched;
         };
 
-        const sortNode = (node) => ({
-          ...node,
-          teamMembers: [...(node.teamMembers || [])]
-            .sort((a, b) => sortOrder === "desc" ? b.__score - a.__score : a.__score - b.__score)
-            .map(sortNode),
-        });
+        const sortNode = (node) => {
+          const members = [...(node.teamMembers || [])];
+          
+          // Separate coaches/co-coaches from regular members
+          const coaches = members.filter(m => 
+            m.role === "coach" || m.isCoach || m.isCoCoach
+          );
+          const regularMembers = members.filter(m => 
+            m.role !== "coach" && !m.isCoach && !m.isCoCoach
+          );
+          
+          // Sort only regular members by score
+          regularMembers.sort((a, b) => 
+            sortOrder === "desc" ? b.__score - a.__score : a.__score - b.__score
+          );
+          
+          // Keep coaches at top, then sorted regular members, recursively sort children
+          return {
+            ...node,
+            teamMembers: [...coaches, ...regularMembers].map(sortNode),
+          };
+        };
 
         if (hierarchyRes?.hierarchy) {
           setHierarchyData(sortNode(enrichNode(hierarchyRes.hierarchy)));
