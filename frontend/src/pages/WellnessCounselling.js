@@ -469,6 +469,7 @@ const WellnessCounselling = ({ user, onBack }) => {
 
         {hierarchyData && hasVisibleNodes(hierarchyData) ? (
           <HierarchicalNode
+            key={`hierarchy-${teamView}`}
             node={hierarchyData}
             level={0}
             isLastChild={true}

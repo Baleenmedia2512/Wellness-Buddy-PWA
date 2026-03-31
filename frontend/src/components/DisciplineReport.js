@@ -834,6 +834,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
+          key={`hierarchy-${teamView}`}
           node={filteredHierarchy}
           level={0}
           isLastChild={true}

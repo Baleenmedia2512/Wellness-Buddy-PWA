@@ -848,6 +848,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         <>
           {teamViewToggle}
           <HierarchicalNode
+            key={`hierarchy-${teamView}`}
             node={filteredHierarchy}
             level={0}
             isLastChild={true}
