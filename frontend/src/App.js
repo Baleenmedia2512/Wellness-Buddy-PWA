@@ -1383,11 +1383,8 @@ function WellnessValleyApp() {
         let alertMessage = data.message || "Failed to save weight entry";
         
         if (data.validation) {
-          const v = data.validation;
-          const changeKg = Math.abs(v.difference).toFixed(1);
-          
-          // Friendly, conversational message
-          alertMessage = `We noticed a ${changeKg} kg difference from your last weigh-in (${v.previousWeight} kg → ${v.detectedWeight} kg).\n\nSince that's a big jump, we just want to double-check that the scale reading is correct.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+          // Generic validation message without showing weight difference
+          alertMessage = `We noticed a significant change from your last weigh-in.\n\nWe just want to double-check that the scale reading is correct.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
         }
         
         setAlertModal({
