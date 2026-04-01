@@ -10,7 +10,7 @@ import {
   getScreenTimePermissionStatus,
   getTodayScreenTime,
   saveScreenTime,
-  syncAccurateHistoryFromInstall
+  backfillMissingScreenTimeDays
 } from '../services/screenTimeService';
 import LoadingSpinner from './LoadingSpinner';
 import TouchFeedbackButton from './TouchFeedbackButton';
@@ -187,8 +187,8 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
 
   useEffect(() => {
     if (!isNative || !resolvedUserId) return;
-    syncAccurateHistoryFromInstall(resolvedUserId)
-      .catch((err) => console.warn('⚠️ [ScreenDashboard] Initial sync skipped:', err?.message || err));
+    backfillMissingScreenTimeDays(resolvedUserId)
+      .catch((err) => console.warn('⚠️ [ScreenDashboard] Initial backfill skipped:', err?.message || err));
   }, [isNative, resolvedUserId]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);

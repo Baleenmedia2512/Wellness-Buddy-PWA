@@ -9,7 +9,7 @@ import {
   saveScreenTime,
   fetchScreenTimeHistory,
   formatScreenTime,
-  syncAccurateHistoryFromInstall,
+  backfillMissingScreenTimeDays,
   getAccurateScreenTimeHistory,
 } from '../services/screenTimeService';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -223,10 +223,10 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
         setPermissionIssue(null);
         await loadData();
 
-        // On every resume, backfill accurate per-day values for missed days.
+        // On every resume, backfill only missing/zero days (smart — skips already-saved days).
         if (resolvedUserId) {
           try {
-            await syncAccurateHistoryFromInstall(resolvedUserId);
+            await backfillMissingScreenTimeDays(resolvedUserId);
             const h = await fetchScreenTimeHistory(resolvedUserId, 30, toDateKey());
             if (h?.success && Array.isArray(h.data)) {
               setHistoryData(h.data);
@@ -258,23 +258,23 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
     }
   }, [resolvedUserId, permissionGranted]);
 
-  // On app open: sync accurate UsageStats history from install day → today
-  // Covers: Req 1 (from install day), Req 3 (correct on every open), Req 4 (accurate DB values)
-  // Also handles Req 5 (reinstall): DB already has old data; this re-syncs recent days
+  // On app open: backfill only days missing from DB (or saved as 0) from install date → today.
+  // Today + yesterday are always refreshed with fresh accurate OS readings.
   useEffect(() => {
     if (!isNative || !permissionGranted || !resolvedUserId) return;
 
-    syncAccurateHistoryFromInstall(resolvedUserId)
-      .then((synced) => {
-        console.log('✅ [ScreenTime] Synced', synced.length, 'day(s) from install date');
-        fetchScreenTimeHistory(resolvedUserId, 30, toDateKey()).then(h => {
-          if (h?.success && Array.isArray(h.data)) {
-            setHistoryData(h.data);
-            setAvgSeconds(h.summary?.averageSeconds || 0);
-          }
-        });
+    backfillMissingScreenTimeDays(resolvedUserId)
+      .then((saved) => {
+        if (saved.length > 0) {
+          fetchScreenTimeHistory(resolvedUserId, 30, toDateKey()).then(h => {
+            if (h?.success && Array.isArray(h.data)) {
+              setHistoryData(h.data);
+              setAvgSeconds(h.summary?.averageSeconds || 0);
+            }
+          });
+        }
       })
-      .catch(err => console.warn('⚠️ [ScreenTime] Sync failed:', err));
+      .catch(err => console.warn('⚠️ [ScreenTime] Backfill failed:', err));
   }, [resolvedUserId, permissionGranted, isNative]);
 
   const handleRefresh = async () => {
@@ -644,24 +644,6 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
         {/* ──── App Breakdown ──── */}
         {!isViewingOther && isNative && permissionGranted && appUsage.length > 0 && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-4 sm:p-6">
-            <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3.5">
-              {topNutritionApp ? (
-                <>
-                  <p className="text-sm font-semibold text-emerald-800">
-                    Most used nutrition app: {topNutritionApp.appName} 👍
-                  </p>
-                  <p className="text-xs text-emerald-700 mt-1">
-                    Today you spent {formatScreenTime(topNutritionApp.usageSeconds || 0)} on nutrition tracking.
-                  </p>
-                  {nutritionApps.length > 1 && (
-                    <p className="text-xs text-emerald-700/90 mt-1.5">
-                      Also used: {nutritionApps.slice(1, 3).map(a => a.appName).join(', ')}
-                    </p>
-                  )}
-                </>
-              ) : null}
-            </div>
-
             <button
               onClick={() => setShowAppBreakdown(!showAppBreakdown)}
               className="flex items-center justify-between w-full"

@@ -9,7 +9,7 @@ import {
   saveScreenTime,
   fetchScreenTimeHistory,
   formatScreenTime,
-  syncAccurateHistoryFromInstall
+  backfillMissingScreenTimeDays
 } from '../services/screenTimeService';
 
 const toDateKey = (date = new Date()) => {
@@ -185,17 +185,16 @@ const ScreenTimeCard = ({ userId }) => {
     }
   }, [selectedPeriod, permissionGranted, resolvedUserId]);
 
-  // On app open: sync accurate UsageStats from install date → today
+  // On app open: backfill only missing/zero days from install date → today
   useEffect(() => {
     if (!isNative || !permissionGranted || !resolvedUserId) return;
 
-    syncAccurateHistoryFromInstall(resolvedUserId)
-      .then((synced) => {
-        if (synced.length === 0) return;
-        console.log('✅ [ScreenTimeCard] Synced', synced.length, 'day(s) from install date');
+    backfillMissingScreenTimeDays(resolvedUserId)
+      .then((saved) => {
+        if (saved.length === 0) return;
         fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey()).then(setHistoryData);
       })
-      .catch(err => console.warn('⚠️ [ScreenTimeCard] Sync failed:', err));
+      .catch(err => console.warn('⚠️ [ScreenTimeCard] Backfill failed:', err));
   }, [resolvedUserId, permissionGranted, isNative, selectedPeriod]);
 
   const handleRefresh = async () => {
