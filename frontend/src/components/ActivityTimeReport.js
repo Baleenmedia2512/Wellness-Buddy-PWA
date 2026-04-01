@@ -205,7 +205,6 @@ function StatusDot({ status }) {
 function DayHeatmapRow({ day }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="text-[10px] text-gray-400 w-16 shrink-0">{day.date?.slice(5)}</span>
       {ACTIVITY_KEYS.map((key) => {
         const s = day.activities?.[key]?.status ?? "missed";
         const t = day.activities?.[key]?.time;
@@ -307,7 +306,6 @@ function TimeReportDetails({ node, dateRange, filter }) {
         <table className="w-full text-[10px] border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
             <tr className="bg-green-50">
-              <th className="text-left px-1 py-1 font-semibold text-gray-600 rounded-tl-lg w-[44px]">Date</th>
               {visibleKeys.map((key) => {
                 const { Icon, short } = ACTIVITY_META[key];
                 return (
@@ -324,7 +322,6 @@ function TimeReportDetails({ node, dateRange, filter }) {
           <tbody>
             {(entry.days || []).map((day, i) => (
               <tr key={day.date} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
-                <td className="px-1 py-1 font-medium text-gray-600 text-[9px] w-[44px]">{day.date?.slice(5)}</td>
                 {visibleKeys.map((key) => {
                   const act = day.activities?.[key];
                   const s   = act?.status ?? "missed";
