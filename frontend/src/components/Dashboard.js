@@ -435,6 +435,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
           {activeTab === 'screen' && (
             <ScreenDashboard
+              key={displayUser?.id || displayUser?.userId || 'self'}
               user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}

@@ -316,7 +316,8 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
 
   // Selected date stats
   const selectedRecord = historyData.find(r => r.Date === toDateKey(selectedDate));
-  const selectedSeconds = (isNative && isToday(selectedDate) && typeof todayDeviceSeconds === 'number')
+  // Never use live device seconds when viewing another member — always use their DB value.
+  const selectedSeconds = (isNative && isToday(selectedDate) && !isViewingOther && typeof todayDeviceSeconds === 'number')
     ? todayDeviceSeconds
     : (selectedRecord?.TotalScreenTimeSeconds || 0);
 
@@ -410,9 +411,9 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
       date.setDate(selectedDate.getDate() - (trendDays - 1 - index));
       const dateKey = toDateKey(date);
       
-      // Use live todayDeviceSeconds for today, otherwise use database history
+      // Use live todayDeviceSeconds for today only when viewing own data, otherwise use DB history
       let seconds = 0;
-      if (isNative && dateKey === todayKey && typeof todayDeviceSeconds === 'number') {
+      if (isNative && dateKey === todayKey && !isViewingOther && typeof todayDeviceSeconds === 'number') {
         seconds = todayDeviceSeconds;
       } else {
         const entry = historyByDate.get(dateKey);
@@ -426,7 +427,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
         hasData: seconds > 0,
       };
     });
-  }, [historyData, selectedDate, trendDays, todayDeviceSeconds, isNative]);
+  }, [historyData, selectedDate, trendDays, todayDeviceSeconds, isNative, isViewingOther]);
 
   const screenWithData = trendData.filter(d => d.hasData);
   const avgTrendSeconds = screenWithData.length
@@ -852,21 +853,25 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
                 </div>
 
                 {/* Stat cards */}
-                <div className="grid grid-cols-3 gap-2 w-full">
-                  <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
-                    <ThumbsUp className="w-3.5 h-3.5 text-emerald-700 mx-auto mb-1" />
-                    <p className="text-base sm:text-lg font-bold text-emerald-800">
-                      {todayAppUsage.length > 0 ? formatScreenTime(goodAppsSeconds) : '--'}
-                    </p>
-                    <p className="text-[10px] text-emerald-700 font-medium">Good</p>
-                  </div>
-                  <div className="bg-orange-50 rounded-xl p-2.5 text-center">
-                    <Ban className="w-3.5 h-3.5 text-orange-600 mx-auto mb-1" />
-                    <p className="text-base sm:text-lg font-bold text-orange-700">
-                      {todayAppUsage.length > 0 ? formatScreenTime(badAppsSeconds) : '--'}
-                    </p>
-                    <p className="text-[10px] text-orange-600 font-medium">Distracting</p>
-                  </div>
+                <div className={`grid gap-2 w-full ${isViewingOther ? 'grid-cols-1 max-w-[120px] mx-auto' : 'grid-cols-3'}`}>
+                  {!isViewingOther && (
+                    <div className="bg-emerald-50 rounded-xl p-2.5 text-center">
+                      <ThumbsUp className="w-3.5 h-3.5 text-emerald-700 mx-auto mb-1" />
+                      <p className="text-base sm:text-lg font-bold text-emerald-800">
+                        {todayAppUsage.length > 0 ? formatScreenTime(goodAppsSeconds) : '--'}
+                      </p>
+                      <p className="text-[10px] text-emerald-700 font-medium">Good</p>
+                    </div>
+                  )}
+                  {!isViewingOther && (
+                    <div className="bg-orange-50 rounded-xl p-2.5 text-center">
+                      <Ban className="w-3.5 h-3.5 text-orange-600 mx-auto mb-1" />
+                      <p className="text-base sm:text-lg font-bold text-orange-700">
+                        {todayAppUsage.length > 0 ? formatScreenTime(badAppsSeconds) : '--'}
+                      </p>
+                      <p className="text-[10px] text-orange-600 font-medium">Distracting</p>
+                    </div>
+                  )}
                   <div className="bg-green-50 rounded-xl p-2.5 text-center">
                     <TrendingUp className="w-3.5 h-3.5 text-green-600 mx-auto mb-1" />
                     <p className="text-base sm:text-lg font-bold text-green-900">{formatScreenTime(avgSeconds)}</p>

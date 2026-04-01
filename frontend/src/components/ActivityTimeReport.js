@@ -804,7 +804,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         });
       });
 
-      const csv = "\uFEFF" + csvRows.join("\n");
+      const csv = csvRows.join("\n");
       const fileDate = formatDateForFile(new Date());
       const viewLabel = teamView === "direct" ? "direct" : "full";
       const activityLabel = selectedActivity || "all-activities";
