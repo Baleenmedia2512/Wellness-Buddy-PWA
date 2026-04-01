@@ -234,7 +234,7 @@ export default async function handler(req, res) {
     });
 
     // Fetch all required data in bulk for efficiency
-    const [weightData, educationData, foodData, stepData] = await Promise.all([
+    const [weightData, educationData, foodData, stepData, watchBurnData] = await Promise.all([
       // Weight records
       supabase
         .from("weight_records_table")
@@ -269,6 +269,16 @@ export default async function handler(req, res) {
         .in("UserId", allUserIds)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59"),
+
+      // Watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
+      supabase
+        .from("education_logs_table")
+        .select("UserId, CreatedAt, Topic")
+        .in("UserId", allUserIds)
+        .ilike("Topic", "Calories Burned:%")
+        .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+        .gte("CreatedAt", startDateStr)
+        .lte("CreatedAt", endDateStr + " 23:59:59"),
     ]);
 
     // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
@@ -318,6 +328,7 @@ export default async function handler(req, res) {
       foodRecords: foodData.data?.length || 0,
       waterRecords: waterFoodData.data?.length || 0,
       stepRecords: stepData.data?.length || 0,
+      watchBurnRecords: watchBurnData.data?.length || 0,
       dateRange: `${startDateStr} to ${endDateStr}`,
       userIds: allUserIds,
       sampleWeightRecord: weightData.data?.[0],
@@ -619,6 +630,26 @@ export default async function handler(req, res) {
             if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
               caloriesBurnedByDate[dateStr] = burned;
             }
+          }
+        });
+
+        // Also add watch-burned calories from education_logs_table
+        // Topic format: "Calories Burned: 2000 kcal"
+        (watchBurnData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+            if (!match) return;
+            const kcal = parseFloat(match[1]) || 0;
+            if (kcal <= 0) return;
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            // ADD watch calories on top of step calories for the day
+            caloriesBurnedByDate[dateStr] = (caloriesBurnedByDate[dateStr] || 0) + kcal;
           }
         });
 

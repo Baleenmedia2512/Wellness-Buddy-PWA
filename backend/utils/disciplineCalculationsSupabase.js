@@ -230,6 +230,16 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .eq('"UserId"', userId)
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+
+  // Get watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
+  const { data: watchBurnRecords } = await supabase
+    .from('education_logs_table')
+    .select('"Topic", "CreatedAt"')
+    .eq('"UserId"', userId)
+    .ilike('"Topic"', 'Calories Burned:%')
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+    .gte('"CreatedAt"', `${startDateStr} 00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr} 23:59:59`);
   
   // Helper to check Database stores in IST, but check against user's local time
   // Converts IST timestamp to user's local timezone before checking
@@ -382,6 +392,19 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
           caloriesBurnedByDate[date] = burned;
         }
       }
+    });
+
+    // Also add watch-burned calories from education_logs_table
+    // Topic format: "Calories Burned: 2000 kcal" — use latest entry per day
+    (watchBurnRecords || []).forEach(r => {
+      const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+      if (!match) return;
+      const kcal = parseFloat(match[1]) || 0;
+      if (kcal <= 0) return;
+      const normalizedDate = normalizeTimestamp(r.CreatedAt);
+      const date = normalizedDate.split('T')[0];
+      // ADD watch calories on top of step calories for the day
+      caloriesBurnedByDate[date] = (caloriesBurnedByDate[date] || 0) + kcal;
     });
 
     // A day is disciplined if net calories (consumed - burned) <= BMR target
