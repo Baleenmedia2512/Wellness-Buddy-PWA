@@ -5,7 +5,8 @@
 
 /**
  * Auto-correct weight if AI misread the number
- * Example: AI reads 95.6 but previous was 74.8 → corrects to 75.6
+ * Handles common OCR errors: 7↔9, 6↔8, 1↔7, 5↔6
+ * Example: AI reads 95.6 but previous was 74.8 → tries 75.6, 95.6, 85.6, etc.
  */
 function autoCorrectWeight(detectedWeight, previousWeight) {
   const detected = parseFloat(detectedWeight);
@@ -15,26 +16,85 @@ function autoCorrectWeight(detectedWeight, previousWeight) {
   const diff = Math.abs(detected - previous);
   
   if (diff > 10) {
-    // Try to find nearest plausible weight by adjusting tens digit
-    const detectedStr = detected.toFixed(1);
-    const previousStr = previous.toFixed(1);
+    // Common OCR digit confusions
+    const digitConfusions = {
+      '9': ['7', '4'],  // 9 often confused with 7 or 4
+      '7': ['9', '1'],  // 7 often confused with 9 or 1
+      '8': ['6', '3'],  // 8 often confused with 6 or 3
+      '6': ['8', '5'],  // 6 often confused with 8 or 5
+      '5': ['6', '3'],  // 5 often confused with 6 or 3
+      '1': ['7', '4'],  // 1 often confused with 7 or 4
+      '4': ['9', '1'],  // 4 often confused with 9 or 1
+      '3': ['8', '5']   // 3 often confused with 8 or 5
+    };
     
-    // Extract digits
+    const detectedStr = detected.toFixed(1);
+    const detectedDigits = detectedStr.replace('.', '').split('');
+    
+    // Try all possible digit corrections for tens place (most common error)
+    const tensPlace = Math.floor(detected / 10) % 10;
+    const tensPlaceStr = tensPlace.toString();
+    
+    if (digitConfusions[tensPlaceStr]) {
+      for (const alternativeDigit of digitConfusions[tensPlaceStr]) {
+        // Replace tens digit with alternative
+        const remainder = detected % 10;
+        const newTens = parseInt(alternativeDigit);
+        const corrected = Math.floor(detected / 10) - tensPlace + newTens;
+        const correctedWeight = corrected * 10 + remainder;
+        
+        // Check if corrected weight is plausible
+        if (Math.abs(correctedWeight - previous) <= 5 && correctedWeight > 20 && correctedWeight < 300) {
+          console.log(`🔧 Auto-corrected tens digit: ${tensPlace} → ${alternativeDigit} (${detected} → ${correctedWeight.toFixed(1)})`);
+          return {
+            corrected: parseFloat(correctedWeight.toFixed(1)),
+            wasCorrected: true,
+            original: detected,
+            correctionReason: `AI likely misread ${tensPlace} as ${alternativeDigit} (OCR error)`
+          };
+        }
+      }
+    }
+    
+    // Try units place correction
+    const unitsPlace = Math.floor(detected) % 10;
+    const unitsPlaceStr = unitsPlace.toString();
+    
+    if (digitConfusions[unitsPlaceStr]) {
+      for (const alternativeDigit of digitConfusions[unitsPlaceStr]) {
+        const wholePart = Math.floor(detected);
+        const decimal = detected - wholePart;
+        const newUnits = parseInt(alternativeDigit);
+        const correctedWhole = wholePart - unitsPlace + newUnits;
+        const correctedWeight = correctedWhole + decimal;
+        
+        if (Math.abs(correctedWeight - previous) <= 5 && correctedWeight > 20 && correctedWeight < 300) {
+          console.log(`🔧 Auto-corrected units digit: ${unitsPlace} → ${alternativeDigit} (${detected} → ${correctedWeight.toFixed(1)})`);
+          return {
+            corrected: parseFloat(correctedWeight.toFixed(1)),
+            wasCorrected: true,
+            original: detected,
+            correctionReason: `AI likely misread ${unitsPlace} as ${alternativeDigit} (OCR error)`
+          };
+        }
+      }
+    }
+    
+    // Fallback: Original logic - try adjusting tens digit to match previous
     const detectedTens = Math.floor(detected / 10);
     const previousTens = Math.floor(previous / 10);
     
-    // If tens digit differs significantly, try swapping
     if (Math.abs(detectedTens - previousTens) > 1) {
-      // Keep decimal part from detected, use tens from previous
       const decimal = detected - (detectedTens * 10);
       const corrected = (previousTens * 10) + decimal;
       
-      // Check if corrected weight is within reasonable range of previous
-      if (Math.abs(corrected - previous) <= 5) {
+      if (Math.abs(corrected - previous) <= 5 && corrected > 20 && corrected < 300) {
+        console.log(`🔧 Auto-corrected using previous tens: ${detectedTens} → ${previousTens} (${detected} → ${corrected.toFixed(1)})`);
         return {
           corrected: parseFloat(corrected.toFixed(1)),
           wasCorrected: true,
-          original: detected
+          original: detected,
+          correctionReason: 'Tens digit adjusted to match previous weight'
         };
       }
     }
@@ -43,7 +103,8 @@ function autoCorrectWeight(detectedWeight, previousWeight) {
   return {
     corrected: detected,
     wasCorrected: false,
-    original: detected
+    original: detected,
+    correctionReason: null
   };
 }
 
@@ -131,7 +192,7 @@ export function validateAndCorrectWeight(detectedWeight, previousWeight, previou
   // Valid weight - return with correction info
   let message = '';
   if (correction.wasCorrected) {
-    message = `Weight auto-corrected from ${correction.original} kg to ${workingWeight} kg (AI misread scale)`;
+    message = `Weight auto-corrected from ${correction.original} kg to ${workingWeight} kg (${correction.correctionReason || 'AI misread scale'})`;
   } else if (absoluteDifference > 1.0) {
     message = `Weight change of ${Math.abs(difference).toFixed(1)} kg in ${daysDifference} day(s)`;
   }
@@ -141,6 +202,7 @@ export function validateAndCorrectWeight(detectedWeight, previousWeight, previou
     finalWeight: workingWeight,
     wasCorrected: correction.wasCorrected,
     originalWeight: correction.original,
+    correctionReason: correction.correctionReason,
     message: message,
     difference: difference,
     hoursSinceLastEntry: hoursDifference

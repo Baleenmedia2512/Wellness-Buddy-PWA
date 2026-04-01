@@ -1404,46 +1404,50 @@ function WellnessValleyApp() {
 
       console.log("✅ Weight entry saved successfully");
 
+      // ✅ ALWAYS update weight result with final saved weight (corrected or original)
+      const finalSavedWeight = data.correction?.correctedWeight || weightData.weightValue;
+      setWeightResult({
+        ...weightData,
+        weightValue: finalSavedWeight,
+        originalWeight: data.correction?.originalWeight,
+        loggedAt: captureTimestamp || new Date().toISOString(),
+      });
+
       // Check if weight was auto-corrected
       if (data.correction && data.correction.wasCorrected) {
-        // Show custom alert modal about auto-correction
+        // Show custom alert modal about auto-correction with user-friendly message
         const corrInfo = data.correction;
+        const difference = Math.abs(corrInfo.originalWeight - corrInfo.correctedWeight).toFixed(1);
         
         setTimeout(() => {
           setAlertModal({
             isOpen: true,
-            title: "⚖️ Weight Auto-Corrected",
-            message: `AI detected: ${corrInfo.originalWeight} kg\nCorrected to: ${corrInfo.correctedWeight} kg\n\n${corrInfo.message}`,
+            title: "✅ Weight Adjusted",
+            message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
             type: "info",
           });
         }, 500);
         
         console.log('🔄 Weight auto-corrected:', corrInfo);
       } else if (data.correction && data.correction.message) {
-        // Weight changed significantly but within limits
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "⚖️ Weight Updated",
-            message: data.correction.message,
-            type: "info",
-          });
-        }, 500);
+        // Weight changed significantly but within limits - only show if change is notable
+        const change = Math.abs(data.correction.difference || 0);
+        if (change > 1.5) {
+          setTimeout(() => {
+            setAlertModal({
+              isOpen: true,
+              title: "📊 Weight Updated",
+              message: `Your weight changed by ${change.toFixed(1)} kg. Keep up the great work!`,
+              type: "info",
+            });
+          }, 500);
+        }
       }
 
       // Store the saved entry ID for potential editing
       if (data?.id) {
         setSavedWeightId(data.id);
         savedWeightIdRef.current = data.id;
-      }
-
-      // Update weight result if corrected (for display in UI)
-      if (data.correction && data.correction.wasCorrected) {
-        setWeightResult(prev => prev ? {
-          ...prev,
-          weightValue: data.correction.correctedWeight,
-          originalWeight: data.correction.originalWeight
-        } : null);
       }
 
       // Hide saving overlay
@@ -2229,16 +2233,51 @@ function WellnessValleyApp() {
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           
-          // Wrap save in try-catch to handle validation failures
+          // 🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          try {
+            const tempUserId = user?.id || (await getUserId(user));
+            const prevWeightRes = await fetch(
+              `${apiBaseUrl}/api/get-weight-history?userId=${tempUserId}&includeImage=false&_t=${Date.now()}`,
+            );
+            const prevWeightData = await prevWeightRes.json();
+            
+            if (prevWeightData.success && prevWeightData.stats?.previousWeight) {
+              const previousWeight = parseFloat(prevWeightData.stats.previousWeight.value);
+              const previousDate = prevWeightData.stats.previousWeight.date;
+              
+              // Validate weight change
+              const validation = weightDetectionService.validateWeightChange(
+                weightToSave.weightValue,
+                previousWeight,
+                previousDate
+              );
+              
+              console.log('🔍 Frontend weight validation:', validation);
+              
+              // If validation fails or shows major warning, don't save (backend will also validate)
+              if (!validation.valid) {
+                setSaveLoading(false);
+                setLoading(false);
+                
+                // Just log and continue - backend will handle validation and show CustomAlertModal
+                console.log('⚠️ Frontend detected unrealistic weight change, backend will validate');
+              } else if (validation.warning && validation.difference && Math.abs(validation.difference) > 1.5) {
+                // Show info message for moderate changes
+                console.log(`ℹ️ ${validation.message}`);
+              }
+            }
+          } catch (validationError) {
+            // Non-critical - continue with save even if validation fails
+            console.warn('⚠️ Frontend validation check failed, proceeding with save:', validationError);
+          }
+          
+          // Wrap save in try-catch to handle backend validation failures
           try {
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
-            // ✅ Only set weight result AFTER successful save
-            setWeightResult({
-              ...weightToSave,
-              loggedAt: exifTimestamp || new Date().toISOString(),
-            });
+            // ✅ Weight result is now set INSIDE performWeightSave with corrected value
+            // Don't set weightResult here - performWeightSave handles it with final weight
             setWeightEntrySaved(true);
             
             // Fetch weight diff (previous vs today) for the share card
@@ -2279,8 +2318,13 @@ function WellnessValleyApp() {
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed - show manual entry modal
-          console.log("⚠️ Weight detection failed, opening manual entry modal");
+          // Weight detection failed - check if it's a low confidence issue
+          if (detectedWeight.lowConfidence) {
+            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), opening manual entry`);
+            setError(detectedWeight.error || 'Image quality too low for accurate reading. Please retake with better lighting.');
+          } else {
+            console.log("⚠️ Weight detection failed, opening manual entry modal");
+          }
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
