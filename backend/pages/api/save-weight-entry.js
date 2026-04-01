@@ -93,72 +93,78 @@ export default async function handler(req, res) {
         : null;
 
     // ⚖️ WEIGHT VALIDATION & AUTO-CORRECTION
-    // Fetch last weight entry for validation and intelligent correction
-    const { data: lastWeightEntry } = await supabase
-      .from("weight_records_table")
-      .select("Weight, CreatedAt")
-      .eq("UserId", parseInt(userId))
-      .or('IsDeleted.is.null,IsDeleted.eq.0')
-      .order("CreatedAt", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
+    // Skip validation when user is manually editing (entryId provided)
+    // Only validate & auto-correct for new AI uploads
     let finalWeight = weight;
     let correctionInfo = null;
 
-    if (lastWeightEntry && lastWeightEntry.Weight) {
-      // Validate and auto-correct weight
-      const validation = validateAndCorrectWeight(
-        weight,
-        parseFloat(lastWeightEntry.Weight),
-        lastWeightEntry.CreatedAt,
-        unit
-      );
+    if (!entryId) {
+      // Only validate NEW entries (AI uploads), not manual edits
+      const { data: lastWeightEntry } = await supabase
+        .from("weight_records_table")
+        .select("Weight, CreatedAt")
+        .eq("UserId", parseInt(userId))
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .order("CreatedAt", { ascending: false })
+        .limit(1)
+        .maybeSingle();
 
-      if (!validation.valid) {
-        // Weight change is too large even after correction - reject
-        console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
-          detectedWeight: weight,
-          previousWeight: lastWeightEntry.Weight,
-          correctedWeight: validation.finalWeight,
-          wasCorrected: validation.wasCorrected,
-          message: validation.message
-        });
+      if (lastWeightEntry && lastWeightEntry.Weight) {
+        // Validate and auto-correct weight
+        const validation = validateAndCorrectWeight(
+          weight,
+          parseFloat(lastWeightEntry.Weight),
+          lastWeightEntry.CreatedAt,
+          unit
+        );
 
-        return res.status(400).json({
-          success: false,
-          message: validation.message,
-          validation: {
-            previousWeight: parseFloat(lastWeightEntry.Weight),
+        if (!validation.valid) {
+          // Weight change is too large even after correction - reject
+          console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
             detectedWeight: weight,
+            previousWeight: lastWeightEntry.Weight,
             correctedWeight: validation.finalWeight,
-            difference: validation.difference,
-            hoursSinceLastEntry: validation.hoursSinceLastEntry,
-            maxAllowed: validation.maxAllowed
-          }
-        });
+            wasCorrected: validation.wasCorrected,
+            message: validation.message
+          });
+
+          return res.status(400).json({
+            success: false,
+            message: validation.message,
+            validation: {
+              previousWeight: parseFloat(lastWeightEntry.Weight),
+              detectedWeight: weight,
+              correctedWeight: validation.finalWeight,
+              difference: validation.difference,
+              hoursSinceLastEntry: validation.hoursSinceLastEntry,
+              maxAllowed: validation.maxAllowed
+            }
+          });
+        }
+
+        // Use corrected weight for saving
+        finalWeight = validation.finalWeight;
+
+        if (validation.wasCorrected || validation.message) {
+          correctionInfo = {
+            originalWeight: validation.originalWeight,
+            correctedWeight: validation.finalWeight,
+            wasCorrected: validation.wasCorrected,
+            message: validation.message,
+            previousWeight: parseFloat(lastWeightEntry.Weight)
+          };
+
+          console.log(`✅ [Weight Auto-Corrected] User ${userId}:`, correctionInfo);
+        } else {
+          console.log(`✅ [Weight Validation Passed] User ${userId}:`, {
+            weight: finalWeight,
+            previousWeight: lastWeightEntry.Weight,
+            difference: validation.difference
+          });
+        }
       }
-
-      // Use corrected weight for saving
-      finalWeight = validation.finalWeight;
-
-      if (validation.wasCorrected || validation.message) {
-        correctionInfo = {
-          originalWeight: validation.originalWeight,
-          correctedWeight: validation.finalWeight,
-          wasCorrected: validation.wasCorrected,
-          message: validation.message,
-          previousWeight: parseFloat(lastWeightEntry.Weight)
-        };
-
-        console.log(`✅ [Weight Auto-Corrected] User ${userId}:`, correctionInfo);
-      } else {
-        console.log(`✅ [Weight Validation Passed] User ${userId}:`, {
-          weight: finalWeight,
-          previousWeight: lastWeightEntry.Weight,
-          difference: validation.difference
-        });
-      }
+    } else {
+      console.log(`✏️ [Manual Edit] Skipping validation for user ${userId}, saving weight: ${weight}`);
     }
 
     // 🔥 BMR PRESERVATION: Carry forward previous BMR if not explicitly provided

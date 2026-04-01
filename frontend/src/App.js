@@ -1405,11 +1405,12 @@ function WellnessValleyApp() {
       console.log("✅ Weight entry saved successfully");
 
       // ✅ ALWAYS update weight result with final saved weight (corrected or original)
-      const finalSavedWeight = data.correction?.correctedWeight || weightData.weightValue;
+      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
+      const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
       setWeightResult({
         ...weightData,
         weightValue: finalSavedWeight,
-        originalWeight: data.correction?.originalWeight,
+        originalWeight: data.correction?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
       });
 
