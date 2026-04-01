@@ -67,8 +67,17 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
+    // Deduplicate: if multiple rows exist for same date, keep the one with highest seconds
+    const byDate = new Map();
+    for (const row of (data || [])) {
+      const existing = byDate.get(row.Date);
+      if (!existing || (row.TotalScreenTimeSeconds || 0) > (existing.TotalScreenTimeSeconds || 0)) {
+        byDate.set(row.Date, row);
+      }
+    }
+    const records = Array.from(byDate.values()).sort((a, b) => b.Date.localeCompare(a.Date));
+
     // Calculate summary stats
-    const records = data || [];
     const totalSeconds = records.reduce((sum, r) => sum + (r.TotalScreenTimeSeconds || 0), 0);
     const avgSeconds = records.length > 0 ? Math.round(totalSeconds / records.length) : 0;
 

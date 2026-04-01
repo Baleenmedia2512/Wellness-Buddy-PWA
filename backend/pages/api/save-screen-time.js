@@ -42,23 +42,49 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const now = getISTTimestamp();
 
-    // Atomic upsert on (UserId, Date) — prevents duplicate rows from concurrent calls
-    const { data: upserted, error: upsertError } = await supabase
+    // Fetch all existing rows for this user+date
+    const { data: existing, error: selectError } = await supabase
       .from('screen_sessions_table')
-      .upsert(
-        {
-          UserId: safeUserId,
-          Date: safeDate,
-          TotalScreenTimeSeconds: safeSeconds,
-          CreatedAt: now
-        },
-        { onConflict: 'UserId,Date', ignoreDuplicates: false }
-      )
-      .select('*')
-      .single();
+      .select('Id')
+      .eq('UserId', safeUserId)
+      .eq('Date', safeDate)
+      .order('Id', { ascending: false });
 
-    if (upsertError) throw upsertError;
-    const savedRow = upserted;
+    if (selectError) throw selectError;
+
+    let savedRow;
+
+    if (existing && existing.length > 0) {
+      const keepId = existing[0].Id; // keep the latest row
+
+      // Delete any extra duplicate rows (keep only the one with the highest Id)
+      if (existing.length > 1) {
+        const extraIds = existing.slice(1).map(r => r.Id);
+        await supabase
+          .from('screen_sessions_table')
+          .delete()
+          .in('Id', extraIds);
+      }
+
+      // Update the single kept row
+      const { data: updated, error: updateError } = await supabase
+        .from('screen_sessions_table')
+        .update({ TotalScreenTimeSeconds: safeSeconds, CreatedAt: now })
+        .eq('Id', keepId)
+        .select('*')
+        .single();
+      if (updateError) throw updateError;
+      savedRow = updated;
+    } else {
+      // No existing row — insert fresh
+      const { data: inserted, error: insertError } = await supabase
+        .from('screen_sessions_table')
+        .insert({ UserId: safeUserId, Date: safeDate, TotalScreenTimeSeconds: safeSeconds, CreatedAt: now })
+        .select('*')
+        .single();
+      if (insertError) throw insertError;
+      savedRow = inserted;
+    }
 
     res.status(200).json({
       success: true,

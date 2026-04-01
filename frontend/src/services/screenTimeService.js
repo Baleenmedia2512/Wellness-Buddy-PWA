@@ -89,37 +89,56 @@ export async function refreshAndSaveScreenTime(userId, existingDeviceData = null
   };
 }
 
-/**
- * Get the app install date and recommended sync days (days since install, capped at 14).
- * Used to sync screen time from install day forward instead of a hardcoded 7-day window.
- */
-export async function getInstallDate() {
-  return ScreenTimePlugin.getInstallDate();
+function toDateKey(date = new Date()) {
+  return (
+    date.getFullYear() + '-' +
+    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+    String(date.getDate()).padStart(2, '0')
+  );
 }
 
 /**
- * Sync accurate screen time history from install day to today.
- * Queries UsageStatsManager (OS-level, like Digital Wellbeing) for each day.
- * Saves all days with data to DB — always overwrites stale values.
+ * Smart backfill: reads device UsageStats history, compares with what's already
+ * saved in the DB, and only saves days that are missing or have 0 seconds stored.
+ * TODAY and YESTERDAY are always re-saved (today is in-progress; yesterday just
+ * completed its full 24-hour window so the reading is now accurate).
+ *
+ * Equivalent to how StepCounter backfills missed days on app open.
  */
-export async function syncAccurateHistoryFromInstall(userId) {
+export async function backfillMissingScreenTimeDays(userId) {
+  // 1. How many days back to check (from install date, max 14)
   const { syncDays } = await ScreenTimePlugin.getInstallDate();
-  const { history } = await ScreenTimePlugin.getAccurateScreenTimeHistory(syncDays);
-  if (!Array.isArray(history) || history.length === 0) return [];
+  const days = Math.min(syncDays || 14, 14);
 
-  const daysWithData = history.filter(e => e.seconds > 0);
-  if (daysWithData.length === 0) return [];
+  // 2. Get per-day accurate OS data from UsageStatsManager
+  const { history: deviceHistory } = await ScreenTimePlugin.getAccurateScreenTimeHistory(days);
+  if (!Array.isArray(deviceHistory) || deviceHistory.length === 0) return [];
+
+  // 3. Get what's already in the DB
+  const today = toDateKey();
+  const yesterday = toDateKey(new Date(Date.now() - 86400000));
+  const dbResult = await fetchScreenTimeHistory(userId, days, today);
+  const dbByDate = new Map((dbResult?.data || []).map(r => [r.Date, r.TotalScreenTimeSeconds || 0]));
+
+  // 4. Decide what to save:
+  //    - Always save today + yesterday (fresh/accurate readings)
+  //    - Save any past day that is missing from DB or stored as 0
+  const toSave = deviceHistory.filter(e => {
+    if (!e.date || typeof e.seconds !== 'number' || e.seconds <= 0) return false;
+    if (e.date === today || e.date === yesterday) return true;      // always refresh
+    return !dbByDate.has(e.date) || dbByDate.get(e.date) === 0;    // missing/zero
+  });
+
+  if (toSave.length === 0) return [];
 
   await Promise.all(
-    daysWithData.map(e =>
-      apiClient.post('/api/save-screen-time', {
-        userId,
-        date: e.date,
-        totalScreenTimeSeconds: e.seconds
-      })
+    toSave.map(e =>
+      saveScreenTime({ userId, date: e.date, totalScreenTimeSeconds: e.seconds })
     )
   );
-  return daysWithData;
+
+  console.log(`✅ [ScreenTime] Backfilled ${toSave.length} day(s):`, toSave.map(e => e.date));
+  return toSave;
 }
 
 /**
