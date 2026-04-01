@@ -41,21 +41,32 @@ const STATUS_DOT = {
   "on-time": "bg-green-500",
   late:      "bg-amber-400",
   missed:    "bg-red-400",
+  "no-data": "bg-gray-300",
 };
 
 const STATUS_TEXT = {
   "on-time": { text: "text-green-700", bg: "bg-green-50",  border: "border-green-200" },
   late:      { text: "text-amber-700", bg: "bg-amber-50",  border: "border-amber-200" },
   missed:    { text: "text-red-600",   bg: "bg-red-50",    border: "border-red-200"   },
+  "no-data": { text: "text-gray-400",  bg: "bg-gray-50",   border: "border-gray-200"  },
 };
 
+// Binary activities (no time, just goal met/not) — show neutral gray instead of red when missed
+const BINARY_ACTIVITY_KEYS = new Set(["water", "caloriesBurned"]);
+function resolveStatus(key, status) {
+  if (BINARY_ACTIVITY_KEYS.has(key) && status === "missed") return "no-data";
+  return status;
+}
+
 const FILTER_OPTIONS = [
-  { value: "all",       label: "All Activities" },
-  { value: "weight",    label: "Weight"         },
-  { value: "breakfast", label: "Breakfast"      },
-  { value: "lunch",     label: "Lunch"          },
-  { value: "dinner",    label: "Dinner"         },
-  { value: "education", label: "Education"      },
+  { value: "all",            label: "All Activities" },
+  { value: "weight",         label: "Weight"         },
+  { value: "breakfast",      label: "Breakfast"      },
+  { value: "lunch",          label: "Lunch"          },
+  { value: "dinner",         label: "Dinner"         },
+  { value: "education",      label: "Education"      },
+  { value: "water",          label: "Water"          },
+  { value: "caloriesBurned", label: "Calories"       },
 ];
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
@@ -209,19 +220,33 @@ function DayHeatmapRow({ day }) {
   return (
     <div className="flex items-center gap-1">
       {ACTIVITY_KEYS.map((key) => {
-        const s = day.activities?.[key]?.status ?? "missed";
-        const t = day.activities?.[key]?.time;
-        const st = STATUS_TEXT[s];
+        const rawStatus = day.activities?.[key]?.status ?? "missed";
+        const s  = resolveStatus(key, rawStatus);
+        const t  = day.activities?.[key]?.time;
+        const st = STATUS_TEXT[s] ?? STATUS_TEXT["no-data"];
+        const dotOnly = BINARY_ACTIVITY_KEYS.has(key);
         return (
           <div
             key={key}
             title={`${ACTIVITY_META[key].label}: ${fmt12(t) ?? "—"} (${s})`}
-            className={`flex flex-col items-center justify-center rounded-md border px-1 py-0.5 min-w-[36px] ${st.bg} ${st.border}`}
+            className={`flex flex-col items-center justify-center rounded-md border ${dotOnly ? "px-1 py-1 min-w-[28px]" : "px-1 py-0.5 min-w-[50px]"} ${st.bg} ${st.border}`}
           >
             <StatusDot status={s} />
-            <span className={`text-[9px] font-bold mt-0.5 ${st.text}`}>
-              {fmt12(t) ?? "—"}
-            </span>
+            {!dotOnly && (
+              <span className={`text-[9px] font-bold mt-0.5 ${st.text}`}>
+                {fmt12(t) ?? "—"}
+              </span>
+            )}
+            {key === "water" && (
+              <span className="text-[8px] font-bold mt-0.5 text-cyan-600">
+                {day.activities?.water?.totalLiters != null ? `${day.activities.water.totalLiters}L` : "—"}
+              </span>
+            )}
+            {key === "caloriesBurned" && (
+              <span className={`text-[8px] font-bold mt-0.5 ${st.text}`}>
+                {day.activities?.caloriesBurned?.calories != null ? `${day.activities.caloriesBurned.calories}kcal` : "—"}
+              </span>
+            )}
           </div>
         );
       })}
@@ -305,14 +330,14 @@ function TimeReportDetails({ node, dateRange, filter }) {
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
       {/* Day-wise Table */}
-      <div ref={scrollRef} className="px-2 pb-2 pt-1.5">
-        <table className="w-full text-[10px] border-collapse" style={{ tableLayout: "fixed" }}>
+      <div ref={scrollRef} className="px-2 pb-2 pt-1.5 overflow-x-auto">
+        <table className="text-[10px] border-collapse" style={{ minWidth: "100%" }}>
           <thead>
             <tr className="bg-green-50">
               {visibleKeys.map((key) => {
                 const { Icon, short } = ACTIVITY_META[key];
                 return (
-                  <th key={key} data-key={key} title={ACTIVITY_META[key].label} className="px-1 py-1 font-semibold transition-colors text-center text-gray-600">
+                  <th key={key} data-key={key} title={ACTIVITY_META[key].label} className="px-1 py-1 font-semibold transition-colors text-center text-gray-600 whitespace-nowrap">
                     <div className="flex items-center justify-center gap-0.5">
                       <Icon className="w-2.5 h-2.5 shrink-0" />
                       <span className="text-[9px]">{short}</span>
@@ -327,15 +352,31 @@ function TimeReportDetails({ node, dateRange, filter }) {
               <tr key={day.date} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/60"}>
                 {visibleKeys.map((key) => {
                   const act = day.activities?.[key];
-                  const s   = act?.status ?? "missed";
-                  const st  = STATUS_TEXT[s];
+                  const rawS = act?.status ?? "missed";
+                  const s    = resolveStatus(key, rawS);
+                  const st   = STATUS_TEXT[s] ?? STATUS_TEXT["no-data"];
+                  const dotOnly = BINARY_ACTIVITY_KEYS.has(key);
                   return (
-                    <td key={key} className="px-0.5 py-1 text-center">
-                      <div className={`inline-flex items-center justify-center gap-0.5 px-1 py-0.5 rounded border w-full ${st.bg} ${st.border}`}>
-                        <StatusDot status={s} />
-                        <span className={`text-[9px] font-semibold ${st.text} whitespace-nowrap`}>
-                          {fmt12(act?.time) ?? "—"}
-                        </span>
+                    <td key={key} className="px-0.5 py-0.5 text-center">
+                      <div className={`inline-flex flex-col items-center justify-center gap-0 px-0.5 py-0.5 rounded border w-full ${st.bg} ${st.border}`}>
+                        <div className="flex items-center justify-center gap-0.5">
+                          <StatusDot status={s} />
+                          {!dotOnly && (
+                            <span className={`text-[9px] font-semibold ${st.text} whitespace-nowrap`}>
+                              {fmt12(act?.time) ?? "—"}
+                            </span>
+                          )}
+                        </div>
+                        {key === "water" && (
+                          <span className="text-[8px] font-bold leading-tight text-cyan-600">
+                            {act?.totalLiters != null ? `${act.totalLiters}L` : "—"}
+                          </span>
+                        )}
+                        {key === "caloriesBurned" && (
+                          <span className={`text-[8px] font-bold leading-tight ${st.text}`}>
+                            {act?.calories != null ? `${act.calories}kcal` : "—"}
+                          </span>
+                        )}
                       </div>
                     </td>
                   );

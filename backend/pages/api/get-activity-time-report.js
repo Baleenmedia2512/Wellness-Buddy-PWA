@@ -50,7 +50,6 @@
 
 import { getSupabaseClient }               from '../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy }    from '../../utils/disciplineCalculationsSupabase.js';
-import { isExemptedBeverageOnly }          from '../../utils/foodTypeDetection.js';
 import { isExemptedBeverageOnly, isExemptedFood } from '../../utils/foodTypeDetection.js';
 import {
   parseDateRangeIST,
@@ -407,12 +406,18 @@ export default async function handler(req, res) {
         ? Math.round((userBodyWeight / 20) * 1000)
         : DEFAULT_WATER_REQUIRED_ML;
       const waterVolumeByDate = {};
+      const waterLastTimeByDate = {}; // latest entry time per date (HH:mm)
       for (const r of (waterFoodByUser.get(uid) || [])) {
         // Use timezone-aware date key so it matches dateList entries
         const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
         const dateStr   = extractLocalDateString(localDate);
         if (!dateStr) continue;
         if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
+        // Track latest time for this date
+        const hhmm = `${String(localDate.getHours()).padStart(2,'0')}:${String(localDate.getMinutes()).padStart(2,'0')}`;
+        if (!waterLastTimeByDate[dateStr] || hhmm > waterLastTimeByDate[dateStr]) {
+          waterLastTimeByDate[dateStr] = hhmm;
+        }
         try {
           const analysisData = typeof r.AnalysisData === 'string'
             ? JSON.parse(r.AnalysisData)
@@ -434,8 +439,23 @@ export default async function handler(req, res) {
       // ── Pre-compute calories-disciplined dates ────────────────────────────
       const userBmrTarget   = userBmrMap[uid] || null;
       const calDoneSet      = new Set();
+      const calLastTimeByDate = {}; // latest food-log time per date (HH:mm)
 
       console.log(`🔍 [CAL] uid=${uid} bmrTarget=${userBmrTarget} foodRecords=${(foodByUser.get(uid) || []).length} stepRecords=${(stepByUser.get(uid) || []).length}`);
+
+      // Always compute step-counter calories burned per date (used for display regardless of BMR)
+      const calBurnedByDate = {};
+      for (const r of (stepByUser.get(uid) || [])) {
+        if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
+          const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+          const dateStr   = extractLocalDateString(localDate);
+          if (!dateStr) continue;
+          const burned = parseFloat(r.CaloriesBurned) || 0;
+          if ((calBurnedByDate[dateStr] || 0) < burned) {
+            calBurnedByDate[dateStr] = burned;
+          }
+        }
+      }
 
       if (userBmrTarget && userBmrTarget > 0) {
         // Sum calories consumed per date from NON-beverage food records only
@@ -449,18 +469,9 @@ export default async function handler(req, res) {
           if (!dateStr) continue;
           const cal = parseFloat(r.TotalCalories) || 0;
           calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
-        }
-        // Max calories burned per date from step activity (cumulative tracker)
-        const calBurnedByDate = {};
-        for (const r of (stepByUser.get(uid) || [])) {
-          if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
-            const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
-            const dateStr   = extractLocalDateString(localDate);
-            if (!dateStr) continue;
-            const burned = parseFloat(r.CaloriesBurned) || 0;
-            if ((calBurnedByDate[dateStr] || 0) < burned) {
-              calBurnedByDate[dateStr] = burned;
-            }
+          const hhmm = `${String(localDate.getHours()).padStart(2,'0')}:${String(localDate.getMinutes()).padStart(2,'0')}`;
+          if (!calLastTimeByDate[dateStr] || hhmm > calLastTimeByDate[dateStr]) {
+            calLastTimeByDate[dateStr] = hhmm;
           }
         }
         // A day is disciplined if net calories (consumed - burned) <= BMR target
@@ -508,6 +519,8 @@ export default async function handler(req, res) {
         // Water and calories: done/missed only (no time window, no "late" state)
         const waterStatus = waterDoneSet.has(date) ? 'on-time' : 'missed';
         const calStatus   = calDoneSet.has(date)   ? 'on-time' : 'missed';
+        const waterTime   = waterLastTimeByDate[date]  || null;
+        const calTime     = calLastTimeByDate[date]     || null;
 
         return {
           date,
@@ -517,8 +530,8 @@ export default async function handler(req, res) {
             lunch:           { time: l.timeHHMM, status: l.status },
             dinner:          { time: d.timeHHMM, status: d.status },
             education:       { time: e.timeHHMM, status: e.status },
-            water:           { time: null,        status: waterStatus },
-            caloriesBurned:  { time: null,        status: calStatus  },
+            water:           { time: waterTime,  status: waterStatus, totalLiters: parseFloat(((waterVolumeByDate[date] || 0) / 1000).toFixed(2)) },
+            caloriesBurned:  { time: calTime,    status: calStatus,  calories: Math.round(calBurnedByDate[date] || 0) },
           },
         };
       });
