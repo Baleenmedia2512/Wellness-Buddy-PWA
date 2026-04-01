@@ -61,7 +61,7 @@ const EducationDashboard = lazy(() => import('./EducationDashboard'));
  * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0 }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0 }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education')) {
@@ -375,6 +375,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               selectedDate={selectedDate}
               setSelectedDate={setSelectedDate}
               bmrUpdateKey={bmrUpdateKey}
+              watchBurnedCalories={watchBurnedCalories}
             />
           )}
 
@@ -392,6 +393,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               user={displayUser}
               apiBaseUrl={apiBaseUrl}
               hideHeader={true}
+              refreshKey={educationRefreshKey}
             />
           )}
         </Suspense>

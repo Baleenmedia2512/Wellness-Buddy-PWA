@@ -40,6 +40,9 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Fetch education logs (exclude soft-deleted)
+    // NOTE: We fetch ImageBase64 but truncate it in the response — returning the
+    // full base64 for 100 rows bloats the payload and causes 431 errors when the
+    // service worker tries to replay the cached response as a request header.
     const { data: logs, error } = await supabase
       .from('education_logs_table')
       .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"')
@@ -50,10 +53,23 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
+    // Truncate ImageBase64 to a small thumbnail prefix for the list view.
+    // The full image is only needed when a card is opened (EducationCardModal).
+    const THUMB_CHARS = 5000; // ~3.75 KB — enough for a blurry 56×56 thumbnail
+    const trimmedLogs = (logs || []).map(log => ({
+      ...log,
+      ImageBase64: log.ImageBase64
+        ? (log.ImageBase64.length > THUMB_CHARS
+            ? log.ImageBase64.slice(0, THUMB_CHARS)   // truncated thumbnail
+            : log.ImageBase64)                          // already small — keep as-is
+        : null,
+      hasFullImage: !!(log.ImageBase64 && log.ImageBase64.length > 0), // flag for modal
+    }));
+
     res.status(200).json({
       success: true,
-      count: logs?.length || 0,
-      logs: logs || []
+      count: trimmedLogs.length,
+      logs: trimmedLogs,
     });
     return;
 

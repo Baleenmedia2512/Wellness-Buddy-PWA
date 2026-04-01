@@ -87,7 +87,7 @@ const UndoRow = ({ pid, originalLog, expiresAt, ttlSeconds = UNDO_SECONDS, onRes
   );
 };
 
-const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
+const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) => {
   const [educationLogs, setEducationLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -274,14 +274,14 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, [activeEducationPanel, educationTrendRangeDays, educationTrendSeries.length]);
 
   /**
-   * Fetch education logs and summary on mount and when user changes
+   * Fetch education logs and summary on mount, user change, or external refresh trigger
    */
   useEffect(() => {
     // Clear cached userId when user changes
     userIdRef.current = null;
     fetchEducationLogs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.email]);
+  }, [user?.id, user?.email, refreshKey]);
 
   /**
    * Fetch summary data independently
@@ -1187,6 +1187,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             setDeletingId(null);
           }}
           isDeleting={deletingId === selectedLog?.Id}
+          apiBaseUrl={apiBaseUrl}
+          userId={userIdRef.current}
         />
       )}
     </>

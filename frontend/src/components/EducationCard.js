@@ -232,7 +232,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0 }) => {
           {data.ImageBase64 ? (
             <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
               <img 
-                src={data.ImageBase64} 
+                src={data.ImageBase64.startsWith('data:') ? data.ImageBase64 : `data:image/jpeg;base64,${data.ImageBase64}`}
                 alt={data.Topic || 'Meeting Screenshot'} 
                 className="w-full h-full object-cover"
               />

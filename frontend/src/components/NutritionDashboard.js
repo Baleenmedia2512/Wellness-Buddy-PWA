@@ -15,6 +15,7 @@ import {
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
+import { geminiService } from "../services/geminiService";
 import {
   LineChart,
   Line,
@@ -37,6 +38,7 @@ const NutritionDashboard = ({
   selectedDate: propSelectedDate,
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
+  watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
 }) => {
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -81,6 +83,16 @@ const NutritionDashboard = ({
 
   // Calorie target from user's BMR (fallback to 1500 if not set)
   const [calorieTarget, setCalorieTarget] = useState(1500);
+
+  // Burned calories split by source: steps (from DB) + watch (from DB via education_logs_table)
+  const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity
+  const [dbWatchBurned, setDbWatchBurned] = useState(0); // from education_logs_table (today's watch entries)
+  // Use the highest of: DB watch value OR the just-uploaded prop (in case DB hasn't been committed yet)
+  const watchBurned = Math.max(dbWatchBurned, watchBurnedCalories);
+  const burnedCalories = stepsBurned + watchBurned;      // combined total used in all calculations
+  const [burnedLoading, setBurnedLoading] = useState(false);
+  const watchUploadRef = useRef(null);
+
   const [trendRangeDays, setTrendRangeDays] = useState(7);
   const [calorieTrendData, setCalorieTrendData] = useState([]);
   const [trendLoading, setTrendLoading] = useState(false);
@@ -899,6 +911,108 @@ const NutritionDashboard = ({
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
 
+  // ─── Fetch burned calories from daily_step_activity for the selected date ────
+  const fetchBurnedCalories = useCallback(
+    async (date) => {
+      if (!user) return;
+      setBurnedLoading(true);
+      try {
+        const actualUserId = await resolveUserId();
+        if (!actualUserId) return;
+        const dateStr =
+          date.getFullYear() +
+          "-" +
+          String(date.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(date.getDate()).padStart(2, "0");
+        const res = await fetch(
+          `${apiBaseUrl}/api/get-daily-activity?userId=${actualUserId}&date=${dateStr}&activityType=walking&_t=${Date.now()}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } },
+        );
+        const json = await res.json();
+        // API returns { trend/data: [...] } — find the entry matching today's date
+        const rows = json?.trend || json?.data || [];
+        const todayRow = rows.find((r) => r.date === dateStr || r.activityDate === dateStr);
+        const burned = todayRow?.caloriesBurned ?? todayRow?.CaloriesBurned ?? 0;
+        const dbBurned = Math.round(Number(burned) || 0);
+        setStepsBurned(dbBurned);
+      } catch (err) {
+        console.warn("[NutritionDashboard] fetchBurnedCalories failed:", err);
+      } finally {
+        setBurnedLoading(false);
+      }
+    },
+    [user, apiBaseUrl, resolveUserId],
+  );
+
+  useEffect(() => {
+    if (user) fetchBurnedCalories(selectedDate);
+  }, [user, selectedDate, fetchBurnedCalories]);
+
+  // ─── Fetch watch-burned calories from education_logs_table for the selected date ─
+  const fetchWatchBurnedCalories = useCallback(
+    async (date) => {
+      if (!user) return;
+      try {
+        const actualUserId = await resolveUserId();
+        if (!actualUserId) return;
+        const dateStr =
+          date.getFullYear() +
+          "-" +
+          String(date.getMonth() + 1).padStart(2, "0") +
+          "-" +
+          String(date.getDate()).padStart(2, "0");
+        const res = await fetch(
+          `${apiBaseUrl}/api/get-watch-burned-calories?userId=${actualUserId}&date=${dateStr}&_t=${Date.now()}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } },
+        );
+        const json = await res.json();
+        if (json.success) {
+          setDbWatchBurned(json.caloriesBurned || 0);
+        }
+      } catch (err) {
+        console.warn("[NutritionDashboard] fetchWatchBurnedCalories failed:", err);
+      }
+    },
+    [user, apiBaseUrl, resolveUserId],
+  );
+
+  useEffect(() => {
+    if (user) fetchWatchBurnedCalories(selectedDate);
+  }, [user, selectedDate, fetchWatchBurnedCalories, watchBurnedCalories]);
+  // ↑ also re-fetch when watchBurnedCalories changes (just saved a new watch image)
+
+  // ─── Smartwatch screenshot handler ───────────────────────────────────────
+  const handleWatchScreenshot = useCallback(
+    async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      // Reset the input so the same file can be re-selected
+      e.target.value = "";
+
+      setBurnedLoading(true);
+      try {
+        const result = await geminiService.analyzeWatchScreenshot(file);
+        if (result.caloriesBurned > 0) {
+          // NOTE: watch calories are managed via App.js watchBurnedCalories state (prop).
+          // This legacy handler is no longer used — upload happens on main page via WatchActivityCard.
+          console.log(
+            `[BurnToBalance] 📷 Extracted ${result.caloriesBurned} kcal burned from ${result.source} (confidence: ${result.confidence})`,
+          );
+        } else {
+          console.warn("[BurnToBalance] Could not extract calories from screenshot.");
+          alert("Could not read calories burned from this screenshot. Please try a clearer image showing the calories burned value.");
+        }
+      } catch (err) {
+        console.error("[BurnToBalance] Screenshot analysis failed:", err);
+        alert("Failed to analyze screenshot. Please check your connection and try again.");
+      } finally {
+        setBurnedLoading(false);
+      }
+    },
+    [],
+  );
+
   const toLocalDateString = (date) => {
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -1510,6 +1624,14 @@ const NutritionDashboard = ({
             hint: `${Math.abs(caloriesDelta)} kcal below target`,
           };
 
+  // ─── Burn-to-Balance derived values ──────────────────────────────────────
+  const isOverTarget   = consumedCalories > calorieTarget;
+  const extraCalories  = isOverTarget ? Math.round(consumedCalories - calorieTarget) : 0;
+  const burnProgress   = extraCalories > 0
+    ? Math.min(100, Math.round((burnedCalories / extraCalories) * 100))
+    : 0;
+  const isBalanced     = isOverTarget && burnedCalories >= extraCalories;
+
   const trendAverageCalories = calorieTrendData.length
     ? Math.round(
         calorieTrendData.reduce((sum, d) => sum + (d.calories || 0), 0) /
@@ -1622,6 +1744,15 @@ const NutritionDashboard = ({
     <div className="min-h-screen bg-gray-50">
       {/* keyframes (once) */}
       <style>{`@keyframes countdown-shrink { from { transform: scaleX(1); } to { transform: scaleX(0); } }`}</style>
+
+      {/* Hidden file input for smartwatch screenshot upload */}
+      <input
+        ref={watchUploadRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleWatchScreenshot}
+      />
 
       {/* Background */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -2148,6 +2279,75 @@ const NutritionDashboard = ({
                           }}
                         />
                       </div>
+
+                      {/* ── Burn to Balance (only when over target) ── */}
+                      {/* DEV PREVIEW: remove `|| true` once verified */}
+                      {(isOverTarget || process.env.NODE_ENV === 'development') && (
+                        <div className="mb-4 rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-red-50 p-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-1.5">
+                              <p className="text-xs md:text-sm font-semibold text-orange-700">
+                                Burn to Balance
+                              </p>
+                            </div>
+                            {/* Status badge — only show when balanced */}
+                            {isBalanced && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
+                                ✅ Balanced
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Burned / Extra display */}
+                          <div className="flex items-end justify-between mb-1.5">
+                            <div>
+                              <p className="text-xl md:text-2xl font-bold text-gray-900">
+                                {burnedCalories}
+                                <span className="text-xs md:text-sm font-normal text-gray-500">
+                                  {" "}/ {extraCalories} kcal
+                                </span>
+                              </p>
+                              {/* Show breakdown when both sources have data */}
+                              {stepsBurned > 0 && watchBurned > 0 && (
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  👟 {stepsBurned} steps + ⌚ {watchBurned} watch
+                                </p>
+                              )}
+                              {stepsBurned > 0 && watchBurned === 0 && (
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  👟 From daily steps
+                                </p>
+                              )}
+                              {watchBurned > 0 && stepsBurned === 0 && (
+                                <p className="text-[10px] text-gray-400 mt-0.5">
+                                  ⌚ From smartwatch
+                                </p>
+                              )}
+                            </div>
+                            <p className="text-[11px] text-orange-600 font-medium">
+                              {burnProgress}% burned
+                            </p>
+                          </div>
+
+                          {/* Burn progress bar */}
+                          <div className="w-full bg-orange-100 rounded-full h-2 overflow-hidden">
+                            <div
+                              className={`h-2 rounded-full transition-all duration-700 ease-out ${
+                                isBalanced
+                                  ? "bg-gradient-to-r from-emerald-400 to-green-500"
+                                  : "bg-gradient-to-r from-orange-400 via-red-400 to-rose-500"
+                              }`}
+                              style={{ width: `${burnProgress}%` }}
+                            />
+                          </div>
+
+                          <p className="text-[10px] text-gray-500 mt-1.5">
+                            {isBalanced
+                              ? "Great work! You've balanced today's extra calories."
+                              : `Burn ${extraCalories - burnedCalories} more kcal to balance today's intake.`}
+                          </p>
+                        </div>
+                      )}
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         <div className="p-2 rounded-lg bg-blue-50 flex flex-col items-center">

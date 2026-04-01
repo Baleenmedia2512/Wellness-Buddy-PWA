@@ -103,7 +103,8 @@ class ImageTypeDetector {
 STEP 1 - CLASSIFY:
 - "education" - Online meeting screenshot (Zoom, Meet, Teams, WebEx) OR in-person gathering photo (group of people at club/nutrition center/classroom/wellness center)
 - "weight" - Weighing scale showing body weight
-- "food" - Food, meal, or drink (DEFAULT if neither education nor weight)
+- "smartwatch" - Smartwatch, fitness band, or health/fitness app screenshot showing activity/calories burned (Apple Watch, Samsung Galaxy Watch, Fitbit, Garmin, Mi Band, Google Fit, Apple Health, Samsung Health, etc.)
+- "food" - Food, meal, or drink (DEFAULT if none of the above)
 
 STEP 2 - EXTRACT DATA based on classification:
 
@@ -130,6 +131,15 @@ IF WEIGHT:
   "bmr": number|null
 }
 
+IF SMARTWATCH:
+{
+  "type": "smartwatch",
+  "confidence": 0.0-1.0,
+  "reason": "brief explanation",
+  "caloriesBurned": number (active calories / calories burned shown on screen, 0 if not visible),
+  "source": "Apple Watch"|"Samsung Health"|"Fitbit"|"Garmin"|"Google Fit"|"Apple Health"|"Mi Fitness"|"Smartwatch"|"unknown"
+}
+
 IF FOOD (default):
 {
   "type": "food",
@@ -150,6 +160,7 @@ IF FOOD (default):
 }
 
 CRITICAL RULES:
+- If you see a SMARTWATCH or FITNESS BAND on a wrist, or a FITNESS/HEALTH APP screenshot (showing steps, calories, heart rate rings) = "smartwatch" (HIGH PRIORITY)
 - If you see a WEIGHING SCALE (bathroom scale, body composition scale) with digital/analog display showing numbers = "weight" (HIGHEST PRIORITY)
 - If you see MULTIPLE PEOPLE gathered together (not eating, not on a scale) = "education"
 - If you see food/meals on plates/bowls = "food"
@@ -246,6 +257,21 @@ Return ONLY JSON matching ONE of the above formats.`;
       // ═══════════════════════════════════════════════════════════════════════
       // Return result based on detected type
       // ═══════════════════════════════════════════════════════════════════════
+      // ⌚ SMARTWATCH / FITNESS APP — highest specificity check first
+      if (analysisData.type === 'smartwatch' && analysisData.confidence > 0.5) {
+        console.log('⌚ [RESULT] Returning SMARTWATCH result:', analysisData.caloriesBurned, 'kcal from', analysisData.source);
+        return {
+          type: 'smartwatch',
+          confidence: analysisData.confidence,
+          details: {
+            isSmartwatch: true,
+            caloriesBurned: Math.round(Number(analysisData.caloriesBurned) || 0),
+            source: analysisData.source || 'unknown',
+            reason: analysisData.reason
+          }
+        };
+      }
+
       if (analysisData.type === 'education' && analysisData.confidence > 0.7) {
         return {
           type: 'education',
