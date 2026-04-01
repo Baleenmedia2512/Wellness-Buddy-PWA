@@ -1376,74 +1376,15 @@ function WellnessValleyApp() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        // Weight validation failed - show user-friendly alert modal
-        console.log('❌ Weight validation failed:', data.validation);
-        
-        // Build friendly, supportive message for user
-        let alertMessage = data.message || "Failed to save weight entry";
-        
-        if (data.validation) {
-          // Generic validation message without showing weight difference
-          alertMessage = `We noticed a significant change from your last weigh-in.\n\nWe just want to double-check that the scale reading is correct.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
-        }
-        
-        setAlertModal({
-          isOpen: true,
-          title: "⚖️ Wait, is that right?",
-          message: alertMessage,
-          type: "warning", // Changed from "error" to "warning" for yellow icon
-        });
-        
-        // Clear loading states
-        setSaveLoading(false);
-        setLoadingState("idle");
-        
-        // Throw error so caller knows validation failed
-        throw new Error(data.message || "Weight validation failed");
+        throw new Error(data.message || "Failed to save weight entry");
       }
 
       console.log("✅ Weight entry saved successfully");
-
-      // Check if weight was auto-corrected
-      if (data.correction && data.correction.wasCorrected) {
-        // Show custom alert modal about auto-correction
-        const corrInfo = data.correction;
-        
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "⚖️ Weight Auto-Corrected",
-            message: `AI detected: ${corrInfo.originalWeight} kg\nCorrected to: ${corrInfo.correctedWeight} kg\n\n${corrInfo.message}`,
-            type: "info",
-          });
-        }, 500);
-        
-        console.log('🔄 Weight auto-corrected:', corrInfo);
-      } else if (data.correction && data.correction.message) {
-        // Weight changed significantly but within limits
-        setTimeout(() => {
-          setAlertModal({
-            isOpen: true,
-            title: "⚖️ Weight Updated",
-            message: data.correction.message,
-            type: "info",
-          });
-        }, 500);
-      }
 
       // Store the saved entry ID for potential editing
       if (data?.id) {
         setSavedWeightId(data.id);
         savedWeightIdRef.current = data.id;
-      }
-
-      // Update weight result if corrected (for display in UI)
-      if (data.correction && data.correction.wasCorrected) {
-        setWeightResult(prev => prev ? {
-          ...prev,
-          weightValue: data.correction.correctedWeight,
-          originalWeight: data.correction.originalWeight
-        } : null);
       }
 
       // Hide saving overlay
@@ -1465,10 +1406,7 @@ function WellnessValleyApp() {
       setSaveLoading(false);
       setLoadingState("idle");
       
-      // Don't show error box for validation failures (already showing modal)
-      if (!err.message || !err.message.includes("validation") && !err.message.includes("verify weight")) {
-        setError(err.message || "Failed to save weight entry");
-      }
+      setError(err.message || "Failed to save weight entry");
       throw err;
     }
   };
@@ -1593,11 +1531,7 @@ function WellnessValleyApp() {
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
-      
-      // Don't show error box for validation failures (already showing modal)
-      if (!err.message || (!err.message.includes("validation") && !err.message.includes("verify weight"))) {
-        setError(err.message || "Failed to save weight entry");
-      }
+      setError(err.message || "Failed to save weight entry");
       throw err;
     }
   };
@@ -2727,9 +2661,7 @@ function WellnessValleyApp() {
       }
 
       // Don't show error box for weight validation failures (already showing custom modal)
-      if (!errorMessage.includes("validation") && !errorMessage.includes("verify weight")) {
-        setError("Failed to process image: " + errorMessage);
-      }
+      setError("Failed to process image: " + errorMessage);
       console.error("❌ Image processing error:", err);
     } finally {
       setLoading(false);
