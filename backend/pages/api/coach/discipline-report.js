@@ -1,6 +1,6 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
-import { isExemptedBeverageOnly } from "../../../utils/foodTypeDetection.js";
+import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
 import {
   parseDateRange,
   calculateExpectedPosts,
@@ -11,7 +11,8 @@ import {
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:35) are counted on-time
-const WINDOW_BUFFER_SECONDS = 300;
+// const WINDOW_BUFFER_SECONDS = 300;
+const WINDOW_BUFFER_SECONDS = 59;
 
 // Helper: Add buffer seconds to a time string "HH:MM:SS"
 const addBufferToTime = (t) => {
@@ -233,7 +234,7 @@ export default async function handler(req, res) {
     });
 
     // Fetch all required data in bulk for efficiency
-    const [weightData, educationData, foodData] = await Promise.all([
+    const [weightData, educationData, foodData, stepData] = await Promise.all([
       // Weight records
       supabase
         .from("weight_records_table")
@@ -252,26 +253,71 @@ export default async function handler(req, res) {
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
 
-      // Food/nutrition records (include AnalysisData to filter out beverage-only entries)
+      // Food/nutrition records (include AnalysisData to filter out beverage-only entries, TotalCalories for calorie discipline)
       supabase
         .from("food_nutrition_data_table")
-        .select("UserID, CreatedAt, AnalysisData")
+        .select("UserID, CreatedAt, AnalysisData, TotalCalories")
         .in("UserID", allUserIds.map(String))
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59")
         .or('IsDeleted.is.null,IsDeleted.eq.0'),
+
+      // Daily step activity records (for calories burned discipline)
+      supabase
+        .from("daily_step_activity")
+        .select("UserId, CreatedAt, Steps, CaloriesBurned")
+        .in("UserId", allUserIds)
+        .gte("CreatedAt", startDateStr)
+        .lte("CreatedAt", endDateStr + "T23:59:59"),
     ]);
 
     // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
+    // waterFoodData = only water/beverage-only entries (for water intake discipline)
+    const waterFoodData = { data: (foodData.data || []).filter(r => isExemptedBeverageOnly(r.AnalysisData)) };
     if (foodData.data) {
       foodData.data = foodData.data.filter(r => !isExemptedBeverageOnly(r.AnalysisData));
     }
+    
+    // 🔍 DEBUG: Log water detection
+    console.log('💧 Water Food Records detected:', waterFoodData.data?.length || 0);
+    if (waterFoodData.data?.length > 0) {
+      console.log('💧 Sample water record AnalysisData:', waterFoodData.data[0]?.AnalysisData?.substring?.(0, 200));
+    } else if (foodData.data?.length > 0) {
+      console.log('💧 No water records found. Sample food AnalysisData:', (foodData.data || []).concat(waterFoodData.data || [])[0]?.AnalysisData?.substring?.(0, 200));
+    }
+
+    // Fetch latest body weight AND BMR for each user from ANY date (no date restriction)
+    // Uses most recent weight ever recorded — no need to upload weight today
+    // Falls back to 2500ml ONLY if user has never logged a weight at all
+    const DEFAULT_WATER_REQUIRED_ML = 2500;
+    const { data: latestWeightRows } = await supabase
+      .from('weight_records_table')
+      .select('UserId, Weight, Bmr, CreatedAt')
+      .in('UserId', allUserIds)
+      .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+      .order('CreatedAt', { ascending: false });
+    // Build map: userId → latest body weight kg
+    const userBodyWeightMap = {};
+    const userBmrMap = {}; // BMR (calorie target) per userId
+    (latestWeightRows || []).forEach(row => {
+      const uid = row.UserId;
+      if (!(uid in userBodyWeightMap)) {
+        const w = parseFloat(row.Weight);
+        userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
+      }
+      if (!(uid in userBmrMap)) {
+        const b = parseFloat(row.Bmr);
+        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
+      }
+    });
     
     // 🔍 DEBUG: Log fetched data counts and sample records
     console.log('📊 Fetched Data Summary:', {
       weightRecords: weightData.data?.length || 0,
       educationRecords: educationData.data?.length || 0,
       foodRecords: foodData.data?.length || 0,
+      waterRecords: waterFoodData.data?.length || 0,
+      stepRecords: stepData.data?.length || 0,
       dateRange: `${startDateStr} to ${endDateStr}`,
       userIds: allUserIds,
       sampleWeightRecord: weightData.data?.[0],
@@ -283,6 +329,7 @@ export default async function handler(req, res) {
     if (weightData.error) console.error('❌ Weight query error:', weightData.error);
     if (educationData.error) console.error('❌ Education query error:', educationData.error);
     if (foodData.error) console.error('❌ Food query error:', foodData.error);
+    if (stepData.error) console.error('❌ Step activity query error:', stepData.error);
 
     // Process discipline data for each member
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
@@ -495,6 +542,102 @@ export default async function handler(req, res) {
       const lunchData = getMealData(mealWindows.lunch, 'LUNCH');
       const dinnerData = getMealData(mealWindows.dinner, 'DINNER');
 
+      // Water intake: quantity-based — sum volume_ml per date, achieved only if >= requiredWaterMl
+      // requiredWaterMl = (latestBodyWeightKg / 20) * 1000, uses most recent weight from ANY date
+      // Falls back to 2500ml ONLY if user has never logged a weight at all
+      const userBodyWeight = userBodyWeightMap[userId] || null;
+      const requiredWaterMl = userBodyWeight
+        ? Math.round((userBodyWeight / 20) * 1000)
+        : DEFAULT_WATER_REQUIRED_ML;
+      const waterVolumeByDate = {};
+      (waterFoodData.data || []).forEach((r) => {
+        if (r.UserID == userId) {
+          const date = new Date(r.CreatedAt);
+          const dateStr =
+            date.getFullYear() +
+            "-" +
+            String(date.getMonth() + 1).padStart(2, "0") +
+            "-" +
+            String(date.getDate()).padStart(2, "0");
+          if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
+          try {
+            const analysisData = typeof r.AnalysisData === 'string'
+              ? JSON.parse(r.AnalysisData)
+              : r.AnalysisData;
+            (analysisData?.foods || []).forEach(food => {
+              if (isExemptedFood(food.name)) {
+                // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
+                const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
+                waterVolumeByDate[dateStr] += ml;
+              }
+            });
+          } catch (e) { /* skip malformed */ }
+        }
+      });
+      const waterDates = new Set();
+      Object.entries(waterVolumeByDate).forEach(([date, totalMl]) => {
+        if (totalMl >= requiredWaterMl) waterDates.add(date);
+      });
+
+      // Calories discipline:
+      // User MUST have a BMR target set to earn calorie discipline points.
+      // Net calories = calories consumed (meals) - calories burned (steps/activity)
+      // A day is disciplined ONLY IF net calories <= BMR target.
+      // If no BMR is set, calorie discipline = 0 (user must set BMR in their profile).
+      const userBmrTarget = userBmrMap[userId] || null;
+      const caloriesBurnedDates = new Set();
+
+      if (userBmrTarget && userBmrTarget > 0) {
+        // Sum calories consumed per date from non-beverage nutrition records (foodData already filtered)
+        const caloriesConsumedByDate = {};
+        (foodData.data || []).forEach((r) => {
+          if (r.UserID == userId) {
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            const cal = parseFloat(r.TotalCalories) || 0;
+            caloriesConsumedByDate[dateStr] = (caloriesConsumedByDate[dateStr] || 0) + cal;
+          }
+        });
+
+        // Sum calories burned per date (keep highest cumulative value per day)
+        const caloriesBurnedByDate = {};
+        (stepData.data || []).forEach((r) => {
+          if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
+            const date = new Date(r.CreatedAt);
+            const dateStr =
+              date.getFullYear() +
+              "-" +
+              String(date.getMonth() + 1).padStart(2, "0") +
+              "-" +
+              String(date.getDate()).padStart(2, "0");
+            const burned = parseFloat(r.CaloriesBurned) || 0;
+            if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
+              caloriesBurnedByDate[dateStr] = burned;
+            }
+          }
+        });
+
+        // A day is disciplined if net calories (consumed - burned) <= BMR target
+        const allActivityDates = new Set([
+          ...Object.keys(caloriesConsumedByDate),
+          ...Object.keys(caloriesBurnedByDate),
+        ]);
+        allActivityDates.forEach((dateStr) => {
+          const consumed = caloriesConsumedByDate[dateStr] || 0;
+          const burned   = caloriesBurnedByDate[dateStr]   || 0;
+          const netCalories = consumed - burned;
+          if (netCalories <= userBmrTarget) {
+            caloriesBurnedDates.add(dateStr);
+          }
+        });
+      }
+      // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
+
       // 🔍 DEBUG: Log meal data summary for USA users
       if (tzOffset === 300 || tzOffset >= 240) {
         console.log(`🍽️ User ${userId} Meal Summary:`, {
@@ -551,6 +694,16 @@ export default async function handler(req, res) {
           onTimePosts: dinnerData.onTimeDates.size,
           expectedPosts: expectedPostsPerActivity,
         },
+        water: {
+          totalPosts: waterDates.size,
+          onTimePosts: waterDates.size,
+          expectedPosts: expectedPostsPerActivity,
+        },
+        caloriesBurned: {
+          totalPosts: caloriesBurnedDates.size,
+          onTimePosts: caloriesBurnedDates.size,
+          expectedPosts: expectedPostsPerActivity,
+        },
       };
     });
     
@@ -562,7 +715,9 @@ export default async function handler(req, res) {
         education: disciplineData[0].education,
         breakfast: disciplineData[0].breakfast,
         lunch: disciplineData[0].lunch,
-        dinner: disciplineData[0].dinner
+        dinner: disciplineData[0].dinner,
+        water: disciplineData[0].water,
+        caloriesBurned: disciplineData[0].caloriesBurned,
       });
     }
 
@@ -617,7 +772,9 @@ export default async function handler(req, res) {
           (coachDiscipline.education?.onTimePosts || 0) +
           (coachDiscipline.breakfast?.onTimePosts || 0) +
           (coachDiscipline.lunch?.onTimePosts || 0) +
-          (coachDiscipline.dinner?.onTimePosts || 0);
+          (coachDiscipline.dinner?.onTimePosts || 0) +
+          (coachDiscipline.water?.onTimePosts || 0) +
+          (coachDiscipline.caloriesBurned?.onTimePosts || 0);
 
         const coachTotalExpectedPosts = calculateExpectedPosts(
           dates.start,
@@ -706,6 +863,24 @@ export default async function handler(req, res) {
                 ? `${formatTimeForDisplay(timeWindowMap.dinner.start)} - ${formatTimeForDisplay(timeWindowMap.dinner.end)}`
                 : "Not Set",
             },
+            water: {
+              percentage: calculateDisciplinePercentage(
+                coachDiscipline.water?.onTimePosts || 0,
+                coachDiscipline.water?.expectedPosts || 0,
+              ),
+              onTimePosts: coachDiscipline.water?.onTimePosts || 0,
+              expectedPosts: coachDiscipline.water?.expectedPosts || 0,
+              targetWindow: "Any time",
+            },
+            caloriesBurned: {
+              percentage: calculateDisciplinePercentage(
+                coachDiscipline.caloriesBurned?.onTimePosts || 0,
+                coachDiscipline.caloriesBurned?.expectedPosts || 0,
+              ),
+              onTimePosts: coachDiscipline.caloriesBurned?.onTimePosts || 0,
+              expectedPosts: coachDiscipline.caloriesBurned?.expectedPosts || 0,
+              targetWindow: "Any time",
+            },
           },
         };
       }
@@ -793,6 +968,24 @@ export default async function handler(req, res) {
               ? `${formatTimeForDisplay(timeWindowMap.dinner.start)} - ${formatTimeForDisplay(timeWindowMap.dinner.end)}`
               : "Not Set",
           },
+          water: {
+            percentage: calculateDisciplinePercentage(
+              discipline.water?.onTimePosts || 0,
+              discipline.water?.expectedPosts || 0,
+            ),
+            onTimePosts: discipline.water?.onTimePosts || 0,
+            expectedPosts: discipline.water?.expectedPosts || 0,
+            targetWindow: "Any time",
+          },
+          caloriesBurned: {
+            percentage: calculateDisciplinePercentage(
+              discipline.caloriesBurned?.onTimePosts || 0,
+              discipline.caloriesBurned?.expectedPosts || 0,
+            ),
+            onTimePosts: discipline.caloriesBurned?.onTimePosts || 0,
+            expectedPosts: discipline.caloriesBurned?.expectedPosts || 0,
+            targetWindow: "Any time",
+          },
         };
 
         const totalOnTimePosts =
@@ -800,7 +993,9 @@ export default async function handler(req, res) {
           (discipline.education?.onTimePosts || 0) +
           (discipline.breakfast?.onTimePosts || 0) +
           (discipline.lunch?.onTimePosts || 0) +
-          (discipline.dinner?.onTimePosts || 0);
+          (discipline.dinner?.onTimePosts || 0) +
+          (discipline.water?.onTimePosts || 0) +
+          (discipline.caloriesBurned?.onTimePosts || 0);
 
         const totalExpectedPosts = calculateExpectedPosts(
           dates.start,
@@ -820,7 +1015,9 @@ export default async function handler(req, res) {
           education: discipline.education,
           breakfast: discipline.breakfast,
           lunch: discipline.lunch,
-          dinner: discipline.dinner
+          dinner: discipline.dinner,
+          water: discipline.water,
+          caloriesBurned: discipline.caloriesBurned,
         });
 
         return {

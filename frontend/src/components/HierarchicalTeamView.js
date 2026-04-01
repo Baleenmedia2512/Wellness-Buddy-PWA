@@ -12,6 +12,8 @@ import {
   Coffee,
   Utensils,
   Moon,
+  Droplets,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -128,6 +130,8 @@ const TeamNode = ({
     breakfast: <Coffee className="w-4 h-4" />,
     lunch: <Utensils className="w-4 h-4" />,
     dinner: <Moon className="w-4 h-4" />,
+    water: <Droplets className="w-4 h-4" />,
+    caloriesBurned: <Flame className="w-4 h-4" />,
   };
 
   const getScoreColorText = (score) => {
@@ -139,7 +143,8 @@ const TeamNode = ({
   return (
     <div className="relative flex">
       {/* Tree Connector Lines */}
-      {level > 0 && (
+      {/* Co-coach has no line to show they're at same level as coach */}
+      {level > 0 && !node.isCoCoach && (
         <div className="relative flex-shrink-0" style={{ width: "32px" }}>
           {/* Horizontal line to card */}
           <div

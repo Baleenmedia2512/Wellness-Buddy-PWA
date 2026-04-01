@@ -1376,15 +1376,74 @@ function WellnessValleyApp() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to save weight entry");
+        // Weight validation failed - show user-friendly alert modal
+        console.log('❌ Weight validation failed:', data.validation);
+        
+        // Build friendly, supportive message for user
+        let alertMessage = data.message || "Failed to save weight entry";
+        
+        if (data.validation) {
+          // Generic validation message without showing weight difference
+          alertMessage = `We noticed a significant change from your last weigh-in.\n\nWe just want to double-check that the scale reading is correct.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        }
+        
+        setAlertModal({
+          isOpen: true,
+          title: "⚖️ Wait, is that right?",
+          message: alertMessage,
+          type: "warning", // Changed from "error" to "warning" for yellow icon
+        });
+        
+        // Clear loading states
+        setSaveLoading(false);
+        setLoadingState("idle");
+        
+        // Throw error so caller knows validation failed
+        throw new Error(data.message || "Weight validation failed");
       }
 
       console.log("✅ Weight entry saved successfully");
+
+      // Check if weight was auto-corrected
+      if (data.correction && data.correction.wasCorrected) {
+        // Show custom alert modal about auto-correction
+        const corrInfo = data.correction;
+        
+        setTimeout(() => {
+          setAlertModal({
+            isOpen: true,
+            title: "⚖️ Weight Auto-Corrected",
+            message: `AI detected: ${corrInfo.originalWeight} kg\nCorrected to: ${corrInfo.correctedWeight} kg\n\n${corrInfo.message}`,
+            type: "info",
+          });
+        }, 500);
+        
+        console.log('🔄 Weight auto-corrected:', corrInfo);
+      } else if (data.correction && data.correction.message) {
+        // Weight changed significantly but within limits
+        setTimeout(() => {
+          setAlertModal({
+            isOpen: true,
+            title: "⚖️ Weight Updated",
+            message: data.correction.message,
+            type: "info",
+          });
+        }, 500);
+      }
 
       // Store the saved entry ID for potential editing
       if (data?.id) {
         setSavedWeightId(data.id);
         savedWeightIdRef.current = data.id;
+      }
+
+      // Update weight result if corrected (for display in UI)
+      if (data.correction && data.correction.wasCorrected) {
+        setWeightResult(prev => prev ? {
+          ...prev,
+          weightValue: data.correction.correctedWeight,
+          originalWeight: data.correction.originalWeight
+        } : null);
       }
 
       // Hide saving overlay
@@ -1405,7 +1464,11 @@ function WellnessValleyApp() {
       console.error("❌ Save weight error:", err);
       setSaveLoading(false);
       setLoadingState("idle");
-      setError(err.message || "Failed to save weight entry");
+      
+      // Don't show error box for validation failures (already showing modal)
+      if (!err.message || !err.message.includes("validation") && !err.message.includes("verify weight")) {
+        setError(err.message || "Failed to save weight entry");
+      }
       throw err;
     }
   };
@@ -1530,7 +1593,11 @@ function WellnessValleyApp() {
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
-      setError(err.message || "Failed to save weight entry");
+      
+      // Don't show error box for validation failures (already showing modal)
+      if (!err.message || (!err.message.includes("validation") && !err.message.includes("verify weight"))) {
+        setError(err.message || "Failed to save weight entry");
+      }
       throw err;
     }
   };
@@ -2156,45 +2223,59 @@ function WellnessValleyApp() {
             console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
 
-          setWeightResult({
-            ...weightToSave,
-            loggedAt: exifTimestamp || new Date().toISOString(),
-          }); // Store for display below upload box
+          // Don't display weight result yet - wait for successful save
           setWeightEntrySaved(false);
           setWeightDiff(null);
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
-          // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
-          await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
-          setWeightEntrySaved(true);
-          // Fetch weight diff (previous vs today) for the share card
+          
+          // Wrap save in try-catch to handle validation failures
           try {
-            const diffUserId = user?.id || (await getUserId(user));
-            const diffRes = await fetch(
-              `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
-            );
-            const diffData = await diffRes.json();
-            if (diffData.success && diffData.stats?.previousWeight) {
-              const weightChange = parseFloat(diffData.stats.weightChange);
-              setWeightDiff({
-                previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
-                previousDate: diffData.stats.previousWeight.date,
-                change: Math.round(weightChange * 10) / 10,
-              });
-              // ✅ Immediately inject into leaderboard strip — no API wait needed
-              if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
-                leaderboardRef.current.injectEntry({
-                  userId: diffUserId,
-                  userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
-                  email: user?.email || "",
-                  weightLoss: Math.abs(weightChange),
-                  profileImage: user?.photoURL || user?.ProfileImage || null,
-                  coachName: "",
+            // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
+            await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
+            
+            // ✅ Only set weight result AFTER successful save
+            setWeightResult({
+              ...weightToSave,
+              loggedAt: exifTimestamp || new Date().toISOString(),
+            });
+            setWeightEntrySaved(true);
+            
+            // Fetch weight diff (previous vs today) for the share card
+            try {
+              const diffUserId = user?.id || (await getUserId(user));
+              const diffRes = await fetch(
+                `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
+              );
+              const diffData = await diffRes.json();
+              if (diffData.success && diffData.stats?.previousWeight) {
+                const weightChange = parseFloat(diffData.stats.weightChange);
+                setWeightDiff({
+                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
+                  previousDate: diffData.stats.previousWeight.date,
+                  change: Math.round(weightChange * 10) / 10,
                 });
+                // ✅ Immediately inject into leaderboard strip — no API wait needed
+                if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
+                  leaderboardRef.current.injectEntry({
+                    userId: diffUserId,
+                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                    email: user?.email || "",
+                    weightLoss: Math.abs(weightChange),
+                    profileImage: user?.photoURL || user?.ProfileImage || null,
+                    coachName: "",
+                  });
+                }
               }
+            } catch (_) {
+              /* non-critical — share card just won't show diff */
             }
-          } catch (_) {
-            /* non-critical — share card just won't show diff */
+          } catch (saveError) {
+            // Validation failed or other save error - don't show weight result
+            console.log("❌ Weight save failed, weight not displayed:", saveError.message);
+            // Modal is already shown by performWeightSave, just stop here
+            setLoading(false);
+            return;
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
@@ -2645,7 +2726,10 @@ function WellnessValleyApp() {
           "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
 
-      setError("Failed to process image: " + errorMessage);
+      // Don't show error box for weight validation failures (already showing custom modal)
+      if (!errorMessage.includes("validation") && !errorMessage.includes("verify weight")) {
+        setError("Failed to process image: " + errorMessage);
+      }
       console.error("❌ Image processing error:", err);
     } finally {
       setLoading(false);
@@ -4120,7 +4204,15 @@ function WellnessValleyApp() {
       {/* Custom Alert Modal (for image validation and other critical messages) */}
       <CustomAlertModal
         isOpen={alertModal.isOpen}
-        onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+        onClose={() => {
+          setAlertModal({ ...alertModal, isOpen: false });
+          // Clear all weight images when closing validation error modal
+          setImagePreview(null);
+          setCurrentWeightImage(null);
+          setPendingWeightImage(null);
+          // Clear error state to prevent error box from showing
+          setError(null);
+        }}
         title={alertModal.title}
         message={alertModal.message}
         type={alertModal.type}

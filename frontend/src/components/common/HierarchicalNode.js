@@ -96,7 +96,8 @@ const HierarchicalNode = ({
   return (
     <div className="relative flex" style={{ marginLeft: level > 0 ? 0 : 0 }}>
       {/* Tree lines - width shrinks with depth to prevent card squishing */}
-      {level > 0 && (
+      {/* Co-coach has no line to show they're at same level as coach */}
+      {level > 0 && !node.isCoCoach && (
         <div
           className="relative flex-shrink-0"
           style={{ width: `${Math.max(10, 24 - (level - 1) * 3)}px` }}

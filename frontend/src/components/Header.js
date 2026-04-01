@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LogOut,
   LayoutDashboard,
@@ -45,6 +45,32 @@ const Header = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const menuPanelRef = useRef(null);
+
+  // Auto-scale menu panel to fit screen without scroll
+  useEffect(() => {
+    if (!menuOpen) return;
+    const applyScale = () => {
+      const el = menuPanelRef.current;
+      if (!el) return;
+      // Reset first so we measure natural size
+      el.style.transform = "translateX(-50%)";
+      el.style.transformOrigin = "top center";
+      const panelH = el.scrollHeight;
+      const available = window.innerHeight - 80;
+      if (panelH > available) {
+        const s = available / panelH;
+        el.style.transform = `translateX(-50%) scale(${s})`;
+      }
+    };
+    // Use rAF to ensure DOM has fully painted before measuring
+    const raf = requestAnimationFrame(() => requestAnimationFrame(applyScale));
+    window.addEventListener("resize", applyScale);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener("resize", applyScale);
+    };
+  }, [menuOpen]);
 
   // Initialize showProfileModal from localStorage to persist across page refreshes
   const [showProfileModal, setShowProfileModal] = useState(() => {
@@ -228,7 +254,7 @@ const Header = ({
                 />
 
                 {/* Google-style fixed centered panel — no scroll */}
-                <div className="fixed top-[68px] left-1/2 -translate-x-1/2 w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col">
+                <div ref={menuPanelRef} className="fixed top-[68px] left-1/2 w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
                   {/* ── PROFILE CARD ── */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
                     {/* Close button */}

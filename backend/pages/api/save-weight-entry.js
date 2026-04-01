@@ -5,6 +5,7 @@
 } from "../../utils/supabaseClient.js";
 import { cache, cacheKeys } from "../../utils/cache.js";
 import { largeBodyConfig as config } from "../../utils/apiConfig.js";
+import { validateAndCorrectWeight } from "../../utils/weightValidation.js";
 
 export { config };
 
@@ -91,6 +92,75 @@ export default async function handler(req, res) {
         ? parseFloat(muscleMass)
         : null;
 
+    // ⚖️ WEIGHT VALIDATION & AUTO-CORRECTION
+    // Fetch last weight entry for validation and intelligent correction
+    const { data: lastWeightEntry } = await supabase
+      .from("weight_records_table")
+      .select("Weight, CreatedAt")
+      .eq("UserId", parseInt(userId))
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order("CreatedAt", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    let finalWeight = weight;
+    let correctionInfo = null;
+
+    if (lastWeightEntry && lastWeightEntry.Weight) {
+      // Validate and auto-correct weight
+      const validation = validateAndCorrectWeight(
+        weight,
+        parseFloat(lastWeightEntry.Weight),
+        lastWeightEntry.CreatedAt,
+        unit
+      );
+
+      if (!validation.valid) {
+        // Weight change is too large even after correction - reject
+        console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
+          detectedWeight: weight,
+          previousWeight: lastWeightEntry.Weight,
+          correctedWeight: validation.finalWeight,
+          wasCorrected: validation.wasCorrected,
+          message: validation.message
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: validation.message,
+          validation: {
+            previousWeight: parseFloat(lastWeightEntry.Weight),
+            detectedWeight: weight,
+            correctedWeight: validation.finalWeight,
+            difference: validation.difference,
+            hoursSinceLastEntry: validation.hoursSinceLastEntry,
+            maxAllowed: validation.maxAllowed
+          }
+        });
+      }
+
+      // Use corrected weight for saving
+      finalWeight = validation.finalWeight;
+
+      if (validation.wasCorrected || validation.message) {
+        correctionInfo = {
+          originalWeight: validation.originalWeight,
+          correctedWeight: validation.finalWeight,
+          wasCorrected: validation.wasCorrected,
+          message: validation.message,
+          previousWeight: parseFloat(lastWeightEntry.Weight)
+        };
+
+        console.log(`✅ [Weight Auto-Corrected] User ${userId}:`, correctionInfo);
+      } else {
+        console.log(`✅ [Weight Validation Passed] User ${userId}:`, {
+          weight: finalWeight,
+          previousWeight: lastWeightEntry.Weight,
+          difference: validation.difference
+        });
+      }
+    }
+
     // 🔥 BMR PRESERVATION: Carry forward previous BMR if not explicitly provided
     let bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;
 
@@ -157,7 +227,7 @@ export default async function handler(req, res) {
     if (entryId) {
       // ✏️ OVERWRITE: explicit edit by ID from dashboard/modal
       const updateFields = {
-        Weight: weight,
+        Weight: finalWeight,
         UpdatedAt: currentTime
       };
       if (bmiValue !== null) updateFields.Bmi = bmiValue;
@@ -186,7 +256,7 @@ export default async function handler(req, res) {
 
       const insertPayload = {
         UserId: parseInt(userId),
-        Weight: weight,
+        Weight: finalWeight,
         Bmi: bmiValue,
         BodyFat: bodyFatValue,
         MuscleMass: muscleMassValue,
@@ -224,12 +294,14 @@ export default async function handler(req, res) {
       id: data?.ID || data?.id,
       updated: wasUpdated,
       message: wasUpdated ? "Weight entry updated successfully" : 'Weight entry saved successfully',
+      correction: correctionInfo, // Include auto-correction info if any
       data: {
         userId,
-        weightValue: weight,
+        weightValue: finalWeight, // Return corrected weight
+        originalWeight: correctionInfo?.originalWeight || finalWeight,
         unit,
         bmr: bmrValue,
-        bmrPreserved: !bmr && bmrValue ? true : false, // true if BMR was carried forward
+        bmrPreserved: !bmr && bmrValue ? true : false,
         imageBase64: imageBase64ToSave,
         timestamp: new Date().toISOString(),
       },

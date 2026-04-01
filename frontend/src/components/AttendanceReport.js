@@ -491,6 +491,7 @@ const AttendanceReport = ({ user, onBack }) => {
 
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
+          key={`hierarchy-${teamView}`}
           node={filteredHierarchy}
           level={0}
           isLastChild={true}

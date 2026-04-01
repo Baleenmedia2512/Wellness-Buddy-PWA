@@ -7,6 +7,8 @@ import {
   Coffee,
   Utensils,
   Moon,
+  Droplets,
+  Flame,
   Settings,
   ArrowUpDown,
   Users,
@@ -96,13 +98,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           scores[m.userId] = percentage;
           scores[String(m.userId)] = percentage;
 
-          // Add activities (all 5: weight, education, breakfast, lunch, dinner)
+          // Add activities (all 7: weight, education, breakfast, lunch, dinner, water, caloriesBurned)
           activities[m.userId] = {
             weight: m.activities?.weight?.percentage || 0,
             education: m.activities?.education?.percentage || 0,
             breakfast: m.activities?.breakfast?.percentage || 0,
             lunch: m.activities?.lunch?.percentage || 0,
             dinner: m.activities?.dinner?.percentage || 0,
+            water: m.activities?.water?.percentage || 0,
+            caloriesBurned: m.activities?.caloriesBurned?.percentage || 0,
             onTimePosts: m.periodDiscipline?.onTimePosts || 0,
             expectedPosts: m.periodDiscipline?.expectedPosts || 0,
           };
@@ -134,6 +138,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             dinner:
               teamDataResponse.coachPerformance.activities?.dinner
                 ?.percentage || 0,
+            water:
+              teamDataResponse.coachPerformance.activities?.water?.percentage ||
+              0,
+            caloriesBurned:
+              teamDataResponse.coachPerformance.activities?.caloriesBurned
+                ?.percentage || 0,
             onTimePosts:
               teamDataResponse.coachPerformance.periodDiscipline?.onTimePosts ||
               0,
@@ -155,6 +165,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               breakfast: m.activities?.breakfast?.percentage || 0,
               lunch: m.activities?.lunch?.percentage || 0,
               dinner: m.activities?.dinner?.percentage || 0,
+              water: m.activities?.water?.percentage || 0,
+              caloriesBurned: m.activities?.caloriesBurned?.percentage || 0,
               onTimePosts: m.periodDiscipline?.onTimePosts || 0,
               expectedPosts: m.periodDiscipline?.expectedPosts || 0,
             };
@@ -238,17 +250,30 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       const enriched = enrichHierarchy(hierarchyResponse.hierarchy);
 
-      // Apply sorting to hierarchy
+      // Apply sorting to hierarchy - keep coaches/co-coaches fixed at top
       const sortHierarchy = (node) => {
         const sorted = { ...node };
         if (sorted.teamMembers && sorted.teamMembers.length > 0) {
-          sorted.teamMembers = [...sorted.teamMembers]
-            .map(sortHierarchy)
-            .sort((a, b) => {
-              const scoreA = a.periodDiscipline?.percentage || 0;
-              const scoreB = b.periodDiscipline?.percentage || 0;
-              return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
-            });
+          // Recursively sort children first
+          const members = sorted.teamMembers.map(sortHierarchy);
+          
+          // Separate coaches/co-coaches from regular members
+          const coaches = members.filter(m => 
+            m.role === "coach" || m.isCoach || m.isCoCoach
+          );
+          const regularMembers = members.filter(m => 
+            m.role !== "coach" && !m.isCoach && !m.isCoCoach
+          );
+          
+          // Sort only regular members by score
+          regularMembers.sort((a, b) => {
+            const scoreA = a.periodDiscipline?.percentage || 0;
+            const scoreB = b.periodDiscipline?.percentage || 0;
+            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+          });
+          
+          // Keep coaches at top, then sorted regular members
+          sorted.teamMembers = [...coaches, ...regularMembers];
         }
         return sorted;
       };
@@ -392,6 +417,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     const breakfast = activities.breakfast || 0;
     const lunch = activities.lunch || 0;
     const dinner = activities.dinner || 0;
+    const water = activities.water || 0;
+    const caloriesBurned = activities.caloriesBurned || 0;
     const onTimePosts =
       node.periodDiscipline?.onTimePosts || activities.onTimePosts || 0;
     const expectedPosts =
@@ -426,7 +453,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           <h4 className="text-[10px] sm:text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 sm:mb-3">
             Activity Breakdown
           </h4>
-          <div className="grid grid-cols-5 gap-1 sm:gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {[
               {
                 icon: (
@@ -482,6 +509,28 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 ),
                 val: dinner,
                 label: "DIN",
+              },
+              {
+                icon: (
+                  <Droplets
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      water,
+                    )}`}
+                  />
+                ),
+                val: water,
+                label: "WAT",
+              },
+              {
+                icon: (
+                  <Flame
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
+                      caloriesBurned,
+                    )}`}
+                  />
+                ),
+                val: caloriesBurned,
+                label: "CAL",
               },
             ].map(({ icon, val, label }) => (
               <div
@@ -821,6 +870,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
+          key={`hierarchy-${teamView}`}
           node={filteredHierarchy}
           level={0}
           isLastChild={true}
