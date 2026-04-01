@@ -85,6 +85,16 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
     return stored ? Number(stored) : null;
   });
 
+  // When the selected member changes (e.g. coach views another user), update resolvedUserId immediately.
+  useEffect(() => {
+    const incomingId = user?.id || user?.userId;
+    if (incomingId) setResolvedUserId(incomingId);
+  }, [user?.id, user?.userId]);
+
+  // True when displaying someone else's data — must never save our device screen time to their account.
+  const selfUserId = Number(localStorage.getItem('dbUserId'));
+  const isViewingOther = !!(resolvedUserId && selfUserId && Number(resolvedUserId) !== selfUserId);
+
   useEffect(() => {
     if (resolvedUserId) return;
     let cancelled = false;
@@ -142,9 +152,11 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
   const loadHistory = useCallback(async ({ showLoader = true } = {}) => {
     if (!resolvedUserId) return;
     if (showLoader) setLoading(true);
+    const selfId = Number(localStorage.getItem('dbUserId'));
+    const viewingOther = !!(selfId && Number(resolvedUserId) !== selfId);
     try {
-      // Keep dashboard in sync with the latest device value for today when permission exists.
-      if (isNative) {
+      // Only sync device data when viewing our own screen time — never save our data to another member.
+      if (isNative && !viewingOther) {
         try {
           const status = await getScreenTimePermissionStatus();
           if (status.granted) {
@@ -186,10 +198,10 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
   }, [resolvedUserId, isNative]);
 
   useEffect(() => {
-    if (!isNative || !resolvedUserId) return;
+    if (!isNative || !resolvedUserId || isViewingOther) return;
     backfillMissingScreenTimeDays(resolvedUserId)
       .catch((err) => console.warn('⚠️ [ScreenDashboard] Initial backfill skipped:', err?.message || err));
-  }, [isNative, resolvedUserId]);
+  }, [isNative, resolvedUserId, isViewingOther]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
 
