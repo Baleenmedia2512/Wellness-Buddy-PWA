@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
 import { istToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
@@ -63,13 +63,14 @@ const formatDate = (dateString) => {
   });
 };
 
-const EducationCard = React.memo(({ data, onDelete, onClick, index = 0 }) => {
+const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseUrl, userId }) => {
   const [dx, setDx] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [animating, setAnimating] = useState(false);
   const [armed, setArmed] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [deletedOnce, setDeletedOnce] = useState(false);
+  const [thumbnailSrc, setThumbnailSrc] = useState(null);
 
   const startXRef = useRef(0);
   const rafRef = useRef(null);
@@ -83,6 +84,23 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0 }) => {
   };
 
   useEffect(() => () => cancelRAF(), []);
+
+  // Lazy-load thumbnail: fetch full image from API and use it as thumbnail
+  useEffect(() => {
+    if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
+
+    fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${data.Id}&userId=${userId}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (res.success && res.imageBase64) {
+          const src = res.imageBase64.startsWith('data:')
+            ? res.imageBase64
+            : `data:image/jpeg;base64,${res.imageBase64}`;
+          setThumbnailSrc(src);
+        }
+      })
+      .catch(() => {/* silently ignore */});
+  }, [data?.Id, data?.hasFullImage, apiBaseUrl, userId]);
 
   if (!data || !data.CreatedAt) {
     console.warn('EducationCard received invalid data:', data);
@@ -229,13 +247,19 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0 }) => {
 
         <div className="flex items-center gap-2 xs:gap-3 sm:gap-4 p-2.5 xs:p-3 sm:p-4">
           {/* Screenshot Image or Platform Icon */}
-          {data.ImageBase64 ? (
+          {thumbnailSrc ? (
             <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
-              <img 
-                src={data.ImageBase64.startsWith('data:') ? data.ImageBase64 : `data:image/jpeg;base64,${data.ImageBase64}`}
-                alt={data.Topic || 'Meeting Screenshot'} 
+              <img
+                src={thumbnailSrc}
+                alt={data.Topic || 'Meeting Screenshot'}
                 className="w-full h-full object-cover"
+                onError={(e) => { e.target.style.display = 'none'; }}
               />
+            </div>
+          ) : data.hasFullImage ? (
+            // Image exists but not yet loaded — show a placeholder gradient
+            <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
+              {platformIcon}
             </div>
           ) : (
             <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md`}>

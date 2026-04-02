@@ -273,9 +273,9 @@ export default async function handler(req, res) {
         .select("UserId, CreatedAt, Topic")
         .in("UserId", memberIds)
         .ilike("Topic", "Calories Burned:%")
-        .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
         .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + " 23:59:59"),
+        .lte("CreatedAt", endDateStr + "T23:59:59"),
     ]);
 
     // Separate water records (beverage-only) BEFORE filtering food data
@@ -357,15 +357,9 @@ export default async function handler(req, res) {
       if (records && Array.isArray(records)) {
         records.forEach((r) => {
           if (r[userIdField] == userId) {
-            // ✅ Use local date formatting to prevent timezone shifting
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
-            dates.add(dateStr);
+            // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (dateStr && dateStr.length === 10) dates.add(dateStr);
           }
         });
       }
@@ -386,15 +380,9 @@ export default async function handler(req, res) {
             r[userIdField] == userId &&
             isTimeInWindow(r.CreatedAt, windowStart, windowEnd)
           ) {
-            // ✅ Use local date formatting to prevent timezone shifting
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
-            dates.add(dateStr);
+            // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (dateStr && dateStr.length === 10) dates.add(dateStr);
           }
         });
       }
@@ -506,14 +494,9 @@ export default async function handler(req, res) {
 
               // ✅ BUFFER FIX: Add 59-second buffer to mealWindow.end
               if (time >= mealWindow.start && time <= addBufferToTime(mealWindow.end)) {
-                // ✅ Use local date formatting to prevent timezone shifting
-                const date = new Date(r.CreatedAt);
-                const dateStr =
-                  date.getFullYear() +
-                  "-" +
-                  String(date.getMonth() + 1).padStart(2, "0") +
-                  "-" +
-                  String(date.getDate()).padStart(2, "0");
+                // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+                const dateStr = String(r.CreatedAt || '').slice(0, 10);
+                if (!dateStr || dateStr.length !== 10) return;
                 dates.add(dateStr);
                 onTimeDates.add(dateStr);
               }
@@ -554,13 +537,8 @@ export default async function handler(req, res) {
       const waterVolumeByDate = {};
       (waterFoodData.data || []).forEach((r) => {
         if (r.UserID == userId) {
-          const date = new Date(r.CreatedAt);
-          const dateStr =
-            date.getFullYear() +
-            "-" +
-            String(date.getMonth() + 1).padStart(2, "0") +
-            "-" +
-            String(date.getDate()).padStart(2, "0");
+          const dateStr = String(r.CreatedAt || '').slice(0, 10);
+          if (!dateStr || dateStr.length !== 10) return;
           if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
           try {
             const analysisData = typeof r.AnalysisData === 'string'
@@ -597,13 +575,8 @@ export default async function handler(req, res) {
         const caloriesConsumedByDate = {};
         (foodData.data || []).forEach((r) => {
           if (r.UserID == userId) {
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
             const cal = parseFloat(r.TotalCalories) || 0;
             caloriesConsumedByDate[dateStr] = (caloriesConsumedByDate[dateStr] || 0) + cal;
           }
@@ -613,13 +586,8 @@ export default async function handler(req, res) {
         const caloriesBurnedByDate = {};
         (stepData.data || []).forEach((r) => {
           if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
             const burned = parseFloat(r.CaloriesBurned) || 0;
             if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
               caloriesBurnedByDate[dateStr] = burned;
@@ -635,13 +603,8 @@ export default async function handler(req, res) {
             if (!match) return;
             const kcal = parseFloat(match[1]) || 0;
             if (kcal <= 0) return;
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
             caloriesBurnedByDate[dateStr] = (caloriesBurnedByDate[dateStr] || 0) + kcal;
           }
         });

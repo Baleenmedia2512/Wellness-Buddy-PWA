@@ -1163,6 +1163,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                               onDelete={handleDeleteEducationLog}
                               onClick={(logData) => setSelectedLog(logData)}
                               index={index}
+                              apiBaseUrl={apiBaseUrl}
+                              userId={userIdRef.current}
                             />
                           </Suspense>
                         );
