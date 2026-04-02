@@ -827,6 +827,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
                   </div>
                 </div>
 
+
                 {/* Progress bar */}
                 <div className="w-full mb-3">
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
