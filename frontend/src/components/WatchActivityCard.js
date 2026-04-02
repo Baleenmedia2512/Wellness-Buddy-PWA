@@ -29,9 +29,7 @@ const WatchActivityCard = ({
   const [saveError, setSaveError] = useState(null);
   const hasSavedRef = useRef(false); // prevent double-save in StrictMode
 
-  if (!watchData) return null;
-
-  const { caloriesBurned = 0, source = "Smartwatch", loggedAt, userId: resolvedUserId } = watchData;
+  const { caloriesBurned = 0, source = "Smartwatch", loggedAt, userId: resolvedUserId } = watchData || {};
 
   const formattedTime = new Date(loggedAt || Date.now()).toLocaleString("en-US", {
     month: "short",
@@ -108,6 +106,9 @@ const WatchActivityCard = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // ───────────────────────────────────────────────────────────────────────────
+
+  // Return null after hooks are called
+  if (!watchData) return null;
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-orange-100 overflow-hidden">

@@ -180,6 +180,7 @@ export default async function handler(req, res) {
           difference: validation.difference
         });
       }
+      
     } else if (entryId) {
       console.log(`⚠️ [Manual Edit] No previous weight found for comparison - allowing edit for user ${userId}`);
     }
