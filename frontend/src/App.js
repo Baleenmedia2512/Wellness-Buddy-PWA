@@ -1459,7 +1459,7 @@ function WellnessValleyApp() {
         
         if (data.validation) {
           // Generic validation message without showing weight difference
-          alertMessage = `We noticed a significant change from your last weigh-in.\n\nWe just want to double-check that the scale reading is correct.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+          alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
         }
         
         setAlertModal({

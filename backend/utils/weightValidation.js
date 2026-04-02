@@ -171,18 +171,24 @@ export function validateAndCorrectWeight(detectedWeight, previousWeight, previou
 
   if (absoluteDifference > maxChange) {
     // Still exceeds limit after correction - reject
-    const timeContext = hoursDifference <= 24 
-      ? 'within 24 hours' 
-      : daysDifference <= 2 
-        ? `in ${daysDifference} days`
-        : `in ${daysDifference} days`;
+    let timeContext;
+    
+    if (hoursDifference <= 24) {
+      timeContext = 'within 24 hours';
+    } else if (daysDifference <= 2) {
+      timeContext = `in ${daysDifference} day${daysDifference !== 1 ? 's' : ''}`;
+    } else {
+      timeContext = `in ${daysDifference} days`;
+    }
+    
+    const direction = difference > 0 ? 'increase' : 'decrease';
     
     return {
       valid: false,
       finalWeight: workingWeight,
       wasCorrected: correction.wasCorrected,
       originalWeight: correction.original,
-      message: `Weight change of ${absoluteDifference.toFixed(1)} kg ${timeContext} exceeds maximum allowed (${maxChange} kg). Please verify weight.`,
+      message: `Unrealistic weight ${direction} of ${absoluteDifference.toFixed(1)} kg ${timeContext}`,
       difference: difference,
       hoursSinceLastEntry: hoursDifference,
       maxAllowed: maxChange
