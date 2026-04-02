@@ -301,6 +301,92 @@ export default async function handler(req, res) {
       attendedConditionFn
     );
 
+    // Step 6b: Add co-coach partnership info if exists
+    const { data: managedTeam } = await supabase
+      .from('coach_teams_table')
+      .select('TeamId, CoachId, CoCoachId')
+      .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+      .eq('Status', 'active')
+      .maybeSingle();
+
+    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+      const partnerId = managedTeam.CoachId === userIdNum
+        ? managedTeam.CoCoachId
+        : managedTeam.CoachId;
+
+      // Find co-coach in team hierarchy
+      const coCoachData = teamHierarchy.find(m => m.UserId === partnerId);
+      
+      if (coCoachData) {
+        // Remove co-coach from teamMembers array if present
+        const originalTeamMembers = hierarchyWithAttendance.teamMembers || [];
+        const filteredTeamMembers = originalTeamMembers.filter(m => m.userId !== partnerId);
+        hierarchyWithAttendance.teamMembers = filteredTeamMembers;
+
+        // Recalculate team counts after removing co-coach
+        const recalculateTeamCounts = (members, conditionFn) => {
+          const directTotal = members.length;
+          const directQualified = members.filter(conditionFn).length;
+          
+          let fullTotal = 0;
+          let fullQualified = 0;
+          const traverse = (node) => {
+            fullTotal++;
+            if (conditionFn(node)) fullQualified++;
+            if (node.teamMembers && node.teamMembers.length > 0) {
+              node.teamMembers.forEach(traverse);
+            }
+          };
+          members.forEach(traverse);
+          
+          return {
+            direct: { total: directTotal, qualified: directQualified },
+            full: { total: fullTotal, qualified: fullQualified }
+          };
+        };
+
+        const counts = recalculateTeamCounts(filteredTeamMembers, attendedConditionFn);
+        
+        hierarchyWithAttendance.directTeamCount = {
+          total: counts.direct.total,
+          qualified: counts.direct.qualified,
+          totalClubs: hierarchyWithAttendance.directTeamCount?.totalClubs || 0,
+        };
+        
+        hierarchyWithAttendance.fullTeamCount = {
+          total: counts.full.total,
+          qualified: counts.full.qualified,
+          totalClubs: hierarchyWithAttendance.fullTeamCount?.totalClubs || 0,
+        };
+
+        const coCoachAttendance = attendanceMap.get(partnerId);
+        const coCoachMetrics = transformAttendanceFn(partnerId, attendanceMap, coCoachAttendance);
+
+        // Build co-coach info object with same structure as coach
+        hierarchyWithAttendance.coCoachInfo = {
+          userId: coCoachData.UserId,
+          userName: coCoachData.UserName,
+          email: coCoachData.Email,
+          role: coCoachData.Role,
+          coachId: coCoachData.CoachId,
+          coCoachId: coCoachData.CoCoachId,
+          coachName: coCoachData.CoachName,
+          coCoachName: coCoachData.CoCoachName,
+          profileImage: coCoachData.ProfileImage || null,
+          photoURL: coCoachData.ProfileImage || null,
+          isCoCoach: true,
+          hierarchyLevel: 0,
+          metrics: coCoachMetrics,
+          directTeamCount: hierarchyWithAttendance.directTeamCount,
+          fullTeamCount: hierarchyWithAttendance.fullTeamCount,
+          teamMembers: [],
+        };
+
+        console.log(`👥 [hierarchical-club-attendance] Added co-coach partnership info for ${coCoachData.UserName}`);
+        console.log(`📊 [hierarchical-club-attendance] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
+      }
+    }
+
     // Step 7: Calculate statistics using reusable utility function
     const stats = calculateHierarchyStats(
       hierarchyWithAttendance,

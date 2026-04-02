@@ -163,6 +163,92 @@ export default async function handler(req, res) {
       });
     }
 
+    // Step 8b: Add co-coach partnership info if exists
+    const { data: managedTeam } = await supabase
+      .from('coach_teams_table')
+      .select('TeamId, CoachId, CoCoachId')
+      .or(`CoachId.eq.${userIdInt},CoCoachId.eq.${userIdInt}`)
+      .eq('Status', 'active')
+      .maybeSingle();
+
+    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+      const partnerId = managedTeam.CoachId === userIdInt
+        ? managedTeam.CoCoachId
+        : managedTeam.CoachId;
+
+      // Find co-coach in team hierarchy
+      const coCoachData = teamHierarchy.find(m => m.UserId === partnerId);
+      
+      if (coCoachData) {
+        // Remove co-coach from teamMembers array if present
+        const originalTeamMembers = hierarchy.teamMembers || [];
+        const filteredTeamMembers = originalTeamMembers.filter(m => m.userId !== partnerId);
+        hierarchy.teamMembers = filteredTeamMembers;
+
+        // Recalculate team counts after removing co-coach
+        const recalculateTeamCounts = (members, conditionFn) => {
+          const directTotal = members.length;
+          const directQualified = members.filter(conditionFn).length;
+          
+          let fullTotal = 0;
+          let fullQualified = 0;
+          const traverse = (node) => {
+            fullTotal++;
+            if (conditionFn(node)) fullQualified++;
+            if (node.teamMembers && node.teamMembers.length > 0) {
+              node.teamMembers.forEach(traverse);
+            }
+          };
+          members.forEach(traverse);
+          
+          return {
+            direct: { total: directTotal, qualified: directQualified },
+            full: { total: fullTotal, qualified: fullQualified }
+          };
+        };
+
+        const counts = recalculateTeamCounts(filteredTeamMembers, counselledConditionFn);
+        
+        hierarchy.directTeamCount = {
+          total: counts.direct.total,
+          qualified: counts.direct.qualified,
+          totalClubs: hierarchy.directTeamCount?.totalClubs || 0,
+        };
+        
+        hierarchy.fullTeamCount = {
+          total: counts.full.total,
+          qualified: counts.full.qualified,
+          totalClubs: hierarchy.fullTeamCount?.totalClubs || 0,
+        };
+
+        const coCoachAssessment = assessmentDataMap.get(partnerId);
+        const coCoachMetrics = transformAssessmentFn(partnerId, assessmentDataMap, coCoachAssessment);
+
+        // Build co-coach info object with same structure as coach
+        hierarchy.coCoachInfo = {
+          userId: coCoachData.UserId,
+          userName: coCoachData.UserName,
+          email: coCoachData.Email,
+          role: coCoachData.Role,
+          coachId: coCoachData.CoachId,
+          coCoachId: coCoachData.CoCoachId,
+          coachName: coCoachData.CoachName,
+          coCoachName: coCoachData.CoCoachName,
+          profileImage: coCoachData.ProfileImage || null,
+          photoURL: coCoachData.ProfileImage || null,
+          isCoCoach: true,
+          hierarchyLevel: 0,
+          metrics: coCoachMetrics,
+          directTeamCount: hierarchy.directTeamCount,
+          fullTeamCount: hierarchy.fullTeamCount,
+          teamMembers: [],
+        };
+
+        console.log(`👥 [hierarchical-assessments] Added co-coach partnership info for ${coCoachData.UserName}`);
+        console.log(`📊 [hierarchical-assessments] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
+      }
+    }
+
     console.log('✅ [hierarchical-assessments] Built hierarchy successfully');
 
     return res.status(200).json({
