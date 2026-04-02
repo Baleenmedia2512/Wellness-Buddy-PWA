@@ -36,6 +36,7 @@ public class ScreenTimePlugin extends Plugin {
     // System/launcher packages to EXCLUDE from total screen time
     private static final Set<String> EXCLUDED_PACKAGES = new HashSet<>();
     static {
+        TRACKED_APPS.put("com.wellnessvalley.app", "Wellness Valley");
         TRACKED_APPS.put("com.instagram.android", "Instagram");
         TRACKED_APPS.put("com.whatsapp", "WhatsApp");
         TRACKED_APPS.put("com.facebook.katana", "Facebook");
