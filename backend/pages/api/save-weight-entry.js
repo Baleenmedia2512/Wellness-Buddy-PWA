@@ -5,6 +5,7 @@
 } from "../../utils/supabaseClient.js";
 import { cache, cacheKeys } from "../../utils/cache.js";
 import { largeBodyConfig as config } from "../../utils/apiConfig.js";
+import { validateAndCorrectWeight } from "../../utils/weightValidation.js";
 
 export { config };
 
