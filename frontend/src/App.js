@@ -51,6 +51,7 @@ import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
+import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
@@ -179,6 +180,9 @@ function WellnessValleyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+
+  // Mandatory profile picture modal state - show when user has no valid profile picture
+  const [showMandatoryProfilePictureModal, setShowMandatoryProfilePictureModal] = useState(false);
 
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
@@ -810,6 +814,73 @@ function WellnessValleyApp() {
   );
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Profile Picture Validation ──────────────────────────────────────────
+  // Checks if user has a valid profile picture (not a letter avatar)
+  const checkProfilePicture = useCallback(
+    async (user) => {
+      if (!user) return;
+
+      const userEmail = user.email || user.Email;
+      if (!userEmail) return;
+
+      console.log("🖼️ [Profile Picture] Checking for valid profile picture...");
+
+      try {
+        const profilePictureKey = "profilePictureUploaded_" + userEmail;
+
+        // Fetch user profile to check for ProfileImage in database (always check DB)
+        const res = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
+            userEmail,
+          )}&_t=${Date.now()}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        );
+
+        if (!res.ok) {
+          console.warn("⚠️ [Profile Picture] Failed to fetch profile");
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.success || !data.data) {
+          console.warn("⚠️ [Profile Picture] Invalid response");
+          return;
+        }
+
+        const profile = data.data;
+        console.log("🔍 [Profile Picture] Database ProfileImage value:", profile.profileImage || "NULL");
+        
+        // Check if user has a valid profile image (either custom uploaded or Google photo)
+        if (profile.profileImage) {
+          // Accept custom uploaded images (base64)
+          if (profile.profileImage.startsWith("data:image/")) {
+            console.log("✅ [Profile Picture] User has custom uploaded profile picture");
+            localStorage.setItem(profilePictureKey, "true");
+            return;
+          }
+          
+          // Accept Google profile picture URLs
+          if (profile.profileImage.startsWith("https://")) {
+            console.log("✅ [Profile Picture] User has Google profile picture:", profile.profileImage.substring(0, 50) + "...");
+            localStorage.setItem(profilePictureKey, "true");
+            return;
+          }
+        }
+
+        // No valid profile picture found - show mandatory upload modal
+        console.log("⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
+        // Clear localStorage flag in case it was set incorrectly
+        localStorage.removeItem(profilePictureKey);
+        setShowMandatoryProfilePictureModal(true);
+      } catch (err) {
+        console.error("❌ [Profile Picture] Check failed:", err);
+        // Don't block the user on errors
+      }
+    },
+    [apiBaseUrl],
+  );
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
@@ -927,6 +998,8 @@ function WellnessValleyApp() {
                   console.log("✅ [Auth State] Setup already complete");
                   // Check if mandatory profile fields are filled
                   await checkProfileCompletion(userEmail);
+                  // After profile completion check, check for profile picture
+                  setTimeout(() => checkProfilePicture(user), 800);
                 }
               } else {
                 console.warn(
@@ -965,7 +1038,7 @@ function WellnessValleyApp() {
       }
     });
     return () => unsubscribe();
-  }, [checkUserStatus, checkProfileCompletion]);
+  }, [checkUserStatus, checkProfileCompletion, checkProfilePicture]);
 
   // Subscribe to user context updates (from profile edits, food corrections, etc.)
   useEffect(() => {
@@ -1163,6 +1236,8 @@ function WellnessValleyApp() {
             console.log("✅ [Setup Check] Setup already complete");
             // Check if mandatory profile fields are filled
             await checkProfileCompletion(userEmail);
+            // After profile completion check, check for profile picture
+            setTimeout(() => checkProfilePicture(user), 800);
           }
         } else {
           console.warn(
@@ -1184,7 +1259,7 @@ function WellnessValleyApp() {
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion]);
+  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion, checkProfilePicture]);
 
   // ⚡ PERFORMANCE: Preload user context when user logs in (warm the cache)
   useEffect(() => {
@@ -2970,7 +3045,11 @@ function WellnessValleyApp() {
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
-              setTimeout(() => checkProfileCompletion(userEmail), 600);
+              setTimeout(() => {
+                checkProfileCompletion(userEmail);
+                // After profile completion check, check for profile picture
+                setTimeout(() => checkProfilePicture(user), 800);
+              }, 600);
             }
             if (isNewUser) {
               console.log("🆕 [handleSignIn] New user detected");
@@ -3097,7 +3176,11 @@ function WellnessValleyApp() {
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
-              setTimeout(() => checkProfileCompletion(userEmail), 600);
+              setTimeout(() => {
+                checkProfileCompletion(userEmail);
+                // After profile completion check, check for profile picture
+                setTimeout(() => checkProfilePicture(user), 800);
+              }, 600);
             }
             if (isNewUser) {
               console.log("🆕 [handlePopupSignIn] New user detected");
@@ -4288,8 +4371,35 @@ function WellnessValleyApp() {
               user?.Email ||
               localStorage.getItem("userEmail") ||
               "";
-            profileCompletedRef.current = false;
-            await checkProfileCompletion(email);
+            profileCompletedRef.current = true; // Mark as complete to prevent re-showing
+            localStorage.setItem("profileComplete_v2_" + email, "true");
+            setShowCompleteProfile(false); // Hide the profile completion page immediately
+            setProfileChecking(false);
+            
+            // After profile completion, check for profile picture with delay for state update
+            setTimeout(() => {
+              console.log("🔄 [Profile Complete] Checking for profile picture...");
+              checkProfilePicture(user);
+            }, 800);
+          }}
+        />
+      )}
+
+      {/* ── Mandatory Profile Picture Upload Gate ────────────────────────
+           Shown after profile completion if user doesn't have a valid
+           profile picture. Cannot be dismissed until picture is uploaded.
+      ─────────────────────────────────────────────────────────────────── */}
+      {showMandatoryProfilePictureModal && user && (
+        <MandatoryProfilePictureModal
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          onComplete={() => {
+            console.log("✅ [Profile Picture] Profile picture uploaded successfully");
+            const userEmail = user.email || user.Email;
+            if (userEmail) {
+              localStorage.setItem("profilePictureUploaded_" + userEmail, "true");
+            }
+            setShowMandatoryProfilePictureModal(false);
           }}
         />
       )}
