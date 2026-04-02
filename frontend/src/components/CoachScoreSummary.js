@@ -1,6 +1,11 @@
 // src/components/CoachScoreSummary.js
 import React, { useState, useEffect } from "react";
 import { Users, User } from "lucide-react";
+import {
+  SelfLogo,
+  DirectLogo,
+  FullTeamLogo,
+} from "./common/DisciplineScoreLogos";
 
 /**
  * CoachScoreSummary - Displays coach's performance summary on main page
@@ -232,7 +237,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
             {/* Column 1: My Score */}
             <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[80px] sm:min-h-[100px]">
               <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-blue-100 flex items-center justify-center mb-1 sm:mb-1.5 shadow-sm">
-                <User className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-blue-600" />
+                <SelfLogo className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-blue-600" />
               </div>
               <p className="text-[7px] sm:text-[8px] md:text-[9px] text-blue-600 font-bold uppercase tracking-wider mb-0.5 leading-tight">
                 MY SCORE
@@ -249,7 +254,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
             {/* Column 2: Direct Team */}
             <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[80px] sm:min-h-[100px] bg-blue-50/30">
               <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-green-100 flex items-center justify-center mb-1 sm:mb-1.5 shadow-sm">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-green-600" />
+                <DirectLogo className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-green-600" />
               </div>
               <p className="text-[7px] sm:text-[8px] md:text-[9px] text-green-600 font-bold uppercase tracking-wider mb-0.5 leading-tight">
                 DIRECT TEAM
@@ -269,10 +274,10 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
 
             {/* Column 3: Full Team */}
             <div className="p-2 sm:p-3 md:p-4 flex flex-col items-center justify-center text-center min-h-[80px] sm:min-h-[100px]">
-              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-green-100 flex items-center justify-center mb-1 sm:mb-1.5 shadow-sm">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-green-600" />
+              <div className="w-6 h-6 sm:w-8 sm:h-8 md:w-10 md:h-10 rounded-full bg-purple-100 flex items-center justify-center mb-1 sm:mb-1.5 shadow-sm">
+                <FullTeamLogo className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 text-purple-600" />
               </div>
-              <p className="text-[7px] sm:text-[8px] md:text-[9px] text-green-600 font-bold uppercase tracking-wider mb-0.5 leading-tight">
+              <p className="text-[7px] sm:text-[8px] md:text-[9px] text-purple-600 font-bold uppercase tracking-wider mb-0.5 leading-tight">
                 FULL TEAM
               </p>
               <div

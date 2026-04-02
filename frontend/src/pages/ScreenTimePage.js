@@ -36,7 +36,7 @@ const NUTRITION_APP_KEYWORDS = [
 const RECOMMENDED_NUTRITION_APPS = ['Wellness Valley', 'HealthifyMe', 'MyFitnessPal', 'YAZIO', 'Cronometer'];
 
 const GOOD_APP_KEYWORDS = [
-  'healthifyme','myfitnesspal','yazio','lose it','cronometer','fatsecret','myplate',
+  'wellness','healthifyme','myfitnesspal','yazio','lose it','cronometer','fatsecret','myplate',
   'lifesum','macros','nutrition','calorie','diet','food diary','fitness','workout',
   'gym','yoga','meditation','strava','nike','duolingo','coursera','udemy','khan',
   'learning','study','books','gmail','outlook','teams','slack','zoom','meet',

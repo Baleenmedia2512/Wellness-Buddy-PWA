@@ -17,6 +17,11 @@ import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
 import HierarchicalNode from "./common/HierarchicalNode";
+import {
+  SelfLogo,
+  DirectLogo,
+  FullTeamLogo,
+} from "./common/DisciplineScoreLogos";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 import {
   disciplineReportService,
@@ -390,17 +395,32 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
     return (
       <>
-        <div className="flex-1 flex flex-col items-center pr-2">
+        {/* Self */}
+        <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
+          <SelfLogo className="w-4 h-4 text-blue-500" />
+          <span className="text-[8px] font-semibold text-blue-500 uppercase tracking-wide leading-none">
+            Self
+          </span>
           <span className="text-sm sm:text-base font-bold text-gray-900">
             {selfScore}%
           </span>
         </div>
-        <div className="flex-1 flex flex-col items-center px-2">
+        {/* Direct */}
+        <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
+          <DirectLogo className="w-4 h-4 text-green-500" />
+          <span className="text-[8px] font-semibold text-green-500 uppercase tracking-wide leading-none">
+            Direct
+          </span>
           <span className="text-sm sm:text-base font-bold text-gray-900">
             {directScore}%
           </span>
         </div>
-        <div className="flex-1 flex flex-col items-center pl-2">
+        {/* Full Team */}
+        <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
+          <FullTeamLogo className="w-4 h-4 text-purple-500" />
+          <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">
+            Full
+          </span>
           <span className="text-sm sm:text-base font-bold text-gray-900">
             {fullScore}%
           </span>
