@@ -369,6 +369,15 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), []);
 
@@ -674,6 +683,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       summaryStats={null}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
+      onExpandAll={() => setExpandOverride("expanded")}
+      onCollapseAll={() => setExpandOverride("collapsed")}
+      expandedState={expandOverride}
     >
       {filteredHierarchy ? (
         <>
@@ -692,6 +704,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             filter={filter}
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
+            forceExpandedState={expandOverride}
+            defaultExpanded={false}
           />
         </>
       ) : !loading && !error ? (

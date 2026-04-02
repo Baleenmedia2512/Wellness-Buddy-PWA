@@ -39,6 +39,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [sortOrder, setSortOrder] = useState("desc"); // 'asc' or 'desc'
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
 
   // Load data
   const fetchData = async (isBackground = false) => {
@@ -751,6 +760,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       summaryStats={hierarchySummaryStats}
+      onExpandAll={() => setExpandOverride("expanded")}
+      onCollapseAll={() => setExpandOverride("collapsed")}
+      expandedState={expandOverride}
       topContent={
         <>
           {/* Summary Stats Card */}
@@ -870,6 +882,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           filter={filter}
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
+          forceExpandedState={expandOverride}
+          defaultExpanded={false}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
