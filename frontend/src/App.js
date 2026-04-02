@@ -18,6 +18,7 @@ import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
 import EducationLogCard from "./components/EducationLogCard";
+import WatchActivityCard from "./components/WatchActivityCard";
 import TestImageGuide from "./components/TestImageGuide";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Login from "./components/Login";
@@ -149,8 +150,11 @@ function WellnessValleyApp() {
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
+  const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
+  const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
+  const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload → pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
-  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card
+  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 
@@ -601,6 +605,7 @@ function WellnessValleyApp() {
       savedWeightIdRef.current = null;
     }
     if (educationResult) setEducationResult(null);
+    if (watchResult) setWatchResult(null);
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
     if (selectedImage) setSelectedImage(null);
@@ -2201,9 +2206,27 @@ function WellnessValleyApp() {
         setDetectedFoodNames(foodNames); // Show detected names in UI immediately
       }
 
+      // ✅ PRIORITY 0: Smartwatch / fitness app screenshot — show activity card
+      if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
+        console.log("⌚ Smartwatch image detected — showing watch activity card.");
+        // Resolve the real DB userId now (same pattern used everywhere in App.js)
+        let resolvedUserId = user?.id;
+        if (!resolvedUserId) {
+          try { resolvedUserId = await getUserId(user); } catch (_) {}
+        }
+        setImageType("smartwatch");
+        setWatchResult({
+          caloriesBurned: detectedType.details?.caloriesBurned || 0,
+          source: detectedType.details?.source || "Smartwatch",
+          loggedAt: new Date().toISOString(),
+          userId: resolvedUserId, // ← real DB id, not Firebase uid
+        });
+        setLoading(false);
+        return;
+      }
+
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
-      if (detectedType.type === "education" && detectedType.confidence > 0.7) {
-        console.log("🎓 Education meeting detected, analyzing...");
+      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        console.log("🎓 Education meeting detected, analyzing...");
         setImageType("education");
 
         try {
@@ -2943,6 +2966,7 @@ function WellnessValleyApp() {
     setSavedWeightId(null);
     savedWeightIdRef.current = null;
     setEducationResult(null); // Clear education results
+    setWatchResult(null); // Clear watch results
     setImageType(null);
     setCurrentWeightImage(null);
     setShowManualWeightModal(false);
@@ -3448,6 +3472,8 @@ function WellnessValleyApp() {
           initialTab={dashboardInitialTab}
           userRole={userRole}
           bmrUpdateKey={bmrUpdateKey}
+          educationRefreshKey={educationRefreshKey}
+          watchBurnedCalories={watchBurnedCalories}
         />
       </Suspense>
     );
@@ -3645,9 +3671,7 @@ function WellnessValleyApp() {
                 <div className="text-xl">⚠️</div>
                 <div className="flex-1">
                   <p className="font-semibold">Error</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-line">
-                    {error}
-                  </p>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
                 </div>
               </div>
               {lastImageFileRef.current && (
@@ -3698,6 +3722,28 @@ function WellnessValleyApp() {
                 setEducationResult(null);
                 setImagePreview(null);
                 setSelectedImage(null);
+              }}
+            />
+          )}
+
+          {/* Smartwatch / Fitness App Activity Result */}
+          {imageType === "smartwatch" && watchResult && (
+            <WatchActivityCard
+              watchData={watchResult}
+              imagePreview={imagePreview}
+              user={user}
+              apiBaseUrl={apiBaseUrl}
+              onSaved={({ caloriesBurned }) => {
+                // Refresh Education tab
+                setEducationRefreshKey((k) => k + 1);
+                // Push burned calories to NutritionDashboard via Dashboard prop
+                if (caloriesBurned > 0) setWatchBurnedCalories(caloriesBurned);
+              }}
+              onClose={() => {
+                setWatchResult(null);
+                setImagePreview(null);
+                setSelectedImage(null);
+                setImageType(null);
               }}
             />
           )}

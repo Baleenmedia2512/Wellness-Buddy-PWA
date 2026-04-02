@@ -360,10 +360,23 @@ const HierarchicalReportLayout = ({
   children,
   allowedDateRanges, // Optional array to filter date range options (e.g., ["today", "yesterday"])
   singleDayCustom,   // If true, custom picker selects a single day only
+  onExpandAll,       // Handler to expand all hierarchy nodes
+  onCollapseAll,     // Handler to collapse all hierarchy nodes
+  expandedState = null, // "expanded" | "collapsed" | null
+  teamView,          // "direct" | "full" — current view mode
+  onTeamViewChange,  // Handler for Direct/Full toggle
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [activeExpandBtn, setActiveExpandBtn] = useState(null); // "expanded" | "collapsed" | null — local visual state
   const filterRef = useRef(null);
+
+  // Keep local visual highlight in sync with incoming expandedState
+  useEffect(() => {
+    if (expandedState !== null) {
+      setActiveExpandBtn(expandedState);
+    }
+  }, [expandedState]);
 
   // Close filter dropdown when clicking outside
   useEffect(() => {
@@ -632,10 +645,10 @@ const HierarchicalReportLayout = ({
             {/* Search and Filter */}
             {(onSearchChange ||
               (filterOptions && filterOptions.length > 0)) && (
-              <div className="flex gap-2 sm:gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
                 {/* Search */}
                 {onSearchChange && (
-                  <div className="relative flex-1">
+                  <div className="relative flex-1 min-w-[120px]">
                     <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
                     <input
                       type="text"
@@ -718,6 +731,65 @@ const HierarchicalReportLayout = ({
                     )}
                   </TouchFeedbackButton>
                 )}
+
+                {/* Expand / Collapse + Direct / Full — all in one pill row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Expand / Collapse pill */}
+                  {(onExpandAll || onCollapseAll) && (
+                    <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                      <TouchFeedbackButton
+                        onClick={() => { onExpandAll && onExpandAll(); setActiveExpandBtn("expanded"); }}
+                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                          activeExpandBtn === "expanded"
+                            ? "bg-green-600 text-white shadow-sm"
+                            : "text-green-700 hover:text-green-800"
+                        }`}
+                        ariaLabel="Expand all nodes"
+                      >
+                        Expand
+                      </TouchFeedbackButton>
+                      <TouchFeedbackButton
+                        onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
+                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                          activeExpandBtn === "collapsed"
+                            ? "bg-green-600 text-white shadow-sm"
+                            : "text-green-700 hover:text-green-800"
+                        }`}
+                        ariaLabel="Collapse all nodes"
+                      >
+                        Collapse
+                      </TouchFeedbackButton>
+                    </div>
+                  )}
+
+                  {/* Direct / Full pill */}
+                  {onTeamViewChange && (
+                    <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                      <TouchFeedbackButton
+                        onClick={() => onTeamViewChange("direct")}
+                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                          teamView === "direct"
+                            ? "bg-green-600 text-white shadow-sm"
+                            : "text-green-700 hover:text-green-800"
+                        }`}
+                        ariaLabel="Direct team view"
+                      >
+                        Direct
+                      </TouchFeedbackButton>
+                      <TouchFeedbackButton
+                        onClick={() => onTeamViewChange("full")}
+                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                          teamView === "full"
+                            ? "bg-green-600 text-white shadow-sm"
+                            : "text-green-700 hover:text-green-800"
+                        }`}
+                        ariaLabel="Full team view"
+                      >
+                        Full
+                      </TouchFeedbackButton>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 

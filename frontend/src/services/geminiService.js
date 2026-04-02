@@ -978,6 +978,79 @@ Note: Serving options generated locally, don't include servingOptions array.`;
     );
     return this.transformOptimizedResponse(geminiData, "text");
   }
+
+  /**
+   * Analyzes a smartwatch / health-app screenshot and extracts calories burned.
+   *
+   * Supports: Apple Health, Samsung Health, Google Fit, Garmin Connect,
+   * Fitbit, Mi Fitness, and generic fitness app UIs.
+   *
+   * @param {File} imageFile  — The screenshot image file (JPEG / PNG / WEBP)
+   * @returns {{ caloriesBurned: number, confidence: string, source: string }}
+   */
+  async analyzeWatchScreenshot(imageFile) {
+    if (!this.model) {
+      throw new Error("Gemini API key not configured.");
+    }
+
+    const toBase64 = (file) =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+    const base64 = await toBase64(imageFile);
+    const mimeType = imageFile.type || "image/jpeg";
+
+    const prompt = `You are a fitness data extraction assistant.
+
+The user has uploaded a screenshot from a smartwatch or health/fitness app.
+
+Your ONLY task is to find and return the number of CALORIES BURNED (active energy / exercise calories / calories out) shown on screen.
+
+Common labels to look for (any of these count):
+- "Calories", "Cal", "kcal", "Active Calories", "Active Energy", "Calories Burned",
+  "Exercise Calories", "Calories Out", "Move", "Energy Burned", "Total Burn", "Burn"
+
+Rules:
+1. Return ONLY the single best numeric value for total calories burned today (or for the workout shown).
+2. Do NOT return "calories in" or "calories consumed" values — only calories BURNED / active energy.
+3. If there are multiple calorie values, prefer the one labeled "Active Calories", "Calories Burned", or "Total".
+4. If NO calorie-burned value is visible, return 0.
+5. Round to the nearest whole number.
+6. Identify the app/device if visible (Apple Health, Samsung Health, Fitbit, Garmin, Google Fit, etc.).
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "caloriesBurned": <number>,
+  "confidence": "high" | "medium" | "low",
+  "source": "<app or device name, or 'unknown'>"
+}`;
+
+    const result = await this.model.generateContent([
+      prompt,
+      { inlineData: { data: base64, mimeType } },
+    ]);
+
+    const raw = result?.response?.text?.() ?? "";
+    let parsed;
+    try {
+      // Strip any markdown fences Gemini may wrap around the JSON
+      const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.warn("[analyzeWatchScreenshot] Could not parse Gemini response:", raw);
+      return { caloriesBurned: 0, confidence: "low", source: "unknown" };
+    }
+
+    return {
+      caloriesBurned: Math.round(Number(parsed.caloriesBurned) || 0),
+      confidence: parsed.confidence || "low",
+      source: parsed.source || "unknown",
+    };
+  }
 }
 
 export const geminiService = new GeminiService();

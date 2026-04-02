@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { ChevronDown, ChevronUp, Users } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import TouchFeedbackButton from "../TouchFeedbackButton";
@@ -22,6 +22,8 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * @param {string} props.filter - Current filter value
  * @param {Function} props.matchesFilter - Function to check if node matches filter
  * @param {Function} props.matchesSearch - Function to check if node/descendant matches search
+ * @param {string|null} props.forceExpandedState - "expanded" | "collapsed" | null (global override)
+ * @param {boolean} props.defaultExpanded - Whether children start expanded by default (default: false)
  */
 const HierarchicalNode = ({
   node,
@@ -39,11 +41,22 @@ const HierarchicalNode = ({
   filter,
   matchesFilter,
   matchesSearch,
+  forceExpandedState = null,
+  defaultExpanded = false,
 }) => {
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(defaultExpanded);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
   const [showCoachDetails, setShowCoachDetails] = useState(false);
   const [showCoCoachDetails, setShowCoCoachDetails] = useState(false);
+
+  // Sync local expanded state when global forceExpandedState changes
+  useEffect(() => {
+    if (forceExpandedState === "expanded") {
+      setExpanded(true);
+    } else if (forceExpandedState === "collapsed") {
+      setExpanded(false);
+    }
+  }, [forceExpandedState]);
 
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
   const hasCoCoach = node.coCoachInfo && Object.keys(node.coCoachInfo).length > 0;
@@ -583,6 +596,8 @@ const HierarchicalNode = ({
                   filter={filter}
                   matchesFilter={matchesFilter}
                   matchesSearch={matchesSearch}
+                  forceExpandedState={forceExpandedState}
+                  defaultExpanded={defaultExpanded}
                   defaultShowDetails={defaultShowDetails}
                 />
               ))}

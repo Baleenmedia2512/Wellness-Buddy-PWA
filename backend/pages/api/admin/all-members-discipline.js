@@ -231,7 +231,7 @@ export default async function handler(req, res) {
     const endDateStr = formatDateForMySQL(dates.end);
 
     // Fetch all required data in bulk for efficiency
-    const [weightData, educationData, foodData, stepData] = await Promise.all([
+    const [weightData, educationData, foodData, stepData, watchBurnData] = await Promise.all([
       // Weight records
       supabase
         .from("weight_records_table")
@@ -264,6 +264,16 @@ export default async function handler(req, res) {
         .from("daily_step_activity")
         .select("UserId, CreatedAt, Steps, CaloriesBurned")
         .in("UserId", memberIds)
+        .gte("CreatedAt", startDateStr)
+        .lte("CreatedAt", endDateStr + "T23:59:59"),
+
+      // Watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
+      supabase
+        .from("education_logs_table")
+        .select("UserId, CreatedAt, Topic")
+        .in("UserId", memberIds)
+        .ilike("Topic", "Calories Burned:%")
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59"),
     ]);
@@ -347,15 +357,9 @@ export default async function handler(req, res) {
       if (records && Array.isArray(records)) {
         records.forEach((r) => {
           if (r[userIdField] == userId) {
-            // ✅ Use local date formatting to prevent timezone shifting
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
-            dates.add(dateStr);
+            // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (dateStr && dateStr.length === 10) dates.add(dateStr);
           }
         });
       }
@@ -376,15 +380,9 @@ export default async function handler(req, res) {
             r[userIdField] == userId &&
             isTimeInWindow(r.CreatedAt, windowStart, windowEnd)
           ) {
-            // ✅ Use local date formatting to prevent timezone shifting
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
-            dates.add(dateStr);
+            // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (dateStr && dateStr.length === 10) dates.add(dateStr);
           }
         });
       }
@@ -496,14 +494,9 @@ export default async function handler(req, res) {
 
               // ✅ BUFFER FIX: Add 59-second buffer to mealWindow.end
               if (time >= mealWindow.start && time <= addBufferToTime(mealWindow.end)) {
-                // ✅ Use local date formatting to prevent timezone shifting
-                const date = new Date(r.CreatedAt);
-                const dateStr =
-                  date.getFullYear() +
-                  "-" +
-                  String(date.getMonth() + 1).padStart(2, "0") +
-                  "-" +
-                  String(date.getDate()).padStart(2, "0");
+                // ✅ Extract date directly from timestamp string to avoid JS Date timezone shifts
+                const dateStr = String(r.CreatedAt || '').slice(0, 10);
+                if (!dateStr || dateStr.length !== 10) return;
                 dates.add(dateStr);
                 onTimeDates.add(dateStr);
               }
@@ -544,13 +537,8 @@ export default async function handler(req, res) {
       const waterVolumeByDate = {};
       (waterFoodData.data || []).forEach((r) => {
         if (r.UserID == userId) {
-          const date = new Date(r.CreatedAt);
-          const dateStr =
-            date.getFullYear() +
-            "-" +
-            String(date.getMonth() + 1).padStart(2, "0") +
-            "-" +
-            String(date.getDate()).padStart(2, "0");
+          const dateStr = String(r.CreatedAt || '').slice(0, 10);
+          if (!dateStr || dateStr.length !== 10) return;
           if (!waterVolumeByDate[dateStr]) waterVolumeByDate[dateStr] = 0;
           try {
             const analysisData = typeof r.AnalysisData === 'string'
@@ -587,13 +575,8 @@ export default async function handler(req, res) {
         const caloriesConsumedByDate = {};
         (foodData.data || []).forEach((r) => {
           if (r.UserID == userId) {
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
             const cal = parseFloat(r.TotalCalories) || 0;
             caloriesConsumedByDate[dateStr] = (caloriesConsumedByDate[dateStr] || 0) + cal;
           }
@@ -603,17 +586,26 @@ export default async function handler(req, res) {
         const caloriesBurnedByDate = {};
         (stepData.data || []).forEach((r) => {
           if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
-            const date = new Date(r.CreatedAt);
-            const dateStr =
-              date.getFullYear() +
-              "-" +
-              String(date.getMonth() + 1).padStart(2, "0") +
-              "-" +
-              String(date.getDate()).padStart(2, "0");
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
             const burned = parseFloat(r.CaloriesBurned) || 0;
             if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
               caloriesBurnedByDate[dateStr] = burned;
             }
+          }
+        });
+
+        // Also add watch-burned calories from education_logs_table
+        // Topic format: "Calories Burned: 2000 kcal"
+        (watchBurnData.data || []).forEach((r) => {
+          if (r.UserId == userId) {
+            const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+            if (!match) return;
+            const kcal = parseFloat(match[1]) || 0;
+            if (kcal <= 0) return;
+            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            if (!dateStr || dateStr.length !== 10) return;
+            caloriesBurnedByDate[dateStr] = (caloriesBurnedByDate[dateStr] || 0) + kcal;
           }
         });
 
