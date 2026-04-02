@@ -4393,12 +4393,50 @@ function WellnessValleyApp() {
         <MandatoryProfilePictureModal
           user={user}
           apiBaseUrl={apiBaseUrl}
-          onComplete={() => {
+          onComplete={async (uploadedImage) => {
             console.log("✅ [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
             if (userEmail) {
               localStorage.setItem("profilePictureUploaded_" + userEmail, "true");
             }
+            
+            // Immediately update user state with the uploaded image for instant UI update
+            if (uploadedImage) {
+              setUser((prevUser) => ({
+                ...prevUser,
+                profileImage: uploadedImage,
+                ProfileImage: uploadedImage, // Some components use ProfileImage
+                photoURL: uploadedImage, // Some components use photoURL
+              }));
+              console.log("✅ [Profile Picture] User state updated immediately with new profile picture");
+            }
+            
+            // Also fetch updated user profile in background to ensure consistency
+            try {
+              console.log("🔄 [Profile Picture] Refreshing user profile data in background...");
+              const res = await fetch(
+                `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
+                { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+              );
+              
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data && data.data.profileImage) {
+                  // Update again with server data to ensure consistency
+                  setUser((prevUser) => ({
+                    ...prevUser,
+                    profileImage: data.data.profileImage,
+                    ProfileImage: data.data.profileImage,
+                    photoURL: data.data.profileImage,
+                  }));
+                  console.log("✅ [Profile Picture] User state synced with server data");
+                }
+              }
+            } catch (err) {
+              console.error("❌ [Profile Picture] Failed to refresh user profile:", err);
+              // Don't block user - they already have the image from immediate update
+            }
+            
             setShowMandatoryProfilePictureModal(false);
           }}
         />

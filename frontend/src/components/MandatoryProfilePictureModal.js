@@ -128,8 +128,8 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
 
       if (data.success) {
         console.log("✅ Profile picture uploaded successfully");
-        // Call onComplete to allow user to proceed
-        onComplete();
+        // Call onComplete with the uploaded image data for immediate UI update
+        onComplete(profileImage);
       } else {
         throw new Error(data.message || "Failed to upload profile picture");
       }
