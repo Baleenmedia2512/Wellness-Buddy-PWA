@@ -42,8 +42,11 @@ const HierarchicalNode = ({
 }) => {
   const [expanded, setExpanded] = useState(true);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
+  const [showCoachDetails, setShowCoachDetails] = useState(false);
+  const [showCoCoachDetails, setShowCoCoachDetails] = useState(false);
 
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
+  const hasCoCoach = node.coCoachInfo && Object.keys(node.coCoachInfo).length > 0;
 
   // Recursive function to check if this node or ANY descendant matches filters
   const hasMatchingDescendant = (currentNode) => {
@@ -91,6 +94,266 @@ const HierarchicalNode = ({
     avatarClass = "bg-purple-100 border-purple-400 text-purple-700";
     nameClass = "text-purple-900";
     statsBorderClass = "border-purple-100 divide-purple-100";
+  }
+
+  // If this node has a co-coach, render combined coach+co-coach tile
+  if (hasCoCoach && level === 0) {
+    const coCoach = node.coCoachInfo;
+    
+    return (
+      <div className="relative flex" style={{ marginLeft: 0 }}>
+        {/* Combined Coach + Co-Coach Node */}
+        <div className="flex-1 mb-2 min-w-0">
+          {/* Combined Partnership Card */}
+          <div className="rounded-xl border-2 border-amber-300 bg-amber-50/60 overflow-hidden shadow-md ring-1 ring-amber-200">
+            {/* Main Row - Combined Coach/Co-Coach Info */}
+            <div className="flex flex-col px-3 pt-2.5 pb-1">
+              {/* Partnership Header */}
+              <div className="flex items-center gap-2 mb-2">
+                <Users className="w-4 h-4 text-amber-600" />
+                <span className="text-[10px] bg-amber-200 text-amber-800 border border-amber-400 px-2 py-0.5 rounded-full font-bold uppercase">
+                  Co-Coach Partnership
+                </span>
+                {isCurrentUser && (
+                  <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
+                    YOU
+                  </span>
+                )}
+              </div>
+
+              {/* Coach and Co-Coach Avatars Side-by-Side */}
+              <div className="flex items-start gap-4">
+                {/* Coach */}
+                <div className="flex items-start gap-2 flex-1">
+                  <div className="relative w-9 h-9 flex-shrink-0">
+                    {node.profileImage || node.photoURL ? (
+                      <>
+                        <img
+                          src={node.profileImage || node.photoURL}
+                          alt={node.userName || node.name}
+                          className="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                          style={{ display: "block" }}
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            if (e.target.nextSibling) {
+                              e.target.nextSibling.style.display = "flex";
+                            }
+                          }}
+                        />
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                          style={{ display: "none" }}
+                        >
+                          {node.userName?.charAt(0).toUpperCase() ||
+                            node.name?.charAt(0).toUpperCase() ||
+                            "?"}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
+                        {node.userName?.charAt(0).toUpperCase() ||
+                          node.name?.charAt(0).toUpperCase() ||
+                          "?"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-amber-900 break-words">
+                      {node.userName || node.name}
+                    </div>
+                    <div className="text-[9px] text-amber-600 font-medium uppercase">
+                      Coach
+                    </div>
+                  </div>
+                </div>
+
+                {/* Divider */}
+                <div className="flex items-center">
+                  <span className="text-amber-400 font-bold">&</span>
+                </div>
+
+                {/* Co-Coach */}
+                <div className="flex items-start gap-2 flex-1">
+                  <div className="relative w-9 h-9 flex-shrink-0">
+                    {coCoach.profileImage || coCoach.photoURL ? (
+                      <>
+                        <img
+                          src={coCoach.profileImage || coCoach.photoURL}
+                          alt={coCoach.userName || coCoach.name}
+                          className="w-9 h-9 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                          style={{ display: "block" }}
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                            if (e.target.nextSibling) {
+                              e.target.nextSibling.style.display = "flex";
+                            }
+                          }}
+                        />
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                          style={{ display: "none" }}
+                        >
+                          {coCoach.userName?.charAt(0).toUpperCase() ||
+                            coCoach.name?.charAt(0).toUpperCase() ||
+                            "?"}
+                        </div>
+                      </>
+                    ) : (
+                      <div className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
+                        {coCoach.userName?.charAt(0).toUpperCase() ||
+                          coCoach.name?.charAt(0).toUpperCase() ||
+                          "?"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-amber-900 break-words">
+                      {coCoach.userName || coCoach.name}
+                    </div>
+                    <div className="text-[9px] text-amber-600 font-medium uppercase">
+                      Co-Coach
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Team member count */}
+              {hasChildren && showTeamCount && (
+                <div className="flex items-center gap-1 mt-2">
+                  <Users className="h-3 w-3 text-amber-600" />
+                  <span className="text-[10px] text-amber-600 font-medium">
+                    {node.teamMembers.length} team member
+                    {node.teamMembers.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Combined Team Stats Strip - Same for both since they manage same team */}
+            {renderStats && (
+              <div className="flex items-center divide-x px-3 py-2 border-t border-amber-100 divide-amber-100">
+                {renderStats(node, level, isCurrentUser)}
+              </div>
+            )}
+
+            {/* Expandable Individual Reports */}
+            <div className="border-t border-amber-100">
+              <TouchFeedbackButton
+                onClick={() => {
+                  setShowCoachDetails(!showCoachDetails);
+                  setShowCoCoachDetails(!showCoCoachDetails);
+                }}
+                className="w-full py-2 flex items-center justify-center gap-2 hover:bg-amber-100/50 transition-colors"
+              >
+                <span className="text-xs font-medium text-amber-700">
+                  {showCoachDetails ? "Hide" : "Show"} Individual Reports
+                </span>
+                {showCoachDetails ? (
+                  <ChevronUp className="h-3.5 w-3.5 text-amber-700" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 text-amber-700" />
+                )}
+              </TouchFeedbackButton>
+              
+              {/* Individual Report Cards */}
+              <AnimatePresence>
+                {showCoachDetails && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: "auto", opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="px-3 pb-3 space-y-2">
+                      {/* Coach Individual Report */}
+                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-900">
+                              {node.userName || node.name}
+                            </span>
+                            <span className="text-[9px] text-amber-600 font-medium uppercase">
+                              (Coach)
+                            </span>
+                          </div>
+                        </div>
+                        {renderExpandedDetails && renderExpandedDetails(node, level, isCurrentUser)}
+                      </div>
+
+                      {/* Co-Coach Individual Report */}
+                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold text-amber-900">
+                              {coCoach.userName || coCoach.name}
+                            </span>
+                            <span className="text-[9px] text-amber-600 font-medium uppercase">
+                              (Co-Coach)
+                            </span>
+                          </div>
+                        </div>
+                        {renderExpandedDetails && renderExpandedDetails(coCoach, level, false)}
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Expand/Collapse Team Members Button */}
+            {hasChildren && (
+              <div className="border-t border-amber-100">
+                <TouchFeedbackButton
+                  onClick={() => setExpanded(!expanded)}
+                  className="w-full py-2 flex items-center justify-center gap-2 hover:bg-amber-100/50 transition-colors"
+                >
+                  <span className="text-xs font-medium text-amber-700">
+                    {expanded ? "Hide" : "Show"} {node.teamMembers.length} team
+                    member
+                    {node.teamMembers.length !== 1 ? "s" : ""}
+                  </span>
+                  {expanded ? (
+                    <ChevronUp className="h-3.5 w-3.5 text-amber-700" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5 text-amber-700" />
+                  )}
+                </TouchFeedbackButton>
+              </div>
+            )}
+          </div>
+
+          {/* Team Members (Children) */}
+          {hasChildren && expanded && (
+            <div className="mt-2 space-y-0">
+              {node.teamMembers
+                .filter((child, index) => {
+                  return showFullTeam || level === 0;
+                })
+                .map((child, index, filteredArray) => (
+                  <HierarchicalNode
+                    key={child.userId || child.id || index}
+                    node={child}
+                    level={level + 1}
+                    isLastChild={index === filteredArray.length - 1}
+                    renderStatus={renderStatus}
+                    renderStats={renderStats}
+                    renderExpandedDetails={renderExpandedDetails}
+                    isCurrentUser={false}
+                    showTeamCount={showTeamCount}
+                    showFullTeam={showFullTeam}
+                    getStatusStyle={getStatusStyle}
+                    searchQuery={searchQuery}
+                    filter={filter}
+                    matchesFilter={matchesFilter}
+                    matchesSearch={matchesSearch}
+                    defaultShowDetails={defaultShowDetails}
+                  />
+                ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
   }
 
   return (

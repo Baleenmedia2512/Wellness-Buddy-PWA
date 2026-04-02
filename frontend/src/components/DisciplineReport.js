@@ -196,13 +196,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         enrichedNode.profileImage = node.profileImage;
         enrichedNode.photoURL = node.photoURL;
 
-        // Calculate team averages
+        // Calculate team averages (excluding co-coach from calculations)
         if (enrichedNode.teamMembers && enrichedNode.teamMembers.length > 0) {
           enrichedNode.teamMembers =
             enrichedNode.teamMembers.map(enrichHierarchy);
 
-          // Direct team score
+          // Direct team score (excludes co-coach)
           const directScores = enrichedNode.teamMembers
+            .filter((m) => !m.isCoCoach) // Exclude co-coach from calculation
             .map((m) => m.periodDiscipline?.percentage || 0)
             .filter((s) => s >= 0);
           enrichedNode.directTeamDiscipline = {
@@ -215,8 +216,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 : 0,
           };
 
-          // Full team score (recursive)
+          // Full team score (recursive, excludes co-coach)
           const getAllDescendantScores = (n) => {
+            // Skip co-coach in score calculation
+            if (n.isCoCoach) return [];
+            
             let scores = [n.periodDiscipline?.percentage || 0];
             if (n.teamMembers) {
               n.teamMembers.forEach((child) => {
@@ -243,6 +247,27 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         } else {
           enrichedNode.directTeamDiscipline = { percentage: 0 };
           enrichedNode.fullTeamDiscipline = { percentage: 0 };
+        }
+
+        // If this node has a co-coach, enrich co-coach with SAME team scores
+        if (enrichedNode.coCoachInfo) {
+          const coCoachScore = scores[enrichedNode.coCoachInfo.userId] || 
+                               scores[String(enrichedNode.coCoachInfo.userId)] || 0;
+          const coCoachActs = activities[enrichedNode.coCoachInfo.userId] || 
+                              activities[String(enrichedNode.coCoachInfo.userId)] || {};
+          
+          enrichedNode.coCoachInfo.periodDiscipline = {
+            percentage: coCoachScore,
+            activities: coCoachActs,
+            onTimePosts: coCoachActs.onTimePosts || 0,
+            expectedPosts: coCoachActs.expectedPosts || 0,
+          };
+          
+          // Co-coach shares the SAME team scores as coach
+          enrichedNode.coCoachInfo.directTeamDiscipline = enrichedNode.directTeamDiscipline;
+          enrichedNode.coCoachInfo.fullTeamDiscipline = enrichedNode.fullTeamDiscipline;
+          enrichedNode.coCoachInfo.profileImage = enrichedNode.coCoachInfo.profileImage;
+          enrichedNode.coCoachInfo.photoURL = enrichedNode.coCoachInfo.photoURL;
         }
 
         return enrichedNode;
