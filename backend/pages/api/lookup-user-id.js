@@ -1,4 +1,4 @@
-import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+import { getSupabaseClient } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -91,19 +91,6 @@ export default async function handler(req, res) {
       console.log('⚠️ [lookup-user-id] User is INACTIVE - Status:', user.Status);
     } else {
       console.log('✅ [lookup-user-id] User is ACTIVE');
-      // ✅ Stamp LastActiveAt for active users (used by 31-day inactivity cron job)
-      // Fire-and-forget: don't await so it doesn't slow down the response
-      getSupabaseClient()
-        .from('team_table')
-        .update({ LastActiveAt: getISTTimestamp() })
-        .eq('"Email"', email)
-        .then(({ error: stampErr }) => {
-          if (stampErr) {
-            console.warn('⚠️ [lookup-user-id] Failed to stamp LastActiveAt:', stampErr.message);
-          }
-        });
-      // Invalidate cache so next check sees fresh LastActiveAt (but still return cached status)
-      cache.delete(`user:lookup:${email}`);
     }
 
     const response = {

@@ -95,11 +95,5 @@
   ],
   "env": {
     "NODE_ENV": "production"
-  },
-  "crons": [
-    {
-      "path": "/api/admin/auto-deactivate-inactive-users",
-      "schedule": "30 18 * * *"
-    }
-  ]
+  }
 }

@@ -97,7 +97,6 @@ export default async function handler(req, res) {
           Status: "Active",
           CoachApproved: 0,
           Email: email,
-          LastActiveAt: currentTime, // ✅ Track first activity for inactivity detection
         };
 
         // Add Google profile photo as default ProfileImage if available
@@ -186,38 +185,32 @@ export default async function handler(req, res) {
 
       // Update ProfileImage with Google photo if user doesn't have a profile image yet
       const existingUser = existingRows[0];
-
-      // ✅ Always stamp LastActiveAt on every sign-in (used by 31-day inactivity cron job)
-      const updateFields = { LastActiveAt: getISTTimestamp() };
-
       if (photoURL && !existingUser.ProfileImage) {
         console.log(
           "📸 [save-google-user] Updating existing user with Google profile photo",
         );
-        updateFields.ProfileImage = photoURL;
-      }
+        try {
+          const { error: updateError } = await supabase
+            .from("team_table")
+            .update({ ProfileImage: photoURL })
+            .eq('"Email"', email);
 
-      try {
-        const { error: updateError } = await supabase
-          .from("team_table")
-          .update(updateFields)
-          .eq('"Email"', email);
-
-        if (updateError) {
+          if (updateError) {
+            console.warn(
+              "⚠️ [save-google-user] Failed to update profile image:",
+              updateError,
+            );
+          } else {
+            console.log(
+              "✅ [save-google-user] Profile image updated successfully",
+            );
+          }
+        } catch (updateErr) {
           console.warn(
-            "⚠️ [save-google-user] Failed to update user fields:",
-            updateError,
-          );
-        } else {
-          console.log(
-            "✅ [save-google-user] LastActiveAt (and profile image if needed) updated successfully",
+            "⚠️ [save-google-user] Error updating profile image:",
+            updateErr,
           );
         }
-      } catch (updateErr) {
-        console.warn(
-          "⚠️ [save-google-user] Error updating user fields:",
-          updateErr,
-        );
       }
 
       res.json({
