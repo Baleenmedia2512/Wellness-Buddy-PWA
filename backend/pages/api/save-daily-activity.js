@@ -59,7 +59,11 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
   // for a fresh session to send an inflated step count. The only time we'd get a
   // lower value sent is when the app is genuinely correcting corrupted historical data.
   const effectiveSteps = steps;
-  const effectiveCalories = caloriesBurned;
+  // Always store CaloriesBurned as a non-negative number.
+  // Some fitness sensors send negative delta values (e.g. -200) when the pedometer
+  // resets or corrects itself — Math.abs treats those as real positive activity so
+  // discipline calculations downstream count the day correctly.
+  const effectiveCalories = Math.abs(caloriesBurned);
 
   const payload = {
     UserId: userId,
@@ -146,7 +150,7 @@ export default async function handler(req, res) {
 
     const computedCalories =
       caloriesBurned !== undefined && caloriesBurned !== null
-        ? Number(caloriesBurned)
+        ? Math.abs(Number(caloriesBurned))
         : caloriesFor(safeActivityType, safeSteps);
 
     const safeSensorTotal =
