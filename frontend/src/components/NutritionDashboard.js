@@ -2279,9 +2279,8 @@ const NutritionDashboard = ({
                         />
                       </div>
 
-                      {/* ── Burn to Balance (only when over target) ── */}
-                      {/* DEV PREVIEW: remove `|| true` once verified */}
-                      {(isOverTarget || process.env.NODE_ENV === 'development') && (
+                      {/* ── Burn to Balance (always visible) ── */}
+                      {(isOverTarget || burnedCalories > 0 || true) && (
                         <div className="mb-4 rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-red-50 p-3">
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-1.5">
@@ -2343,7 +2342,9 @@ const NutritionDashboard = ({
                           <p className="text-[10px] text-gray-500 mt-1.5">
                             {isBalanced
                               ? "Great work! You've balanced today's extra calories."
-                              : `Burn ${extraCalories - burnedCalories} more kcal to balance today's intake.`}
+                              : isOverTarget
+                                ? `Burn ${extraCalories - burnedCalories} more kcal to balance today's intake.`
+                                : "Keep burning calories to stay active and healthy!"}
                           </p>
                         </div>
                       )}
