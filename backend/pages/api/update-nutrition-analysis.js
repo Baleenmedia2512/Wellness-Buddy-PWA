@@ -93,6 +93,22 @@ export default async function handler(req, res) {
     cache.delete(cacheKeys.nutritionMeals(userId));
     console.log('🗑️ [update-nutrition-analysis] Nutrition cache cleared for user:', userId);
 
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [update-nutrition-analysis] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [update-nutrition-analysis] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [update-nutrition-analysis] Error updating LastActiveAt:', err);
+    }
+
     res.status(200).json({
       success: true,
       message: 'Meal updated successfully',

@@ -207,6 +207,22 @@ export default async function handler(req, res) {
     
     if (error) throw error;
 
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [save-weight-entry] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [save-weight-entry] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [save-weight-entry] Error updating LastActiveAt:', err);
+    }
+
     // Get user email to clear profile cache
     const { data: user, error: userError } = await supabase
       .from("team_table")
