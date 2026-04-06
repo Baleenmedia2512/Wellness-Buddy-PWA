@@ -593,10 +593,13 @@ export default async function handler(req, res) {
         // Sum calories burned per date (keep highest cumulative value per day)
         const caloriesBurnedByDate = {};
         (stepData.data || []).forEach((r) => {
-          if (r.UserId == userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0)) {
+          const rawBurned = parseFloat(r.CaloriesBurned) || 0;
+          // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
+          // as positive burns — a negative value means real activity was recorded, just stored inverted.
+          const burned = Math.abs(rawBurned);
+          if (r.UserId == userId && ((r.Steps || 0) > 0 || burned > 0)) {
             const dateStr = String(r.CreatedAt || '').slice(0, 10);
             if (!dateStr || dateStr.length !== 10) return;
-            const burned = parseFloat(r.CaloriesBurned) || 0;
             if ((caloriesBurnedByDate[dateStr] || 0) < burned) {
               caloriesBurnedByDate[dateStr] = burned;
             }

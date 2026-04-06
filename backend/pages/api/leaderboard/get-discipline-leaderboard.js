@@ -334,7 +334,12 @@ export default async function handler(req, res) {
       // Calories burned: count unique dates where user logged steps/activity
       const caloriesBurnedDays = new Set();
       (stepData.data || [])
-        .filter((r) => r.UserId === userId && ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0))
+        .filter((r) => {
+          const burned = Math.abs(parseFloat(r.CaloriesBurned) || 0);
+          // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
+          // as positive burns — a negative value means real activity was recorded, just stored inverted.
+          return r.UserId === userId && ((r.Steps || 0) > 0 || burned > 0);
+        })
         .forEach((r) => {
           caloriesBurnedDays.add(formatDateForMySQL(new Date(r.CreatedAt)));
         });

@@ -469,9 +469,21 @@ export default async function handler(req, res) {
           if (!dateStr) continue;
           const cal = parseFloat(r.TotalCalories) || 0;
           calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
-          const hhmm = `${String(localDate.getHours()).padStart(2,'0')}:${String(localDate.getMinutes()).padStart(2,'0')}`;
-          if (!calLastTimeByDate[dateStr] || hhmm > calLastTimeByDate[dateStr]) {
-            calLastTimeByDate[dateStr] = hhmm;
+        }
+        // Max calories burned per date from step activity (cumulative tracker)
+        const calBurnedByDate = {};
+        for (const r of (stepByUser.get(uid) || [])) {
+          const rawBurned = parseFloat(r.CaloriesBurned) || 0;
+          // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
+          // as positive burns — a negative value means real activity was recorded, just stored inverted.
+          const burned = Math.abs(rawBurned);
+          if ((r.Steps || 0) > 0 || burned > 0) {
+            const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+            const dateStr   = extractLocalDateString(localDate);
+            if (!dateStr) continue;
+            if ((calBurnedByDate[dateStr] || 0) < burned) {
+              calBurnedByDate[dateStr] = burned;
+            }
           }
         }
         // A day is disciplined if net calories (consumed - burned) <= BMR target
