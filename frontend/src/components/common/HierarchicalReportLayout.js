@@ -631,151 +631,161 @@ const HierarchicalReportLayout = ({
             {/* Search and Filter */}
             {(onSearchChange ||
               (filterOptions && filterOptions.length > 0)) && (
-              <div className="flex flex-wrap gap-2 sm:gap-3 items-center">
-                {/* Search */}
-                {onSearchChange && (
-                  <div className="relative flex-1 min-w-[120px]">
-                    <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Search members..."
-                      value={searchQuery}
-                      onChange={(e) => onSearchChange(e.target.value)}
-                      className="w-full pl-9 sm:pl-11 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-
-                {/* Filter Dropdown */}
-                {filterOptions && filterOptions.length > 0 && (
-                  <div className="relative" ref={filterRef}>
-                    <TouchFeedbackButton
-                      onClick={() => setIsFilterOpen(!isFilterOpen)}
-                      className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border transition-all flex items-center gap-2 ${
-                        filter !== filterOptions[0]?.value
-                          ? "bg-green-700 text-white border-green-700"
-                          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                      }`}
-                    >
-                      <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                      <span className="text-xs sm:text-sm font-medium">
-                        Filter
-                      </span>
-                      <ChevronDown
-                        className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${
-                          isFilterOpen ? "rotate-180" : ""
-                        }`}
+              <div className="flex flex-col gap-2 sm:gap-3">
+                {/* Row 1: Search + Filter + Sort */}
+                <div className="flex gap-2 sm:gap-3 items-center">
+                  {/* Search */}
+                  {onSearchChange && (
+                    <div className="relative flex-1 min-w-[120px]">
+                      <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search members..."
+                        value={searchQuery}
+                        onChange={(e) => onSearchChange(e.target.value)}
+                        className="w-full pl-9 sm:pl-11 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                       />
-                    </TouchFeedbackButton>
-
-                    <AnimatePresence>
-                      {isFilterOpen && (
-                        <motion.div
-                          initial={{ opacity: 0, y: -10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -10 }}
-                          className="absolute right-0 mt-2 w-48 sm:w-56 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
-                        >
-                          {filterOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              onClick={() => {
-                                onFilterChange(option.value);
-                                setIsFilterOpen(false);
-                              }}
-                              className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
-                            >
-                              <span
-                                className={`font-medium ${
-                                  option.color || "text-gray-700"
-                                }`}
-                              >
-                                {option.label}
-                              </span>
-                              {filter === option.value && (
-                                <Check className="h-4 w-4 text-green-600" />
-                              )}
-                            </button>
-                          ))}
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                )}
-
-                {/* Sort Button */}
-                {onSortChange && (
-                  <TouchFeedbackButton
-                    onClick={onSortChange}
-                    className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
-                    ariaLabel="Toggle sort order"
-                  >
-                    {sortOrder === "desc" ? (
-                      <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5" />
-                    )}
-                  </TouchFeedbackButton>
-                )}
-
-                {/* Expand / Collapse + Direct / Full — all in one pill row */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {/* Expand / Collapse pill */}
-                  {(onExpandAll || onCollapseAll) && (
-                    <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-                      <TouchFeedbackButton
-                        onClick={() => { onExpandAll && onExpandAll(); setActiveExpandBtn("expanded"); }}
-                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                          activeExpandBtn === "expanded"
-                            ? "bg-green-600 text-white shadow-sm"
-                            : "text-green-700 hover:text-green-800"
-                        }`}
-                        ariaLabel="Expand all nodes"
-                      >
-                        Expand
-                      </TouchFeedbackButton>
-                      <TouchFeedbackButton
-                        onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
-                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                          activeExpandBtn === "collapsed"
-                            ? "bg-green-600 text-white shadow-sm"
-                            : "text-green-700 hover:text-green-800"
-                        }`}
-                        ariaLabel="Collapse all nodes"
-                      >
-                        Collapse
-                      </TouchFeedbackButton>
                     </div>
                   )}
 
-                  {/* Direct / Full pill */}
-                  {onTeamViewChange && (
-                    <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                  {/* Filter Dropdown */}
+                  {filterOptions && filterOptions.length > 0 && (
+                    <div className="relative" ref={filterRef}>
                       <TouchFeedbackButton
-                        onClick={() => onTeamViewChange("direct")}
-                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                          teamView === "direct"
-                            ? "bg-green-600 text-white shadow-sm"
-                            : "text-green-700 hover:text-green-800"
+                        onClick={() => setIsFilterOpen(!isFilterOpen)}
+                        className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border transition-all flex items-center gap-2 ${
+                          filter !== filterOptions[0]?.value
+                            ? "bg-green-700 text-white border-green-700"
+                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                         }`}
-                        ariaLabel="Direct team view"
                       >
-                        Direct
+                        <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
+                        <span className="text-xs sm:text-sm font-medium">
+                          Filter
+                        </span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${
+                            isFilterOpen ? "rotate-180" : ""
+                          }`}
+                        />
                       </TouchFeedbackButton>
-                      <TouchFeedbackButton
-                        onClick={() => onTeamViewChange("full")}
-                        className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                          teamView === "full"
-                            ? "bg-green-600 text-white shadow-sm"
-                            : "text-green-700 hover:text-green-800"
-                        }`}
-                        ariaLabel="Full team view"
-                      >
-                        Full
-                      </TouchFeedbackButton>
+
+                      <AnimatePresence>
+                        {isFilterOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute right-0 mt-2 w-48 sm:w-56 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
+                          >
+                            {filterOptions.map((option) => (
+                              <button
+                                key={option.value}
+                                onClick={() => {
+                                  onFilterChange(option.value);
+                                  setIsFilterOpen(false);
+                                }}
+                                className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
+                              >
+                                <span
+                                  className={`font-medium ${
+                                    option.color || "text-gray-700"
+                                  }`}
+                                >
+                                  {option.label}
+                                </span>
+                                {filter === option.value && (
+                                  <Check className="h-4 w-4 text-green-600" />
+                                )}
+                              </button>
+                            ))}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
+                  )}
+
+                  {/* Sort Button */}
+                  {onSortChange && (
+                    <TouchFeedbackButton
+                      onClick={onSortChange}
+                      className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                      ariaLabel="Toggle sort order"
+                    >
+                      {sortOrder === "desc" ? (
+                        <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5" />
+                      )}
+                    </TouchFeedbackButton>
                   )}
                 </div>
+
+                {/* Row 2: Expand/Collapse | Direct/Full — always on one line */}
+                {((onExpandAll || onCollapseAll) || onTeamViewChange) && (
+                  <div className="flex items-center gap-2">
+                    {/* Expand / Collapse pill */}
+                    {(onExpandAll || onCollapseAll) && (
+                      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                        <TouchFeedbackButton
+                          onClick={() => { onExpandAll && onExpandAll(); setActiveExpandBtn("expanded"); }}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            activeExpandBtn === "expanded"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Expand all nodes"
+                        >
+                          Expand
+                        </TouchFeedbackButton>
+                        <TouchFeedbackButton
+                          onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            activeExpandBtn === "collapsed"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Collapse all nodes"
+                        >
+                          Collapse
+                        </TouchFeedbackButton>
+                      </div>
+                    )}
+
+                    {/* Vertical divider between Expand/Collapse and Direct/Full */}
+                    {(onExpandAll || onCollapseAll) && onTeamViewChange && (
+                      <div className="w-px h-6 bg-gray-300 self-center flex-shrink-0" />
+                    )}
+
+                    {/* Direct / Full pill */}
+                    {onTeamViewChange && (
+                      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
+                        <TouchFeedbackButton
+                          onClick={() => onTeamViewChange("direct")}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            teamView === "direct"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Direct team view"
+                        >
+                          Direct
+                        </TouchFeedbackButton>
+                        <TouchFeedbackButton
+                          onClick={() => onTeamViewChange("full")}
+                          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
+                            teamView === "full"
+                              ? "bg-green-600 text-white shadow-sm"
+                              : "text-green-700 hover:text-green-800"
+                          }`}
+                          ariaLabel="Full team view"
+                        >
+                          Full
+                        </TouchFeedbackButton>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
