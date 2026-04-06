@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -42,6 +42,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState("desc"); // 'asc' or 'desc'
+  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
@@ -289,35 +290,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
       const enriched = enrichHierarchy(hierarchyResponse.hierarchy);
 
-      // Apply sorting to hierarchy - keep coaches/co-coaches fixed at top
-      const sortHierarchy = (node) => {
-        const sorted = { ...node };
-        if (sorted.teamMembers && sorted.teamMembers.length > 0) {
-          // Recursively sort children first
-          const members = sorted.teamMembers.map(sortHierarchy);
-          
-          // Separate coaches/co-coaches from regular members
-          const coaches = members.filter(m => 
-            m.role === "coach" || m.isCoach || m.isCoCoach
-          );
-          const regularMembers = members.filter(m => 
-            m.role !== "coach" && !m.isCoach && !m.isCoCoach
-          );
-          
-          // Sort only regular members by score
-          regularMembers.sort((a, b) => {
-            const scoreA = a.periodDiscipline?.percentage || 0;
-            const scoreB = b.periodDiscipline?.percentage || 0;
-            return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
-          });
-          
-          // Keep coaches at top, then sorted regular members
-          sorted.teamMembers = [...coaches, ...regularMembers];
-        }
-        return sorted;
-      };
-
-      setHierarchyData(sortHierarchy(enriched));
+      setHierarchyData(enriched);
       setDisciplineScores(scores);
       setMemberActivities(activities);
     } catch (err) {
@@ -336,7 +309,38 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
+  }, [user, dateRange, customStartDate, customEndDate]);
+
+  // Sort hierarchy client-side so it reacts instantly to sortBy/sortOrder changes
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const sortNode = (node) => {
+      const sorted = { ...node };
+      if (sorted.teamMembers && sorted.teamMembers.length > 0) {
+        const members = sorted.teamMembers.map(sortNode);
+        const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
+        const regular = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
+        regular.sort((a, b) => {
+          let sa, sb;
+          if (sortBy === "direct") {
+            sa = a.directTeamDiscipline?.percentage || 0;
+            sb = b.directTeamDiscipline?.percentage || 0;
+          } else if (sortBy === "full") {
+            sa = a.fullTeamDiscipline?.percentage || 0;
+            sb = b.fullTeamDiscipline?.percentage || 0;
+          } else {
+            // 'self' or 'all' → sort by self score
+            sa = a.periodDiscipline?.percentage || 0;
+            sb = b.periodDiscipline?.percentage || 0;
+          }
+          return sortOrder === "desc" ? sb - sa : sa - sb;
+        });
+        sorted.teamMembers = [...coaches, ...regular];
+      }
+      return sorted;
+    };
+    return sortNode(hierarchyData);
+  }, [hierarchyData, sortBy, sortOrder]);
 
   // Filter options
   const filterOptions = [
@@ -427,38 +431,39 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     const directScore = node.directTeamDiscipline?.percentage || 0;
     const fullScore = node.fullTeamDiscipline?.percentage || 0;
 
+    const ALL_COLS = [
+      { key: "self",   score: selfScore,   Logo: SelfLogo,     color: "text-blue-500",   label: "Self",   padding: "pr-2" },
+      { key: "direct", score: directScore, Logo: DirectLogo,   color: "text-green-500",  label: "Direct", padding: "px-2" },
+      { key: "full",   score: fullScore,   Logo: FullTeamLogo, color: "text-purple-500", label: "Full",   padding: "pl-2" },
+    ];
+
+    const isSingle = sortBy !== "all";
+    const cols = isSingle ? ALL_COLS.filter((c) => c.key === sortBy) : ALL_COLS;
+
     return (
       <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
-          <SelfLogo className="w-4 h-4 text-blue-500" />
-          <span className="text-[8px] font-semibold text-blue-500 uppercase tracking-wide leading-none">
-            Self
-          </span>
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {selfScore}%
-          </span>
-        </div>
-        {/* Direct */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
-          <DirectLogo className="w-4 h-4 text-green-500" />
-          <span className="text-[8px] font-semibold text-green-500 uppercase tracking-wide leading-none">
-            Direct
-          </span>
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {directScore}%
-          </span>
-        </div>
-        {/* Full Team */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
-          <FullTeamLogo className="w-4 h-4 text-purple-500" />
-          <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">
-            Full
-          </span>
-          <span className="text-sm sm:text-base font-bold text-gray-900">
-            {fullScore}%
-          </span>
-        </div>
+        {cols.map((col) => (
+          <div
+            key={col.key}
+            className={`flex-1 flex flex-col items-center gap-0.5 ${
+              isSingle ? "" : col.padding
+            }`}
+          >
+            <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
+            <span
+              className={`text-[8px] font-semibold ${col.color} uppercase tracking-wide leading-none`}
+            >
+              {col.label}
+            </span>
+            <span
+              className={`${
+                isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
+              } font-bold text-gray-900`}
+            >
+              {col.score}%
+            </span>
+          </div>
+        ))}
       </>
     );
   };
@@ -710,37 +715,37 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     : null;
 
   // Team Hierarchy summary tiles (My Score / Direct Team / Full Team)
-  const hierarchySummaryStats = hierarchyData
+  const hierarchySummaryStats = sortedHierarchyData
     ? {
         note: `Self: ${Math.round(
-          hierarchyData.periodDiscipline?.percentage || 0,
+          sortedHierarchyData.periodDiscipline?.percentage || 0,
         )}% | Direct: ${Math.round(
-          hierarchyData.directTeamDiscipline?.percentage || 0,
+          sortedHierarchyData.directTeamDiscipline?.percentage || 0,
         )}% | Full: ${Math.round(
-          hierarchyData.fullTeamDiscipline?.percentage || 0,
+          sortedHierarchyData.fullTeamDiscipline?.percentage || 0,
         )}%`,
       }
     : null;
 
   // Filter hierarchy data based on team view
   const getFilteredHierarchy = () => {
-    if (!hierarchyData) return null;
+    if (!sortedHierarchyData) return null;
 
     // Full view - show complete hierarchy
-    if (teamView === "full") return hierarchyData;
+    if (teamView === "full") return sortedHierarchyData;
 
     // Default "direct" view - only show direct team members (remove nested teams)
-    if (hierarchyData.teamMembers) {
+    if (sortedHierarchyData.teamMembers) {
       return {
-        ...hierarchyData,
-        teamMembers: hierarchyData.teamMembers.map((member) => ({
+        ...sortedHierarchyData,
+        teamMembers: sortedHierarchyData.teamMembers.map((member) => ({
           ...member,
           teamMembers: [], // Remove nested team members
         })),
       };
     }
 
-    return hierarchyData;
+    return sortedHierarchyData;
   };
 
   const filteredHierarchy = getFilteredHierarchy();
@@ -757,8 +762,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     return { total: count };
   };
 
-  const teamCounts = hierarchyData
-    ? getTeamCounts(hierarchyData)
+  const teamCounts = sortedHierarchyData
+    ? getTeamCounts(sortedHierarchyData)
     : { total: 0 };
 
   const handleDateRangeSelect = (start, end) => {
@@ -777,8 +782,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
     // Implement download logic here
   };
 
-  const handleSortToggle = () => {
-    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+  const handleSortChange = (newSortBy, newSortOrder) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
   };
 
   const handleSettings = () => {
@@ -803,8 +809,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
       onSettings={handleSettings}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortChange={handleSortToggle}
+      onSortChange={handleSortChange}
       loading={refreshing}
       error={error}
       dateRange={dateRange}

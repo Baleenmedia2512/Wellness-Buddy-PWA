@@ -1,6 +1,7 @@
 // src/pages/WellnessCounselling.js
 import React, { useState, useEffect } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
@@ -8,7 +9,6 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../components/common/HierarchicalNode";
 import WellnessCounsellingForm from "../components/WellnessCounselling/WellnessCounsellingForm";
 import TouchFeedbackButton from "../components/TouchFeedbackButton";
-
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -65,9 +65,8 @@ const WellnessCounselling = ({ user, onBack }) => {
     if (!user) {
       console.warn('⚠️ [WellnessCounselling] No user object provided');
       setError("User information not available. Please log in again.");
-      return;
-    }
-    
+      return;    }
+
     if (!user.email) {
       console.warn('⚠️ [WellnessCounselling] User object missing email:', user);
       setError("User email not available. Please log in again.");
@@ -280,44 +279,40 @@ const WellnessCounselling = ({ user, onBack }) => {
   // Render stats strip with counselling counts
   const renderStats = (node) => {
     const counts = calculateCounsellingCounts(node);
-    const assessment = assessmentData[node.userId];
 
     return (
       <>
         {/* Self */}
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <span className={`text-base font-bold ${counts.self.counselled > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-            {counts.self.counselled}/{counts.self.total}
-          </span>
-          {assessment && assessment.medicationDetails && (
-            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes"></span>
-          )}
+        <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
+          <SelfLogo className="w-4 h-4 text-blue-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
+          <span className={`text-sm font-bold ${counts.self.counselled > 0 ? 'text-green-600' : 'text-gray-400'}`}>{counts.self.counselled}/{counts.self.total}</span>
         </div>
 
         {/* Direct Team */}
-        <div className="flex-1 flex flex-col items-center px-2">
-          <span className={`text-base font-bold ${
+        <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
+          <DirectLogo className="w-4 h-4 text-green-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-green-600">DIRECT</span>
+          <span className={`text-sm font-bold ${
             counts.direct.counselled === counts.direct.total && counts.direct.total > 0
               ? 'text-green-600'
               : counts.direct.counselled > 0
               ? 'text-orange-600'
               : 'text-gray-400'
-          }`}>
-            {counts.direct.counselled}/{counts.direct.total}
-          </span>
+          }`}>{counts.direct.counselled}/{counts.direct.total}</span>
         </div>
 
         {/* Full Team */}
-        <div className="flex-1 flex flex-col items-center pl-2">
-          <span className={`text-base font-bold ${
+        <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
+          <FullTeamLogo className="w-4 h-4 text-purple-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-purple-600">FULL</span>
+          <span className={`text-sm font-bold ${
             counts.full.counselled === counts.full.total && counts.full.total > 0
               ? 'text-green-600'
               : counts.full.counselled > 0
               ? 'text-orange-600'
               : 'text-gray-400'
-          }`}>
-            {counts.full.counselled}/{counts.full.total}
-          </span>
+          }`}>{counts.full.counselled}/{counts.full.total}</span>
         </div>
       </>
     );

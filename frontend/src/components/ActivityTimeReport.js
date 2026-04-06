@@ -402,6 +402,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc");
+  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
@@ -527,14 +528,23 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
-          const ka = computeActivitySortKey(a, filter);
-          const kb = computeActivitySortKey(b, filter);
+          let ka, kb;
+          if (sortBy === "direct") {
+            ka = a.__directAvg ?? 0;
+            kb = b.__directAvg ?? 0;
+          } else if (sortBy === "full") {
+            ka = a.__fullAvg ?? 0;
+            kb = b.__fullAvg ?? 0;
+          } else {
+            ka = computeActivitySortKey(a, filter);
+            kb = computeActivitySortKey(b, filter);
+          }
           return sortOrder === "desc" ? kb - ka : ka - kb;
         })
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder]);
+  }, [hierarchyData, filter, sortOrder, sortBy]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -916,8 +926,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilter(val);
           setFilterBehavior("all");
         }}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortChange={() => setSortOrder((o) => (o === "desc" ? "asc" : "desc"))}
+      onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
       summaryStats={null}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
