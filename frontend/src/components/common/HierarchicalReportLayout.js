@@ -17,6 +17,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  LayoutGrid,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -338,6 +339,7 @@ const HierarchicalReportLayout = ({
   onRefresh,
   onDownload,
   onSettings,
+  sortBy,
   sortOrder,
   onSortChange,
   loading,
@@ -363,18 +365,31 @@ const HierarchicalReportLayout = ({
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [isSortOpen, setIsSortOpen] = useState(false);
   const filterRef = useRef(null);
+  const sortRef = useRef(null);
 
-  // Close filter dropdown when clicking outside
+  // Close filter/sort dropdowns when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (filterRef.current && !filterRef.current.contains(event.target)) {
         setIsFilterOpen(false);
       }
+      if (sortRef.current && !sortRef.current.contains(event.target)) {
+        setIsSortOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const SORT_OPTIONS = [
+    { value: "all",    label: "Show All Scores",           shortLabel: "All",    Logo: LayoutGrid,   color: "text-gray-500"   },
+    { value: "self",   label: "Sort by Self Score",        shortLabel: "Self",   Logo: SelfLogo,     color: "text-blue-600"   },
+    { value: "direct", label: "Sort by Direct Team Score", shortLabel: "Direct", Logo: DirectLogo,   color: "text-green-600"  },
+    { value: "full",   label: "Sort by Full Team Score",   shortLabel: "Full",   Logo: FullTeamLogo, color: "text-purple-600" },
+  ];
+  const activeSortOption = SORT_OPTIONS.find((o) => o.value === sortBy) || SORT_OPTIONS[0];
 
   const getDateRangeLabel = () => {
     if (dateRange === "custom" && customStartDate && customEndDate) {
@@ -600,10 +615,18 @@ const HierarchicalReportLayout = ({
               </div>
             )}
 
-            {/* Notes Card */}
+            {/* Notes Card - sticky below header */}
             {summaryStats?.note && (
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
-                <div className="flex items-start gap-2">
+              <div
+                className="sticky z-30 rounded-2xl p-3 shadow-sm"
+                style={{
+                  top: onDateRangeChange ? '104px' : '62px',
+                  backgroundColor: '#e8f5e9',
+                  paddingBottom: '8px',
+                }}
+              >
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
+                  <div className="flex items-start gap-2">
                   <svg className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
                   </svg>
@@ -624,7 +647,7 @@ const HierarchicalReportLayout = ({
                       </span>
                     </div>
                   </div>
- 
+                </div>
                 </div>
               </div>
             )}
@@ -704,19 +727,72 @@ const HierarchicalReportLayout = ({
                   </div>
                 )}
 
-                {/* Sort Button */}
+                {/* Sort — field picker + separate direction toggle */}
                 {onSortChange && (
-                  <TouchFeedbackButton
-                    onClick={onSortChange}
-                    className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white text-gray-700 border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
-                    ariaLabel="Toggle sort order"
-                  >
-                    {sortOrder === "desc" ? (
-                      <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5" />
-                    ) : (
-                      <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5" />
-                    )}
-                  </TouchFeedbackButton>
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    {/* Field picker dropdown */}
+                    <div className="relative" ref={sortRef}>
+                      <TouchFeedbackButton
+                        onClick={() => setIsSortOpen(!isSortOpen)}
+                        className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center gap-1.5"
+                        ariaLabel="Sort field"
+                      >
+                        <activeSortOption.Logo className={`h-4 w-4 sm:h-5 sm:w-5 ${activeSortOption.color}`} />
+                        <span className={`text-xs sm:text-sm font-medium ${activeSortOption.color}`}>
+                          {activeSortOption.shortLabel}
+                        </span>
+                        <ChevronDown
+                          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isSortOpen ? "rotate-180" : ""}`}
+                        />
+                      </TouchFeedbackButton>
+
+                      <AnimatePresence>
+                        {isSortOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, y: -10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -10 }}
+                            className="absolute right-0 mt-2 w-52 sm:w-60 bg-white rounded-xl shadow-2xl border border-gray-100 py-2 z-50"
+                          >
+                            {SORT_OPTIONS.map((option) => {
+                              const isActive = sortBy === option.value;
+                              return (
+                                <button
+                                  key={option.value}
+                                  onClick={() => {
+                                    onSortChange(option.value, sortOrder);
+                                    setIsSortOpen(false);
+                                  }}
+                                  className="w-full px-4 py-2.5 text-left text-sm hover:bg-gray-50 flex items-center justify-between transition-colors"
+                                >
+                                  <span className={`flex items-center gap-2 font-medium ${isActive ? option.color : "text-gray-700"}`}>
+                                    <option.Logo className={`h-4 w-4 ${isActive ? option.color : "text-gray-400"}`} />
+                                    {option.label}
+                                  </span>
+                                  {isActive && (
+                                    <Check className="h-4 w-4 text-green-600" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
+
+                    {/* Direction toggle button */}
+                    <TouchFeedbackButton
+                      onClick={() => onSortChange(sortBy, sortOrder === "desc" ? "asc" : "desc")}
+                      className="p-2.5 sm:p-3 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                      ariaLabel="Toggle sort direction"
+                    >
+                      {sortOrder === "desc" ? (
+                        <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                      ) : (
+                        <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                      )}
+                    </TouchFeedbackButton>
+                  </div>
                 )}
               </div>
             )}

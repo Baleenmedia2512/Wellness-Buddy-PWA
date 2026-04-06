@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -1077,7 +1078,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
                             {/* Metrics in 3 columns */}
                             <div className="grid grid-cols-3 gap-2">
-                              {/* Mine */}
+                              {/* Mine - Mobile */}
                               <div
                                 onClick={() =>
                                   stats.mine > 0 &&
@@ -1093,23 +1094,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-2xl font-bold ${
-                                      stats.mine > 0
-                                        ? "text-blue-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <SelfLogo className="w-4 h-4 text-blue-600" />
+                                  <div className="text-[10px] font-bold text-blue-600">SELF</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.mine > 0 ? "text-blue-600" : "text-gray-400"
+                                  }`}>
                                     {stats.mine > 0 ? "✓" : "✗"}
-                                  </div>
-                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
-                                    SELF
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Direct Team */}
+                              {/* Direct Team - Mobile */}
                               <div
                                 onClick={() =>
                                   stats.directTeamMembers.length > 0 &&
@@ -1125,23 +1121,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-2xl font-bold ${
-                                      stats.directTeamMembers.length > 0
-                                        ? "text-green-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <DirectLogo className="w-4 h-4 text-green-600" />
+                                  <div className="text-[10px] font-bold text-green-600">DIRECT</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.directTeamMembers.length > 0 ? "text-green-600" : "text-gray-400"
+                                  }`}>
                                     {stats.directTeam}
-                                  </div>
-                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
-                                    DIRECT TEAM
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Full Team */}
+                              {/* Full Team - Mobile */}
                               <div
                                 onClick={() =>
                                   stats.fullTeamMembers.length > 0 &&
@@ -1157,18 +1148,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-2xl font-bold ${
-                                      stats.fullTeamMembers.length > 0
-                                        ? "text-purple-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <FullTeamLogo className="w-4 h-4 text-purple-600" />
+                                  <div className="text-[10px] font-bold text-purple-600">FULL</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.fullTeamMembers.length > 0 ? "text-purple-600" : "text-gray-400"
+                                  }`}>
                                     {stats.fullTeam}
-                                  </div>
-                                  <div className="text-[10px] text-gray-600 font-medium leading-tight">
-                                    FULL TEAM
                                   </div>
                                 </div>
                               </div>
@@ -1189,7 +1175,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
                             {/* Right: Metrics in horizontal row */}
                             <div className="flex items-center gap-2">
-                              {/* Mine */}
+                              {/* Mine - Desktop */}
                               <div
                                 onClick={() =>
                                   stats.mine > 0 &&
@@ -1205,23 +1191,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-lg font-bold ${
-                                      stats.mine > 0
-                                        ? "text-blue-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <SelfLogo className="w-4 h-4 text-blue-600" />
+                                  <div className="text-xs font-bold text-blue-600 whitespace-nowrap">SELF</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.mine > 0 ? "text-blue-600" : "text-gray-400"
+                                  }`}>
                                     {stats.mine > 0 ? "✓" : "✗"}
-                                  </div>
-                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
-                                    SELF
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Direct Team */}
+                              {/* Direct Team - Desktop */}
                               <div
                                 onClick={() =>
                                   stats.directTeamMembers.length > 0 &&
@@ -1237,23 +1218,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-lg font-bold ${
-                                      stats.directTeamMembers.length > 0
-                                        ? "text-green-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <DirectLogo className="w-4 h-4 text-green-600" />
+                                  <div className="text-xs font-bold text-green-600 whitespace-nowrap">DIRECT</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.directTeamMembers.length > 0 ? "text-green-600" : "text-gray-400"
+                                  }`}>
                                     {stats.directTeam}
-                                  </div>
-                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
-                                    DIRECT TEAM
                                   </div>
                                 </div>
                               </div>
 
-                              {/* Full Team */}
+                              {/* Full Team - Desktop */}
                               <div
                                 onClick={() =>
                                   stats.fullTeamMembers.length > 0 &&
@@ -1269,18 +1245,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                     : ""
                                 }`}
                               >
-                                <div className="text-center">
-                                  <div
-                                    className={`text-lg font-bold ${
-                                      stats.fullTeamMembers.length > 0
-                                        ? "text-purple-600"
-                                        : "text-gray-400"
-                                    }`}
-                                  >
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <FullTeamLogo className="w-4 h-4 text-purple-600" />
+                                  <div className="text-xs font-bold text-purple-600 whitespace-nowrap">FULL</div>
+                                  <div className={`text-lg font-bold ${
+                                    stats.fullTeamMembers.length > 0 ? "text-purple-600" : "text-gray-400"
+                                  }`}>
                                     {stats.fullTeam}
-                                  </div>
-                                  <div className="text-xs text-gray-600 font-medium whitespace-nowrap">
-                                    FULL TEAM
                                   </div>
                                 </div>
                               </div>

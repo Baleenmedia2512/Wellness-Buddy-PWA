@@ -1,5 +1,6 @@
-﻿import React, { useState, useEffect } from "react";
+﻿import React, { useState, useEffect, useMemo } from "react";
 import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -16,6 +17,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState("desc");
+  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -112,7 +114,7 @@ const AttendanceReport = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
+  }, [user, dateRange, customStartDate, customEndDate]);
 
   // Filter options
   const filterOptions = [
@@ -231,32 +233,83 @@ const AttendanceReport = ({ user, onBack }) => {
     const attended = node.metrics?.attended === true;
     const clubs = node.metrics?.clubs || [];
     const remoteCount = node.metrics?.remoteCount || 0;
+    const directQualified = node.directTeamCount?.qualified || 0;
+    const directTotal = node.directTeamCount?.total || 0;
+    const fullQualified = node.fullTeamCount?.qualified || 0;
+    const fullTotal = node.fullTeamCount?.total || 0;
 
-    const attendedDirect = node.directTeamCount?.qualified || 0;
-    const totalDirect = node.directTeamCount?.total || 0;
-    const attendedFull = node.fullTeamCount?.qualified || 0;
-    const totalFull = node.fullTeamCount?.total || 0;
+    const isSingle = sortBy !== "all";
 
+    // ── Single-column focus mode ──────────────────────────────────────────────
+    if (isSingle && sortBy === "self") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <SelfLogo className="w-5 h-5 text-blue-600" />
+          <span className="text-[8px] font-semibold text-blue-600 uppercase tracking-wide leading-none">Self</span>
+          {attended ? (
+            <div className="flex flex-wrap gap-1 justify-center mt-0.5">
+              {clubs.length > 0 && (
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                  <MapPin className="h-3 w-3 text-green-700" />
+                  <span className="text-[10px] font-bold text-green-700">{clubs.length}</span>
+                </div>
+              )}
+              {remoteCount > 0 && (
+                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                  <Wifi className="h-3 w-3 text-blue-700" />
+                  <span className="text-[10px] font-bold text-blue-700">{remoteCount}</span>
+                </div>
+              )}
+              {clubs.length === 0 && remoteCount === 0 && (
+                <Check className="w-5 h-5 text-green-600" />
+              )}
+            </div>
+          ) : (
+            <XCircle className="w-5 h-5 text-red-500 mt-0.5" />
+          )}
+        </div>
+      );
+    }
+
+    if (isSingle && sortBy === "direct") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <DirectLogo className="w-5 h-5 text-green-600" />
+          <span className="text-[8px] font-semibold text-green-600 uppercase tracking-wide leading-none">Direct</span>
+          <span className="text-base sm:text-lg font-bold text-gray-900">{directQualified}/{directTotal}</span>
+        </div>
+      );
+    }
+
+    if (isSingle && sortBy === "full") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <FullTeamLogo className="w-5 h-5 text-purple-600" />
+          <span className="text-[8px] font-semibold text-purple-600 uppercase tracking-wide leading-none">Full</span>
+          <span className="text-base sm:text-lg font-bold text-gray-900">{fullQualified}/{fullTotal}</span>
+        </div>
+      );
+    }
+
+    // ── All columns (default) ─────────────────────────────────────────────────
     return (
       <>
         {/* Self */}
         <div className="flex-1 flex flex-col items-center pr-2">
+          <SelfLogo className="w-4 h-4 text-blue-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
           {attended ? (
             <div className="flex flex-wrap gap-1 justify-center mt-0.5">
               {clubs.length > 0 && (
                 <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
                   <MapPin className="h-2.5 w-2.5 text-green-700" />
-                  <span className="text-[9px] font-semibold text-green-700">
-                    {clubs.length}
-                  </span>
+                  <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
                 </div>
               )}
               {remoteCount > 0 && (
                 <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
                   <Wifi className="h-2.5 w-2.5 text-blue-700" />
-                  <span className="text-[9px] font-semibold text-blue-700">
-                    {remoteCount}
-                  </span>
+                  <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
                 </div>
               )}
             </div>
@@ -264,19 +317,17 @@ const AttendanceReport = ({ user, onBack }) => {
             <span className="text-lg font-bold text-red-500">0</span>
           )}
         </div>
-
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
-          <span className="text-base font-bold text-gray-900">
-            {attendedDirect}/{totalDirect}
-          </span>
+          <DirectLogo className="w-4 h-4 text-green-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-green-600">DIRECT</span>
+          <span className="text-sm font-bold text-gray-900">{directQualified}/{directTotal}</span>
         </div>
-
         {/* Full Team */}
         <div className="flex-1 flex flex-col items-center pl-2">
-          <span className="text-base font-bold text-gray-900">
-            {attendedFull}/{totalFull}
-          </span>
+          <FullTeamLogo className="w-4 h-4 text-purple-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-purple-600">FULL</span>
+          <span className="text-sm font-bold text-gray-900">{fullQualified}/{fullTotal}</span>
         </div>
       </>
     );
@@ -363,21 +414,55 @@ const AttendanceReport = ({ user, onBack }) => {
       }
     : null;
 
+  // Client-side sort by selected score
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const sortNode = (node) => {
+      const sorted = { ...node };
+      if (sorted.teamMembers && sorted.teamMembers.length > 0) {
+        const members = sorted.teamMembers.map(sortNode);
+        const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
+        const regularMembers = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
+        regularMembers.sort((a, b) => {
+          let scoreA, scoreB;
+          if (sortBy === "direct") {
+            const totalA = a.directTeamCount?.total || 0;
+            const totalB = b.directTeamCount?.total || 0;
+            scoreA = totalA ? (a.directTeamCount?.qualified || 0) / totalA : 0;
+            scoreB = totalB ? (b.directTeamCount?.qualified || 0) / totalB : 0;
+          } else if (sortBy === "full") {
+            const totalA = a.fullTeamCount?.total || 0;
+            const totalB = b.fullTeamCount?.total || 0;
+            scoreA = totalA ? (a.fullTeamCount?.qualified || 0) / totalA : 0;
+            scoreB = totalB ? (b.fullTeamCount?.qualified || 0) / totalB : 0;
+          } else {
+            scoreA = a.metrics?.attended ? 1 : 0;
+            scoreB = b.metrics?.attended ? 1 : 0;
+          }
+          return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+        });
+        sorted.teamMembers = [...coaches, ...regularMembers];
+      }
+      return sorted;
+    };
+    return sortNode(hierarchyData);
+  }, [hierarchyData, sortBy, sortOrder]);
+
   // Filter hierarchy based on teamView
   const getFilteredHierarchy = () => {
-    if (!hierarchyData) return null;
-    if (teamView === "full") return hierarchyData;
+    if (!sortedHierarchyData) return null;
+    if (teamView === "full") return sortedHierarchyData;
     // Direct view - remove nested teams
-    if (hierarchyData.teamMembers) {
+    if (sortedHierarchyData.teamMembers) {
       return {
-        ...hierarchyData,
-        teamMembers: hierarchyData.teamMembers.map((member) => ({
+        ...sortedHierarchyData,
+        teamMembers: sortedHierarchyData.teamMembers.map((member) => ({
           ...member,
           teamMembers: [],
         })),
       };
     }
-    return hierarchyData;
+    return sortedHierarchyData;
   };
 
   const filteredHierarchy = getFilteredHierarchy();
@@ -421,8 +506,9 @@ const AttendanceReport = ({ user, onBack }) => {
     // Implement download logic here
   };
 
-  const handleSortToggle = () => {
-    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+  const handleSortChange = (newSortBy, newSortOrder) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
   };
 
   if (loading) {
@@ -443,8 +529,9 @@ const AttendanceReport = ({ user, onBack }) => {
       onBack={onBack}
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortChange={handleSortToggle}
+      onSortChange={handleSortChange}
       loading={refreshing}
       error={error}
       dateRange={dateRange}
