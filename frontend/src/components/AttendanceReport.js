@@ -19,6 +19,15 @@ const AttendanceReport = ({ user, onBack }) => {
   const [sortOrder, setSortOrder] = useState("desc");
   const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -547,35 +556,12 @@ const AttendanceReport = ({ user, onBack }) => {
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       summaryStats={summaryStats}
+      onExpandAll={() => setExpandOverride("expanded")}
+      onCollapseAll={() => setExpandOverride("collapsed")}
+      expandedState={expandOverride}
+      teamView={teamView}
+      onTeamViewChange={setTeamView}
     >
-      {/* Team View Toggle */}
-      {hierarchyData && (
-        <div className="flex justify-end mb-3 sm:mb-4">
-          <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-            <button
-              onClick={() => setTeamView("direct")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "direct"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Direct
-            </button>
-            <button
-              onClick={() => setTeamView("full")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "full"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Full
-            </button>
-          </div>
-        </div>
-      )}
-
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           key={`hierarchy-${teamView}`}
@@ -592,6 +578,8 @@ const AttendanceReport = ({ user, onBack }) => {
           filter={filter}
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
+          forceExpandedState={expandOverride}
+          defaultExpanded={false}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

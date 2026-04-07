@@ -19,6 +19,15 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   const [sortOrder, setSortOrder] = useState("desc");
   const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
 
@@ -458,6 +467,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       summaryStats={summaryStats}
+      onExpandAll={() => setExpandOverride("expanded")}
+      onCollapseAll={() => setExpandOverride("collapsed")}
+      expandedState={expandOverride}
     >
       {/* Team View Toggle */}
       {hierarchyData && (
@@ -503,6 +515,8 @@ const ClubAttendanceReport = ({ user, onBack }) => {
           filter={filter}
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
+          forceExpandedState={expandOverride}
+          defaultExpanded={false}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

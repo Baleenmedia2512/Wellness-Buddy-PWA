@@ -18,6 +18,7 @@ import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
 import EducationLogCard from "./components/EducationLogCard";
+import WatchActivityCard from "./components/WatchActivityCard";
 import TestImageGuide from "./components/TestImageGuide";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Login from "./components/Login";
@@ -51,6 +52,7 @@ import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
+import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
 import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
@@ -148,8 +150,11 @@ function WellnessValleyApp() {
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
+  const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
+  const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
+  const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload → pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
-  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card
+  const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 
@@ -179,6 +184,9 @@ function WellnessValleyApp() {
 
   // New user profile modal state - show profile page for first-time users
   const [showNewUserProfileModal, setShowNewUserProfileModal] = useState(false);
+
+  // Mandatory profile picture modal state - show when user has no valid profile picture
+  const [showMandatoryProfilePictureModal, setShowMandatoryProfilePictureModal] = useState(false);
 
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
@@ -597,6 +605,7 @@ function WellnessValleyApp() {
       savedWeightIdRef.current = null;
     }
     if (educationResult) setEducationResult(null);
+    if (watchResult) setWatchResult(null);
     if (nutritionData) setNutritionData(null);
     if (imagePreview) setImagePreview(null);
     if (selectedImage) setSelectedImage(null);
@@ -810,6 +819,73 @@ function WellnessValleyApp() {
   );
   // ─────────────────────────────────────────────────────────────────────────
 
+  // ── Profile Picture Validation ──────────────────────────────────────────
+  // Checks if user has a valid profile picture (not a letter avatar)
+  const checkProfilePicture = useCallback(
+    async (user) => {
+      if (!user) return;
+
+      const userEmail = user.email || user.Email;
+      if (!userEmail) return;
+
+      console.log("🖼️ [Profile Picture] Checking for valid profile picture...");
+
+      try {
+        const profilePictureKey = "profilePictureUploaded_" + userEmail;
+
+        // Fetch user profile to check for ProfileImage in database (always check DB)
+        const res = await fetch(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
+            userEmail,
+          )}&_t=${Date.now()}`,
+          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+        );
+
+        if (!res.ok) {
+          console.warn("⚠️ [Profile Picture] Failed to fetch profile");
+          return;
+        }
+
+        const data = await res.json();
+        if (!data.success || !data.data) {
+          console.warn("⚠️ [Profile Picture] Invalid response");
+          return;
+        }
+
+        const profile = data.data;
+        // console.log("🔍 [Profile Picture] Database ProfileImage value:", profile.profileImage || "NULL");
+        
+        // Check if user has a valid profile image (either custom uploaded or Google photo)
+        if (profile.profileImage) {
+          // Accept custom uploaded images (base64)
+          if (profile.profileImage.startsWith("data:image/")) {
+            console.log("✅ [Profile Picture] User has custom uploaded profile picture");
+            localStorage.setItem(profilePictureKey, "true");
+            return;
+          }
+          
+          // Accept Google profile picture URLs
+          if (profile.profileImage.startsWith("https://")) {
+            console.log("✅ [Profile Picture] User has Google profile picture:", profile.profileImage.substring(0, 50) + "...");
+            localStorage.setItem(profilePictureKey, "true");
+            return;
+          }
+        }
+
+        // No valid profile picture found - show mandatory upload modal
+        console.log("⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
+        // Clear localStorage flag in case it was set incorrectly
+        localStorage.removeItem(profilePictureKey);
+        setShowMandatoryProfilePictureModal(true);
+      } catch (err) {
+        console.error("❌ [Profile Picture] Check failed:", err);
+        // Don't block the user on errors
+      }
+    },
+    [apiBaseUrl],
+  );
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
@@ -927,6 +1003,8 @@ function WellnessValleyApp() {
                   console.log("✅ [Auth State] Setup already complete");
                   // Check if mandatory profile fields are filled
                   await checkProfileCompletion(userEmail);
+                  // After profile completion check, check for profile picture
+                  setTimeout(() => checkProfilePicture(user), 800);
                 }
               } else {
                 console.warn(
@@ -965,7 +1043,7 @@ function WellnessValleyApp() {
       }
     });
     return () => unsubscribe();
-  }, [checkUserStatus, checkProfileCompletion]);
+  }, [checkUserStatus, checkProfileCompletion, checkProfilePicture]);
 
   // Subscribe to user context updates (from profile edits, food corrections, etc.)
   useEffect(() => {
@@ -1163,6 +1241,8 @@ function WellnessValleyApp() {
             console.log("✅ [Setup Check] Setup already complete");
             // Check if mandatory profile fields are filled
             await checkProfileCompletion(userEmail);
+            // After profile completion check, check for profile picture
+            setTimeout(() => checkProfilePicture(user), 800);
           }
         } else {
           console.warn(
@@ -1184,7 +1264,7 @@ function WellnessValleyApp() {
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion]);
+  }, [user, isUserActive, apiBaseUrl, checkProfileCompletion, checkProfilePicture]);
 
   // ⚡ PERFORMANCE: Preload user context when user logs in (warm the cache)
   useEffect(() => {
@@ -1376,10 +1456,74 @@ function WellnessValleyApp() {
       const data = await response.json();
 
       if (!response.ok || !data.success) {
-        throw new Error(data.message || "Failed to save weight entry");
+        // Weight validation failed - show user-friendly alert modal
+        console.log('❌ Weight validation failed:', data.validation);
+        
+        // Build friendly, supportive message for user
+        let alertMessage = data.message || "Failed to save weight entry";
+        
+        if (data.validation) {
+          // Generic validation message without showing weight difference
+          alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        }
+        
+        setAlertModal({
+          isOpen: true,
+          title: "⚖️ Wait, is that right?",
+          message: alertMessage,
+          type: "warning", // Changed from "error" to "warning" for yellow icon
+        });
+        
+        // Clear loading states
+        setSaveLoading(false);
+        setLoadingState("idle");
+        
+        // Throw error so caller knows validation failed
+        throw new Error(data.message || "Weight validation failed");
       }
 
       console.log("✅ Weight entry saved successfully");
+
+      // ✅ ALWAYS update weight result with final saved weight (corrected or original)
+      // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
+      const finalSavedWeight = data.data?.weightValue || data.correction?.correctedWeight || weightData.weightValue;
+      setWeightResult({
+        ...weightData,
+        weightValue: finalSavedWeight,
+        originalWeight: data.correction?.originalWeight || weightData.weightValue,
+        loggedAt: captureTimestamp || new Date().toISOString(),
+      });
+
+      // Check if weight was auto-corrected
+      if (data.correction && data.correction.wasCorrected) {
+        // Show custom alert modal about auto-correction with user-friendly message
+        const corrInfo = data.correction;
+        const difference = Math.abs(corrInfo.originalWeight - corrInfo.correctedWeight).toFixed(1);
+        
+        setTimeout(() => {
+          setAlertModal({
+            isOpen: true,
+            title: "✅ Weight Adjusted",
+            message: `We noticed the scale showed ${corrInfo.originalWeight} kg, but based on your recent weight of ${corrInfo.previousWeight} kg, we adjusted it to ${corrInfo.correctedWeight} kg.\n\nThis helps keep your progress accurate!`,
+            type: "info",
+          });
+        }, 500);
+        
+        console.log('🔄 Weight auto-corrected:', corrInfo);
+      } else if (data.correction && data.correction.message) {
+        // Weight changed significantly but within limits - only show if change is notable
+        const change = Math.abs(data.correction.difference || 0);
+        if (change > 1.5) {
+          setTimeout(() => {
+            setAlertModal({
+              isOpen: true,
+              title: "📊 Weight Updated",
+              message: `Your weight changed by ${change.toFixed(1)} kg. Keep up the great work!`,
+              type: "info",
+            });
+          }, 500);
+        }
+      }
 
       // Store the saved entry ID for potential editing
       if (data?.id) {
@@ -2062,9 +2206,27 @@ function WellnessValleyApp() {
         setDetectedFoodNames(foodNames); // Show detected names in UI immediately
       }
 
+      // ✅ PRIORITY 0: Smartwatch / fitness app screenshot — show activity card
+      if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
+        console.log("⌚ Smartwatch image detected — showing watch activity card.");
+        // Resolve the real DB userId now (same pattern used everywhere in App.js)
+        let resolvedUserId = user?.id;
+        if (!resolvedUserId) {
+          try { resolvedUserId = await getUserId(user); } catch (_) {}
+        }
+        setImageType("smartwatch");
+        setWatchResult({
+          caloriesBurned: detectedType.details?.caloriesBurned || 0,
+          source: detectedType.details?.source || "Smartwatch",
+          loggedAt: new Date().toISOString(),
+          userId: resolvedUserId, // ← real DB id, not Firebase uid
+        });
+        setLoading(false);
+        return;
+      }
+
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
-      if (detectedType.type === "education" && detectedType.confidence > 0.7) {
-        console.log("🎓 Education meeting detected, analyzing...");
+      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        console.log("🎓 Education meeting detected, analyzing...");
         setImageType("education");
 
         try {
@@ -2163,16 +2325,51 @@ function WellnessValleyApp() {
           setLoadingState("saving");
           setSaveLoading(true); // Show saving overlay
           
-          // Wrap save in try-catch to handle validation failures
+          // 🔍 FRONTEND PRE-VALIDATION: Check against previous weight for realistic changes
+          try {
+            const tempUserId = user?.id || (await getUserId(user));
+            const prevWeightRes = await fetch(
+              `${apiBaseUrl}/api/get-weight-history?userId=${tempUserId}&includeImage=false&_t=${Date.now()}`,
+            );
+            const prevWeightData = await prevWeightRes.json();
+            
+            if (prevWeightData.success && prevWeightData.stats?.previousWeight) {
+              const previousWeight = parseFloat(prevWeightData.stats.previousWeight.value);
+              const previousDate = prevWeightData.stats.previousWeight.date;
+              
+              // Validate weight change
+              const validation = weightDetectionService.validateWeightChange(
+                weightToSave.weightValue,
+                previousWeight,
+                previousDate
+              );
+              
+              console.log('🔍 Frontend weight validation:', validation);
+              
+              // If validation fails or shows major warning, don't save (backend will also validate)
+              if (!validation.valid) {
+                setSaveLoading(false);
+                setLoading(false);
+                
+                // Just log and continue - backend will handle validation and show CustomAlertModal
+                console.log('⚠️ Frontend detected unrealistic weight change, backend will validate');
+              } else if (validation.warning && validation.difference && Math.abs(validation.difference) > 1.5) {
+                // Show info message for moderate changes
+                console.log(`ℹ️ ${validation.message}`);
+              }
+            }
+          } catch (validationError) {
+            // Non-critical - continue with save even if validation fails
+            console.warn('⚠️ Frontend validation check failed, proceeding with save:', validationError);
+          }
+          
+          // Wrap save in try-catch to handle backend validation failures
           try {
             // Pass EXIF capture timestamp so the weight is recorded at capture time, not upload time
             await saveWeightEntry(weightToSave, processedImage, exifTimestamp || null);
             
-            // ✅ Only set weight result AFTER successful save
-            setWeightResult({
-              ...weightToSave,
-              loggedAt: exifTimestamp || new Date().toISOString(),
-            });
+            // ✅ Weight result is now set INSIDE performWeightSave with corrected value
+            // Don't set weightResult here - performWeightSave handles it with final weight
             setWeightEntrySaved(true);
             
             // Fetch weight diff (previous vs today) for the share card
@@ -2213,8 +2410,13 @@ function WellnessValleyApp() {
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed - show manual entry modal
-          console.log("⚠️ Weight detection failed, opening manual entry modal");
+          // Weight detection failed - check if it's a low confidence issue
+          if (detectedWeight.lowConfidence) {
+            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), opening manual entry`);
+            setError(detectedWeight.error || 'Image quality too low for accurate reading. Please retake with better lighting.');
+          } else {
+            console.log("⚠️ Weight detection failed, opening manual entry modal");
+          }
           setCurrentWeightImage(processedImage);
           setShowManualWeightModal(true);
           setLoading(false);
@@ -2764,6 +2966,7 @@ function WellnessValleyApp() {
     setSavedWeightId(null);
     savedWeightIdRef.current = null;
     setEducationResult(null); // Clear education results
+    setWatchResult(null); // Clear watch results
     setImageType(null);
     setCurrentWeightImage(null);
     setShowManualWeightModal(false);
@@ -2857,7 +3060,11 @@ function WellnessValleyApp() {
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
-              setTimeout(() => checkProfileCompletion(userEmail), 600);
+              setTimeout(() => {
+                checkProfileCompletion(userEmail);
+                // After profile completion check, check for profile picture
+                setTimeout(() => checkProfilePicture(user), 800);
+              }, 600);
             }
             if (isNewUser) {
               console.log("🆕 [handleSignIn] New user detected");
@@ -2984,7 +3191,11 @@ function WellnessValleyApp() {
             // Check mandatory profile fields (covers both new and returning users)
             const userEmail = user.email || user.Email;
             if (userEmail) {
-              setTimeout(() => checkProfileCompletion(userEmail), 600);
+              setTimeout(() => {
+                checkProfileCompletion(userEmail);
+                // After profile completion check, check for profile picture
+                setTimeout(() => checkProfilePicture(user), 800);
+              }, 600);
             }
             if (isNewUser) {
               console.log("🆕 [handlePopupSignIn] New user detected");
@@ -3261,6 +3472,8 @@ function WellnessValleyApp() {
           initialTab={dashboardInitialTab}
           userRole={userRole}
           bmrUpdateKey={bmrUpdateKey}
+          educationRefreshKey={educationRefreshKey}
+          watchBurnedCalories={watchBurnedCalories}
         />
       </Suspense>
     );
@@ -3458,9 +3671,7 @@ function WellnessValleyApp() {
                 <div className="text-xl">⚠️</div>
                 <div className="flex-1">
                   <p className="font-semibold">Error</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-line">
-                    {error}
-                  </p>
+                  <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
                 </div>
               </div>
               {lastImageFileRef.current && (
@@ -3511,6 +3722,28 @@ function WellnessValleyApp() {
                 setEducationResult(null);
                 setImagePreview(null);
                 setSelectedImage(null);
+              }}
+            />
+          )}
+
+          {/* Smartwatch / Fitness App Activity Result */}
+          {imageType === "smartwatch" && watchResult && (
+            <WatchActivityCard
+              watchData={watchResult}
+              imagePreview={imagePreview}
+              user={user}
+              apiBaseUrl={apiBaseUrl}
+              onSaved={({ caloriesBurned }) => {
+                // Refresh Education tab
+                setEducationRefreshKey((k) => k + 1);
+                // Push burned calories to NutritionDashboard via Dashboard prop
+                if (caloriesBurned > 0) setWatchBurnedCalories(caloriesBurned);
+              }}
+              onClose={() => {
+                setWatchResult(null);
+                setImagePreview(null);
+                setSelectedImage(null);
+                setImageType(null);
               }}
             />
           )}
@@ -4175,8 +4408,73 @@ function WellnessValleyApp() {
               user?.Email ||
               localStorage.getItem("userEmail") ||
               "";
-            profileCompletedRef.current = false;
-            await checkProfileCompletion(email);
+            profileCompletedRef.current = true; // Mark as complete to prevent re-showing
+            localStorage.setItem("profileComplete_v2_" + email, "true");
+            setShowCompleteProfile(false); // Hide the profile completion page immediately
+            setProfileChecking(false);
+            
+            // After profile completion, check for profile picture with delay for state update
+            setTimeout(() => {
+              console.log("🔄 [Profile Complete] Checking for profile picture...");
+              checkProfilePicture(user);
+            }, 800);
+          }}
+        />
+      )}
+
+      {/* ── Mandatory Profile Picture Upload Gate ────────────────────────
+           Shown after profile completion if user doesn't have a valid
+           profile picture. Cannot be dismissed until picture is uploaded.
+      ─────────────────────────────────────────────────────────────────── */}
+      {showMandatoryProfilePictureModal && user && (
+        <MandatoryProfilePictureModal
+          user={user}
+          apiBaseUrl={apiBaseUrl}
+          onComplete={async (uploadedImage) => {
+            console.log("✅ [Profile Picture] Profile picture uploaded successfully");
+            const userEmail = user.email || user.Email;
+            if (userEmail) {
+              localStorage.setItem("profilePictureUploaded_" + userEmail, "true");
+            }
+            
+            // Immediately update user state with the uploaded image for instant UI update
+            if (uploadedImage) {
+              setUser((prevUser) => ({
+                ...prevUser,
+                profileImage: uploadedImage,
+                ProfileImage: uploadedImage, // Some components use ProfileImage
+                photoURL: uploadedImage, // Some components use photoURL
+              }));
+              console.log("✅ [Profile Picture] User state updated immediately with new profile picture");
+            }
+            
+            // Also fetch updated user profile in background to ensure consistency
+            try {
+              console.log("🔄 [Profile Picture] Refreshing user profile data in background...");
+              const res = await fetch(
+                `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
+                { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+              );
+              
+              if (res.ok) {
+                const data = await res.json();
+                if (data.success && data.data && data.data.profileImage) {
+                  // Update again with server data to ensure consistency
+                  setUser((prevUser) => ({
+                    ...prevUser,
+                    profileImage: data.data.profileImage,
+                    ProfileImage: data.data.profileImage,
+                    photoURL: data.data.profileImage,
+                  }));
+                  console.log("✅ [Profile Picture] User state synced with server data");
+                }
+              }
+            } catch (err) {
+              console.error("❌ [Profile Picture] Failed to refresh user profile:", err);
+              // Don't block user - they already have the image from immediate update
+            }
+            
+            setShowMandatoryProfilePictureModal(false);
           }}
         />
       )}

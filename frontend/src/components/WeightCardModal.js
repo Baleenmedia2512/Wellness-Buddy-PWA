@@ -205,7 +205,9 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
                   )}
                 </div>
                 {editError && (
-                  <p className="text-xs text-red-500 mt-1">{editError}</p>
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs text-red-700">{editError}</p>
+                  </div>
                 )}
               </div>
 

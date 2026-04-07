@@ -314,7 +314,7 @@ export default async function handler(req, res) {
     // Pass coachPartnerIds to exclude partner from nested view
     const hierarchy = buildHierarchy(coachIdInt, null, new Set(), coachPartnerIds);
 
-    // If co-coach partnership exists, add co-coach node and their direct members
+    // If co-coach partnership exists, store co-coach info but DON'T add to team members
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
       const partnerId = managedTeam.CoachId === coachIdInt
         ? managedTeam.CoCoachId
@@ -322,8 +322,8 @@ export default async function handler(req, res) {
 
       const partnerData = userMap.get(partnerId);
       if (partnerData) {
-        // Create co-coach node (highlighted, no sub-tree of its own)
-        const coCoachNode = {
+        // Store co-coach info at root level (NOT in teamMembers array)
+        hierarchy.coCoachInfo = {
           ...partnerData,
           isCoCoach: true,
           parentCoachId: coachIdInt,
@@ -356,10 +356,7 @@ export default async function handler(req, res) {
           }
         });
 
-        // Add co-coach node at the beginning of teamMembers
-        hierarchy.teamMembers.unshift(coCoachNode);
-
-        // Recalculate counts
+        // Recalculate counts (co-coach NOT counted as a team member)
         hierarchy.directMemberCount = hierarchy.teamMembers.length;
         hierarchy.totalMemberCount = hierarchy.directMemberCount +
           hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);

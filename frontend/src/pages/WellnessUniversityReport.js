@@ -675,6 +675,19 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       });
     };
 
+    const handleExpandAll = () => {
+      const allIds = collectAllNodeIds(hierarchy);
+      setExpandedNodes(new Set(allIds));
+    };
+
+    const handleCollapseAll = () => {
+      setExpandedNodes(new Set());
+    };
+
+    const allIds = collectAllNodeIds(hierarchy);
+    const isAllExpanded = allIds.length > 0 && allIds.every((id) => expandedNodes.has(id));
+    const isAllCollapsed = expandedNodes.size === 0;
+
     // Recursive component to render tree node
     const TreeNode = ({ node, level = 0, isLastChild = false }) => {
       const isExpanded = expandedNodes.has(node.userId);
@@ -830,6 +843,38 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
     return (
       <div className="space-y-3">
+        {/* Expand All / Collapse All toolbar */}
+        <div className="flex justify-end gap-2 mb-1">
+          <button
+            onClick={handleExpandAll}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+              isAllExpanded
+                ? "bg-green-600 text-white border-green-600 shadow-sm"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 3l-7 7-7-7" />
+            </svg>
+            Expand All
+          </button>
+          <button
+            onClick={handleCollapseAll}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
+              isAllCollapsed
+                ? "bg-green-600 text-white border-green-600 shadow-sm"
+                : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 21l7-7 7 7" />
+            </svg>
+            Collapse All
+          </button>
+        </div>
+
         {hierarchy.map((node, index) => (
           <TreeNode
             key={node.userId}

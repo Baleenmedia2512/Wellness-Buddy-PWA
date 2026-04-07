@@ -45,6 +45,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
 
   // Load data
   const fetchData = async (isBackground = false) => {
@@ -202,13 +211,14 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         enrichedNode.profileImage = node.profileImage;
         enrichedNode.photoURL = node.photoURL;
 
-        // Calculate team averages
+        // Calculate team averages (excluding co-coach from calculations)
         if (enrichedNode.teamMembers && enrichedNode.teamMembers.length > 0) {
           enrichedNode.teamMembers =
             enrichedNode.teamMembers.map(enrichHierarchy);
 
-          // Direct team score
+          // Direct team score (excludes co-coach)
           const directScores = enrichedNode.teamMembers
+            .filter((m) => !m.isCoCoach) // Exclude co-coach from calculation
             .map((m) => m.periodDiscipline?.percentage || 0)
             .filter((s) => s >= 0);
           enrichedNode.directTeamDiscipline = {
@@ -221,8 +231,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
                 : 0,
           };
 
-          // Full team score (recursive)
+          // Full team score (recursive, excludes co-coach)
           const getAllDescendantScores = (n) => {
+            // Skip co-coach in score calculation
+            if (n.isCoCoach) return [];
+            
             let scores = [n.periodDiscipline?.percentage || 0];
             if (n.teamMembers) {
               n.teamMembers.forEach((child) => {
@@ -249,6 +262,27 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         } else {
           enrichedNode.directTeamDiscipline = { percentage: 0 };
           enrichedNode.fullTeamDiscipline = { percentage: 0 };
+        }
+
+        // If this node has a co-coach, enrich co-coach with SAME team scores
+        if (enrichedNode.coCoachInfo) {
+          const coCoachScore = scores[enrichedNode.coCoachInfo.userId] || 
+                               scores[String(enrichedNode.coCoachInfo.userId)] || 0;
+          const coCoachActs = activities[enrichedNode.coCoachInfo.userId] || 
+                              activities[String(enrichedNode.coCoachInfo.userId)] || {};
+          
+          enrichedNode.coCoachInfo.periodDiscipline = {
+            percentage: coCoachScore,
+            activities: coCoachActs,
+            onTimePosts: coCoachActs.onTimePosts || 0,
+            expectedPosts: coCoachActs.expectedPosts || 0,
+          };
+          
+          // Co-coach shares the SAME team scores as coach
+          enrichedNode.coCoachInfo.directTeamDiscipline = enrichedNode.directTeamDiscipline;
+          enrichedNode.coCoachInfo.fullTeamDiscipline = enrichedNode.fullTeamDiscipline;
+          enrichedNode.coCoachInfo.profileImage = enrichedNode.coCoachInfo.profileImage;
+          enrichedNode.coCoachInfo.photoURL = enrichedNode.coCoachInfo.photoURL;
         }
 
         return enrichedNode;
@@ -791,6 +825,11 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       summaryStats={hierarchySummaryStats}
+      onExpandAll={() => setExpandOverride("expanded")}
+      onCollapseAll={() => setExpandOverride("collapsed")}
+      expandedState={expandOverride}
+      onTeamViewChange={setTeamView}
+      teamView={teamView}
       topContent={
         <>
           {/* Summary Stats Card */}
@@ -867,34 +906,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         </>
       }
     >
-      {/* Team View Toggle */}
-      {hierarchyData && (
-        <div className="flex justify-end mb-3 sm:mb-4">
-          <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-            <button
-              onClick={() => setTeamView("direct")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "direct"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Direct
-            </button>
-            <button
-              onClick={() => setTeamView("full")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "full"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Full
-            </button>
-          </div>
-        </div>
-      )}
-
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           key={`hierarchy-${teamView}`}
@@ -911,6 +922,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           filter={filter}
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
+          forceExpandedState={expandOverride}
+          defaultExpanded={false}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

@@ -24,6 +24,16 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
   const [sortOrder, setSortOrder] = useState("desc");
   
+  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+
+  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
+  useEffect(() => {
+    if (expandOverride !== null) {
+      const t = setTimeout(() => setExpandOverride(null), 50);
+      return () => clearTimeout(t);
+    }
+  }, [expandOverride]);
+
   // Form states
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [selectedMember, setSelectedMember] = useState(null);
@@ -471,6 +481,9 @@ const WellnessCounselling = ({ user, onBack }) => {
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
+        onExpandAll={() => setExpandOverride("expanded")}
+        onCollapseAll={() => setExpandOverride("collapsed")}
+        expandedState={expandOverride}
       >
         {/* Team View Toggle */}
         {hierarchyData && (
@@ -517,6 +530,8 @@ const WellnessCounselling = ({ user, onBack }) => {
             filter={filter}
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
+            forceExpandedState={expandOverride}
+            defaultExpanded={false}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

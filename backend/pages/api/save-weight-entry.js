@@ -5,6 +5,7 @@
 } from "../../utils/supabaseClient.js";
 import { cache, cacheKeys } from "../../utils/cache.js";
 import { largeBodyConfig as config } from "../../utils/apiConfig.js";
+import { validateAndCorrectWeight } from "../../utils/weightValidation.js";
 
 export { config };
 
@@ -91,7 +92,98 @@ export default async function handler(req, res) {
         ? parseFloat(muscleMass)
         : null;
 
-    const finalWeight = weight;
+    // ⚖️ WEIGHT VALIDATION & AUTO-CORRECTION
+    // Validate ALL weight changes (both new entries and edits)
+    let finalWeight = weight;
+    let correctionInfo = null;
+
+    // Build query to get previous weight entry
+    let query = supabase
+      .from("weight_records_table")
+      .select("ID, Weight, CreatedAt")
+      .eq("UserId", parseInt(userId))
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order("CreatedAt", { ascending: false });
+
+    // If editing an existing entry, exclude it from comparison
+    // Get the entry BEFORE the one being edited
+    if (entryId) {
+      query = query.neq('ID', entryId);
+      console.log(`✏️ [Manual Edit] Validating weight change for entry ${entryId}, comparing against previous entry`);
+    }
+
+    const { data: lastWeightEntry } = await query.limit(1).maybeSingle();
+
+    if (lastWeightEntry && lastWeightEntry.Weight) {
+      // Validate and auto-correct weight
+      const validation = validateAndCorrectWeight(
+        weight,
+        parseFloat(lastWeightEntry.Weight),
+        lastWeightEntry.CreatedAt,
+        unit
+      );
+
+      if (!validation.valid) {
+        // Weight change is too large even after correction - reject
+        console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
+          entryType: entryId ? 'Edit' : 'New',
+          entryId: entryId || 'N/A',
+          detectedWeight: weight,
+          previousWeight: lastWeightEntry.Weight,
+          correctedWeight: validation.finalWeight,
+          wasCorrected: validation.wasCorrected,
+          message: validation.message
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: validation.message,
+          validation: {
+            previousWeight: parseFloat(lastWeightEntry.Weight),
+            detectedWeight: weight,
+            correctedWeight: validation.finalWeight,
+            difference: validation.difference,
+            hoursSinceLastEntry: validation.hoursSinceLastEntry,
+            maxAllowed: validation.maxAllowed
+          }
+        });
+      }
+
+      // Use corrected weight for saving (only for AI uploads, not manual edits)
+      // For manual edits, user explicitly chose this value, so don't auto-correct
+      finalWeight = entryId ? weight : validation.finalWeight;
+
+      if (validation.wasCorrected || validation.message) {
+        correctionInfo = {
+          originalWeight: validation.originalWeight,
+          correctedWeight: validation.finalWeight,
+          wasCorrected: validation.wasCorrected && !entryId, // Only mark as corrected for AI uploads
+          message: validation.message,
+          previousWeight: parseFloat(lastWeightEntry.Weight)
+        };
+
+        if (entryId) {
+          console.log(`✅ [Manual Edit Validated] User ${userId}:`, {
+            weight: finalWeight,
+            previousWeight: lastWeightEntry.Weight,
+            difference: validation.difference,
+            message: validation.message
+          });
+        } else {
+          console.log(`✅ [Weight Auto-Corrected] User ${userId}:`, correctionInfo);
+        }
+      } else {
+        console.log(`✅ [Weight Validation Passed] User ${userId}:`, {
+          entryType: entryId ? 'Edit' : 'New',
+          weight: finalWeight,
+          previousWeight: lastWeightEntry.Weight,
+          difference: validation.difference
+        });
+      }
+      
+    } else if (entryId) {
+      console.log(`⚠️ [Manual Edit] No previous weight found for comparison - allowing edit for user ${userId}`);
+    }
 
     // 🔥 BMR PRESERVATION: Carry forward previous BMR if not explicitly provided
     let bmrValue = bmr && !isNaN(parseFloat(bmr)) ? parseFloat(bmr) : null;

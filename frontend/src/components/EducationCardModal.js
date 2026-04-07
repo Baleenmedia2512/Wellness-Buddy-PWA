@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
@@ -26,8 +26,37 @@ const formatTime = (dateString) => {
   });
 };
 
-const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
+const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, userId }) => {
+  const [fullImage, setFullImage] = useState(null);
+  const [imageLoading, setImageLoading] = useState(false);
+
+  // Lazy-load full image when modal opens (list API only returns a thumbnail prefix)
+  useEffect(() => {
+    if (!log || !log.hasFullImage) return;
+    if (!apiBaseUrl || !userId || !log.Id) return;
+
+    setImageLoading(true);
+    fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${log.Id}&userId=${userId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.success && data.imageBase64) {
+          // imageBase64 from DB is the raw base64 string — prefix it for <img src>
+          const src = data.imageBase64.startsWith('data:')
+            ? data.imageBase64
+            : `data:image/jpeg;base64,${data.imageBase64}`;
+          setFullImage(src);
+        }
+      })
+      .catch(() => {/* silently ignore — thumbnail fallback still works */})
+      .finally(() => setImageLoading(false));
+  }, [log?.Id]);
+
   if (!log) return null;
+
+  // Use full image if loaded, otherwise fall back to the (possibly truncated) thumbnail from list
+  const imageSrc = fullImage || (log.ImageBase64
+    ? (log.ImageBase64.startsWith('data:') ? log.ImageBase64 : `data:image/jpeg;base64,${log.ImageBase64}`)
+    : null);
 
   return (
     <div
@@ -40,11 +69,11 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
       >
         {/* Image header */}
         <div className="relative">
-          {log.ImageBase64 ? (
+          {imageSrc ? (
             <img
-              src={log.ImageBase64}
+              src={imageSrc}
               alt={log.Topic || 'Meeting Screenshot'}
-              className="w-full h-72 object-cover"
+              className={`w-full h-72 object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-60' : 'opacity-100'}`}
               onError={(e) => {
                 e.target.style.display = 'none';
               }}
@@ -119,6 +148,16 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting }) => {
                 <span className="text-sm text-gray-600">Time</span>
                 <span className="text-sm font-semibold text-gray-900">{formatTime(log.CreatedAt)}</span>
               </div>
+
+              {/* Calories Burned row — only for smartwatch activity logs */}
+              {log.Topic && log.Topic.toLowerCase().startsWith('calories burned:') && (
+                <div className="flex justify-between items-center pt-1 border-t border-gray-100 mt-1">
+                  <span className="text-sm text-orange-600 font-medium">⌚ Calories Burned</span>
+                  <span className="text-sm font-bold text-orange-700">
+                    {log.Topic.replace(/^calories burned:\s*/i, '')}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         </div>
