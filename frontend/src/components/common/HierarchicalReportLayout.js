@@ -342,6 +342,7 @@ const HierarchicalReportLayout = ({
   sortBy,
   sortOrder,
   onSortChange,
+  onSortOrderChange,
   loading,
   refreshing,
   error,
@@ -655,38 +656,42 @@ const HierarchicalReportLayout = ({
             {/* Search and Filter */}
             {(onSearchChange ||
               (filterOptions && filterOptions.length > 0)) && (
-              <div className="flex gap-2 sm:gap-3">
-                {/* Search */}
+              <div className="flex flex-col gap-2">
+                {/* Search — full width row */}
                 {onSearchChange && (
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                  <div className="relative w-full">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
                     <input
                       type="text"
                       placeholder="Search members..."
                       value={searchQuery}
                       onChange={(e) => onSearchChange(e.target.value)}
-                      className="w-full pl-9 sm:pl-11 pr-3 sm:pr-4 py-2.5 sm:py-3 bg-white border border-gray-200 rounded-xl text-xs sm:text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                      className="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-xl text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
                     />
                   </div>
                 )}
 
+                {/* Filter + Sort controls row */}
+                {(filterOptions?.length > 0 || onSortChange || onSortOrderChange) && (
+                <div className="flex gap-2 items-center">
+
                 {/* Filter Dropdown */}
                 {filterOptions && filterOptions.length > 0 && (
-                  <div className="relative" ref={filterRef}>
+                  <div className="relative shrink-0" ref={filterRef}>
                     <TouchFeedbackButton
                       onClick={() => setIsFilterOpen(!isFilterOpen)}
-                      className={`px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border transition-all flex items-center gap-2 ${
+                      className={`px-2.5 py-2.5 rounded-xl border transition-all flex items-center gap-1.5 ${
                         filter !== filterOptions[0]?.value
                           ? "bg-green-700 text-white border-green-700"
                           : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
                       }`}
                     >
-                      <Filter className="h-4 w-4 sm:h-5 sm:w-5" />
-                      <span className="text-xs sm:text-sm font-medium">
+                      <Filter className="h-4 w-4 shrink-0" />
+                      <span className="text-xs font-medium whitespace-nowrap">
                         {filterOptions.find((o) => o.value === filter)?.label ?? "Filter"}
                       </span>
                       <ChevronDown
-                        className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-transform ${
+                        className={`h-3.5 w-3.5 shrink-0 transition-transform ${
                           isFilterOpen ? "rotate-180" : ""
                         }`}
                       />
@@ -727,22 +732,37 @@ const HierarchicalReportLayout = ({
                   </div>
                 )}
 
+                {/* Arrow-only sort direction toggle (no field picker) */}
+                {onSortOrderChange && !onSortChange && (
+                  <TouchFeedbackButton
+                    onClick={() => onSortOrderChange(sortOrder === "desc" ? "asc" : "desc")}
+                    className="p-2.5 shrink-0 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                    ariaLabel="Toggle sort direction"
+                  >
+                    {sortOrder === "desc" ? (
+                      <ArrowDown className="h-4 w-4 text-gray-600" />
+                    ) : (
+                      <ArrowUp className="h-4 w-4 text-gray-600" />
+                    )}
+                  </TouchFeedbackButton>
+                )}
+
                 {/* Sort — field picker + separate direction toggle */}
                 {onSortChange && (
-                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-1.5 shrink-0">
                     {/* Field picker dropdown */}
                     <div className="relative" ref={sortRef}>
                       <TouchFeedbackButton
                         onClick={() => setIsSortOpen(!isSortOpen)}
-                        className="px-3 sm:px-4 py-2.5 sm:py-3 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center gap-1.5"
+                        className="px-2.5 py-2.5 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center gap-1.5"
                         ariaLabel="Sort field"
                       >
-                        <activeSortOption.Logo className={`h-4 w-4 sm:h-5 sm:w-5 ${activeSortOption.color}`} />
-                        <span className={`text-xs sm:text-sm font-medium ${activeSortOption.color}`}>
+                        <activeSortOption.Logo className={`h-4 w-4 shrink-0 ${activeSortOption.color}`} />
+                        <span className={`text-xs font-medium whitespace-nowrap ${activeSortOption.color}`}>
                           {activeSortOption.shortLabel}
                         </span>
                         <ChevronDown
-                          className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isSortOpen ? "rotate-180" : ""}`}
+                          className={`h-3.5 w-3.5 shrink-0 text-gray-400 transition-transform ${isSortOpen ? "rotate-180" : ""}`}
                         />
                       </TouchFeedbackButton>
 
@@ -783,16 +803,18 @@ const HierarchicalReportLayout = ({
                     {/* Direction toggle button */}
                     <TouchFeedbackButton
                       onClick={() => onSortChange(sortBy, sortOrder === "desc" ? "asc" : "desc")}
-                      className="p-2.5 sm:p-3 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                      className="p-2.5 rounded-xl border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
                       ariaLabel="Toggle sort direction"
                     >
                       {sortOrder === "desc" ? (
-                        <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                        <ArrowDown className="h-4 w-4 text-gray-600" />
                       ) : (
-                        <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-600" />
+                        <ArrowUp className="h-4 w-4 text-gray-600" />
                       )}
                     </TouchFeedbackButton>
                   </div>
+                )}
+                </div>
                 )}
               </div>
             )}

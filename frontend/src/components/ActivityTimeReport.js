@@ -401,8 +401,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
@@ -519,23 +518,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
-          let ka, kb;
-          if (sortBy === "direct") {
-            ka = a.__directAvg ?? 0;
-            kb = b.__directAvg ?? 0;
-          } else if (sortBy === "full") {
-            ka = a.__fullAvg ?? 0;
-            kb = b.__fullAvg ?? 0;
-          } else {
-            ka = computeActivitySortKey(a, filter);
-            kb = computeActivitySortKey(b, filter);
-          }
+          const ka = computeActivitySortKey(a, filter);
+          const kb = computeActivitySortKey(b, filter);
           return sortOrder === "desc" ? kb - ka : ka - kb;
         })
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder, sortBy]);
+  }, [hierarchyData, filter, sortOrder]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -917,10 +907,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilter(val);
           setFilterBehavior("all");
         }}
-      sortBy={sortBy}
-      sortOrder={sortOrder}
-      onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
       summaryStats={null}
+      sortOrder={sortOrder}
+      onSortOrderChange={(dir) => setSortOrder(dir)}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
     >
