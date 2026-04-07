@@ -126,6 +126,22 @@ export default async function handler(req, res) {
     
     console.log('✅ [save-education-log] Successfully saved, ID:', data?.Id || data?.id || data?.ID);
     
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [save-education-log] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [save-education-log] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [save-education-log] Error updating LastActiveAt:', err);
+    }
+    
     // Clear education summary cache for this user
     cache.delete(cacheKeys.educationSummary(userId));
     console.log('🗑️ [save-education-log] Cache cleared for user:', userId);

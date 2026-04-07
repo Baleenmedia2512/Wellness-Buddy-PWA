@@ -542,6 +542,22 @@ export default async function handler(req, res) {
       // Skip if parsing fails
     }
 
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [save-background-analysis] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [save-background-analysis] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [save-background-analysis] Error updating LastActiveAt:', err);
+    }
+
     res.status(200).json({
       success: true,
       id: data?.ID || data?.id,
