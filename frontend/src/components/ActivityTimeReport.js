@@ -617,35 +617,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     };
   }, [flatData]);
 
-  // ── Team-view toggle ───────────────────────────────────────────────────────
-
-  const teamViewToggle = (
-    <div className="flex justify-end mb-3 sm:mb-4">
-      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-        <button
-          onClick={() => setTeamView("direct")}
-          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-            teamView === "direct"
-              ? "bg-green-600 text-white shadow-sm"
-              : "text-green-700 hover:text-green-800"
-          }`}
-        >
-          Direct
-        </button>
-        <button
-          onClick={() => setTeamView("full")}
-          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-            teamView === "full"
-              ? "bg-green-600 text-white shadow-sm"
-              : "text-green-700 hover:text-green-800"
-          }`}
-        >
-          Full
-        </button>
-      </div>
-    </div>
-  );
-
   // ── Direct / Full hierarchy filter ────────────────────────────────────────
   const buildHierarchyForView = useCallback((view) => {
     if (!sortedHierarchyData) return null;
@@ -924,11 +895,11 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onExpandAll={() => setExpandOverride("expanded")}
       onCollapseAll={() => setExpandOverride("collapsed")}
       expandedState={expandOverride}
+      teamView={teamView}
+      onTeamViewChange={setTeamView}
     >
       {filteredHierarchy ? (
         <>
-          {teamViewToggle}
-
           {/* Daily Activity Sorting Controls
           <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
             <div className="flex flex-col gap-2">
