@@ -469,9 +469,18 @@ export default async function handler(req, res) {
           if (!dateStr) continue;
           const cal = parseFloat(r.TotalCalories) || 0;
           calConsumedByDate[dateStr] = (calConsumedByDate[dateStr] || 0) + cal;
-          const hhmm = `${String(localDate.getHours()).padStart(2,'0')}:${String(localDate.getMinutes()).padStart(2,'0')}`;
-          if (!calLastTimeByDate[dateStr] || hhmm > calLastTimeByDate[dateStr]) {
-            calLastTimeByDate[dateStr] = hhmm;
+        }
+        // Max calories burned per date from step activity (cumulative tracker)
+        const calBurnedByDate = {};
+        for (const r of (stepByUser.get(uid) || [])) {
+          if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
+            const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
+            const dateStr   = extractLocalDateString(localDate);
+            if (!dateStr) continue;
+            const burned = parseFloat(r.CaloriesBurned) || 0;
+            if ((calBurnedByDate[dateStr] || 0) < burned) {
+              calBurnedByDate[dateStr] = burned;
+            }
           }
         }
         // A day is disciplined if net calories (consumed - burned) <= BMR target

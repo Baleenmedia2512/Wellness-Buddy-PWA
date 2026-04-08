@@ -59,8 +59,12 @@ async function upsertDailyActivity(supabase, { userId, activityDate, steps, acti
   // forceWrite=true bypasses this so correction saves (from React syncDailySteps)
   // can fix inflated DB values back to the real measured count.
   const effectiveSteps = forceWrite ? steps : Math.max(steps, existing?.Steps ?? 0);
+  // Always store CaloriesBurned as a non-negative number.
+  // Some fitness sensors send negative delta values (e.g. -200) when the pedometer
+  // resets or corrects itself — Math.abs treats those as real positive activity so
+  // discipline calculations downstream count the day correctly.
   const effectiveCalories = forceWrite
-    ? caloriesBurned
+    ? Math.abs(caloriesBurned)
     : Math.max(caloriesBurned, existing?.CaloriesBurned ?? 0);
 
   const payload = {
@@ -179,7 +183,7 @@ export default async function handler(req, res) {
 
     const computedCalories =
       caloriesBurned !== undefined && caloriesBurned !== null
-        ? Number(caloriesBurned)
+        ? Math.abs(Number(caloriesBurned))
         : caloriesFor(safeActivityType, safeSteps);
 
     const safeSensorTotal =
@@ -197,9 +201,24 @@ export default async function handler(req, res) {
       steps: safeSteps,
       activityType: safeActivityType,
       caloriesBurned: computedCalories,
-      currentSensorTotal: safeSensorTotal,
-      forceWrite: req.body.forceWrite === true
+      currentSensorTotal: safeSensorTotal
     });
+
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [save-daily-activity] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [save-daily-activity] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [save-daily-activity] Error updating LastActiveAt:', err);
+    }
 
     res.status(200).json({
       success: true,

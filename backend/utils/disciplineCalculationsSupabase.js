@@ -383,10 +383,13 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     // Sum calories burned per date from step activity records
     const caloriesBurnedByDate = {};
     (stepRecords || []).forEach(r => {
-      if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
+      const rawBurned = parseFloat(r.CaloriesBurned) || 0;
+      // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
+      // as positive burns — a negative value means real activity was recorded, just stored inverted.
+      const burned = Math.abs(rawBurned);
+      if ((r.Steps || 0) > 0 || burned > 0) {
         const normalizedDate = normalizeTimestamp(r.CreatedAt);
         const date = normalizedDate.split('T')[0];
-        const burned = parseFloat(r.CaloriesBurned) || 0;
         // Keep the highest burn value recorded for the day (daily_step_activity stores cumulative totals)
         if ((caloriesBurnedByDate[date] || 0) < burned) {
           caloriesBurnedByDate[date] = burned;
