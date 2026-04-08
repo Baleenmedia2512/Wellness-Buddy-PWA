@@ -695,7 +695,7 @@ const HierarchicalReportLayout = ({
                     <div className="relative flex-1 min-w-0" ref={filterRef}>
                       <TouchFeedbackButton
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`h-9 w-full px-3 rounded-full border transition-all flex items-center gap-1.5 ${
+                        className={`h-9 w-full px-3 rounded-full border transition-all flex items-center justify-center gap-3 ${
                           filter !== filterOptions[0]?.value
                             ? "bg-green-700 text-white border-green-700"
                             : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
@@ -764,16 +764,16 @@ const HierarchicalReportLayout = ({
 
                   {/* Sort — field picker + separate direction toggle */}
                   {onSortChange && (
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex-1 flex items-center gap-1.5">
                       {/* Field picker dropdown */}
-                      <div className="relative" ref={sortRef}>
+                      <div className="relative flex-1" ref={sortRef}>
                         <TouchFeedbackButton
                           onClick={() => setIsSortOpen(!isSortOpen)}
-                          className="h-9 px-3 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center gap-1.5"
+                          className="h-9 w-full px-3 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-1.5"
                           ariaLabel="Sort field"
                         >
                           <activeSortOption.Logo className={`h-4 w-4 shrink-0 ${activeSortOption.color}`} />
-                          <span className={`text-xs font-medium whitespace-nowrap ${activeSortOption.color}`}>
+                          <span className={`text-xs font-medium truncate text-center ${activeSortOption.color}`}>
                             {activeSortOption.shortLabel}
                           </span>
                           <ChevronDown
