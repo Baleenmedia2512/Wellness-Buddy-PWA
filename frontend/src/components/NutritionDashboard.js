@@ -2299,12 +2299,21 @@ const NutritionDashboard = ({
                           {/* Burned / Extra display */}
                           <div className="flex items-end justify-between mb-1.5">
                             <div>
-                              <p className="text-xl md:text-2xl font-bold text-gray-900">
-                                {burnedCalories}
-                                <span className="text-xs md:text-sm font-normal text-gray-500">
-                                  {" "}/ {extraCalories} kcal
-                                </span>
-                              </p>
+                              {isOverTarget ? (
+                                <p className="text-xl md:text-2xl font-bold text-gray-900">
+                                  {burnedCalories}
+                                  <span className="text-xs md:text-sm font-normal text-gray-500">
+                                    {" "}/ {extraCalories} kcal
+                                  </span>
+                                </p>
+                              ) : (
+                                <p className="text-xl md:text-2xl font-bold text-gray-900">
+                                  {burnedCalories}
+                                  <span className="text-xs md:text-sm font-normal text-gray-500">
+                                    {" "}/ 0 kcal
+                                  </span>
+                                </p>
+                              )}
                               {/* Show breakdown when both sources have data */}
                               {stepsBurned > 0 && watchBurned > 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
@@ -2323,7 +2332,7 @@ const NutritionDashboard = ({
                               )}
                             </div>
                             <p className="text-[11px] text-orange-600 font-medium">
-                              {burnProgress}% burned
+                              {isOverTarget ? `${burnProgress}% burned` : "0% burned"}
                             </p>
                           </div>
 
