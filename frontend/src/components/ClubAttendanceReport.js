@@ -470,35 +470,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       onExpandAll={() => setExpandOverride("expanded")}
       onCollapseAll={() => setExpandOverride("collapsed")}
       expandedState={expandOverride}
+      teamView={teamView}
+      onTeamViewChange={setTeamView}
     >
-      {/* Team View Toggle */}
-      {hierarchyData && (
-        <div className="flex justify-end mb-3 sm:mb-4">
-          <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-            <button
-              onClick={() => setTeamView("direct")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "direct"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Direct
-            </button>
-            <button
-              onClick={() => setTeamView("full")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "full"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Full
-            </button>
-          </div>
-        </div>
-      )}
-
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           key={`hierarchy-${teamView}`}

@@ -1,5 +1,5 @@
 // src/pages/WellnessCounselling.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
@@ -21,6 +21,9 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [teamView, setTeamView] = useState("direct");
+  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("desc");
+  
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
 
   // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
@@ -418,6 +421,39 @@ const WellnessCounselling = ({ user, onBack }) => {
 
   const stats = hierarchyData ? calculateStats(hierarchyData) : { total: 0, counselled: 0, pending: 0 };
 
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const computeScore = (node, by) => {
+      if (by === "self") return assessmentData[node.userId] ? 1 : 0;
+      const countTeam = (n, deep) => {
+        let counselled = 0, total = 0;
+        (n.teamMembers || []).forEach((m) => {
+          total++;
+          if (assessmentData[m.userId]) counselled++;
+          if (deep) {
+            const s = countTeam(m, true);
+            counselled += s.counselled;
+            total += s.total;
+          }
+        });
+        return { counselled, total };
+      };
+      const { counselled, total } = countTeam(node, by === "full");
+      return total === 0 ? 0 : counselled / total;
+    };
+    const sortNode = (node) => ({
+      ...node,
+      teamMembers: [...(node.teamMembers || [])]
+        .sort((a, b) => {
+          const ka = computeScore(a, sortBy);
+          const kb = computeScore(b, sortBy);
+          return sortOrder === "desc" ? kb - ka : ka - kb;
+        })
+        .map(sortNode),
+    });
+    return sortNode(hierarchyData);
+  }, [hierarchyData, assessmentData, sortBy, sortOrder]);
+
   const summaryStats = {
     note: true, // Enables the common note display
   };
@@ -442,42 +478,19 @@ const WellnessCounselling = ({ user, onBack }) => {
         onFilterChange={setFilter}
         filterOptions={filterOptions}
         summaryStats={summaryStats}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
         onExpandAll={() => setExpandOverride("expanded")}
         onCollapseAll={() => setExpandOverride("collapsed")}
         expandedState={expandOverride}
+        teamView={teamView}
+        onTeamViewChange={setTeamView}
       >
-        {/* Team View Toggle */}
-        {hierarchyData && (
-          <div className="flex justify-end mb-3 sm:mb-4">
-            <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-              <button
-                onClick={() => setTeamView("direct")}
-                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  teamView === "direct"
-                    ? "bg-green-600 text-white shadow-sm"
-                    : "text-green-700 hover:text-green-800"
-                }`}
-              >
-                Direct
-              </button>
-              <button
-                onClick={() => setTeamView("full")}
-                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  teamView === "full"
-                    ? "bg-green-600 text-white shadow-sm"
-                    : "text-green-700 hover:text-green-800"
-                }`}
-              >
-                Full
-              </button>
-            </div>
-          </div>
-        )}
-
         {hierarchyData && hasVisibleNodes(hierarchyData) ? (
           <HierarchicalNode
-            key={`hierarchy-${teamView}`}
-            node={hierarchyData}
+            key={`hierarchy-${teamView}-${sortBy}-${sortOrder}`}
+            node={sortedHierarchyData}
             level={0}
             isLastChild={true}
             renderStatus={renderStatus}
