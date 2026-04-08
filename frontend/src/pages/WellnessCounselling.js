@@ -283,40 +283,67 @@ const WellnessCounselling = ({ user, onBack }) => {
   const renderStats = (node) => {
     const counts = calculateCounsellingCounts(node);
 
+    const ALL_COLS = [
+      {
+        key: "self",
+        Logo: SelfLogo,
+        color: "text-blue-600",
+        label: "SELF",
+        padding: "pr-2",
+        counselled: counts.self.counselled,
+        total: counts.self.total,
+      },
+      {
+        key: "direct",
+        Logo: DirectLogo,
+        color: "text-green-600",
+        label: "DIRECT",
+        padding: "px-2",
+        counselled: counts.direct.counselled,
+        total: counts.direct.total,
+      },
+      {
+        key: "full",
+        Logo: FullTeamLogo,
+        color: "text-purple-600",
+        label: "FULL",
+        padding: "pl-2",
+        counselled: counts.full.counselled,
+        total: counts.full.total,
+      },
+    ];
+
+    const isSingle = sortBy !== "all";
+    const cols = isSingle ? ALL_COLS.filter((c) => c.key === sortBy) : ALL_COLS;
+
     return (
       <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
-          <SelfLogo className="w-4 h-4 text-blue-600" />
-          <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
-          <span className={`text-sm font-bold ${counts.self.counselled > 0 ? 'text-green-600' : 'text-gray-400'}`}>{counts.self.counselled}/{counts.self.total}</span>
-        </div>
-
-        {/* Direct Team */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
-          <DirectLogo className="w-4 h-4 text-green-600" />
-          <span className="text-[10px] font-semibold tracking-wide text-green-600">DIRECT</span>
-          <span className={`text-sm font-bold ${
-            counts.direct.counselled === counts.direct.total && counts.direct.total > 0
-              ? 'text-green-600'
-              : counts.direct.counselled > 0
-              ? 'text-orange-600'
-              : 'text-gray-400'
-          }`}>{counts.direct.counselled}/{counts.direct.total}</span>
-        </div>
-
-        {/* Full Team */}
-        <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
-          <FullTeamLogo className="w-4 h-4 text-purple-600" />
-          <span className="text-[10px] font-semibold tracking-wide text-purple-600">FULL</span>
-          <span className={`text-sm font-bold ${
-            counts.full.counselled === counts.full.total && counts.full.total > 0
-              ? 'text-green-600'
-              : counts.full.counselled > 0
-              ? 'text-orange-600'
-              : 'text-gray-400'
-          }`}>{counts.full.counselled}/{counts.full.total}</span>
-        </div>
+        {cols.map((col) => (
+          <div
+            key={col.key}
+            className={`flex-1 flex flex-col items-center gap-0.5 ${
+              isSingle ? "" : col.padding
+            }`}
+          >
+            <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
+            <span className={`text-[8px] font-semibold uppercase tracking-wide leading-none ${col.color}`}>
+              {col.label}
+            </span>
+            <span
+              className={`${
+                isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
+              } font-bold ${
+                col.counselled === col.total && col.total > 0
+                  ? "text-green-600"
+                  : col.counselled > 0
+                  ? "text-orange-600"
+                  : "text-gray-400"
+              }`}
+            >
+              {col.counselled}/{col.total}
+            </span>
+          </div>
+        ))}
       </>
     );
   };
@@ -424,7 +451,7 @@ const WellnessCounselling = ({ user, onBack }) => {
   const sortedHierarchyData = useMemo(() => {
     if (!hierarchyData) return null;
     const computeScore = (node, by) => {
-      if (by === "self") return assessmentData[node.userId] ? 1 : 0;
+      if (by === "all" || by === "self") return assessmentData[node.userId] ? 1 : 0;
       const countTeam = (n, deep) => {
         let counselled = 0, total = 0;
         (n.teamMembers || []).forEach((m) => {
