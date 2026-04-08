@@ -67,6 +67,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private static final String STEPS_PREFS       = "WellnessSteps";
     // Last successfully persisted step total per day (single-writer dedup guard).
     private static final String STEP_LAST_SAVED_PREFIX = "step_last_saved_";
+    // Anti-fake: physiological maximum steps per day (covers ultramarathon athletes).
+    private static final int DAILY_STEP_HARD_CAP  = 80_000;
+    // Anti-fake: max plausible step increase between two consecutive 30-s DB saves.
+    // 300 steps/30 s = 600 steps/min — beyond any human sprinting capability.
+    private static final int MAX_STEPS_PER_SAVE_WINDOW = 300;
 
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
@@ -88,7 +93,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private GeminiApiClient geminiApiClient;
     private DatabaseSyncClient databaseSyncClient;
     private RetryQueue retryQueue;
-    
+
+    // ── GPS Tracking (writes to WellnessGPS SharedPrefs for map display) ────────
+    private com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient;
+    private com.google.android.gms.location.LocationCallback gpsLocationCallback;
+
     // Database API configuration
     private static final String DEFAULT_API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
 
@@ -100,8 +109,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         createNotificationChannel();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Only DATA_SYNC — MEDIA_PROCESSING requires its own permission and crashes without it
-            startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+                fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            }
+            startForeground(NOTIFICATION_ID, createNotification(), fgType);
         } else {
             startForeground(NOTIFICATION_ID, createNotification());
         }
@@ -154,6 +166,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
         scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
+
+        // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
+        initGpsTracking();
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
@@ -503,9 +518,28 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             return;
         }
 
+        // ── Anti-fake: hard daily cap (physiological maximum) ─────────────────
+        if (steps > DAILY_STEP_HARD_CAP) {
+            Log.w(TAG, "⚠️ [AntiCheat] Daily cap enforced: " + steps + " → " + DAILY_STEP_HARD_CAP);
+            steps = DAILY_STEP_HARD_CAP;
+            prefs.edit().putInt("step_daily_" + date, steps).apply();
+        }
+
+        // ── Anti-fake: step rate anomaly detection (30-s window) ─────────────
+        // If steps increased by more than MAX_STEPS_PER_SAVE_WINDOW since last save,
+        // it is physically impossible — log a warning but still save (hardware sensor
+        // may batch Doze-delayed steps; we trust the Android hardware pedometer).
+        int lastSaved = prefs.getInt(STEP_LAST_SAVED_PREFIX + date, -1);
+        if (!forceWrite && lastSaved >= 0) {
+            int delta = steps - lastSaved;
+            if (delta > MAX_STEPS_PER_SAVE_WINDOW) {
+                Log.w(TAG, "⚠️ [AntiCheat] Anomalous step burst: +" + delta
+                        + " in ~30s for date=" + date + " (may be Doze batch)");
+            }
+        }
+
         // Single-writer dedup: skip unchanged values to avoid redundant 60s posts.
         // Always proceed for forceWrite (correction) even if value looks the same.
-        int lastSaved = prefs.getInt(STEP_LAST_SAVED_PREFIX + date, -1);
         if (!forceWrite && lastSaved == steps) {
             Log.d(TAG, "⏭️ [Steps] Skip DB save (unchanged): date=" + date + " steps=" + steps);
             return;
@@ -656,6 +690,15 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         if (imageObserver != null) {
             getContentResolver().unregisterContentObserver(imageObserver);
+        }
+
+        // Stop GPS updates
+        if (fusedLocationClient != null && gpsLocationCallback != null) {
+            try {
+                fusedLocationClient.removeLocationUpdates(gpsLocationCallback);
+            } catch (Exception e) {
+                Log.w(TAG, "Error removing GPS updates: " + e.getMessage());
+            }
         }
 
         // Unregister step sensor
@@ -875,6 +918,126 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     }
     
     // 🚨 DEBUG: Show database save success notification (removable for production)
+    // ── GPS helpers ───────────────────────────────────────────────────────────
+
+    private void initGpsTracking() {
+        try {
+            fusedLocationClient = com.google.android.gms.location.LocationServices
+                    .getFusedLocationProviderClient(this);
+
+            com.google.android.gms.location.LocationRequest locationRequest =
+                    new com.google.android.gms.location.LocationRequest.Builder(
+                            com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 5000L)
+                            .setMinUpdateIntervalMillis(3000L)
+                            .build();
+
+            gpsLocationCallback = new com.google.android.gms.location.LocationCallback() {
+                @Override
+                public void onLocationResult(com.google.android.gms.location.LocationResult result) {
+                    if (result == null) return;
+                    for (android.location.Location loc : result.getLocations()) {
+                        processGpsLocation(loc);
+                    }
+                }
+            };
+
+            fusedLocationClient.requestLocationUpdates(locationRequest, gpsLocationCallback,
+                    Looper.getMainLooper());
+            Log.d(TAG, "✅ GPS tracking initialised");
+        } catch (SecurityException e) {
+            Log.w(TAG, "⚠️ GPS: location permission not granted — skipping GPS tracking");
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ GPS init failed: " + e.getMessage());
+        }
+    }
+
+    private void processGpsLocation(android.location.Location location) {
+        if (location == null) return;
+        float accuracy = location.getAccuracy();
+        boolean isOutdoor = accuracy < 50f;
+        double lat = location.getLatitude();
+        double lng = location.getLongitude();
+        long now = System.currentTimeMillis();
+
+        // ── Always write single "last fix" fields (used by getLastGpsLocation) ────
+        SharedPreferences prefs = getSharedPreferences("WellnessGPS", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putFloat("gps_lat", (float) lat);
+        editor.putFloat("gps_lng", (float) lng);
+        editor.putFloat("gps_accuracy", accuracy);
+        editor.putBoolean("gps_is_outdoor", isOutdoor);
+        editor.putLong("gps_timestamp", now);
+
+        // ── Accumulate outdoor route points (background route array) ────────────
+        // Only record outdoor fixes (accuracy < 50 m) to avoid indoor noise.
+        // Points are stored as a JSON array and capped at 1000 entries per day.
+        // Cleared on day rollover so yesterday's route never bleeds into today.
+        if (isOutdoor) {
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    .format(new java.util.Date(now));
+            String storedDate = prefs.getString("route_date", "");
+
+            // Day rollover — clear stale route
+            if (!today.equals(storedDate)) {
+                editor.putString("route_date", today);
+                editor.putString("route_points", "[]");
+            }
+
+            // Load existing array
+            String existingJson = prefs.getString("route_points", "[]");
+            try {
+                JSONArray arr = new JSONArray(existingJson);
+
+                // Minimum distance filter: skip if < 10 m from last recorded point
+                boolean tooClose = false;
+                if (arr.length() > 0) {
+                    JSONObject last = arr.getJSONObject(arr.length() - 1);
+                    double lastLat = last.getDouble("lat");
+                    double lastLng = last.getDouble("lng");
+                    double dist = haversineMeters(lastLat, lastLng, lat, lng);
+                    tooClose = dist < 10.0;
+                }
+
+                if (!tooClose) {
+                    // Cap at 1000 points — remove oldest when exceeded
+                    if (arr.length() >= 1000) {
+                        JSONArray trimmed = new JSONArray();
+                        for (int i = arr.length() - 999; i < arr.length(); i++) {
+                            trimmed.put(arr.get(i));
+                        }
+                        arr = trimmed;
+                    }
+                    JSONObject point = new JSONObject();
+                    point.put("lat", lat);
+                    point.put("lng", lng);
+                    point.put("accuracy", (double) accuracy);
+                    point.put("timestamp", now);
+                    arr.put(point);
+                    editor.putString("route_points", arr.toString());
+                    Log.d(TAG, "📍 BG route point added — total=" + arr.length()
+                            + " lat=" + lat + " lng=" + lng + " acc=" + accuracy);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "⚠️ BG route JSON error: " + e.getMessage());
+                // Reset corrupted array
+                editor.putString("route_points", "[]");
+            }
+        }
+
+        editor.apply();
+    }
+
+    /** Haversine distance in metres between two lat/lng pairs. */
+    private static double haversineMeters(double lat1, double lng1, double lat2, double lng2) {
+        final double R = 6371000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     private void showDatabaseSuccessNotification(String imagePath, String userId) {
         if (!SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
             Log.d(TAG, "Debug notifications disabled, skipping success notification");

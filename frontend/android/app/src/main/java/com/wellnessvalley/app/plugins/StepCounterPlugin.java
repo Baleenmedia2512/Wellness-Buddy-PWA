@@ -172,6 +172,54 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
         call.resolve(ret);
     }
 
+    /**
+     * Returns the last GPS location stored by GalleryMonitorService in WellnessGPS SharedPrefs.
+     * Used by StepCounter.js to update the outdoor map polyline.
+     */
+    @PluginMethod
+    public void getLastGpsLocation(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessGPS", android.content.Context.MODE_PRIVATE);
+        long timestamp = prefs.getLong("gps_timestamp", 0L);
+        JSObject ret = new JSObject();
+        ret.put("lat", (double) prefs.getFloat("gps_lat", 0f));
+        ret.put("lng", (double) prefs.getFloat("gps_lng", 0f));
+        ret.put("accuracy", (double) prefs.getFloat("gps_accuracy", 999f));
+        ret.put("isOutdoor", prefs.getBoolean("gps_is_outdoor", false));
+        ret.put("timestamp", timestamp);
+        ret.put("hasLocation", timestamp > 0);
+        call.resolve(ret);
+    }
+
+    /**
+     * Returns the background-recorded GPS route points for a given date.
+     * The JSON array is accumulated by GalleryMonitorService while the app runs
+     * in the background.
+     *
+     * @param call Optional "date" string ("YYYY-MM-DD"). Defaults to today.
+     */
+    @PluginMethod
+    public void getBackgroundRoutePoints(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessGPS", android.content.Context.MODE_PRIVATE);
+
+        String storedDate = prefs.getString("route_date", "");
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+
+        JSObject ret = new JSObject();
+        // If the stored date doesn't match today the array belongs to yesterday — return empty
+        if (!storedDate.equals(today)) {
+            ret.put("points", "[]");
+            ret.put("date", today);
+        } else {
+            String json = prefs.getString("route_points", "[]");
+            ret.put("points", json);
+            ret.put("date", storedDate);
+        }
+        call.resolve(ret);
+    }
+
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event == null || event.sensor == null || event.sensor.getType() != Sensor.TYPE_STEP_COUNTER) {
