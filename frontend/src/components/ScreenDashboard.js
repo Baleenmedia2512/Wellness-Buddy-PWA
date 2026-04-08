@@ -15,7 +15,7 @@ import {
 import LoadingSpinner from './LoadingSpinner';
 import TouchFeedbackButton from './TouchFeedbackButton';
 
-const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit in seconds
+const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit in seconds.
 const RING_RADIUS = 80;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
 
