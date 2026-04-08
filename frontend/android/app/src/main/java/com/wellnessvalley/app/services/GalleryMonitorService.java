@@ -61,7 +61,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private static final int NOTIFICATION_ID = 101;
     
     // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
-    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
 
     // ── Step Tracking ──────────────────────────────────────────────────────────
     private static final String STEPS_PREFS       = "WellnessSteps";
