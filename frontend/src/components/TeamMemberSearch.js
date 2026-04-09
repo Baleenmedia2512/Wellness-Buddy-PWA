@@ -70,27 +70,32 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
     const loadTeamMembers = async () => {
       if (!isCoach || !user?.id) return;
 
+      const coachId = user.id;
+
       try {
         setLoading(true);
-        const flatList = await teamHierarchyService.getFlatTeamList(user.id);
-        
-        // Add the coach themselves to the list
+        const flatList = await teamHierarchyService.getFlatTeamList(coachId);
+
+        // Filter coach out of flatList to prevent isSelf flag being lost in dedup
+        const filteredList = flatList.filter(m => m.userId !== coachId);
+
+        // Add the coach themselves at the top with isSelf: true
         const membersWithCoach = [
           {
-            userId: user.id,
+            userId: coachId,
             userName: savedUserName || user.name || user.email,
             email: user.email,
             role: userRole,
             isSelf: true,
           },
-          ...flatList,
+          ...filteredList,
         ];
-        
+
         // Deduplicate by userId to prevent duplicate keys
         const uniqueMembers = Array.from(
           new Map(membersWithCoach.map(member => [member.userId, member])).values()
         );
-        
+
         setAllTeamMembers(uniqueMembers);
       } catch (error) {
         console.error('Error loading team members:', error);
@@ -211,11 +216,9 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
                 if (newValue === '') {
                   setHasCleared(true);
                 }
-                // Only set searchQuery if different from current display value
-                if (newValue !== displayName) {
-                  setSearchQuery(newValue);
-                  setIsOpen(true);
-                }
+                // Always update search — no guard that blocks keystrokes
+                setSearchQuery(newValue);
+                setIsOpen(true);
               }}
               onFocus={(e) => {
                 setIsOpen(true);
