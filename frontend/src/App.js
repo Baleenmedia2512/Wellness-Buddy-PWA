@@ -853,7 +853,7 @@ function WellnessValleyApp() {
         }
 
         const profile = data.data;
-        console.log("🔍 [Profile Picture] Database ProfileImage value:", profile.profileImage || "NULL");
+        // console.log("🔍 [Profile Picture] Database ProfileImage value:", profile.profileImage || "NULL");
         
         // Check if user has a valid profile image (either custom uploaded or Google photo)
         if (profile.profileImage) {

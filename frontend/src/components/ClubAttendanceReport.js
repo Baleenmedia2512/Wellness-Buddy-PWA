@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { Monitor, Users, XCircle } from "lucide-react";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -16,6 +17,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [sortOrder, setSortOrder] = useState("desc");
+  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
 
@@ -106,35 +108,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
         return mapped;
       };
 
-      // Apply sorting to hierarchy - keep coaches/co-coaches fixed at top
-      const sortHierarchy = (node) => {
-        const sorted = { ...node };
-        if (sorted.teamMembers && sorted.teamMembers.length > 0) {
-          // Recursively sort children first
-          const members = sorted.teamMembers.map(sortHierarchy);
-          
-          // Separate coaches/co-coaches from regular members
-          const coaches = members.filter(m => 
-            m.role === "coach" || m.isCoach || m.isCoCoach
-          );
-          const regularMembers = members.filter(m => 
-            m.role !== "coach" && !m.isCoach && !m.isCoCoach
-          );
-          
-          // Sort only regular members by remote count
-          regularMembers.sort((a, b) => {
-            const remoteA = a.metrics?.remoteCount || 0;
-            const remoteB = b.metrics?.remoteCount || 0;
-            return sortOrder === "desc" ? remoteB - remoteA : remoteA - remoteB;
-          });
-          
-          // Keep coaches at top, then sorted regular members
-          sorted.teamMembers = [...coaches, ...regularMembers];
-        }
-        return sorted;
-      };
-
-      setHierarchyData(sortHierarchy(mapFields(result.data.hierarchy)));
+      setHierarchyData(mapFields(result.data.hierarchy));
     } catch (err) {
       console.error("Error fetching club ownership:", err);
       setError(err.message);
@@ -149,7 +123,7 @@ const ClubAttendanceReport = ({ user, onBack }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate, sortOrder]);
+  }, [user, dateRange, customStartDate, customEndDate]);
 
   // Filter options
   const filterOptions = [
@@ -234,43 +208,77 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     const fullQualified = node.fullTeamCount?.qualified || 0;
     const fullTotal = node.fullTeamCount?.total || 0;
 
-    return (
-      <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <div className="flex items-center gap-1">
-            <span
-              className={`text-base font-bold ${
-                remoteCount > 0 ? "text-blue-600" : "text-gray-400"
-              }`}
-            >
+    const isSingle = sortBy !== "all";
+
+    // ── Single-column focus mode ──────────────────────────────────────────────
+    if (isSingle && sortBy === "self") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <SelfLogo className="w-5 h-5 text-blue-600" />
+          <span className="text-[8px] font-semibold text-blue-600 uppercase tracking-wide leading-none">Remote</span>
+          <div className="flex items-center gap-1 mt-0.5">
+            <span className={`text-base sm:text-lg font-bold ${
+              remoteCount > 0 ? "text-blue-600" : "text-gray-400"
+            }`}>
               {remoteCount}
             </span>
+            <Monitor className={`h-4 w-4 ${
+              remoteCount > 0 ? "text-blue-500" : "text-gray-300"
+            }`} />
+          </div>
+        </div>
+      );
+    }
+
+    if (isSingle && sortBy === "direct") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <DirectLogo className="w-5 h-5 text-green-600" />
+          <span className="text-[8px] font-semibold text-green-600 uppercase tracking-wide leading-none">Direct</span>
+          <span className="text-base sm:text-lg font-bold text-gray-900">{directQualified}/{directTotal}</span>
+        </div>
+      );
+    }
+
+    if (isSingle && sortBy === "full") {
+      return (
+        <div className="flex-1 flex flex-col items-center gap-0.5">
+          <FullTeamLogo className="w-5 h-5 text-purple-600" />
+          <span className="text-[8px] font-semibold text-purple-600 uppercase tracking-wide leading-none">Full</span>
+          <span className="text-base sm:text-lg font-bold text-gray-900">{fullQualified}/{fullTotal}</span>
+        </div>
+      );
+    }
+
+    // ── All columns (default) ─────────────────────────────────────────────────
+    return (
+      <>
+        {/* Self → Remote count */}
+        <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
+          <SelfLogo className="w-4 h-4 text-blue-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-blue-600">REMOTE</span>
+          <div className="flex items-center gap-1">
+            <span className={`text-sm font-bold ${
+              remoteCount > 0 ? "text-blue-600" : "text-gray-400"
+            }`}>{remoteCount}</span>
             <Monitor className="h-3 w-3 text-gray-400" />
           </div>
-          <span className="text-[9px] text-gray-500">sessions</span>
         </div>
-
         {/* Direct Team */}
-        <div className="flex-1 flex flex-col items-center px-2">
-          <div className="flex items-center gap-1">
-            <span className="text-base font-bold text-gray-900">
-              {directQualified}
-            </span>
-            <Users className="h-3 w-3 text-gray-400" />
-          </div>
-          <span className="text-[9px] text-gray-500">of {directTotal}</span>
+        <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
+          <DirectLogo className="w-4 h-4 text-green-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-green-600">DIRECT</span>
+          <span className={`text-sm font-bold ${
+            directQualified > 0 ? "text-green-600" : "text-gray-400"
+          }`}>{directQualified}/{directTotal}</span>
         </div>
-
         {/* Full Team */}
-        <div className="flex-1 flex flex-col items-center pl-2">
-          <div className="flex items-center gap-1">
-            <span className="text-base font-bold text-gray-900">
-              {fullQualified}
-            </span>
-            <Users className="h-3 w-3 text-gray-400" />
-          </div>
-          <span className="text-[9px] text-gray-500">of {fullTotal}</span>
+        <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
+          <FullTeamLogo className="w-4 h-4 text-purple-600" />
+          <span className="text-[10px] font-semibold tracking-wide text-purple-600">FULL</span>
+          <span className={`text-sm font-bold ${
+            fullQualified > 0 ? "text-purple-600" : "text-gray-400"
+          }`}>{fullQualified}/{fullTotal}</span>
         </div>
       </>
     );
@@ -323,21 +331,55 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       }
     : null;
 
+  // Client-side sort by selected score
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const sortNode = (node) => {
+      const sorted = { ...node };
+      if (sorted.teamMembers && sorted.teamMembers.length > 0) {
+        const members = sorted.teamMembers.map(sortNode);
+        const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
+        const regularMembers = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
+        regularMembers.sort((a, b) => {
+          let scoreA, scoreB;
+          if (sortBy === "direct") {
+            const totalA = a.directTeamCount?.total || 0;
+            const totalB = b.directTeamCount?.total || 0;
+            scoreA = totalA ? (a.directTeamCount?.qualified || 0) / totalA : 0;
+            scoreB = totalB ? (b.directTeamCount?.qualified || 0) / totalB : 0;
+          } else if (sortBy === "full") {
+            const totalA = a.fullTeamCount?.total || 0;
+            const totalB = b.fullTeamCount?.total || 0;
+            scoreA = totalA ? (a.fullTeamCount?.qualified || 0) / totalA : 0;
+            scoreB = totalB ? (b.fullTeamCount?.qualified || 0) / totalB : 0;
+          } else {
+            scoreA = a.metrics?.remoteCount ?? 0;
+            scoreB = b.metrics?.remoteCount ?? 0;
+          }
+          return sortOrder === "desc" ? scoreB - scoreA : scoreA - scoreB;
+        });
+        sorted.teamMembers = [...coaches, ...regularMembers];
+      }
+      return sorted;
+    };
+    return sortNode(hierarchyData);
+  }, [hierarchyData, sortBy, sortOrder]);
+
   // Filter hierarchy based on teamView
   const getFilteredHierarchy = () => {
-    if (!hierarchyData) return null;
-    if (teamView === "full") return hierarchyData;
+    if (!sortedHierarchyData) return null;
+    if (teamView === "full") return sortedHierarchyData;
     // Direct view - remove nested teams
-    if (hierarchyData.teamMembers) {
+    if (sortedHierarchyData.teamMembers) {
       return {
-        ...hierarchyData,
-        teamMembers: hierarchyData.teamMembers.map((member) => ({
+        ...sortedHierarchyData,
+        teamMembers: sortedHierarchyData.teamMembers.map((member) => ({
           ...member,
           teamMembers: [],
         })),
       };
     }
-    return hierarchyData;
+    return sortedHierarchyData;
   };
 
   const filteredHierarchy = getFilteredHierarchy();
@@ -381,8 +423,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
     // Implement download logic here
   };
 
-  const handleSortToggle = () => {
-    setSortOrder(sortOrder === "desc" ? "asc" : "desc");
+  const handleSortChange = (newSortBy, newSortOrder) => {
+    setSortBy(newSortBy);
+    setSortOrder(newSortOrder);
   };
 
   if (loading) {
@@ -406,8 +449,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       onBack={onBack}
       onRefresh={handleManualRefresh}
       onDownload={handleDownload}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortChange={handleSortToggle}
+      onSortChange={handleSortChange}
       loading={refreshing}
       error={error}
       dateRange={dateRange}
@@ -426,35 +470,9 @@ const ClubAttendanceReport = ({ user, onBack }) => {
       onExpandAll={() => setExpandOverride("expanded")}
       onCollapseAll={() => setExpandOverride("collapsed")}
       expandedState={expandOverride}
+      teamView={teamView}
+      onTeamViewChange={setTeamView}
     >
-      {/* Team View Toggle */}
-      {hierarchyData && (
-        <div className="flex justify-end mb-3 sm:mb-4">
-          <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-            <button
-              onClick={() => setTeamView("direct")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "direct"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Direct
-            </button>
-            <button
-              onClick={() => setTeamView("full")}
-              className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                teamView === "full"
-                  ? "bg-green-600 text-white shadow-sm"
-                  : "text-green-700 hover:text-green-800"
-              }`}
-            >
-              Full
-            </button>
-          </div>
-        </div>
-      )}
-
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
           key={`hierarchy-${teamView}`}

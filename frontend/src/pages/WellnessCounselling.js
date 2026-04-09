@@ -1,6 +1,7 @@
 // src/pages/WellnessCounselling.js
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
@@ -8,7 +9,6 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../components/common/HierarchicalNode";
 import WellnessCounsellingForm from "../components/WellnessCounselling/WellnessCounsellingForm";
 import TouchFeedbackButton from "../components/TouchFeedbackButton";
-
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -21,6 +21,9 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [teamView, setTeamView] = useState("direct");
+  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("desc");
+  
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
 
   // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
@@ -65,9 +68,8 @@ const WellnessCounselling = ({ user, onBack }) => {
     if (!user) {
       console.warn('⚠️ [WellnessCounselling] No user object provided');
       setError("User information not available. Please log in again.");
-      return;
-    }
-    
+      return;    }
+
     if (!user.email) {
       console.warn('⚠️ [WellnessCounselling] User object missing email:', user);
       setError("User email not available. Please log in again.");
@@ -280,45 +282,68 @@ const WellnessCounselling = ({ user, onBack }) => {
   // Render stats strip with counselling counts
   const renderStats = (node) => {
     const counts = calculateCounsellingCounts(node);
-    const assessment = assessmentData[node.userId];
+
+    const ALL_COLS = [
+      {
+        key: "self",
+        Logo: SelfLogo,
+        color: "text-blue-600",
+        label: "SELF",
+        padding: "pr-2",
+        counselled: counts.self.counselled,
+        total: counts.self.total,
+      },
+      {
+        key: "direct",
+        Logo: DirectLogo,
+        color: "text-green-600",
+        label: "DIRECT",
+        padding: "px-2",
+        counselled: counts.direct.counselled,
+        total: counts.direct.total,
+      },
+      {
+        key: "full",
+        Logo: FullTeamLogo,
+        color: "text-purple-600",
+        label: "FULL",
+        padding: "pl-2",
+        counselled: counts.full.counselled,
+        total: counts.full.total,
+      },
+    ];
+
+    const isSingle = sortBy !== "all";
+    const cols = isSingle ? ALL_COLS.filter((c) => c.key === sortBy) : ALL_COLS;
 
     return (
       <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <span className={`text-base font-bold ${counts.self.counselled > 0 ? 'text-green-600' : 'text-gray-400'}`}>
-            {counts.self.counselled}/{counts.self.total}
-          </span>
-          {assessment && assessment.medicationDetails && (
-            <span className="text-[10px] text-blue-600 mt-0.5" title="Has notes"></span>
-          )}
-        </div>
-
-        {/* Direct Team */}
-        <div className="flex-1 flex flex-col items-center px-2">
-          <span className={`text-base font-bold ${
-            counts.direct.counselled === counts.direct.total && counts.direct.total > 0
-              ? 'text-green-600'
-              : counts.direct.counselled > 0
-              ? 'text-orange-600'
-              : 'text-gray-400'
-          }`}>
-            {counts.direct.counselled}/{counts.direct.total}
-          </span>
-        </div>
-
-        {/* Full Team */}
-        <div className="flex-1 flex flex-col items-center pl-2">
-          <span className={`text-base font-bold ${
-            counts.full.counselled === counts.full.total && counts.full.total > 0
-              ? 'text-green-600'
-              : counts.full.counselled > 0
-              ? 'text-orange-600'
-              : 'text-gray-400'
-          }`}>
-            {counts.full.counselled}/{counts.full.total}
-          </span>
-        </div>
+        {cols.map((col) => (
+          <div
+            key={col.key}
+            className={`flex-1 flex flex-col items-center gap-0.5 ${
+              isSingle ? "" : col.padding
+            }`}
+          >
+            <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
+            <span className={`text-[8px] font-semibold uppercase tracking-wide leading-none ${col.color}`}>
+              {col.label}
+            </span>
+            <span
+              className={`${
+                isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
+              } font-bold ${
+                col.counselled === col.total && col.total > 0
+                  ? "text-green-600"
+                  : col.counselled > 0
+                  ? "text-orange-600"
+                  : "text-gray-400"
+              }`}
+            >
+              {col.counselled}/{col.total}
+            </span>
+          </div>
+        ))}
       </>
     );
   };
@@ -423,6 +448,39 @@ const WellnessCounselling = ({ user, onBack }) => {
 
   const stats = hierarchyData ? calculateStats(hierarchyData) : { total: 0, counselled: 0, pending: 0 };
 
+  const sortedHierarchyData = useMemo(() => {
+    if (!hierarchyData) return null;
+    const computeScore = (node, by) => {
+      if (by === "all" || by === "self") return assessmentData[node.userId] ? 1 : 0;
+      const countTeam = (n, deep) => {
+        let counselled = 0, total = 0;
+        (n.teamMembers || []).forEach((m) => {
+          total++;
+          if (assessmentData[m.userId]) counselled++;
+          if (deep) {
+            const s = countTeam(m, true);
+            counselled += s.counselled;
+            total += s.total;
+          }
+        });
+        return { counselled, total };
+      };
+      const { counselled, total } = countTeam(node, by === "full");
+      return total === 0 ? 0 : counselled / total;
+    };
+    const sortNode = (node) => ({
+      ...node,
+      teamMembers: [...(node.teamMembers || [])]
+        .sort((a, b) => {
+          const ka = computeScore(a, sortBy);
+          const kb = computeScore(b, sortBy);
+          return sortOrder === "desc" ? kb - ka : ka - kb;
+        })
+        .map(sortNode),
+    });
+    return sortNode(hierarchyData);
+  }, [hierarchyData, assessmentData, sortBy, sortOrder]);
+
   const summaryStats = {
     note: true, // Enables the common note display
   };
@@ -447,42 +505,19 @@ const WellnessCounselling = ({ user, onBack }) => {
         onFilterChange={setFilter}
         filterOptions={filterOptions}
         summaryStats={summaryStats}
+        sortBy={sortBy}
+        sortOrder={sortOrder}
+        onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
         onExpandAll={() => setExpandOverride("expanded")}
         onCollapseAll={() => setExpandOverride("collapsed")}
         expandedState={expandOverride}
+        teamView={teamView}
+        onTeamViewChange={setTeamView}
       >
-        {/* Team View Toggle */}
-        {hierarchyData && (
-          <div className="flex justify-end mb-3 sm:mb-4">
-            <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-              <button
-                onClick={() => setTeamView("direct")}
-                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  teamView === "direct"
-                    ? "bg-green-600 text-white shadow-sm"
-                    : "text-green-700 hover:text-green-800"
-                }`}
-              >
-                Direct
-              </button>
-              <button
-                onClick={() => setTeamView("full")}
-                className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-                  teamView === "full"
-                    ? "bg-green-600 text-white shadow-sm"
-                    : "text-green-700 hover:text-green-800"
-                }`}
-              >
-                Full
-              </button>
-            </div>
-          </div>
-        )}
-
         {hierarchyData && hasVisibleNodes(hierarchyData) ? (
           <HierarchicalNode
-            key={`hierarchy-${teamView}`}
-            node={hierarchyData}
+            key={`hierarchy-${teamView}-${sortBy}-${sortOrder}`}
+            node={sortedHierarchyData}
             level={0}
             isLastChild={true}
             renderStatus={renderStatus}

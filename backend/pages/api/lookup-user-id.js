@@ -47,7 +47,7 @@ export default async function handler(req, res) {
 
     const { data, error } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Status", "Role", "LastActiveAt", "EntryDateTime"')
+      .select('"UserId", "UserName", "Email", "Status", "Role"')
       .eq('Email', email)
       .maybeSingle();
 
