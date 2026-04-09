@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw, MapPin, Share2 } from 'lucide-react';
 import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
@@ -363,11 +363,11 @@ const MapFitToShare = ({ points, triggerFit, onFitDone }) => {
 const MapAutoFit = ({ points, centerPoint }) => {
   const map = useMap();
   const prevLenRef = useRef(0);
-  const indoorCenteredRef = useRef(false); // center indoor map only once per mount
+  const lastCenteredRef = useRef(null); // last position we centered the indoor map on
   useEffect(() => {
     if (points && points.length >= 2) {
-      // Outdoor route active — reset indoor flag so it re-centers if user goes back indoors later
-      indoorCenteredRef.current = false;
+      // Outdoor route active — clear indoor ref so live GPS re-centers if route ends
+      lastCenteredRef.current = null;
       const latest = points[points.length - 1];
       const isNewPoint = points.length > prevLenRef.current;
       prevLenRef.current = points.length;
@@ -382,11 +382,16 @@ const MapAutoFit = ({ points, centerPoint }) => {
           duration: 0.8,
         });
       }
-    } else if (centerPoint && !indoorCenteredRef.current) {
-      // Indoor: center map only once on the first GPS fix (avoids jitter every 5 s)
-      map.setView([centerPoint.lat, centerPoint.lng], 17);
-      indoorCenteredRef.current = true;
-      prevLenRef.current = 0;
+    } else if (centerPoint) {
+      const prev = lastCenteredRef.current;
+      // Re-center if: no previous center OR live GPS fix is > 20 m from the last centered point.
+      // This corrects the map when a stale restored position is replaced by the actual live fix.
+      const shouldRecenter = !prev || distanceInMeters(prev, centerPoint) > 20;
+      if (shouldRecenter) {
+        map.setView([centerPoint.lat, centerPoint.lng], 17);
+        lastCenteredRef.current = centerPoint;
+        prevLenRef.current = 0;
+      }
     }
   }, [map, points, centerPoint]);
   return null;
@@ -1697,10 +1702,12 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const raw = localStorage.getItem('step_last_gps_pos');
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (isValidLatLng(parsed.lat, parsed.lng) && parsed.date === toDateKey()) {
+        const TEN_MIN_MS = 10 * 60 * 1000;
+        const isFresh = parsed.ts && (Date.now() - parsed.ts) < TEN_MIN_MS;
+        if (isValidLatLng(parsed.lat, parsed.lng) && parsed.date === toDateKey() && isFresh) {
           setLastGpsPos(parsed);
         } else {
-          // Stale (different day) — remove it
+          // Stale (different day or > 10 min old) — remove it so we don't show wrong location
           localStorage.removeItem('step_last_gps_pos');
         }
       }
@@ -1772,7 +1779,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           }
         }
 
-        const pos = { lat, lng, isOutdoor, accuracy: Math.round(accuracy), speed: speed !== null ? speed : null, date: todayKey };
+        const pos = { lat, lng, isOutdoor, accuracy: Math.round(accuracy), speed: speed !== null ? speed : null, date: todayKey, ts: Date.now() };
         setLastGpsPos(pos);
         localStorage.setItem('step_last_gps_pos', JSON.stringify(pos));
 
@@ -1900,22 +1907,56 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
       // ── Load background-recorded route points from GalleryMonitorService ──
       // The service accumulates GPS fixes into SharedPrefs while the app is closed.
-      // On mount we fetch those points, deduplicate by timestamp, and pre-seed the
-      // live route so the walk that happened while the screen was off is visible.
+      // On mount we fetch, filter, smooth (EMA + spike filter), then merge points.
       (async () => {
         try {
           const result = await StepCounterPlugin.getBackgroundRoutePoints();
           const raw = JSON.parse(result?.points || '[]');
           if (!Array.isArray(raw) || raw.length === 0) return;
-          const bgPoints = raw
-            .filter(p => isValidLatLng(p.lat, p.lng))
-            .map(p => ({ lat: p.lat, lng: p.lng, accuracy: p.accuracy, timestamp: p.timestamp }));
-          if (bgPoints.length === 0) return;
+
+          // 1. Basic validity + accuracy filter (40 m — tighter than service's 50 m)
+          const filtered = raw.filter(p =>
+            isValidLatLng(p.lat, p.lng) && Number(p.accuracy) < 40
+          );
+          if (filtered.length === 0) return;
+
+          // 2. EMA smoothing pass — same alpha as live GPS
+          let smoothed = null;
+          const smoothedPts = [];
+          for (const p of filtered) {
+            if (!smoothed) {
+              smoothed = { lat: p.lat, lng: p.lng };
+            } else {
+              smoothed = {
+                lat: GPS_SMOOTH_ALPHA * p.lat + (1 - GPS_SMOOTH_ALPHA) * smoothed.lat,
+                lng: GPS_SMOOTH_ALPHA * p.lng + (1 - GPS_SMOOTH_ALPHA) * smoothed.lng,
+              };
+            }
+            smoothedPts.push({ lat: smoothed.lat, lng: smoothed.lng, accuracy: p.accuracy, timestamp: p.timestamp });
+          }
+
+          // 3. Spike filter — reject sharp U-turns on short segments
+          const clean = [];
+          for (let i = 0; i < smoothedPts.length; i++) {
+            const pt = smoothedPts[i];
+            if (clean.length < 2) { clean.push(pt); continue; }
+            const prev2 = clean[clean.length - 2];
+            const prev1 = clean[clean.length - 1];
+            const gap = distanceInMeters(prev1, pt);
+            if (gap < GPS_SPIKE_MIN_GAP_METERS) {
+              const b1 = bearingDeg(prev2, prev1);
+              const b2 = bearingDeg(prev1, pt);
+              const courseChange = Math.abs(((b2 - b1 + 540) % 360) - 180);
+              if (courseChange > GPS_MAX_COURSE_CHANGE_DEG) continue; // spike — skip
+            }
+            clean.push(pt);
+          }
+          if (clean.length === 0) return;
+
           setPathPoints(prev => {
             const existing = new Set(prev.map(p => p.timestamp));
-            const newPts = bgPoints.filter(p => !existing.has(p.timestamp));
+            const newPts = clean.filter(p => !existing.has(p.timestamp));
             if (newPts.length === 0) return prev;
-            // Prepend background points (they are older) before live points
             const merged = [...newPts, ...prev].slice(-MAX_ROUTE_POINTS_PER_DAY);
             persistRoute(toDateKey(), merged);
             if (merged.length >= 2) setShowMap(true);
@@ -1970,6 +2011,30 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const validPathPoints = pathPoints.filter(
     (point) => point && Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng))
   );
+
+  // Split validPathPoints into walk sessions based on time gaps (> 2 min gap = new session).
+  // This separates background-recorded segments from live-resumed segments.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const walkSessions = useMemo(() => {
+    if (validPathPoints.length === 0) return [];
+    const SESSION_GAP_MS = 2 * 60 * 1000; // 2 minutes
+    const sessions = [];
+    let current = [validPathPoints[0]];
+    for (let i = 1; i < validPathPoints.length; i++) {
+      const gap = (validPathPoints[i].timestamp || 0) - (validPathPoints[i - 1].timestamp || 0);
+      if (gap > SESSION_GAP_MS) {
+        sessions.push(current);
+        current = [validPathPoints[i]];
+      } else {
+        current.push(validPathPoints[i]);
+      }
+    }
+    sessions.push(current);
+    return sessions;
+  }, [validPathPoints]);
+  // Palette: older sessions get lighter teal, newest gets bright green
+  const SESSION_COLORS = ['#5eead4', '#2dd4bf', '#10b981'];
+
   const lastPathPoint = validPathPoints[validPathPoints.length - 1];
   const hasRouteForDisplay = validPathPoints.length >= 2;
   // Map center: prefer last outdoor route point, fall back to any GPS fix (indoor)
@@ -2378,15 +2443,34 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                   url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
                   attribution='&copy; OpenStreetMap contributors &copy; CARTO'
                 />
-                {/* ── Outdoor route polyline ─────────────────────────────── */}
-                {hasRouteForDisplay && (
-                  <Polyline
-                    positions={validPathPoints.map((p) => [p.lat, p.lng])}
-                    color="#10b981"
-                    weight={4}
-                    opacity={0.9}
-                  />
-                )}
+                {/* ── Outdoor route: one polyline per session ─────────────── */}
+                {hasRouteForDisplay && walkSessions.map((seg, si) => (
+                  seg.length >= 2 && (
+                    <Polyline
+                      key={`seg-${si}`}
+                      positions={seg.map((p) => [p.lat, p.lng])}
+                      color={si === walkSessions.length - 1 ? '#10b981' : SESSION_COLORS[Math.min(si, SESSION_COLORS.length - 2)]}
+                      weight={4}
+                      opacity={si === walkSessions.length - 1 ? 0.9 : 0.6}
+                    />
+                  )
+                ))}
+                {/* ── Gray end dots for each completed session (not the last) ── */}
+                {hasRouteForDisplay && walkSessions.slice(0, -1).map((seg, si) => {
+                  const endPt = seg[seg.length - 1];
+                  return endPt ? (
+                    <CircleMarker
+                      key={`seg-end-${si}`}
+                      center={[endPt.lat, endPt.lng]}
+                      radius={5}
+                      pathOptions={{ color: '#fff', fillColor: '#94a3b8', fillOpacity: 0.9, weight: 2 }}
+                    >
+                      <Tooltip permanent direction="top" offset={[0, -8]} className="leaflet-label-start">
+                        Paused
+                      </Tooltip>
+                    </CircleMarker>
+                  ) : null;
+                })}
                 {/* ── Start marker ──────────────────────────────────────── */}
                 {hasRouteForDisplay && (
                   <CircleMarker
