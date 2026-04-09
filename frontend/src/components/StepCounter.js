@@ -1970,29 +1970,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
       };
     } else {
-      // ── Web demo path ───────────────────────────────────────────────────
-      // Simulate a short outdoor walk so the map card appears in the browser.
-      // Tight demo walk — ~5 m between each point, same block
-      const DEMO_POINTS = [
-        { lat: 1.35220, lng: 103.81980 },
-        { lat: 1.35224, lng: 103.81985 },
-        { lat: 1.35228, lng: 103.81991 },
-        { lat: 1.35233, lng: 103.81996 },
-        { lat: 1.35237, lng: 103.82001 },
-        { lat: 1.35241, lng: 103.82007 },
-        { lat: 1.35245, lng: 103.82012 },
-        { lat: 1.35249, lng: 103.82017 },
-      ];
-      let idx = 0;
-      const addNext = () => {
-        if (idx >= DEMO_POINTS.length) return;
-        setPathPoints(prev => [...prev, DEMO_POINTS[idx]]);
-        setShowMap(true);
-        idx++;
-      };
-      // Stagger demo points so the polyline draws visibly
-      const timers = DEMO_POINTS.map((_, i) => setTimeout(addNext, 800 + i * 600));
-      return () => timers.forEach(clearTimeout);
+      // Web view — GPS/route tracking not available; no dummy data shown
+      return () => {};
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
