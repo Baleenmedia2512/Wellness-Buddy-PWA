@@ -41,8 +41,27 @@ export const teamHierarchyService = {
   async getFlatTeamList(coachId) {
     try {
       const hierarchyData = await this.getTeamHierarchy(coachId);
-      const flatList = [];
 
+      // ✅ Use backend's pre-built flat array — already deduplicated and complete
+      // Avoids members being dropped by broken nested tree walk
+      if (hierarchyData.allMembers && hierarchyData.allMembers.length > 0) {
+        return hierarchyData.allMembers.map((member) => ({
+          userId: member.UserId,
+          userName: member.UserName,
+          email: member.Email || "",
+          role: member.Role || "user",
+          coachId: member.CoachId,
+          coCoachId: member.CoCoachId,
+          coachName: null,
+          coCoachName: null,
+          parentCoachId: null,
+          isCoachRelationship: true,
+          level: 0,
+        }));
+      }
+
+      // Fallback: walk hierarchy tree if allMembers not available
+      const flatList = [];
       const flatten = (node) => {
         flatList.push({
           userId: node.userId,
@@ -55,18 +74,15 @@ export const teamHierarchyService = {
           coCoachName: node.coCoachName,
           parentCoachId: node.parentCoachId,
           isCoachRelationship: node.isCoachRelationship,
-          level: 0, // Will be calculated based on depth
+          level: 0,
         });
-
         if (node.teamMembers && node.teamMembers.length > 0) {
           node.teamMembers.forEach((member) => flatten(member));
         }
       };
-
       if (hierarchyData.hierarchy) {
         flatten(hierarchyData.hierarchy);
       }
-
       return flatList;
     } catch (error) {
       console.error("Flat team list error:", error);

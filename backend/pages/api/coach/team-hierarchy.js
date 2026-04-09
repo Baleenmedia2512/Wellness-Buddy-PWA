@@ -212,14 +212,17 @@ export default async function handler(req, res) {
         teamMembers: [],
       };
 
-      // Find all direct reports (where CoachId OR CoCoachId matches userId)
+      // Find all direct reports (where CoachId OR derived coCoachId matches userId)
       // EXCLUDE co-coach partners from appearing as nested members
-      const directReports = allUsers.filter(
-        (u) =>
-          (u.CoachId === userId || u.CoCoachId === userId) &&
+      // NOTE: u.CoCoachId does NOT exist on raw DB rows — must use userMap for the derived value
+      const directReports = allUsers.filter((u) => {
+        const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+        return (
+          (u.CoachId === userId || derivedCoCoachId === userId) &&
           u.UserId !== userId &&
-          !coachPartnerIds.includes(u.UserId), // Exclude co-coach partner
-      );
+          !coachPartnerIds.includes(u.UserId)
+        );
+      });
 
       console.log(
         `🔍 [team-hierarchy] User ${user.userName} (${userId}) has ${directReports.length} direct reports:`,
