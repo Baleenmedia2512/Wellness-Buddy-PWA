@@ -954,7 +954,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private void processGpsLocation(android.location.Location location) {
         if (location == null) return;
         float accuracy = location.getAccuracy();
-        boolean isOutdoor = accuracy < 50f;
+        boolean isOutdoor = accuracy < 50f;  // single-point flag (kept at 50 m for display)
         double lat = location.getLatitude();
         double lng = location.getLongitude();
         long now = System.currentTimeMillis();
@@ -969,10 +969,10 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         editor.putLong("gps_timestamp", now);
 
         // ── Accumulate outdoor route points (background route array) ────────────
-        // Only record outdoor fixes (accuracy < 50 m) to avoid indoor noise.
+        // Only record fixes with accuracy < 30 m to prevent off-road/building-cross lines.
         // Points are stored as a JSON array and capped at 1000 entries per day.
         // Cleared on day rollover so yesterday's route never bleeds into today.
-        if (isOutdoor) {
+        if (accuracy < 30f) {
             String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
                     .format(new java.util.Date(now));
             String storedDate = prefs.getString("route_date", "");
