@@ -407,14 +407,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-
-  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
-  useEffect(() => {
-    if (expandOverride !== null) {
-      const t = setTimeout(() => setExpandOverride(null), 50);
-      return () => clearTimeout(t);
-    }
-  }, [expandOverride]);
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
   const [activityRowSortOrder, setActivityRowSortOrder] = useState("asc"); // "asc", "desc"
@@ -908,8 +901,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       onSortOrderChange={(dir) => setSortOrder(dir)}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
-      onExpandAll={() => setExpandOverride("expanded")}
-      onCollapseAll={() => setExpandOverride("collapsed")}
+      onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
+      onCollapseAll={() => { lastExpandState.current = "collapsed"; setExpandOverride("collapsed"); }}
       expandedState={expandOverride}
       teamView={teamView}
       onTeamViewChange={setTeamView}
@@ -990,7 +983,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
             forceExpandedState={expandOverride}
-            defaultExpanded={false}
+            defaultExpanded={expandOverride === "expanded"}
             defaultShowDetails={true}
           />
         </>
