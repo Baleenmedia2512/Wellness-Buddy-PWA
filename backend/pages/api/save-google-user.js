@@ -90,6 +90,7 @@ export default async function handler(req, res) {
         const currentTime = getISTTimestamp();
         const insertPayload = {
           EntryDateTime: currentTime,
+          LastActiveAt: currentTime,
           EntryUser: "Google Sign-In",
           UserName: username,
           Password: "User@123#",

@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
@@ -34,16 +34,8 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Check cache first (2 minute TTL for user lookup)
+    // ⚡ No cache — always query DB fresh so Status changes reflect immediately
     const cacheKey = `user:lookup:${email}`;
-    const cached = cache.get(cacheKey);
-    
-    if (cached) {
-      console.log('✅ [lookup-user-id] Cache HIT for:', email);
-      res.setHeader('X-Cache', 'HIT');
-      res.status(200).json(cached);
-      return;
-    }
 
     // Use Supabase REST API (bypasses blocked PostgreSQL ports)
     console.log('📊 [lookup-user-id] Using Supabase REST API');
@@ -77,6 +69,38 @@ export default async function handler(req, res) {
     }
 
     const user = data;
+
+    // ── Auto-deactivation check ──────────────────────────────────────────────
+    // If user is currently Active, check if they've been inactive for 31+ days
+    if (user.Status === 'Active') {
+      const lastActivityStr = user.LastActiveAt || user.EntryDateTime;
+      if (lastActivityStr) {
+        const lastActivity = new Date(lastActivityStr);
+        const now = new Date();
+        const diffDays = (now - lastActivity) / (1000 * 60 * 60 * 24);
+
+        if (diffDays >= 31) {
+          console.log(`⚠️ [lookup-user-id] User inactive for ${Math.floor(diffDays)} days — marking INACTIVE`);
+          try {
+            const { error: deactivateError } = await supabase
+              .from('team_table')
+              .update({ Status: 'Inactive' })
+              .eq('"UserId"', user.UserId);
+
+            if (deactivateError) {
+              console.warn('⚠️ [lookup-user-id] Failed to auto-deactivate user:', deactivateError);
+            } else {
+              console.log('✅ [lookup-user-id] User auto-deactivated:', user.UserId);
+              user.Status = 'Inactive';
+            }
+          } catch (err) {
+            console.warn('⚠️ [lookup-user-id] Error during auto-deactivation:', err);
+          }
+        }
+      }
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     const isActive = user.Status === 'Active';
 
     console.log('✅ [lookup-user-id] User found:', {
@@ -105,10 +129,10 @@ export default async function handler(req, res) {
 
     console.log('📤 [lookup-user-id] Sending response:', response);
 
-    // Cache for 5 minutes (userId doesn't change, status checks are periodic)
-    cache.set(cacheKey, response, 300000);
+    // ⚡ No caching — always fetch fresh from DB so any manual Status change
+    // (Active ↔ Inactive) reflects immediately on the user's next login.
     res.setHeader('X-Cache', 'MISS');
-    
+
     res.status(200).json(response);
 
   } catch (error) {

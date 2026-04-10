@@ -74,6 +74,24 @@ export default async function handler(req, res) {
       console.log('🗑️ [undo-deleted-education-log] Cache cleared for user:', userId);
     }
 
+    // Update LastActiveAt in team_table to track user activity
+    if (userId) {
+      try {
+        const { error: activityUpdateError } = await supabase
+          .from('team_table')
+          .update({ LastActiveAt: getISTTimestamp() })
+          .eq('UserId', userId);
+        
+        if (activityUpdateError) {
+          console.warn('⚠️ [undo-deleted-education-log] Failed to update LastActiveAt:', activityUpdateError);
+        } else {
+          console.log('✅ [undo-deleted-education-log] Updated LastActiveAt for user:', userId);
+        }
+      } catch (err) {
+        console.warn('⚠️ [undo-deleted-education-log] Error updating LastActiveAt:', err);
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: 'Education log restored successfully',
