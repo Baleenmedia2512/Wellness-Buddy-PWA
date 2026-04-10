@@ -847,7 +847,7 @@ const HierarchicalReportLayout = ({
                           }`}
                           ariaLabel="Expand all nodes"
                         >
-                          Expand
+                          Expand All
                         </TouchFeedbackButton>
                         <TouchFeedbackButton
                           onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
@@ -858,7 +858,7 @@ const HierarchicalReportLayout = ({
                           }`}
                           ariaLabel="Collapse all nodes"
                         >
-                          Collapse
+                          Collapse All
                         </TouchFeedbackButton>
                       </div>
                     )}
