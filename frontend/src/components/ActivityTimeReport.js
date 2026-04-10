@@ -433,9 +433,25 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       setError("");
 
       try {
+        // Fetch hierarchy first to determine if this user has team members.
+        // If they do, treat them as "coach" for the activity report API so that
+        // all downline member data is returned — matching the behaviour of
+        // DisciplineReport and AttendanceReport.
+        const hierarchyRes = await teamHierarchyService
+          .getTeamHierarchy(user.id, false)
+          .catch(() => null);
+
+        const hasTeamMembers =
+          hierarchyRes?.hierarchy?.teamMembers?.length > 0;
+
+        const effectiveRole =
+          hasTeamMembers && mapRoleForApi(userRole) === "member"
+            ? "coach"
+            : mapRoleForApi(userRole);
+
         const params = new URLSearchParams({
           userId: String(user.id),
-          role: mapRoleForApi(userRole),
+          role: effectiveRole,
           dateRange: mapUiRangeToApiRange(dateRange),
           userTimezoneOffset: String(timezoneOffset),
         });
@@ -444,10 +460,10 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           params.set("endDate", formatDateForApi(customEndDate));
         }
 
-        const [hierarchyRes, reportRes] = await Promise.all([
-          teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
-          fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
-        ]);
+        const reportRes = await fetch(
+          `${apiBaseUrl}/api/get-activity-time-report?${params}`,
+          { cache: "no-store" },
+        );
 
         const reportJson = await reportRes.json();
         if (!reportRes.ok || !reportJson?.success) {
