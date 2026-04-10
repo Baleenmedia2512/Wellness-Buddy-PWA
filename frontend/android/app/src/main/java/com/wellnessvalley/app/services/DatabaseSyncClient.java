@@ -105,6 +105,19 @@ public class DatabaseSyncClient {
                 return false;
             }
 
+            // ✅ Skip save if Gemini detected no food (empty foods array)
+            try {
+                JSONObject parsed = new JSONObject(analysisResult);
+                JSONArray foods = parsed.optJSONArray("foods");
+                if (foods == null || foods.length() == 0) {
+                    Log.d(TAG, "⏭️ Skipping database save — Gemini detected no food in this image");
+                    return false;
+                }
+            } catch (JSONException e) {
+                Log.e(TAG, "❌ Could not parse analysisResult to check foods array, skipping save: " + analysisResult);
+                return false;
+            }
+
             JSONObject requestBody = new JSONObject();
             requestBody.put("userId", userId);
             requestBody.put("imagePath", imagePath);
