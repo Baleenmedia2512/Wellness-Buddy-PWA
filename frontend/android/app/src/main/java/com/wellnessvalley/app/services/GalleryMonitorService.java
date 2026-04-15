@@ -21,6 +21,7 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.location.LocationManager;
 import android.content.pm.ServiceInfo;
 import android.database.ContentObserver;
 import android.net.Uri;
@@ -30,6 +31,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -73,6 +75,15 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // 300 steps/30 s = 600 steps/min — beyond any human sprinting capability.
     private static final int MAX_STEPS_PER_SAVE_WINDOW = 300;
 
+    // ── Walking Detection Notification ─────────────────────────────────────────
+    private static final String WALK_CHANNEL_ID            = "WalkingDetectChannel";
+    private static final int    WALK_NOTIFICATION_ID       = 2001;
+    // 12-second window: ≥15 steps = user is walking
+    private static final long   WALK_DETECT_WINDOW_MS      = 12_000L;
+    private static final int    WALK_NOTIFY_STEP_THRESHOLD = 15;
+    // Minimum gap between successive walking notifications (10 minutes)
+    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 10 * 60 * 1000L;
+
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
     private SensorManager stepSensorManager;
@@ -81,8 +92,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private int           stepLastSensorTotal = -1; // -1 = not yet received any reading
     private int           stepStoredBaseline  = -1; // steps already in SharedPrefs at start of this service session
     private BroadcastReceiver dateChangeReceiver;
+    private BroadcastReceiver locationChangeReceiver;
     // Prevent overlapping step-save API calls from timer/destroy/intent paths.
     private final AtomicBoolean stepSaveInProgress = new AtomicBoolean(false);
+
+    // ── Walking Detection state ────────────────────────────────────────────────
+    private long walkDetectWindowStartMs    = 0L; // 0 = window not yet open
+    private int  walkDetectWindowStartSteps = 0;
+    private long walkNotifyLastShownMs      = 0L;
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -170,6 +187,32 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
         initGpsTracking();
 
+        // ✅ Auto-cancel walking notification when user enables location
+        locationChangeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                try {
+                    LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                    if (lm == null) return;
+                    boolean gps = false;
+                    boolean net = false;
+                    try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                    try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                    if (gps || net) {
+                        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                        if (nm != null) {
+                            nm.cancel(WALK_NOTIFICATION_ID);
+                            Log.d(TAG, "✅ Location enabled — walking notification dismissed");
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "⚠️ locationChangeReceiver error: " + e.getMessage());
+                }
+            }
+        };
+        registerReceiver(locationChangeReceiver,
+                new android.content.IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION));
+
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
 
@@ -229,6 +272,20 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             if (manager != null) {
                 manager.createNotificationChannel(channel);
                 Log.d(TAG, "✅ Notification channel created: " + CHANNEL_ID);
+
+                // ── High-priority channel for walking detection ──────────────
+                NotificationChannel walkChannel = new NotificationChannel(
+                        WALK_CHANNEL_ID,
+                        "Walking Activity",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                walkChannel.setDescription("Notifies when background walking is detected");
+                walkChannel.enableVibration(true);
+                walkChannel.setVibrationPattern(new long[]{0, 250, 100, 250});
+                walkChannel.enableLights(true);
+                walkChannel.setShowBadge(true);
+                manager.createNotificationChannel(walkChannel);
+                Log.d(TAG, "✅ Walking notification channel created: " + WALK_CHANNEL_ID);
             }
         }
     }
@@ -463,6 +520,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
         prefs.edit().putInt("step_daily_" + today, newTotal).apply();
+
+        // Walking detection: piggyback on every sensor event (no extra polling)
+        checkWalkingDetection(sensorTotal);
     }
 
     @Override
@@ -721,6 +781,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         }
         if (dateChangeReceiver != null) {
             unregisterReceiver(dateChangeReceiver);
+        }
+        if (locationChangeReceiver != null) {
+            unregisterReceiver(locationChangeReceiver);
         }
         
         // Log final retry queue stats
@@ -1026,6 +1089,128 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         editor.apply();
     }
+
+    // ── Walking Detection ─────────────────────────────────────────────────────
+
+    /**
+     * Called on every step sensor event.
+     * Opens a 12-second sliding window; if ≥15 steps are counted inside it
+     * we consider the user to be walking and fire a heads-up notification
+     * (subject to a 10-minute cooldown so we never spam).
+     * No threads, no polling — piggybacks on the existing sensor callback.
+     */
+    private void checkWalkingDetection(int sensorTotal) {
+        long now = System.currentTimeMillis();
+
+        // Open a new window on the very first sensor event after init / reset
+        if (walkDetectWindowStartMs == 0L) {
+            walkDetectWindowStartMs    = now;
+            walkDetectWindowStartSteps = sensorTotal;
+            return;
+        }
+
+        long elapsed = now - walkDetectWindowStartMs;
+        if (elapsed < WALK_DETECT_WINDOW_MS) {
+            // Window still open — keep accumulating
+            return;
+        }
+
+        // Window expired — evaluate and always reset for next measurement
+        int stepDelta = sensorTotal - walkDetectWindowStartSteps;
+        walkDetectWindowStartMs    = now;
+        walkDetectWindowStartSteps = sensorTotal;
+
+        if (stepDelta >= WALK_NOTIFY_STEP_THRESHOLD) {
+            if (now - walkNotifyLastShownMs >= WALK_NOTIFY_COOLDOWN_MS) {
+                walkNotifyLastShownMs = now;
+                Log.d(TAG, "🚶 Walking detected: " + stepDelta + " steps in " + elapsed + " ms — sending notification");
+                showWalkingNotification();
+            } else {
+                Log.d(TAG, "🚶 Walking detected but cooldown active — skipping notification");
+            }
+        }
+    }
+
+    /**
+     * Shows a high-priority heads-up notification when walking is detected.
+     * Checks GPS / network provider state to decide indoor vs outdoor message.
+     * Tapping the notification opens the app directly.
+     */
+    private void showWalkingNotification() {
+        // Determine indoor / outdoor without needing location permission for a reading —
+        // we only need to know whether the user has location services turned ON.
+        boolean locationEnabled = false;
+        try {
+            LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null) {
+                boolean gps = false;
+                boolean net = false;
+                try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                locationEnabled = gps || net;
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Could not check location state: " + e.getMessage());
+        }
+
+        String message = locationEnabled
+                ? "Outdoor activity detected"
+                : "Indoor activity detected";
+
+        // PendingIntent: open app when notification body is tapped
+        Intent openIntent = new Intent(this, MainActivity.class);
+        openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        openIntent.putExtra("openStepCounter", true);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+                this,
+                WALK_NOTIFICATION_ID,
+                openIntent,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                        : PendingIntent.FLAG_UPDATE_CURRENT
+        );
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, WALK_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Walking Detected")
+                .setContentText(message)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setVibrate(new long[]{0, 250, 100, 250})
+                .setContentIntent(pendingIntent);
+
+        if (locationEnabled) {
+            // GPS ON → swipeable, auto-dismisses on tap
+            builder.setAutoCancel(true)
+                   .setOngoing(false);
+        } else {
+            // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
+            builder.setAutoCancel(false)
+                   .setOngoing(true);
+
+            Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent settingsPendingIntent = PendingIntent.getActivity(
+                    this,
+                    WALK_NOTIFICATION_ID + 1,
+                    settingsIntent,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                            ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                            : PendingIntent.FLAG_UPDATE_CURRENT
+            );
+            builder.addAction(R.mipmap.ic_launcher, "Turn On GPS", settingsPendingIntent);
+        }
+
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify(WALK_NOTIFICATION_ID, builder.build());
+            Log.d(TAG, "🔔 Walking notification posted: " + message + " | locationEnabled=" + locationEnabled);
+        }
+    }
+
+    // ── END Walking Detection ─────────────────────────────────────────────────
 
     /** Haversine distance in metres between two lat/lng pairs. */
     private static double haversineMeters(double lat1, double lng1, double lat2, double lng2) {
