@@ -128,7 +128,7 @@ const ImageUpload = forwardRef(
           if (!validation.isValid) {
             setAlertModal({
               isOpen: true,
-              title: validation.message || "🚨 Invalid Image",
+              title: validation.message || "Invalid Image",
               message: "Please use a photo taken today during education hours.",
               type: "error",
             });
@@ -308,15 +308,15 @@ const ImageUpload = forwardRef(
                 ) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 Outside Education Hours",
-                    message: `⚠️ Photo was taken outside education hours. Please take a photo during your education session.`,
+                    title: "Outside Education Hours",
+                    message: `Photo was taken outside education hours. Please take a photo during your education session.`,
                     type: "error",
                   });
                   return;
                 }
 
                 console.log(
-                  "✅ Gallery image validated via EXIF:",
+                  "Gallery image validated via EXIF:",
                   toLocalISOString(photoDate),
                 );
                 onImageSelect(file, toLocalISOString(photoDate));
@@ -325,7 +325,7 @@ const ImageUpload = forwardRef(
 
               // No EXIF from Capacitor — fall back to Filesystem.stat() for modification time
               console.log(
-                "⚠️ No EXIF metadata, checking Filesystem.stat() for education image",
+                " No EXIF metadata, checking Filesystem.stat() for education image",
               );
 
               // Check if photo.path is available (might be missing for WhatsApp/screenshot images)
@@ -335,7 +335,7 @@ const ImageUpload = forwardRef(
                 );
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 WhatsApp/Screenshot Not Allowed",
+                  title: "WhatsApp/Screenshot Not Allowed",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -369,8 +369,8 @@ const ImageUpload = forwardRef(
                 ) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 Outside Education Hours",
-                    message: `⚠️ Photo was modified outside education hours. Please take a photo during your education session.`,
+                    title: "Outside Education Hours",
+                    message: `Photo was modified outside education hours. Please take a photo during your education session.`,
                     type: "error",
                   });
                   return;
@@ -386,7 +386,7 @@ const ImageUpload = forwardRef(
                 console.error("❌ Filesystem.stat failed:", fsError);
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Cannot Verify Image Date",
+                  title: "Cannot Verify Image Date",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -450,7 +450,7 @@ const ImageUpload = forwardRef(
                 );
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 WhatsApp/Screenshot Not Allowed",
+                  title: "WhatsApp/Screenshot Not Allowed",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });
@@ -486,7 +486,7 @@ const ImageUpload = forwardRef(
                 console.error("❌ Filesystem.stat failed:", fsError);
                 setAlertModal({
                   isOpen: true,
-                  title: "🚨 Cannot Verify Image Date",
+                  title: "Cannot Verify Image Date",
                   message: "Please use Camera to take a fresh photo.",
                   type: "error",
                 });

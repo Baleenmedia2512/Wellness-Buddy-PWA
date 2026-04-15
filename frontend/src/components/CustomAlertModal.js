@@ -52,11 +52,11 @@ const CustomAlertModal = ({
         };
       case 'error':
         return {
-          icon: <XCircle className="h-12 w-12 text-red-600" />,
-          bgColor: 'bg-red-50',
-          borderColor: 'border-red-200',
-          titleColor: 'text-red-900',
-          buttonColor: 'bg-red-600 hover:bg-red-700',
+          icon: <AlertTriangle className="h-12 w-12 text-blue-600" />,
+          bgColor: 'bg-blue-50',
+          borderColor: 'border-blue-200',
+          titleColor: 'text-blue-900',
+          buttonColor: 'bg-blue-600 hover:bg-blue-700',
         };
       case 'success':
         return {
@@ -109,6 +109,11 @@ const CustomAlertModal = ({
                 >
                   <X className="h-5 w-5 text-gray-600" />
                 </TouchFeedbackButton>
+
+                {/* Icon */}
+                <div className="flex justify-center mb-4">
+                  {config.icon}
+                </div>
 
                 {/* Title */}
                 <h2 className={`text-xl font-bold text-center ${config.titleColor}`}>
