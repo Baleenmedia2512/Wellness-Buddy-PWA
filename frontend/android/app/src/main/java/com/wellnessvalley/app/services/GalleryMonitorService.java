@@ -81,8 +81,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // 12-second window: ≥15 steps = user is walking
     private static final long   WALK_DETECT_WINDOW_MS      = 12_000L;
     private static final int    WALK_NOTIFY_STEP_THRESHOLD = 15;
-    // Minimum gap between successive walking notifications (10 minutes)
-    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 10 * 60 * 1000L;
+    // Minimum gap between successive walking notifications (1 minute)
+    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 60 * 1000L;
 
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
@@ -100,6 +100,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private long walkDetectWindowStartMs    = 0L; // 0 = window not yet open
     private int  walkDetectWindowStartSteps = 0;
     private long walkNotifyLastShownMs      = 0L;
+    // Scheduled fallback: steps snapshot from last 30-sec tick (handles sensor batching)
+    private int  walkScheduledLastSteps     = -1;
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -183,6 +185,10 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
         scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
+
+        // ✅ Walking detection fallback — fires every 30 s so sensor-batched events
+        // (screen off / Doze) still trigger the notification reliably.
+        scheduledExecutor.scheduleAtFixedRate(this::checkWalkingBySchedule, 30, 30, TimeUnit.SECONDS);
 
         // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
         initGpsTracking();
@@ -1093,6 +1099,60 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // ── Walking Detection ─────────────────────────────────────────────────────
 
     /**
+     * Scheduled fallback for walking detection — runs every 30 seconds.
+     * Reads the step count from SharedPreferences (written by onSensorChanged).
+     * This works even when sensor events are batched by Android Doze / screen off,
+     * because SharedPreferences is updated inside every onSensorChanged call.
+     * If steps increased by ≥ WALK_NOTIFY_STEP_THRESHOLD since last tick AND
+     * location is OFF → fire the walking/location notification.
+     */
+    private void checkWalkingBySchedule() {
+        try {
+            // Check location state — only fire when GPS is OFF
+            boolean locationEnabled = false;
+            try {
+                LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    boolean gps = false, net = false;
+                    try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                    try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                    locationEnabled = gps || net;
+                }
+            } catch (Exception ignored) {}
+
+            if (locationEnabled) {
+                // GPS is ON — reset snapshot so we're ready when GPS goes OFF again
+                walkScheduledLastSteps = -1;
+                return;
+            }
+
+            // Read current step total from SharedPreferences
+            SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+            int currentSteps = prefs.getInt("step_daily_" + getTodayDateKey(), 0);
+
+            if (walkScheduledLastSteps < 0) {
+                // First tick — just record baseline, no notification yet
+                walkScheduledLastSteps = currentSteps;
+                return;
+            }
+
+            int delta = currentSteps - walkScheduledLastSteps;
+            walkScheduledLastSteps = currentSteps;
+
+            if (delta >= WALK_NOTIFY_STEP_THRESHOLD) {
+                long now = System.currentTimeMillis();
+                if (now - walkNotifyLastShownMs >= WALK_NOTIFY_COOLDOWN_MS) {
+                    walkNotifyLastShownMs = now;
+                    Log.d(TAG, "🚶 [Schedule] Walking detected: +" + delta + " steps in 30s — sending notification");
+                    showWalkingNotification();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ checkWalkingBySchedule error: " + e.getMessage());
+        }
+    }
+
+    /**
      * Called on every step sensor event.
      * Opens a 12-second sliding window; if ≥15 steps are counted inside it
      * we consider the user to be walking and fire a heads-up notification
@@ -1153,9 +1213,12 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             Log.w(TAG, "⚠️ Could not check location state: " + e.getMessage());
         }
 
+        String title = locationEnabled
+                ? "Walking Detected"
+                : "Your Location is Off";
         String message = locationEnabled
-                ? "Outdoor activity detected"
-                : "Indoor activity detected";
+                ? "Outdoor activity detected. Keep it up!"
+                : "You're walking but your location is OFF.";
 
         // PendingIntent: open app when notification body is tapped
         Intent openIntent = new Intent(this, MainActivity.class);
@@ -1172,7 +1235,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, WALK_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Walking Detected")
+                .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -1200,7 +1263,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                             ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
                             : PendingIntent.FLAG_UPDATE_CURRENT
             );
-            builder.addAction(R.mipmap.ic_launcher, "Turn On GPS", settingsPendingIntent);
+            builder.addAction(R.mipmap.ic_launcher, "Turn On", settingsPendingIntent);
         }
 
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
