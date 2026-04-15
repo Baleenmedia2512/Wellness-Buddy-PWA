@@ -12,6 +12,8 @@ import {
   Coffee,
   Utensils,
   Moon,
+  Droplets,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -128,6 +130,8 @@ const TeamNode = ({
     breakfast: <Coffee className="w-4 h-4" />,
     lunch: <Utensils className="w-4 h-4" />,
     dinner: <Moon className="w-4 h-4" />,
+    water: <Droplets className="w-4 h-4" />,
+    caloriesBurned: <Flame className="w-4 h-4" />,
   };
 
   const getScoreColorText = (score) => {
@@ -139,7 +143,8 @@ const TeamNode = ({
   return (
     <div className="relative flex">
       {/* Tree Connector Lines */}
-      {level > 0 && (
+      {/* Co-coach has no line to show they're at same level as coach */}
+      {level > 0 && !node.isCoCoach && (
         <div className="relative flex-shrink-0" style={{ width: "32px" }}>
           {/* Horizontal line to card */}
           <div
@@ -163,21 +168,27 @@ const TeamNode = ({
       )}
 
       {/* Node Content */}
-      <div className="flex-1 mb-3">
+      <div className="flex-1 mb-2 sm:mb-3 w-full overflow-hidden">
         {/* Node Card */}
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-lg sm:rounded-xl shadow-md border-2 border-gray-100 overflow-hidden hover:shadow-lg hover:border-blue-200 transition-all duration-200"
+          className={`rounded-lg sm:rounded-xl shadow-md border-2 overflow-hidden hover:shadow-lg transition-all duration-200 w-full max-w-full ${
+            node.isCoCoach
+              ? "bg-purple-50/40 border-purple-300 hover:border-purple-400 ring-1 ring-purple-200"
+              : "bg-white border-gray-100 hover:border-blue-200"
+          }`}
         >
           {/* Card Header */}
           <div
-            className="flex items-center gap-2 sm:gap-3 p-2.5 sm:p-3 cursor-pointer active:bg-gray-50 transition-colors relative"
+            className={`flex items-center gap-1 xs:gap-1.5 sm:gap-2 p-1.5 xs:p-2 sm:p-2.5 cursor-pointer active:bg-gray-50 transition-colors relative w-full overflow-hidden ${
+              node.isCoCoach ? "bg-purple-50/50" : ""
+            }`}
             onClick={handleCardClick}
           >
             {/* Avatar */}
             <div
-              className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center text-xs sm:text-sm font-bold border-2 shadow-sm flex-shrink-0 ${
+              className={`w-8 h-8 xs:w-9 xs:h-9 sm:w-10 sm:h-10 md:w-11 md:h-11 rounded-full flex items-center justify-center text-[10px] xs:text-xs sm:text-sm font-bold border-2 shadow-sm flex-shrink-0 ${
                 score >= 80
                   ? "bg-green-50 border-green-300 text-green-700"
                   : score >= 60
@@ -189,44 +200,64 @@ const TeamNode = ({
             </div>
 
             {/* User Info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                <h3 className="font-bold text-gray-900 text-sm sm:text-[15px] truncate">
+            <div className="flex-1 min-w-0 overflow-hidden">
+              <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 flex-wrap">
+                <h3 className="font-bold text-gray-900 text-[11px] xs:text-xs sm:text-sm truncate max-w-[120px] xs:max-w-[150px] sm:max-w-none">
                   {node.userName}
                 </h3>
                 {/* Role Badge */}
-                {level === 0 && node.role === "coach" && (
-                  <span className="text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                {level === 0 && node.role === "coach" && !node.isCoCoach && (
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-blue-100 text-blue-700 border border-blue-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     COACH
                   </span>
                 )}
-                {level === 1 && node.role === "coach" && (
-                  <span className="text-[9px] sm:text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                {(node.isCoCoach || (level === 1 && node.role === "coach" && !node.isCoCoach)) && (
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-purple-100 text-purple-700 border border-purple-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     CO-COACH
                   </span>
                 )}
-                {level >= 2 && (
-                  <span className="text-[9px] sm:text-[10px] bg-gray-100 text-gray-700 border border-gray-300 px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap">
+                {level >= 1 && !node.isCoCoach && node.role !== "coach" && (
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-gray-100 text-gray-700 border border-gray-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0">
                     MEMBER
                   </span>
                 )}
+                {/* Shared Team Badge - when viewing yourself as a co-coach */}
+                {level === 0 && node.coachName && node.coCoachName && (
+                  <span className="text-[8px] xs:text-[9px] sm:text-[10px] bg-amber-50 text-amber-700 border border-amber-300 px-1 xs:px-1.5 sm:px-2 py-0.5 rounded-full font-bold tracking-wide shadow-sm whitespace-nowrap flex-shrink-0 flex items-center gap-0.5">
+                    <Users className="w-2 h-2 xs:w-2.5 xs:h-2.5" />
+                    SHARED TEAM
+                  </span>
+                )}
               </div>
-              <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
+              <p className="text-[9px] xs:text-[10px] sm:text-xs text-gray-500 mt-0.5 truncate">
                 {node.email}
               </p>
               {(node.coachName || node.coCoachName) && (
                 <p className="text-[10px] sm:text-[11px] text-gray-400 mt-0.5 sm:mt-1 hidden sm:block">
-                  Reports to:{" "}
-                  <span className="text-gray-600 font-medium">
-                    {node.coachName}
-                    {node.coachName && node.coCoachName && ", "}
-                    {node.coCoachName}
-                  </span>
+                  {level === 0 && node.coachName && node.coCoachName ? (
+                    <>
+                      <span className="text-amber-600 font-semibold">Co-Coach Partnership:</span>{" "}
+                      <span className="text-gray-600 font-medium">
+                        {node.coachName}
+                        {node.coachName && node.coCoachName && " & "}
+                        {node.coCoachName}
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      Reports to:{" "}
+                      <span className="text-gray-600 font-medium">
+                        {node.coachName}
+                        {node.coachName && node.coCoachName && ", "}
+                        {node.coCoachName}
+                      </span>
+                    </>
+                  )}
                 </p>
               )}
               {hasChildren && (
-                <p className="text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-1">
-                  <Users className="w-3 h-3" />
+                <p className="text-[9px] xs:text-[10px] sm:text-[11px] text-blue-600 font-medium mt-0.5 sm:mt-1 flex items-center gap-0.5 xs:gap-1">
+                  <Users className="w-2.5 h-2.5 xs:w-3 xs:h-3" />
                   {node.teamMembers?.length || 0} team member
                   {node.teamMembers?.length !== 1 ? "s" : ""}
                 </p>
@@ -234,13 +265,13 @@ const TeamNode = ({
             </div>
 
             {/* Score and Chevron */}
-            <div className="flex items-center gap-0.5 sm:gap-2 flex-shrink-0">
+            <div className="flex items-center gap-0.5 xs:gap-1 sm:gap-1.5 flex-shrink-0">
               {showDisciplineScores && (
                 <>
                   {/* All nodes: Show three metrics horizontally */}
-                  <div className="flex flex-row gap-0.5 sm:gap-2 md:gap-3">
+                  <div className="flex flex-row gap-[2px] xs:gap-0.5 sm:gap-1 md:gap-1.5">
                     {/* My Score */}
-                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
                       <div
                         className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
                           score !== undefined && score >= 80
@@ -254,15 +285,15 @@ const TeamNode = ({
                       >
                         {score !== undefined ? `${Math.round(score)}%` : "N/A"}
                       </div>
-                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-blue-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-blue-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
                         MY SCORE
                       </div>
                     </div>
 
                     {/* Direct Team */}
-                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
                       <div
-                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                        className={`text-[8px] xs:text-[9px] sm:text-xs md:text-sm font-extrabold leading-none ${
                           directTeamScore !== null && directTeamScore >= 80
                             ? "text-green-700"
                             : directTeamScore !== null && directTeamScore >= 60
@@ -276,15 +307,15 @@ const TeamNode = ({
                           ? `${directTeamScore}%`
                           : "N/A"}
                       </div>
-                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-green-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
                         DIRECT TEAM
                       </div>
                     </div>
 
                     {/* Full Team */}
-                    <div className="flex flex-col items-center w-[30px] sm:w-[50px]">
+                    <div className="flex flex-col items-center w-[20px] xs:w-[24px] sm:w-[36px] md:w-[42px]">
                       <div
-                        className={`text-[10px] sm:text-sm md:text-base font-extrabold leading-none ${
+                        className={`text-[8px] xs:text-[9px] sm:text-xs md:text-sm font-extrabold leading-none ${
                           underTeamScore !== null && underTeamScore >= 80
                             ? "text-green-700"
                             : underTeamScore !== null && underTeamScore >= 60
@@ -296,7 +327,7 @@ const TeamNode = ({
                       >
                         {underTeamScore !== null ? `${underTeamScore}%` : "N/A"}
                       </div>
-                      <div className="text-[5.5px] sm:text-[7px] md:text-[8px] text-green-600 font-semibold uppercase tracking-[-0.03em] sm:tracking-tight text-center leading-[1.1] mt-[2px] sm:mt-1">
+                      <div className="text-[4.5px] xs:text-[5px] sm:text-[6px] md:text-[7px] text-green-600 font-semibold uppercase tracking-[-0.05em] xs:tracking-[-0.04em] sm:tracking-tighter text-center leading-[1.1] mt-[1px] xs:mt-[2px] sm:mt-1">
                         FULL TEAM
                       </div>
                     </div>
@@ -304,9 +335,9 @@ const TeamNode = ({
                 </>
               )}
               {showActivities ? (
-                <ChevronUp className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <ChevronUp className="h-3 w-3 xs:h-3.5 xs:w-3.5 sm:h-4 sm:w-4 text-gray-400" />
               ) : (
-                <ChevronDown className="h-4 w-4 sm:h-5 sm:w-5 text-gray-400" />
+                <ChevronDown className="h-3 w-3 xs:h-3.5 xs:w-3.5 sm:h-4 sm:w-4 text-gray-400" />
               )}
             </div>
           </div>
@@ -482,9 +513,9 @@ const HierarchicalTeamView = ({
   const allTeamMembers = flattenHierarchy(hierarchy);
 
   return (
-    <div className="space-y-3 sm:space-y-4">
+    <div className="space-y-3 sm:space-y-4 w-full">
       {/* Hierarchy Tree */}
-      <div className="px-2 sm:px-4">
+      <div className="px-1 sm:px-2 md:px-3">
         <TeamNode
           node={hierarchy}
           level={0}

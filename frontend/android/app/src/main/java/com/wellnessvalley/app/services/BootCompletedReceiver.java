@@ -34,26 +34,20 @@ public class BootCompletedReceiver extends BroadcastReceiver {
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && 
              Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(action))) {
             
-            Log.d(TAG, "📱 Device boot detected (action: " + action + ")");
-            Log.d(TAG, "Starting GalleryMonitorService...");
+            Log.d(TAG, "📱 Device boot detected — starting background service silently");
             
-            // Start the gallery monitor foreground service
+            // ✅ Start GalleryMonitorService silently on boot
             Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
-            serviceIntent.setPackage(context.getPackageName());
-            
-            try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(serviceIntent);
-                } else {
-                    context.startService(serviceIntent);
-                }
-                Log.d(TAG, "✅ GalleryMonitorService started successfully");
-            } catch (Exception e) {
-                Log.e(TAG, "❌ Failed to start GalleryMonitorService on boot", e);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent);
+            } else {
+                context.startService(serviceIntent);
             }
             
-            // Schedule periodic heartbeat to keep service alive
+            // Schedule heartbeat system to keep service alive
             scheduleHeartbeat(context);
+            
+            Log.d(TAG, "✅ Background service started and heartbeat scheduled");
         }
     }
     
@@ -69,17 +63,16 @@ public class BootCompletedReceiver extends BroadcastReceiver {
      * @param context Application context
      */
     public static void scheduleHeartbeat(Context context) {
-        Log.d(TAG, "⏰ Scheduling HYBRID heartbeat system...");
+        // ✅ Background service enabled — schedule heartbeat for auto-restart
+        Log.d(TAG, "⏰ Scheduling heartbeat system for service auto-restart");
         
-        // Layer 1: WorkManager (battery-friendly)
+        // Schedule WorkManager heartbeat (every 15 minutes)
         scheduleWorkManagerHeartbeat(context);
         
-        // Layer 2: AlarmManager (aggressive fallback)
-        ServiceAlarmReceiver.scheduleAlarmHeartbeat(context);
+        // Schedule AlarmManager heartbeat (every 20 minutes, survives force-stop better)
+        scheduleAlarmManagerHeartbeat(context);
         
-        Log.d(TAG, "✅ Hybrid heartbeat system activated");
-        Log.d(TAG, "   → WorkManager: 5-15 min (battery-efficient)");
-        Log.d(TAG, "   → AlarmManager: 15 min (battery-optimized)");
+        Log.d(TAG, "✅ Hybrid heartbeat system scheduled");
     }
     
     /**
@@ -120,5 +113,14 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         } catch (Exception e) {
             Log.e(TAG, "   ❌ Failed to schedule WorkManager heartbeat", e);
         }
+    }
+    
+    /**
+     * Schedule AlarmManager heartbeat (Layer 2 - Aggressive Persistence)
+     * Uses AlarmManager for more reliable execution that survives force-stop better
+     * Delegates to existing ServiceAlarmReceiver for 15-minute heartbeat
+     */
+    private static void scheduleAlarmManagerHeartbeat(Context context) {
+        ServiceAlarmReceiver.scheduleAlarmHeartbeat(context);
     }
 }

@@ -84,6 +84,24 @@ export default async function handler(req, res) {
       }
     }
 
+    // Update LastActiveAt in team_table to track user activity
+    if (userId) {
+      try {
+        const { error: activityUpdateError } = await supabase
+          .from('team_table')
+          .update({ LastActiveAt: getISTTimestamp() })
+          .eq('UserId', userId);
+        
+        if (activityUpdateError) {
+          console.warn('⚠️ [undo-deleted-weight-entry] Failed to update LastActiveAt:', activityUpdateError);
+        } else {
+          console.log('✅ [undo-deleted-weight-entry] Updated LastActiveAt for user:', userId);
+        }
+      } catch (err) {
+        console.warn('⚠️ [undo-deleted-weight-entry] Error updating LastActiveAt:', err);
+      }
+    }
+
     res.status(200).json({
       success: true,
       message: 'Weight entry restored successfully',

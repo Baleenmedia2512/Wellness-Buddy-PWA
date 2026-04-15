@@ -1,14 +1,48 @@
 // src/components/WeightCardModal.js
-import React from 'react';
-import { X, Scale } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Scale, Pencil, Check, XCircle } from 'lucide-react';
 import { formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 /**
  * WeightCardModal Component
  * Detailed view modal for weight entries with comprehensive metrics breakdown
  */
-const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => {
+const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = null, apiBaseUrl }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editWeight, setEditWeight] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [editError, setEditError] = useState('');
+
+  // Sync edit field when data changes
+  useEffect(() => {
+    if (data?.Weight) {
+      setEditWeight(String(data.Weight));
+    }
+    setIsEditing(false);
+    setEditError('');
+  }, [data?.ID, data?.Weight]);
+
   if (!data) return null;
+
+  const handleSaveWeight = async () => {
+    const weightValue = parseFloat(editWeight);
+    if (isNaN(weightValue) || weightValue < 20 || weightValue > 300) {
+      setEditError('Weight must be between 20 and 300 kg');
+      return;
+    }
+    setIsSaving(true);
+    setEditError('');
+    try {
+      const entryId = data.ID ?? data.id;
+      if (!entryId) throw new Error('Entry ID not found – cannot update');
+      await onUpdate(entryId, weightValue);
+      setIsEditing(false);
+    } catch (err) {
+      setEditError(err.message || 'Failed to save');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   /**
    * Format date (without time)
@@ -54,15 +88,15 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
           )}
 
           {/* Gradient Overlay */}
-          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/40 to-transparent p-5 space-y-3">
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-5 space-y-3">
             <div className="flex justify-between items-start">
               <div>
-                <h2 className="text-xl font-bold text-white leading-tight">
-                  {data.Weight} kg
+                <h2 className="text-2xl font-bold text-white leading-tight drop-shadow-lg">
+                  {isEditing ? editWeight || '--' : data.Weight} kg
                 </h2>
-                <div className="text-xs text-white/70 mt-0.5">
+                <div className="text-xs text-white/90 mt-0.5 drop-shadow">
                   <p>Logged at {formatISTToLocalTime(data.CreatedAt)}</p>
-                  <p className="text-xs text-gray-400">{formatDate(data.CreatedAt)}</p>
+                  <p className="text-xs text-white/75">{formatDate(data.CreatedAt)}</p>
                 </div>
               </div>
               {/* <div className="text-right">
@@ -112,16 +146,69 @@ const WeightCardModal = ({ data, onClose, onDelete, previousWeight = null }) => 
             
             {/* Detailed Metrics */}
             <div className="space-y-2">
-              {/* Weight */}
-              <div className="bg-gray-50 p-3 rounded-xl flex justify-between items-center border border-gray-100 hover:bg-gray-100 transition-colors duration-200">
-                <div>
+              {/* Weight - Editable */}
+              <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
+                <div className="flex justify-between items-center">
                   <p className="font-medium text-gray-900 text-sm">Weight</p>
-                  {/* <p className="text-xs text-gray-500">{formatDate(data.CreatedAt)}</p> */}
+                  {!isEditing ? (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-gray-900 text-sm">{data.Weight}</span>
+                      <span className="text-xs text-gray-500">kg</span>
+                      {onUpdate && (
+                        <button
+                          onClick={() => { setIsEditing(true); setEditWeight(String(data.Weight)); }}
+                          className="ml-1 flex items-center gap-1 px-2 py-1 rounded-lg text-emerald-600 hover:bg-emerald-50 transition-colors text-xs font-medium"
+                          title="Edit weight"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                          Edit
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={editWeight}
+                        onChange={(e) => setEditWeight(e.target.value)}
+                        className="w-20 px-2 py-1 text-sm border-2 border-emerald-400 rounded-lg focus:outline-none focus:border-emerald-500 text-right"
+                        style={{ fontSize: '14px' }}
+                        min="20"
+                        max="300"
+                        step="0.1"
+                        autoFocus
+                        onKeyDown={(e) => { if (e.key === 'Enter') handleSaveWeight(); if (e.key === 'Escape') setIsEditing(false); }}
+                      />
+                      <span className="text-xs text-gray-500">kg</span>
+                      <button
+                        onClick={handleSaveWeight}
+                        disabled={isSaving}
+                        className="p-1 rounded-lg text-white bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50"
+                        title="Save"
+                      >
+                        {isSaving ? (
+                          <span className="block w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        ) : (
+                          <Check className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => { setIsEditing(false); setEditError(''); }}
+                        disabled={isSaving}
+                        className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors disabled:opacity-50"
+                        title="Cancel"
+                      >
+                        <XCircle className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-                <div className="text-right">
-                  <p className="font-medium text-gray-900 text-sm">{data.Weight}</p>
-                  <p className="text-xs text-gray-500">kg</p>
-                </div>
+                {editError && (
+                  <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                    <p className="text-xs text-red-700">{editError}</p>
+                  </div>
+                )}
               </div>
 
               {/* BMI */}

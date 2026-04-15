@@ -4,7 +4,6 @@ import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '.
 import { geminiService } from '../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 import { istToLocalDate } from '../utils/timezoneUtils';
-
 /**
  * Debug panel to view user's food corrections
  * Only visible in development mode
@@ -16,7 +15,6 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
   const [activeTab, setActiveTab] = useState('corrections'); // 'corrections' | 'context' | 'prompt'
   const [userContext, setUserContext] = useState(null);
   const [lastPrompt, setLastPrompt] = useState(null);
-
   // Load corrections and context
   const loadData = async (forceRefresh = false) => {
     if (!userId) return;

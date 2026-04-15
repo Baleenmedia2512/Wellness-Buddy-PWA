@@ -111,12 +111,38 @@ const wrappedPlugin = {
     }
   },
 
+  async forceSaveTodaySteps() {
+    try {
+      await this.init();
+      return await GalleryMonitor.forceSaveTodaySteps();
+    } catch (error) {
+      console.error("Failed to force-save today steps:", error);
+      throw error;
+    }
+  },
+
   addListener(eventName, listenerFunc) {
     if (!GalleryMonitor) {
       console.warn("GalleryMonitor not available for event listeners");
       return { remove: () => {} };
     }
     return GalleryMonitor.addListener(eventName, listenerFunc);
+  },
+
+  /**
+   * Corrects stale phantom SharedPreferences data on the background service.
+   * Call when the backfill detects bgService steps >> DB steps for today.
+   * Sends an intent to the running service so it resets both SharedPrefs and
+   * its in-memory stepStoredBaseline to the given value.
+   */
+  async syncDailySteps(date, steps) {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return;
+      return await GalleryMonitor.syncDailySteps({ date, steps });
+    } catch (error) {
+      console.warn('[GalleryMonitor] syncDailySteps failed:', error);
+    }
   }
 };
 

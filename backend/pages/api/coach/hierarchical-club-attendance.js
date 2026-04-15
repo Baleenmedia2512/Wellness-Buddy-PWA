@@ -1,0 +1,445 @@
+import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
+import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
+import { buildHierarchyWithMetricCounts, calculateHierarchyStats } from '../../../utils/hierarchyHelpers.js';
+
+/**
+ * API: Hierarchical Club Attendance Report
+ * Returns team hierarchy with club attendance data for each member
+ * Shows who attended which club on a given date
+ */
+export default async function handler(req, res) {
+  // Prevent caching
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.setHeader('Surrogate-Control', 'no-store');
+  
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Cache-Control, Pragma');
+    res.status(200).end();
+    return;
+  }
+
+  if (req.method !== 'GET') {
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
+  }
+
+  const { userId, date, clubId, type } = req.query;
+
+  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId, type });
+
+  if (!userId) {
+    res.status(400).json({
+      success: false,
+      message: 'Missing required parameter: userId',
+    });
+    return;
+  }
+
+  try {
+    const supabase = getSupabaseClient();
+    const userIdNum = parseInt(userId);
+    const clubIdNum = clubId ? parseInt(clubId) : null;
+
+    // Use provided date or default to today
+    const targetDate = date || formatDateForMySQL(new Date());
+    const startOfDay = targetDate + 'T00:00:00';
+    const endOfDay = targetDate + 'T23:59:59';
+
+    console.log('📅 [hierarchical-club-attendance] Target date:', targetDate);
+    console.log('🏢 [hierarchical-club-attendance] Club filter:', clubIdNum || 'All clubs');
+
+    // Step 0: Fetch clubs owned by the user
+    const { data: userClubs, error: clubsError } = await supabase
+      .from('nutrition_centers_table')
+      .select('id, center_name, owner_user_id')
+      .eq('owner_user_id', userIdNum)
+      .eq('status', 'active')
+      .eq('is_deleted', false)
+      .order('center_name');
+
+    if (clubsError) {
+      console.error('❌ [hierarchical-club-attendance] Error fetching clubs:', clubsError);
+      throw new Error(clubsError.message);
+    }
+
+    const ownedClubs = userClubs || [];
+    console.log('🏢 [hierarchical-club-attendance] User owns', ownedClubs.length, 'clubs');
+
+    // Step 1: Get team hierarchy using dual-coaching model
+    const teamHierarchy = await getDualCoachingTeamHierarchy(userIdNum, false);
+    
+    if (!teamHierarchy || teamHierarchy.length === 0) {
+      console.log('⚠️ [hierarchical-club-attendance] No team members found');
+      return res.status(200).json({
+        success: true,
+        data: {
+          hierarchy: null,
+          date: targetDate,
+          totalAttendees: 0,
+          ownedClubs: ownedClubs.map(c => ({
+            id: c.id,
+            name: c.center_name,
+          })),
+          selectedClubId: clubIdNum,
+          externalAttendees: [],
+        },
+      });
+    }
+
+    console.log('👥 [hierarchical-club-attendance] Team hierarchy has', teamHierarchy.length, 'members');
+
+    // Step 2: Get all user IDs from hierarchy
+    const allUserIds = teamHierarchy.map(m => m.UserId);
+
+    console.log('🔍 [hierarchical-club-attendance] allUserIds:', allUserIds);
+    console.log('🔍 [hierarchical-club-attendance] Date range:', { startOfDay, endOfDay });
+
+    // Step 3: Fetch ALL education logs (club + remote) for all team members on the target date
+    // Use .filter() for quoted PascalCase column names — more reliable than .in() with quoted names
+    let attendanceQuery = supabase
+      .from('education_logs_table')
+      .select(`
+        "UserId",
+        "CreatedAt",
+        "Platform",
+        attendance_type,
+        nutrition_center_id,
+        center_name
+      `)
+      .filter('"UserId"', 'in', `(${allUserIds.join(',')})`)
+      .gte('"CreatedAt"', startOfDay)
+      .lte('"CreatedAt"', endOfDay)
+      .or('"IsDeleted".is.null,"IsDeleted".eq.false,"IsDeleted".eq.0');
+
+    // If specific club selected, filter to only that club
+    if (clubIdNum) {
+      attendanceQuery = attendanceQuery.eq('nutrition_center_id', clubIdNum);
+    }
+
+    const { data: attendanceLogs, error: logsError } = await attendanceQuery;
+
+    if (logsError) {
+      console.error('❌ [hierarchical-club-attendance] Error fetching attendance logs:', logsError);
+      console.error('❌ [hierarchical-club-attendance] Query details:', { allUserIds, startOfDay, endOfDay });
+      throw new Error(logsError.message);
+    }
+
+    console.log('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'attendance records');
+    if (attendanceLogs && attendanceLogs.length > 0) {
+      console.log('📊 [hierarchical-club-attendance] Records:', JSON.stringify(attendanceLogs));
+    } else {
+      console.log('📊 [hierarchical-club-attendance] NO records found. Params:', { startOfDay, endOfDay, allUserIds });
+    }
+
+    // Step 3b: Fetch external attendees (people NOT in team who attended the club)
+    let externalAttendees = [];
+    if (clubIdNum) {
+      // Fetch all attendance for the selected club
+      const { data: allClubAttendance, error: allAttendanceError } = await supabase
+        .from('education_logs_table')
+        .select(`
+          "UserId",
+          "CreatedAt"
+        `)
+        .eq('nutrition_center_id', clubIdNum)
+        .gte('"CreatedAt"', startOfDay)
+        .lte('"CreatedAt"', endOfDay)
+        .or('"IsDeleted".is.null,"IsDeleted".eq.false');
+
+      if (!allAttendanceError && allClubAttendance) {
+        // Find user IDs who are NOT in the team
+        // Convert all IDs to numbers for proper comparison
+        const teamUserIdsSet = new Set(allUserIds.map(id => parseInt(id)));
+        
+        const externalUserIds = [...new Set(
+          allClubAttendance
+            .map(log => parseInt(log.UserId))
+            .filter(userId => !teamUserIdsSet.has(userId))
+        )];
+
+        console.log('🔍 [hierarchical-club-attendance] External check:', {
+          totalClubAttendees: allClubAttendance.length,
+          uniqueClubAttendees: [...new Set(allClubAttendance.map(log => parseInt(log.UserId)))].length,
+          teamMembers: teamUserIdsSet.size,
+          externalCount: externalUserIds.length,
+        });
+
+        if (externalUserIds.length > 0) {
+          console.log('👤 [hierarchical-club-attendance] External attendees:', externalUserIds);
+
+          // Fetch user details for external attendees
+          const { data: externalUsersData, error: externalUsersError } = await supabase
+            .from('team_table')
+            .select('UserId, UserName, Email, CoachId, ProfileImage')
+            .in('UserId', externalUserIds);
+
+          if (!externalUsersError && externalUsersData) {
+            // Batch lookup coach names from CoachId
+            const externalCoachIds = [...new Set(externalUsersData.map(u => u.CoachId).filter(Boolean))];
+            const coachNameMap = {};
+            if (externalCoachIds.length > 0) {
+              const { data: coaches } = await supabase
+                .from('team_table')
+                .select('UserId, UserName')
+                .in('UserId', externalCoachIds);
+              if (coaches) coaches.forEach(c => { coachNameMap[c.UserId] = c.UserName; });
+            }
+
+            externalAttendees = externalUsersData.map(user => ({
+              userId: user.UserId,
+              userName: user.UserName,
+              email: user.Email,
+              coachName: user.CoachId ? (coachNameMap[user.CoachId] || 'Unknown') : 'No Coach',
+              profileImage: user.ProfileImage || null,
+            }));
+          }
+        }
+      }
+    }
+
+    // Step 4: Fetch club information for all attended clubs
+    const attendedClubIds = attendanceLogs 
+      ? [...new Set(attendanceLogs.map(log => log.nutrition_center_id).filter(id => id))]
+      : [];
+    
+    let clubsMap = {};
+    if (attendedClubIds.length > 0) {
+      const { data: clubsData, error: clubsDataError } = await supabase
+        .from('nutrition_centers_table')
+        .select('id, center_name')
+        .in('id', attendedClubIds)
+        .eq('status', 'active')
+        .eq('is_deleted', false);
+
+      if (!clubsDataError && clubsData) {
+        clubsData.forEach(club => {
+          clubsMap[club.id] = {
+            id: club.id,
+            name: club.center_name,
+          };
+        });
+      }
+    }
+
+    // Step 5: Build attendance map: userId -> attendance info
+    const attendanceMap = new Map();
+    
+    if (attendanceLogs) {
+      attendanceLogs.forEach(log => {
+        // education_logs_table.UserId is varchar — convert to number so it matches
+        // team_table.UserId (int4) used as the Map key in hierarchyHelpers
+        const userId = parseInt(log.UserId, 10);
+        const clubId = log.nutrition_center_id;
+        const clubInfo = clubId ? clubsMap[clubId] : null;
+        // Determine if remote: check attendance_type first, then fall back to Platform column
+        const platform = (log.Platform || '').toLowerCase();
+        const attendanceType = (log.attendance_type || '').toLowerCase();
+        const isClubVisit = attendanceType === 'club' || platform === 'club' || !!clubId;
+        const isRemote = attendanceType === 'remote' || platform === 'zoom' || platform === 'online meeting' || (!isClubVisit && !clubId);
+
+        if (!attendanceMap.has(userId)) {
+          attendanceMap.set(userId, {
+            attended: true,
+            clubs: [],
+            remoteCount: 0,
+            timestamps: [],
+          });
+        }
+
+        const userAttendance = attendanceMap.get(userId);
+        
+        if (isClubVisit && !isRemote) {
+          // Club / In-Person attendance
+          const clubName = clubInfo?.name || log.center_name || null;
+          if (clubName && !userAttendance.clubs.find(c => c.id === clubId && clubId)) {
+            userAttendance.clubs.push({ id: clubId, name: clubName });
+          }
+          // Club visit with no center ID is still physical attendance — don't penalise
+        } else {
+          // Remote / Online attendance
+          userAttendance.remoteCount += 1;
+        }
+        
+        userAttendance.timestamps.push(log.CreatedAt);
+      });
+    }
+
+    // Step 6: Build hierarchical structure with attendance data and team counts
+    // Using reusable generic utility functions from hierarchyHelpers.js
+    const transformAttendanceFn = (userId, dataMap, attendance) => {
+      return attendance ? {
+        attended: true,
+        clubs: attendance.clubs,
+        count: attendance.clubs.length,
+        remoteCount: attendance.remoteCount || 0,
+        lastAttendance: attendance.timestamps[attendance.timestamps.length - 1],
+      } : {
+        attended: false,
+        clubs: [],
+        count: 0,
+        remoteCount: 0,
+        lastAttendance: null,
+      };
+    };
+
+    // Condition function to check if someone has attended
+    // When type=remote, only count members who did remote sessions
+    const attendedConditionFn = type === 'remote'
+      ? (child) => (child.metrics?.remoteCount || 0) > 0
+      : (child) => child.metrics?.attended === true;
+
+    const hierarchyWithAttendance = buildHierarchyWithMetricCounts(
+      teamHierarchy,
+      attendanceMap,
+      transformAttendanceFn,
+      attendedConditionFn
+    );
+
+    // Step 6b: Add co-coach partnership info if exists
+    const { data: managedTeam } = await supabase
+      .from('coach_teams_table')
+      .select('TeamId, CoachId, CoCoachId')
+      .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+      .eq('Status', 'active')
+      .maybeSingle();
+
+    if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+      const partnerId = managedTeam.CoachId === userIdNum
+        ? managedTeam.CoCoachId
+        : managedTeam.CoachId;
+
+      // Find co-coach in team hierarchy
+      const coCoachData = teamHierarchy.find(m => m.UserId === partnerId);
+      
+      if (coCoachData) {
+        // Remove co-coach from teamMembers array if present
+        const originalTeamMembers = hierarchyWithAttendance.teamMembers || [];
+        const filteredTeamMembers = originalTeamMembers.filter(m => m.userId !== partnerId);
+        hierarchyWithAttendance.teamMembers = filteredTeamMembers;
+
+        // Recalculate team counts after removing co-coach
+        const recalculateTeamCounts = (members, conditionFn) => {
+          const directTotal = members.length;
+          const directQualified = members.filter(conditionFn).length;
+          
+          let fullTotal = 0;
+          let fullQualified = 0;
+          const traverse = (node) => {
+            fullTotal++;
+            if (conditionFn(node)) fullQualified++;
+            if (node.teamMembers && node.teamMembers.length > 0) {
+              node.teamMembers.forEach(traverse);
+            }
+          };
+          members.forEach(traverse);
+          
+          return {
+            direct: { total: directTotal, qualified: directQualified },
+            full: { total: fullTotal, qualified: fullQualified }
+          };
+        };
+
+        const counts = recalculateTeamCounts(filteredTeamMembers, attendedConditionFn);
+        
+        hierarchyWithAttendance.directTeamCount = {
+          total: counts.direct.total,
+          qualified: counts.direct.qualified,
+          totalClubs: hierarchyWithAttendance.directTeamCount?.totalClubs || 0,
+        };
+        
+        hierarchyWithAttendance.fullTeamCount = {
+          total: counts.full.total,
+          qualified: counts.full.qualified,
+          totalClubs: hierarchyWithAttendance.fullTeamCount?.totalClubs || 0,
+        };
+
+        const coCoachAttendance = attendanceMap.get(partnerId);
+        const coCoachMetrics = transformAttendanceFn(partnerId, attendanceMap, coCoachAttendance);
+
+        // Build co-coach info object with same structure as coach
+        hierarchyWithAttendance.coCoachInfo = {
+          userId: coCoachData.UserId,
+          userName: coCoachData.UserName,
+          email: coCoachData.Email,
+          role: coCoachData.Role,
+          coachId: coCoachData.CoachId,
+          coCoachId: coCoachData.CoCoachId,
+          coachName: coCoachData.CoachName,
+          coCoachName: coCoachData.CoCoachName,
+          profileImage: coCoachData.ProfileImage || null,
+          photoURL: coCoachData.ProfileImage || null,
+          isCoCoach: true,
+          hierarchyLevel: 0,
+          metrics: coCoachMetrics,
+          directTeamCount: hierarchyWithAttendance.directTeamCount,
+          fullTeamCount: hierarchyWithAttendance.fullTeamCount,
+          teamMembers: [],
+        };
+
+        console.log(`👥 [hierarchical-club-attendance] Added co-coach partnership info for ${coCoachData.UserName}`);
+        console.log(`📊 [hierarchical-club-attendance] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
+      }
+    }
+
+    // Step 7: Calculate statistics using reusable utility function
+    const stats = calculateHierarchyStats(
+      hierarchyWithAttendance,
+      (root) => root.metrics?.attended === true
+    );
+    const totalTeamMembers = stats.totalMembers;
+    const totalAttendees = stats.qualifiedMembers; // qualified = attended in this context
+    const attendanceRate = stats.qualificationRate; // qualificationRate = attendanceRate in this context
+
+    // Count by hierarchy level
+    const directTeamMembers = teamHierarchy.filter(m => m.HierarchyLevel === 1);
+    const directTeamAttendees = directTeamMembers.filter(m => attendanceMap.has(m.UserId)).length;
+
+    console.log('✅ [hierarchical-club-attendance] Generated hierarchical report:', {
+      date: targetDate,
+      clubFilter: clubIdNum || 'All clubs',
+      totalTeamMembers,
+      totalAttendees,
+      attendanceRate: attendanceRate + '%',
+      directTeamMembers: directTeamMembers.length,
+      directTeamAttendees,
+      externalAttendees: externalAttendees.length,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        hierarchy: hierarchyWithAttendance,
+        date: targetDate,
+        selectedClubId: clubIdNum,
+        ownedClubs: ownedClubs.map(c => ({
+          id: c.id,
+          name: c.center_name,
+        })),
+        stats: {
+          totalTeamMembers,
+          totalAttendees,
+          attendanceRate,
+          directTeamMembers: directTeamMembers.length,
+          directTeamAttendees,
+          totalClubsVisited: attendedClubIds.length,
+          externalAttendees: externalAttendees.length,
+        },
+        clubs: Object.values(clubsMap),
+        externalAttendees,
+      },
+    });
+
+  } catch (error) {
+    console.error('❌ [hierarchical-club-attendance] Error:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+}

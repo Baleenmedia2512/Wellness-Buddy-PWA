@@ -16,6 +16,9 @@ import android.graphics.Bitmap;
 import com.getcapacitor.BridgeActivity;
 import com.wellnessvalley.app.plugins.GalleryMonitorPlugin;
 import com.wellnessvalley.app.plugins.InAppUpdatePlugin;
+import com.wellnessvalley.app.plugins.ReminderPlugin;
+import com.wellnessvalley.app.plugins.ScreenTimePlugin;
+import com.wellnessvalley.app.plugins.StepCounterPlugin;
 import com.wellnessvalley.app.plugins.WhatsAppSharePlugin;
 import androidx.core.splashscreen.SplashScreen;
 
@@ -32,9 +35,18 @@ public class MainActivity extends BridgeActivity {
         
         // ✅ Register InAppUpdatePlugin for Play Store updates
         registerPlugin(InAppUpdatePlugin.class);
+
+        // ✅ Register StepCounterPlugin for in-app step tracking
+        registerPlugin(StepCounterPlugin.class);
         
         // ✅ Register WhatsAppSharePlugin for high-quality image sharing
         registerPlugin(WhatsAppSharePlugin.class);
+        
+        // ✅ Register ScreenTimePlugin for device screen time tracking
+        registerPlugin(ScreenTimePlugin.class);
+
+        // ✅ Register ReminderPlugin for daily activity reminders (AlarmManager)
+        registerPlugin(ReminderPlugin.class);
         
         // ✅ ANDROID PERFORMANCE: Enable hardware acceleration for faster image rendering
         getWindow().setFlags(
@@ -99,18 +111,11 @@ public class MainActivity extends BridgeActivity {
         // Request battery optimization exemption
         requestBatteryOptimizationExemption();
         
-        // ✅ Start background gallery monitor service
-        Intent serviceIntent = new Intent(this, com.wellnessvalley.app.services.GalleryMonitorService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent);
-        } else {
-            startService(serviceIntent);
-        }
-        android.util.Log.d("MainActivity", "✅ Gallery monitor service started");
+        // ✅ Background service enabled — will run silently without notifications
+        android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
         
-        // ✅ Schedule periodic heartbeat to ensure service stays alive
+        // Schedule heartbeat for service persistence
         com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
-        android.util.Log.d("MainActivity", "✅ Heartbeat worker scheduled - service will auto-restart if killed");
         
         // ✅ Check for app updates after app is fully initialized
         checkForAppUpdates();
@@ -256,7 +261,14 @@ public class MainActivity extends BridgeActivity {
                 permissions = new String[] {
                     android.Manifest.permission.READ_MEDIA_IMAGES,
                     android.Manifest.permission.CAMERA,
-                    android.Manifest.permission.POST_NOTIFICATIONS
+                    android.Manifest.permission.POST_NOTIFICATIONS,
+                    android.Manifest.permission.ACTIVITY_RECOGNITION
+                };
+            } else if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                permissions = new String[] {
+                    android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                    android.Manifest.permission.CAMERA,
+                    android.Manifest.permission.ACTIVITY_RECOGNITION
                 };
             } else {
                 permissions = new String[] {

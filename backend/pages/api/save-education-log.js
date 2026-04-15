@@ -1,6 +1,7 @@
-﻿import { getSupabaseClient, getISTTimestamp } from '../../utils/supabaseClient.js';
+﻿import { getSupabaseClient, getISTTimestamp, convertToIST } from '../../utils/supabaseClient.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 import { largeBodyConfig as config } from '../../utils/apiConfig.js';
+import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 
 export { config };
 
@@ -23,13 +24,19 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, deviceInfo, clientTimestamp, clientTimezoneOffset } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName, imageTimestamp } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
     topic, 
     confidence,
-    hasImageBase64: !!imageBase64
+    participantCount,
+    hasImageBase64: !!imageBase64,
+    attendanceType,
+    hasLocation: !!(latitude && longitude),
+    nutritionCenterId,
+    centerName,
+    imageTimestamp: imageTimestamp || 'NOT PROVIDED (will use server time)'
   });
 
   // Validation
@@ -51,25 +58,44 @@ export default async function handler(req, res) {
 
     console.log('💾 [save-education-log] Inserting into Supabase...');
     
-    // Insert into education_logs_table using Supabase
-    // Store everything in IST (Indian Standard Time)
-    const currentTime = getISTTimestamp();
+    // Get education time window and check if current time is within it
+    const timeWindows = await getTimeWindows();
+    const educationWindow = timeWindows.education || { start: '05:00:00', end: '23:59:00' };
     
-    // 🔍 DEBUG: Log education upload details with client time comparison
-    const clientLocalTime = clientTimestamp ? new Date(clientTimestamp) : null;
-    console.log('📚 Education Upload:', {
-      userId,
-      platform,
-      topic,
-      clientUploaded: clientTimestamp || 'Not provided',
-      clientLocalTime: clientLocalTime ? clientLocalTime.toLocaleString('en-US', { hour12: true }) : 'N/A',
-      clientTimezoneOffset,
-      serverUTC: new Date().toISOString(),
-      storedIST: currentTime,
-      timeDifference: clientTimestamp ? `${Math.round((new Date() - clientLocalTime) / 1000)}s` : 'N/A',
-      note: 'Compare client upload time vs stored IST'
+    // Convert timestamp to IST (whether from EXIF or server time)
+    let logTimestampIST, logTimeOnlyIST, deviceTime;
+    
+    if (imageTimestamp) {
+      // User provided EXIF timestamp (could be from any timezone)
+      const istConversion = convertToIST(imageTimestamp);
+      logTimestampIST = istConversion.istTimestamp;
+      logTimeOnlyIST = istConversion.istTimeOnly;
+      deviceTime = istConversion.originalDeviceTime;
+      
+      console.log('📸 Using EXIF timestamp from user device');
+    } else {
+      // No EXIF - use server time (already in IST)
+      logTimestampIST = getISTTimestamp();
+      // Extract time directly from the already-formatted IST string "YYYY-MM-DD HH:MM:SS.mmm"
+      // Avoids new Date(string).toTimeString() which is server-timezone-dependent
+      logTimeOnlyIST = logTimestampIST.substring(11, 19);
+      deviceTime = null;
+      
+      console.log('🖥️ Using server timestamp (no EXIF available)');
+    }
+    
+    // Validate against education time window (in IST)
+    const isOnTime = logTimeOnlyIST >= educationWindow.start && logTimeOnlyIST <= educationWindow.end;
+    
+    console.log('⏰ [save-education-log] Time check:', {
+      deviceTime: deviceTime || 'N/A',
+      istTimestamp: logTimestampIST,
+      istTime: logTimeOnlyIST,
+      educationWindow: educationWindow,
+      isOnTime: isOnTime ? '✅ ON-TIME' : '⚠️ LATE',
+      note: 'All times validated and stored in IST'
     });
-    
+
     const { data, error } = await supabase
       .from('education_logs_table')
       .insert({
@@ -79,8 +105,15 @@ export default async function handler(req, res) {
         Confidence: confidence || null,
         DeviceInfo: deviceInfo || null,
         ImageBase64: imageBase64ToSave,
-        CreatedAt: currentTime,
-        UpdatedAt: currentTime
+        latitude: latitude || null,
+        longitude: longitude || null,
+        attendance_type: attendanceType || null,
+        nutrition_center_id: nutritionCenterId || null,
+        participant_count: participantCount || null,
+        center_name: centerName || null,
+        IsDeleted: false,
+        CreatedAt: logTimestampIST, // Always stored in IST
+        UpdatedAt: logTimestampIST
       })
       .select()
       .single();
@@ -91,9 +124,23 @@ export default async function handler(req, res) {
       throw error;
     }
     
-    console.log('✅ [save-education-log] Successfully saved, ID:', data?.ID);
-    
     console.log('✅ [save-education-log] Successfully saved, ID:', data?.Id || data?.id || data?.ID);
+    
+    // Update LastActiveAt in team_table to track user activity
+    try {
+      const { error: activityUpdateError } = await supabase
+        .from('team_table')
+        .update({ LastActiveAt: getISTTimestamp() })
+        .eq('UserId', userId);
+      
+      if (activityUpdateError) {
+        console.warn('⚠️ [save-education-log] Failed to update LastActiveAt:', activityUpdateError);
+      } else {
+        console.log('✅ [save-education-log] Updated LastActiveAt for user:', userId);
+      }
+    } catch (err) {
+      console.warn('⚠️ [save-education-log] Error updating LastActiveAt:', err);
+    }
     
     // Clear education summary cache for this user
     cache.delete(cacheKeys.educationSummary(userId));
@@ -103,7 +150,15 @@ export default async function handler(req, res) {
     res.status(200).json({
       success: true,
       message: 'Education log saved successfully',
-      id: data?.Id || data?.id || data?.ID
+      id: data?.Id || data?.id || data?.ID,
+      attendanceType: attendanceType,
+      isOnTime: isOnTime,
+      timeWindow: educationWindow,
+      uploadTime: logTimeOnlyIST,
+      logTimestamp: logTimestampIST,
+      deviceTime: deviceTime,
+      timestampSource: imageTimestamp ? 'EXIF (converted to IST)' : 'server (IST)',
+      timezone: 'IST (UTC+5:30)'
     });
     return;
 

@@ -65,10 +65,14 @@ export default async function handler(req, res) {
       .eq('RequesterId', userId)
       .eq('Status', 'pending');
 
-    // Clear TeamId and UplineCoachId from team_table
+    // Clear coach-related fields from team_table
     await supabase
       .from('team_table')
-      .update({ TeamId: null, UplineCoachId: null })
+      .update({ 
+        TeamId: null, 
+        CoachId: null,
+        CoachTeamId: null,
+      })
       .eq('UserId', userId);
 
     res.status(200).json({

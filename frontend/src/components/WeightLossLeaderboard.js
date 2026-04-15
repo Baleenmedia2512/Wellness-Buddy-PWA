@@ -24,6 +24,7 @@ import { Trophy } from "lucide-react";
 const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [isVisible, setIsVisible] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
 
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
@@ -71,9 +72,36 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     }
   }, [apiBaseUrl, topN]);
 
-  // Expose refresh method to parent via ref
+  // Expose methods to parent via ref
   useImperativeHandle(ref, () => ({
-    refresh: fetchLeaderboard,
+    // refresh: re-fetches from server (retries after 4s for DB propagation)
+    refresh: () => {
+      fetchLeaderboard();
+      setTimeout(fetchLeaderboard, 4000);
+    },
+    // injectEntry: instantly show the current user's entry in the strip
+    // without waiting for any API call. The next refresh will replace with real data.
+    injectEntry: ({ userId, userName, email, weightLoss, profileImage, coachName }) => {
+      if (!weightLoss || weightLoss <= 0) return; // only show if weight was actually lost
+      setLeaderboardData((prev) => {
+        // Remove any existing entry for this user, then add new one at top
+        const filtered = prev.filter((u) => u.userId !== userId);
+        const injected = [{
+          userId,
+          userName: userName || "You",
+          email: email || "",
+          coachName: coachName || "",
+          profileImage: profileImage || null,
+          weightLoss: parseFloat(weightLoss.toFixed(2)),
+          rank: 1,
+          todayWeight: null,
+          yesterdayWeight: null,
+        }, ...filtered];
+        // Re-rank after injection
+        return injected.map((u, i) => ({ ...u, rank: i + 1 }));
+      });
+      setIsVisible(true);
+    },
   }));
 
   // Initial fetch
@@ -204,28 +232,41 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
     </div>
   );
 
-  // Marquee Animation - Show all users in continuous scroll
+  // Marquee Animation with manual scroll capability
   return (
-    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 overflow-hidden shadow-sm border-b border-green-100">
-      <div className="py-2 sm:py-2.5 px-3 sm:px-4 overflow-hidden">
+    <div className="w-full bg-gradient-to-r from-green-50 via-emerald-50 to-green-50 shadow-sm">
+      <div className="py-2 sm:py-2.5 px-3 sm:px-4">
         {/* Title */}
-        <div className="text-center mb-1.5">
-          <span className="text-xs sm:text-sm font-semibold text-green-700">
-            🏅 Weight Loss Marathon (Today vs Yesterday)
+        <div className="flex items-center justify-between mb-1.5">
+          {/* <span className="text-xs sm:text-sm font-semibold text-green-700">
+            🏅 Weight Loss Marathon
+          </span> */}
+          <span className="text-[10px] sm:text-xs text-green-600">
+            (Today vs Yesterday)
           </span>
         </div>
-        
+
         <div
-          className="animate-smooth-marquee whitespace-nowrap inline-flex"
-          style={{
-            animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
-          }}
+          className="overflow-x-auto overflow-y-hidden scrollbar-hide cursor-pointer"
+          onClick={() => setIsPaused(!isPaused)}
         >
-          {/* First set of items */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `first-${user.userId}`))}
-          
-          {/* Duplicate set for seamless loop */}
-          {leaderboardData.map((user) => renderLeaderboardCard(user, `second-${user.userId}`))}
+          <div
+            className="animate-smooth-marquee whitespace-nowrap inline-flex"
+            style={{
+              animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+              animationPlayState: isPaused ? "paused" : "running",
+            }}
+          >
+            {/* First set of items */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `first-${user.userId}`),
+            )}
+
+            {/* Duplicate set for seamless loop */}
+            {leaderboardData.map((user) =>
+              renderLeaderboardCard(user, `second-${user.userId}`),
+            )}
+          </div>
         </div>
       </div>
     </div>

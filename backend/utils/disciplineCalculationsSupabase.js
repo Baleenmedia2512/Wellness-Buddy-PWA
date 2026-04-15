@@ -7,6 +7,24 @@ import { getSupabaseClient } from './supabaseClient.js';
 import { normalizeTimestamp } from './timestampUtils.js';
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
 import { convertISTToUserLocalTime } from './timezoneConverter.js';
+import { isExemptedBeverageOnly, isExemptedFood } from './foodTypeDetection.js';
+
+// Default required water when no weight is recorded (2.5 L)
+const DEFAULT_WATER_REQUIRED_ML = 2500;
+
+// ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
+// Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
+// const WINDOW_BUFFER_SECONDS = 300;
+const WINDOW_BUFFER_SECONDS = 59;
+// Helper: Add buffer seconds to a time string "HH:MM:SS"
+const addBufferToTime = (t) => {
+  const [h, m, s] = t.split(':').map(Number);
+  const totalSecs = h * 3600 + m * 60 + s + WINDOW_BUFFER_SECONDS;
+  const nh = Math.floor(totalSecs / 3600) % 24;
+  const nm = Math.floor((totalSecs % 3600) / 60);
+  const ns = totalSecs % 60;
+  return `${String(nh).padStart(2,'0')}:${String(nm).padStart(2,'0')}:${String(ns).padStart(2,'0')}`;
+};
 
 /**
  * Get team hierarchy using Supabase REST API
@@ -20,9 +38,9 @@ export async function getTeamHierarchy(coachId) {
   // Get the logged-in coach first
   const { data: coach, error: coachError } = await supabase
     .from('team_table')
-    .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
+    .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
     .eq('"UserId"', coachId)
-    .eq('"Status"', 'active')
+    .eq('"Status"', 'Active')
     .maybeSingle();
   
   if (coachError) {
@@ -38,8 +56,7 @@ export async function getTeamHierarchy(coachId) {
   const allMembers = [{
     ...coach,
     HierarchyLevel: 0,
-    IsLoggedInCoach: true,
-    UplineCoachName: null
+    IsLoggedInCoach: true
   }];
   
   // Recursive function to get team members at each level
@@ -50,9 +67,9 @@ export async function getTeamHierarchy(coachId) {
     
     const { data: members, error } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "UplineCoachId"')
-      .in('"UplineCoachId"', parentIds)
-      .eq('"Status"', 'active');
+      .select('"UserId", "UserName", "Email", "Role", "EntryDateTime", "CoachId"')
+      .in('"CoachId"', parentIds)
+      .eq('"Status"', 'Active');
     
     if (error) {
       console.error(`❌ Error fetching level ${level} members:`, error);
@@ -72,7 +89,7 @@ export async function getTeamHierarchy(coachId) {
     
     // Get next level (coaches' teams)
     const coachIds = members
-      .filter(m => m.Role === 'coach')
+      .filter(m => m.Role === 'coach' || m.Role === 'admin' || m.Role === 'developer')
       .map(m => m.UserId);
     
     const nextLevelMembers = await getTeamAtLevel(coachIds, level + 1, maxLevel);
@@ -83,30 +100,6 @@ export async function getTeamHierarchy(coachId) {
   // Get all team members recursively
   const teamMembers = await getTeamAtLevel([coachId], 1);
   allMembers.push(...teamMembers);
-  
-  // Fetch upline coach names for all members
-  const uplineCoachIds = [...new Set(allMembers.map(m => m.UplineCoachId).filter(Boolean))];
-  
-  if (uplineCoachIds.length > 0) {
-    const { data: coaches } = await supabase
-      .from('team_table')
-      .select('"UserId", "UserName"')
-      .in('"UserId"', uplineCoachIds);
-    
-    const coachNameMap = {};
-    if (coaches) {
-      coaches.forEach(c => {
-        coachNameMap[c.UserId] = c.UserName;
-      });
-    }
-    
-    // Add upline coach names
-    allMembers.forEach(m => {
-      if (m.UplineCoachId) {
-        m.UplineCoachName = coachNameMap[m.UplineCoachId] || null;
-      }
-    });
-  }
   
   // Deduplicate by UserId (keep lowest hierarchy level)
   const uniqueMembers = [];
@@ -176,7 +169,7 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   const endDateStr = formatDateForMySQL(endDate);
   const daysInPeriod = getDaysBetween(startDate, endDate);
   
-  // Get weight records
+  // Get weight records (discipline check: logged weight today)
   const { data: weightRecords } = await supabase
     .from('weight_records_table')
     .select('"CreatedAt"')
@@ -184,6 +177,27 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .eq('"IsDeleted"', false)
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+
+  // Get user's latest body weight AND BMR from ANY date (no date restriction)
+  // Uses most recent weight ever recorded — no need to upload weight today
+  // Falls back to DEFAULT_WATER_REQUIRED_ML (2500ml) ONLY if zero weight records exist
+  const { data: latestWeightRows } = await supabase
+    .from('weight_records_table')
+    .select('UserId, Weight, Bmr')
+    .eq('UserId', userId)
+    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+    .order('CreatedAt', { ascending: false })
+    .limit(1);
+  const latestBodyWeight = latestWeightRows && latestWeightRows.length > 0
+    ? parseFloat(latestWeightRows[0].Weight)
+    : null;
+  const requiredWaterMl = (latestBodyWeight && latestBodyWeight > 0)
+    ? Math.round((latestBodyWeight / 20) * 1000)
+    : DEFAULT_WATER_REQUIRED_ML;
+  // BMR (calorie target) for calories-discipline check. null means no target set — fall back to any-steps logic.
+  const userBmrTarget = latestWeightRows && latestWeightRows.length > 0
+    ? parseFloat(latestWeightRows[0].Bmr) || null
+    : null;
   
   // Get education logs
   const { data: educationLogs } = await supabase
@@ -194,12 +208,36 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
   
-  // Get nutrition data
-  const { data: nutritionRecords } = await supabase
+  // Get nutrition data (include AnalysisData to filter out beverage-only entries, TotalCalories for calorie discipline)
+  const { data: nutritionRecordsRaw } = await supabase
     .from('food_nutrition_data_table')
-    .select('"CreatedAt"')
+    .select('"CreatedAt", "AnalysisData", "TotalCalories"')
     .eq('"UserID"', String(userId))
     .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh etc.)
+  const nutritionRecords = (nutritionRecordsRaw || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData));
+
+  // Get water intake records (food entries that are ONLY water/exempted beverages — opposite filter)
+  const waterRecords = (nutritionRecordsRaw || []).filter(r => isExemptedBeverageOnly(r.AnalysisData));
+
+  // Get calories burned records (daily step activity - any day with a step entry counts)
+  const { data: stepRecords } = await supabase
+    .from('daily_step_activity')
+    .select('"CreatedAt", "Steps", "CaloriesBurned"')
+    .eq('"UserId"', userId)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+
+  // Get watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
+  const { data: watchBurnRecords } = await supabase
+    .from('education_logs_table')
+    .select('"Topic", "CreatedAt"')
+    .eq('"UserId"', userId)
+    .ilike('"Topic"', 'Calories Burned:%')
+    .or('"IsDeleted".is.null,"IsDeleted".eq.0')
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
   
@@ -219,9 +257,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       time = timeMatch[1];
     }
     
-    if (!time) return falselse;
-    const time = timeMatch[1];
-    return time >= window.start && time <= window.end;
+    if (!time) return false;
+    // ✅ BUFFER FIX: Add 59-second buffer to window.end so uploads at e.g. 08:30:51 are counted on-time
+    return time >= window.start && time <= addBufferToTime(window.end);
   };
   
   // Helper to get unique dates with on-time posts
@@ -240,22 +278,9 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
       }
     });
     
-    return {Convert IST to user's local time before categorizing
-  const getMealType = (createdAt) => {
-    if (!createdAt) return null;
-    
-    let time;
-    if (userTimezoneOffset !== null) {
-      // Convert IST to user's local time
-      time = convertISTToUserLocalTime(createdAt, userTimezoneOffset);
-    } else {
-      // Fallback: Extract time directly from timestamp string
-      const timeMatch = String(createdAt).match(/(\d{2}:\d{2}:\d{2})/);
-      if (!timeMatch) return null;
-      time = timeMatch[1];
-    }
-    
-    if (!time) return nulll by time
+    return { totalDays: uniqueDates.size, onTimeDays: onTimeDates.size };
+  };
+
   // ✅ TIMEZONE FIX: Extract time directly from timestamp string
   const getMealType = (createdAt) => {
     if (!createdAt) return null;
@@ -267,10 +292,11 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     const breakfast = timeWindows.breakfast || { start: '05:30:00', end: '08:30:00' };
     const lunch = timeWindows.lunch || { start: '12:00:00', end: '16:00:00' };
     const dinner = timeWindows.dinner || { start: '17:30:00', end: '20:30:00' };
-    
-    if (time >= breakfast.start && time <= breakfast.end) return 'breakfast';
-    if (time >= lunch.start && time <= lunch.end) return 'lunch';
-    if (time >= dinner.start && time <= dinner.end) return 'dinner';
+
+    // ✅ BUFFER FIX: Add 59-second buffer to meal end times
+    if (time >= breakfast.start && time <= addBufferToTime(breakfast.end)) return 'breakfast';
+    if (time >= lunch.start && time <= addBufferToTime(lunch.end)) return 'lunch';
+    if (time >= dinner.start && time <= addBufferToTime(dinner.end)) return 'dinner';
     return null;
   };
   
@@ -307,7 +333,102 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     mealStats.lunch = { totalDays: mealDates.lunch.size, onTimeDays: mealDates.lunch.size };
     mealStats.dinner = { totalDays: mealDates.dinner.size, onTimeDays: mealDates.dinner.size };
   }
-  
+
+  // Calculate water intake discipline (quantity-based: total volume_ml must meet requiredWaterMl)
+  // requiredWaterMl = (latestBodyWeightKg / 20) * 1000 — uses most recent weight from ANY date
+  // Falls back to 2500ml ONLY if user has never logged a weight at all
+  const waterDates = new Set();
+  // Group water volume by date
+  const waterVolumeByDate = {};
+  (waterRecords || []).forEach(r => {
+    const normalizedDate = normalizeTimestamp(r.CreatedAt);
+    const date = normalizedDate.split('T')[0];
+    if (!waterVolumeByDate[date]) waterVolumeByDate[date] = 0;
+    try {
+      const analysisData = typeof r.AnalysisData === 'string'
+        ? JSON.parse(r.AnalysisData)
+        : r.AnalysisData;
+      (analysisData?.foods || []).forEach(food => {
+        if (isExemptedFood(food.name)) {
+          // Prefer volume_ml, fall back to weight_g (water 1g ≈ 1ml), then estimatedWeight
+          const ml = parseFloat(food.volume_ml) || parseFloat(food.weight_g) || parseFloat(food.estimatedWeight) || 0;
+          waterVolumeByDate[date] += ml;
+        }
+      });
+    } catch (e) { /* skip malformed records */ }
+  });
+  // A day counts only if total water ml >= required
+  Object.entries(waterVolumeByDate).forEach(([date, totalMl]) => {
+    if (totalMl >= requiredWaterMl) waterDates.add(date);
+  });
+  const waterStats = { totalDays: waterDates.size, onTimeDays: waterDates.size };
+
+  // Calculate calories discipline:
+  // User MUST have a BMR target set to earn calorie discipline points.
+  // Net calories = calories consumed (meals) - calories burned (steps/activity)
+  // A day is disciplined ONLY IF net calories <= BMR target.
+  // If no BMR is set, calorie discipline = 0 (user must set BMR in their profile).
+  const caloriesBurnedDates = new Set();
+
+  if (userBmrTarget && userBmrTarget > 0) {
+    // Sum calories consumed per date from non-beverage nutrition records
+    const caloriesConsumedByDate = {};
+    (nutritionRecords || []).forEach(r => {
+      const normalizedDate = normalizeTimestamp(r.CreatedAt);
+      const date = normalizedDate.split('T')[0];
+      const cal = parseFloat(r.TotalCalories) || 0;
+      caloriesConsumedByDate[date] = (caloriesConsumedByDate[date] || 0) + cal;
+    });
+
+    // Sum calories burned per date from step activity records
+    const caloriesBurnedByDate = {};
+    (stepRecords || []).forEach(r => {
+      const rawBurned = parseFloat(r.CaloriesBurned) || 0;
+      // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
+      // as positive burns — a negative value means real activity was recorded, just stored inverted.
+      const burned = Math.abs(rawBurned);
+      if ((r.Steps || 0) > 0 || burned > 0) {
+        const normalizedDate = normalizeTimestamp(r.CreatedAt);
+        const date = normalizedDate.split('T')[0];
+        // Keep the highest burn value recorded for the day (daily_step_activity stores cumulative totals)
+        if ((caloriesBurnedByDate[date] || 0) < burned) {
+          caloriesBurnedByDate[date] = burned;
+        }
+      }
+    });
+
+    // Also add watch-burned calories from education_logs_table
+    // Topic format: "Calories Burned: 2000 kcal" — use latest entry per day
+    (watchBurnRecords || []).forEach(r => {
+      const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+      if (!match) return;
+      const kcal = parseFloat(match[1]) || 0;
+      if (kcal <= 0) return;
+      const normalizedDate = normalizeTimestamp(r.CreatedAt);
+      const date = normalizedDate.split('T')[0];
+      // ADD watch calories on top of step calories for the day
+      caloriesBurnedByDate[date] = (caloriesBurnedByDate[date] || 0) + kcal;
+    });
+
+    // A day is disciplined if net calories (consumed - burned) <= BMR target
+    const allActivityDates = new Set([
+      ...Object.keys(caloriesConsumedByDate),
+      ...Object.keys(caloriesBurnedByDate),
+    ]);
+    allActivityDates.forEach(date => {
+      const consumed = caloriesConsumedByDate[date] || 0;
+      const burned   = caloriesBurnedByDate[date]   || 0;
+      const netCalories = consumed - burned;
+      // Disciplined: net calories at or below the target (also counts days where consumed <= target with no burns)
+      if (netCalories <= userBmrTarget) {
+        caloriesBurnedDates.add(date);
+      }
+    });
+  }
+  // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
+
+  const caloriesBurnedStats = { totalDays: caloriesBurnedDates.size, onTimeDays: caloriesBurnedDates.size };
+
   return {
     weight: {
       totalPosts: weightStats.totalDays,
@@ -332,6 +453,16 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     dinner: {
       totalPosts: mealStats.dinner.totalDays,
       onTimePosts: mealStats.dinner.onTimeDays,
+      expectedPosts: daysInPeriod
+    },
+    water: {
+      totalPosts: waterStats.totalDays,
+      onTimePosts: waterStats.onTimeDays,
+      expectedPosts: daysInPeriod
+    },
+    caloriesBurned: {
+      totalPosts: caloriesBurnedStats.totalDays,
+      onTimePosts: caloriesBurnedStats.onTimeDays,
       expectedPosts: daysInPeriod
     }
   };
@@ -371,3 +502,309 @@ export async function calculateTeamDisciplineSupabase(memberIds, startDate, endD
   
   return results;
 }
+
+/**
+ * Calculate attendance metrics for a member
+ * @param {number} userId - User ID
+ * @param {Date} startDate - Start date
+ * @param {Date} endDate - End date
+ * @returns {Object} Attendance metrics
+ */
+export async function calculateAttendanceMetrics(userId, startDate, endDate) {
+  const supabase = getSupabaseClient();
+  const startDateStr = formatDateForMySQL(startDate);
+  const endDateStr = formatDateForMySQL(endDate);
+  const daysInPeriod = getDaysBetween(startDate, endDate);
+  
+  // Get club attendance count
+  const { data: clubLogs, error: clubError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'club')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const clubCount = clubError ? 0 : (clubLogs || 0);
+  
+  // Get remote attendance count
+  const { data: remoteLogs, error: remoteError } = await supabase
+    .from('education_logs_table')
+    .select('id', { count: 'exact', head: true })
+    .eq('"UserId"', userId)
+    .eq('attendance_type', 'remote')
+    .eq('"IsDeleted"', false)
+    .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
+    .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
+  
+  const remoteCount = remoteError ? 0 : (remoteLogs || 0);
+  
+  // Calculate attendance percentage (club sessions / days in period)
+  const attendancePercentage = daysInPeriod > 0 
+    ? Math.round((clubCount / daysInPeriod) * 100) 
+    : 0;
+  
+  return {
+    clubAttendance: clubCount,
+    remoteAttendance: remoteCount,
+    totalEducation: clubCount + remoteCount,
+    attendancePercentage,
+    daysInPeriod,
+  };
+}
+
+/**
+ * Get team hierarchy using DUAL COACHING MODEL (CoachId + CoCoachId)
+ * This function properly tracks the hierarchy path to ensure correct parent-child relationships
+ * when members can report to two coaches simultaneously.
+ * 
+ * @param {number} userId - User ID (coach, admin, or any member)
+ * @param {boolean} enableLogging - Enable detailed console logging for debugging (default: false)
+ * @returns {Promise<Array>} Array of team members with hierarchy info including:
+ *   - All fields from team_table
+ *   - HierarchyLevel: number (0 = logged in user, 1 = direct, 2+ = nested)
+ *   - IsLoggedInCoach: boolean (true only for the querying user)
+ *   - HierarchyParent: UserId of parent in THIS specific hierarchy path
+ */
+export async function getDualCoachingTeamHierarchy(userId, enableLogging = false) {
+  const supabase = getSupabaseClient();
+  const userIdNum = parseInt(userId);
+
+  // Step 1: Get the logged-in user
+  const { data: user, error: userError } = await supabase
+    .from('team_table')
+    .select('*')
+    .eq('UserId', userIdNum)
+    .eq('Status', 'Active')
+    .maybeSingle();
+
+  if (userError) {
+    console.error('❌ [getDualCoachingTeamHierarchy] Error fetching user:', userError);
+    throw userError;
+  }
+
+  if (!user) {
+    if (enableLogging) {
+      console.log('⚠️ [getDualCoachingTeamHierarchy] User not found:', userIdNum);
+    }
+    return [];
+  }
+
+  // Step 2: Check if user has a co-coach (team partner with same TeamId)
+  // If yes, both coaches should be treated as level 0 for their shared downline
+  let coachPartnerIds = [userIdNum]; // Start with just this user
+  
+  if (user.TeamId) {
+    const { data: coachTeam, error: coachTeamError } = await supabase
+      .from('coach_teams_table')
+      .select('CoachId, CoCoachId')
+      .eq('TeamId', user.TeamId)
+      .eq('Status', 'active')
+      .maybeSingle();
+    
+    if (!coachTeamError && coachTeam) {
+      // Add both coaches to the starting level
+      if (coachTeam.CoachId && coachTeam.CoCoachId) {
+        coachPartnerIds = [coachTeam.CoachId, coachTeam.CoCoachId];
+        
+        if (enableLogging) {
+          console.log(`👥 [getDualCoachingTeamHierarchy] Co-coaching team detected:`, {
+            TeamId: user.TeamId,
+            CoachIds: coachPartnerIds
+          });
+        }
+      }
+    }
+  }
+
+  // Step 3: Fetch all team members recursively using DUAL COACHING MODEL
+  // Support both CoachId and CoCoachId - members can report to 2 coaches
+  const allMembers = [];
+  const processedUserIds = new Map(); // Track unique users
+
+  // Add user as level 0
+  const userEntry = {
+    ...user,
+    HierarchyLevel: 0,
+    IsLoggedInCoach: true,
+    HierarchyParent: null,
+  };
+  allMembers.push(userEntry);
+  processedUserIds.set(user.UserId, user);
+
+  // Add co-coach partner as a special node (highlighted in UI)
+  if (coachPartnerIds.length > 1) {
+    const partnerId = coachPartnerIds.find(id => id !== userIdNum);
+    if (partnerId) {
+      const { data: partner } = await supabase
+        .from('team_table')
+        .select('*')
+        .eq('UserId', partnerId)
+        .eq('Status', 'Active')
+        .maybeSingle();
+
+      if (partner) {
+        const partnerEntry = {
+          ...partner,
+          HierarchyLevel: 1,
+          IsLoggedInCoach: false,
+          IsCoCoach: true,
+          HierarchyParent: userIdNum,
+        };
+        allMembers.push(partnerEntry);
+        processedUserIds.set(partnerId, partner);
+      }
+    }
+  }
+
+  // Iteratively fetch team members level by level
+  // Start with all co-coach partners (for shared downline)
+  let currentLevelCoachIds = coachPartnerIds;
+  let currentLevel = 1;
+  const maxLevel = 10;
+
+  while (currentLevelCoachIds.length > 0 && currentLevel <= maxLevel) {
+    // Fetch members where CoachId matches current level coaches
+    // NOTE: We query ONLY by CoachId (not CoCoachId) because coachPartnerIds already includes both coaches
+    const { data: levelMembers, error: levelError } = await supabase
+      .from('team_table')
+      .select('*')
+      .in('CoachId', currentLevelCoachIds)
+      .eq('Status', 'Active');
+
+    if (enableLogging) {
+      console.log(`📊 [getDualCoachingTeamHierarchy] Level ${currentLevel} query:`, {
+        searchingUnder: currentLevelCoachIds,
+        foundMembers: levelMembers?.length || 0,
+        memberNames: levelMembers?.map(m => m.UserName) || []
+      });
+    }
+
+    if (levelError) {
+      console.error('❌ [getDualCoachingTeamHierarchy] Error fetching level members:', levelError);
+      break;
+    }
+
+    if (!levelMembers || levelMembers.length === 0) break;
+
+    const nextLevelCoachIds = [];
+
+    for (const member of levelMembers) {
+      // Store unique member
+      if (!processedUserIds.has(member.UserId)) {
+        // Determine which coach this member reports to in THIS hierarchy path
+        let hierarchyParent = member.CoachId; // Always use CoachId as the parent
+
+        // If member's CoachId is co-coach partner, reparent under root
+        // so all direct members appear flat under the logged-in coach
+        if (coachPartnerIds.length > 1 && currentLevel === 1) {
+          const partnerId = coachPartnerIds.find(id => id !== userIdNum);
+          if (hierarchyParent === partnerId) {
+            hierarchyParent = userIdNum;
+          }
+        }
+        
+        if (enableLogging) {
+          console.log(`  ↳ ${member.UserName} (ID:${member.UserId}) → Parent: ${hierarchyParent} [CoachId:${member.CoachId}]`);
+        }
+        
+        processedUserIds.set(member.UserId, member);
+        allMembers.push({
+          ...member,
+          HierarchyLevel: currentLevel,
+          IsLoggedInCoach: false,
+          HierarchyParent: hierarchyParent, // Track actual parent in THIS hierarchy
+        });
+
+        // Add ALL members to next level check (not just coaches)
+        // This ensures we fetch team members even if the parent's Role isn't 'coach'
+        nextLevelCoachIds.push(member.UserId);
+      }
+    }
+
+    currentLevelCoachIds = nextLevelCoachIds;
+    currentLevel++;
+  }
+
+  // Step 4: Derive CoCoachId for all members from coach_teams_table (not team_table)
+  // Bulk-fetch all coach_teams entries, then map each member's CoCoachId
+  const allCoachTeamIds = [...new Set(allMembers.map(m => m.CoachTeamId).filter(Boolean))];
+  const coachTeamsMap = {};
+  
+  if (allCoachTeamIds.length > 0) {
+    const { data: coachTeams } = await supabase
+      .from('coach_teams_table')
+      .select('TeamId, CoachId, CoCoachId')
+      .in('TeamId', allCoachTeamIds)
+      .eq('Status', 'active');
+
+    if (coachTeams) {
+      coachTeams.forEach(ct => {
+        coachTeamsMap[ct.TeamId] = ct;
+      });
+    }
+  }
+
+  // Set DerivedCoCoachId on each member (replaces legacy team_table.CoCoachId)
+  for (const member of allMembers) {
+    const ct = member.CoachTeamId ? coachTeamsMap[member.CoachTeamId] : null;
+    if (ct) {
+      // CoCoachId = the OTHER coach in the team (not the member's own CoachId)
+      member.DerivedCoCoachId = ct.CoachId === member.CoachId ? ct.CoCoachId : ct.CoachId;
+    } else {
+      member.DerivedCoCoachId = null;
+    }
+    // Override legacy CoCoachId with derived value
+    member.CoCoachId = member.DerivedCoCoachId;
+  }
+
+  // Step 5: Derive CoachName for all members by looking up coach's UserName
+  const allCoachIds = [...new Set(allMembers.map(m => m.CoachId).filter(Boolean))];
+  const coachNameMap = {};
+  if (allCoachIds.length > 0) {
+    const { data: coachUsers } = await supabase
+      .from('team_table')
+      .select('UserId, UserName')
+      .in('UserId', allCoachIds);
+    if (coachUsers) {
+      coachUsers.forEach(c => { coachNameMap[c.UserId] = c.UserName; });
+    }
+  }
+
+  // Also lookup CoCoachName from derived CoCoachId
+  const allCoCoachIds = [...new Set(allMembers.map(m => m.CoCoachId).filter(Boolean))];
+  const coCoachNameMap = {};
+  if (allCoCoachIds.length > 0) {
+    const { data: coCoachUsers } = await supabase
+      .from('team_table')
+      .select('UserId, UserName')
+      .in('UserId', allCoCoachIds);
+    if (coCoachUsers) {
+      coCoachUsers.forEach(c => { coCoachNameMap[c.UserId] = c.UserName; });
+    }
+  }
+
+  for (const member of allMembers) {
+    member.CoachName = member.CoachId ? (coachNameMap[member.CoachId] || null) : null;
+    member.CoCoachName = member.CoCoachId ? (coCoachNameMap[member.CoCoachId] || null) : null;
+  }
+
+  if (enableLogging) {
+    console.log('🔍 [getDualCoachingTeamHierarchy] Team members found (dual-coaching model):', {
+      count: allMembers?.length || 0,
+      members: allMembers?.map(m => ({
+        id: m.UserId,
+        name: m.UserName,
+        level: m.HierarchyLevel,
+        parent: m.HierarchyParent,
+        role: m.Role,
+        coachId: m.CoachId,
+        coCoachId: m.DerivedCoCoachId,
+      })) || []
+    });
+  }
+
+  return allMembers;
+}
+

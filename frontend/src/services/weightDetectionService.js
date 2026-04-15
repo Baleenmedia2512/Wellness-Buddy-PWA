@@ -106,10 +106,18 @@ Examples:
       // Convert image to base64
       const imageBase64 = await this.fileToBase64(imageFile);
 
-      const prompt = `Extract scale readings. JSON only.
+      const prompt = `Extract scale readings from this weight scale display. Be EXTREMELY CAREFUL with digit recognition to avoid OCR errors.
+
+⚠️ COMMON OCR ERRORS TO AVOID:
+- DO NOT confuse 7 with 9 or 1
+- DO NOT confuse 6 with 8
+- DO NOT confuse 5 with 6 or 8
+- Verify each digit independently
+- Double-check the tens digit (most critical)
 
 LOOK FOR: Weight (required), BMI, Body Fat %, Muscle Mass, BMR
 
+Return JSON ONLY:
 {
   "weight": number,
   "unit": "kg"|"lbs",
@@ -118,13 +126,19 @@ LOOK FOR: Weight (required), BMI, Body Fat %, Muscle Mass, BMR
   "muscleMass": number|null,
   "bmr": number|null,
   "confidence": 0-1,
-  "detectedValues": ["weight", ...]
+  "detectedValues": ["weight", ...],
+  "digitConfidence": 0-1
 }
 
-Weight: 20-300 kg or 44-660 lbs
-BMI: 10-50, Body Fat: 5-60%
-Confidence: high=0.9+
-Null if not visible.`;
+VALIDATION RULES:
+- Weight: 20-300 kg or 44-660 lbs
+- BMI: 10-50, Body Fat: 5-60%
+- Confidence: Set 0.95+ ONLY if ALL digits are crystal clear
+- Set digitConfidence to 0.9+ only if you're certain about each digit
+- If display is blurry or digits unclear, set confidence < 0.7
+- Null if metric not visible
+
+ACCURACY IS CRITICAL - A single wrong digit can ruin user experience.`;
 
       const imagePart = {
         inlineData: {
@@ -159,6 +173,22 @@ Null if not visible.`;
         };
       }
 
+      // Check confidence threshold - reject low confidence readings
+      const overallConfidence = data.confidence || 0;
+      const digitConfidence = data.digitConfidence || data.confidence || 0;
+      
+      if (overallConfidence < 0.6 || digitConfidence < 0.65) {
+        return {
+          success: false,
+          weightValue: parseFloat(data.weight),
+          unit: data.unit || 'kg',
+          confidence: overallConfidence,
+          digitConfidence: digitConfidence,
+          error: 'Image quality too low for accurate reading. Please retake with better lighting and focus.',
+          lowConfidence: true
+        };
+      }
+
       // Validate weight range
       const validation = this.validateWeight(data.weight, data.unit || 'kg');
       if (!validation.valid) {
@@ -176,7 +206,8 @@ Null if not visible.`;
         success: true,
         weightValue: parseFloat(data.weight),
         unit: data.unit || 'kg',
-        confidence: data.confidence || 0.8,
+        confidence: overallConfidence,
+        digitConfidence: digitConfidence,
         bmi: data.bmi ? parseFloat(data.bmi) : null,
         bodyFat: data.bodyFat ? parseFloat(data.bodyFat) : null,
         muscleMass: data.muscleMass ? parseFloat(data.muscleMass) : null,
@@ -302,6 +333,86 @@ Null if not visible.`;
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  /**
+   * Validate detected weight against previous weight for realistic changes
+   * @param {number} detectedWeight - Weight detected by AI (in kg)
+   * @param {number} previousWeight - Previous weight from database (in kg)
+   * @param {string} previousWeightDate - Date of previous weight entry
+   * @returns {Object} Validation result with suggestions
+   */
+  validateWeightChange(detectedWeight, previousWeight, previousWeightDate) {
+    if (!previousWeight || isNaN(previousWeight)) {
+      return {
+        valid: true,
+        warning: false,
+        message: 'First weight entry - no previous data to compare'
+      };
+    }
+
+    const detected = parseFloat(detectedWeight);
+    const previous = parseFloat(previousWeight);
+    
+    // Calculate time since last entry
+    const previousDate = new Date(previousWeightDate);
+    const currentDate = new Date();
+    const hoursDifference = (currentDate - previousDate) / (1000 * 60 * 60);
+    const daysDifference = Math.floor(hoursDifference / 24);
+
+    const difference = detected - previous;
+    const absoluteDifference = Math.abs(difference);
+
+    // Time-aware maximum allowed change
+    let maxChange;
+    if (hoursDifference <= 24) {
+      maxChange = 1.5; // Within 24 hours
+    } else if (hoursDifference <= 48) {
+      maxChange = 2.5; // 1-2 days
+    } else if (hoursDifference <= 168) {
+      maxChange = 5.0; // Up to 7 days
+    } else {
+      maxChange = 10.0; // More than a week
+    }
+
+    // Check for large unrealistic changes
+    if (absoluteDifference > maxChange) {
+      const timeContext = hoursDifference <= 24 
+        ? 'in 24 hours' 
+        : `in ${daysDifference} day(s)`;
+      
+      return {
+        valid: false,
+        warning: true,
+        message: `⚠️ Detected weight change of ${absoluteDifference.toFixed(1)} kg ${timeContext} seems unrealistic (max: ${maxChange} kg).\n\nPossible issues:\n• AI may have misread the scale\n• Image quality might be poor\n• Wrong image uploaded\n\nPlease verify the scale shows ${detected} kg or retake the photo.`,
+        detectedWeight: detected,
+        previousWeight: previous,
+        difference: difference,
+        maxAllowed: maxChange,
+        daysSinceLastEntry: daysDifference
+      };
+    }
+
+    // Moderate change - show warning but allow
+    if (absoluteDifference > 1.0) {
+      return {
+        valid: true,
+        warning: true,
+        message: `Weight changed by ${Math.abs(difference).toFixed(1)} kg in ${daysDifference} day(s)`,
+        detectedWeight: detected,
+        previousWeight: previous,
+        difference: difference
+      };
+    }
+
+    return {
+      valid: true,
+      warning: false,
+      message: 'Weight change looks normal',
+      detectedWeight: detected,
+      previousWeight: previous,
+      difference: difference
+    };
   }
 
   /**

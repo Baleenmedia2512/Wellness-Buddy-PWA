@@ -70,7 +70,7 @@ export default async function handler(req, res) {
     // Get user's details from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from("team_table")
-      .select('"UserId", "TeamId", "UplineCoachId", "Role", "SetupSkipped"')
+      .select('"UserId", "TeamId", "CoachId", "Role", "SetupSkipped"')
       .eq('"Email"', email)
       .maybeSingle();
 
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
     const userId = user.UserId;
     const userRole = user.Role;
     const hasTeamId = !!user.TeamId;
-    const hasUpline = !!user.UplineCoachId;
+    const hasUpline = !!user.CoachId;
     const setupSkipped = user.SetupSkipped === true;
 
     // CHECK IF USER SKIPPED SETUP

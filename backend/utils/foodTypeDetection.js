@@ -180,10 +180,58 @@ function validateCorrectionByType(aiFood, savedCorrection) {
   };
 }
 
+/**
+ * List of beverage/drink keywords that should NOT count as a meal
+ * (breakfast, lunch, or dinner) when they are the ONLY items logged.
+ * If a record contains at least one non-exempted food, it still counts.
+ */
+const EXEMPTED_MEAL_FOODS = [
+  'water', 'coffee', 'tea', 'afresh', 'black tea', 'green tea',
+  'black coffee', 'herbal tea', 'lemon water', 'hot water',
+  'cold water', 'sparkling water', 'mineral water',
+];
+
+/**
+ * Check if a food name matches an exempted beverage
+ * @param {string} name - Food item name
+ * @returns {boolean}
+ */
+function isExemptedFood(name) {
+  if (!name) return false;
+  const n = name.toLowerCase().trim();
+  return EXEMPTED_MEAL_FOODS.some(exempt => n === exempt || n.includes(exempt));
+}
+
+/**
+ * Check if an AnalysisData record contains ONLY exempted beverages.
+ * If every food item in the record is an exempted drink, the record
+ * should not count as a meal (breakfast/lunch/dinner).
+ *
+ * @param {string|Object} analysisData - Raw JSON string or parsed object
+ * @returns {boolean} true if ALL items are exempted (should skip), false otherwise
+ */
+function isExemptedBeverageOnly(analysisData) {
+  try {
+    const parsed = typeof analysisData === 'string' ? JSON.parse(analysisData) : analysisData;
+    if (!parsed) return false;
+
+    // Unified format: { foods: [...] }
+    const foods = parsed.foods || parsed.detailedItems || [];
+    if (foods.length === 0) return false;
+
+    return foods.every(f => isExemptedFood(f.name));
+  } catch {
+    return false;
+  }
+}
+
 module.exports = {
   getFoodTypeByUnit,
   getFoodTypeByName,
   identifyFoodType,
   areTypesCompatible,
-  validateCorrectionByType
+  validateCorrectionByType,
+  isExemptedBeverageOnly,
+  isExemptedFood,
+  EXEMPTED_MEAL_FOODS
 };

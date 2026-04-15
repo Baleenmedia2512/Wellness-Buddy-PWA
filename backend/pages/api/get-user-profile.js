@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     // Fetch user profile from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage"')
+      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber"')
       .eq('"Email"', email)
       .maybeSingle();
 
@@ -98,25 +98,41 @@ export default async function handler(req, res) {
     };
 
     // Build response
+    const height = user.Height ? parseFloat(user.Height) : null;
+    const dietType = user.DietType || null;
+
+    const phoneNumber = user.PhoneNumber || null;
+
+    // A profile is considered complete when the three key mandatory fields are filled:
+    // Height (needed for BMR formula), Diet Type (needed for AI food analysis), Phone Number.
+    const profileComplete = !!(height && dietType && phoneNumber);
+
     const profileData = {
       userId: user.UserId,
       userName: user.UserName,
       email: user.Email,
-      height: user.Height ? parseFloat(user.Height) : null,
-      dietType: user.DietType || null,
+      height,
+      dietType,
+      phoneNumber,
+      profileComplete,
       profileImage: user.ProfileImage || null,
+      coachId: user.CoachId || null,
       latestWeight: null,
       latestBmr: null,
       weightRecordDate: null,
     };
 
+    console.log('🎓 [get-user-profile] Coach info:', { coachId: user.CoachId });
+
     if (weightError) {
       console.warn('⚠️ [get-user-profile] Weight query error:', weightError);
     } else if (weightRows && weightRows.length > 0) {
       const latestWeight = weightRows[0];
+      console.log('🔍 [DEBUG] Raw BMR from database:', latestWeight.Bmr, 'Type:', typeof latestWeight.Bmr);
       profileData.latestWeight = latestWeight.Weight ? parseFloat(latestWeight.Weight) : null;
       profileData.latestBmr = latestWeight.Bmr ? parseFloat(latestWeight.Bmr) : null;
       profileData.weightRecordDate = latestWeight.CreatedAt;
+      console.log('🔍 [DEBUG] Parsed BMR:', profileData.latestBmr);
     }
     
     console.log('📦 [get-user-profile] Compiled profile data:', {

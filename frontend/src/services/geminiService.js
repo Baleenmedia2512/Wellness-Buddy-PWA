@@ -164,6 +164,7 @@ class GeminiService {
     // Images are now pre-compressed in App.js to 800px @ 60-70% quality
     // Skip duplicate compression to save 2-3 seconds
     const maxSize = 1024 * 1024; // 1MB threshold (very generous)
+    const maxDimension = 800; // Max dimension for fallback compression
 
     // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
@@ -172,7 +173,6 @@ class GeminiService {
     }
 
     // Fallback compression for oversized images
-    const maxDimension = 800;
     return new Promise((resolve, reject) => {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
@@ -429,11 +429,13 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // 🎯 APPLY GLOBAL AUTO-CORRECTIONS (NEW FEATURE)
-      // If ANY user corrected 'A' to 'B', next time AI detects 'A' → auto-corrects to 'B' ✨
+      // 🎯 APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
+      // - Herbalife Formula 1: Auto-corrects for ALL users (global)
+      // - Other foods: Auto-corrects only for specific user (personal)
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
         nutritionData.foods = await applyGlobalAutoCorrections(
           nutritionData.foods,
+          userId, // Pass userId for user-specific corrections
         );
       }
 
@@ -889,6 +891,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
           unit: food.unit || (food.volume_ml ? "ml" : "g"),
           isLiquid: food.isLiquid || false,
+          // 🔴 CRITICAL: Preserve volume_ml for water discipline tracking
+          volume_ml: food.volume_ml || null,
+          weight_g: food.weight_g || null,
           calories: Math.round(food.nutrition.calories || 0),
           protein: Math.round(food.nutrition.protein || 0),
           carbs: Math.round(food.nutrition.carbs || 0),
@@ -972,6 +977,79 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       "Using legacy method. Consider updating to use the optimized version.",
     );
     return this.transformOptimizedResponse(geminiData, "text");
+  }
+
+  /**
+   * Analyzes a smartwatch / health-app screenshot and extracts calories burned.
+   *
+   * Supports: Apple Health, Samsung Health, Google Fit, Garmin Connect,
+   * Fitbit, Mi Fitness, and generic fitness app UIs.
+   *
+   * @param {File} imageFile  — The screenshot image file (JPEG / PNG / WEBP)
+   * @returns {{ caloriesBurned: number, confidence: string, source: string }}
+   */
+  async analyzeWatchScreenshot(imageFile) {
+    if (!this.model) {
+      throw new Error("Gemini API key not configured.");
+    }
+
+    const toBase64 = (file) =>
+      new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+
+    const base64 = await toBase64(imageFile);
+    const mimeType = imageFile.type || "image/jpeg";
+
+    const prompt = `You are a fitness data extraction assistant.
+
+The user has uploaded a screenshot from a smartwatch or health/fitness app.
+
+Your ONLY task is to find and return the number of CALORIES BURNED (active energy / exercise calories / calories out) shown on screen.
+
+Common labels to look for (any of these count):
+- "Calories", "Cal", "kcal", "Active Calories", "Active Energy", "Calories Burned",
+  "Exercise Calories", "Calories Out", "Move", "Energy Burned", "Total Burn", "Burn"
+
+Rules:
+1. Return ONLY the single best numeric value for total calories burned today (or for the workout shown).
+2. Do NOT return "calories in" or "calories consumed" values — only calories BURNED / active energy.
+3. If there are multiple calorie values, prefer the one labeled "Active Calories", "Calories Burned", or "Total".
+4. If NO calorie-burned value is visible, return 0.
+5. Round to the nearest whole number.
+6. Identify the app/device if visible (Apple Health, Samsung Health, Fitbit, Garmin, Google Fit, etc.).
+
+Respond with ONLY valid JSON in this exact format:
+{
+  "caloriesBurned": <number>,
+  "confidence": "high" | "medium" | "low",
+  "source": "<app or device name, or 'unknown'>"
+}`;
+
+    const result = await this.model.generateContent([
+      prompt,
+      { inlineData: { data: base64, mimeType } },
+    ]);
+
+    const raw = result?.response?.text?.() ?? "";
+    let parsed;
+    try {
+      // Strip any markdown fences Gemini may wrap around the JSON
+      const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.warn("[analyzeWatchScreenshot] Could not parse Gemini response:", raw);
+      return { caloriesBurned: 0, confidence: "low", source: "unknown" };
+    }
+
+    return {
+      caloriesBurned: Math.round(Number(parsed.caloriesBurned) || 0),
+      confidence: parsed.confidence || "low",
+      source: parsed.source || "unknown",
+    };
   }
 }
 

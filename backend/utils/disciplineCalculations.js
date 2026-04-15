@@ -4,6 +4,7 @@
  */
 
 import { formatDateForMySQL, getDaysBetween } from './disciplineHelpers.js';
+import { isExemptedBeverageOnly } from './foodTypeDetection.js';
 
 /**
  * Calculate discipline for a single team member
@@ -89,31 +90,11 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
   `, [userId, startDateStr, endDateStr]);
   
   // Query 3: Meal posts (breakfast, lunch, dinner)
-  // Count distinct DAYS with at least one on-time post per meal type
+  // Fetch individual records with AnalysisData to filter out beverage-only entries
   // Note: food_nutrition_data_table.UserID is VARCHAR, must cast to UNSIGNED
-  // Uses dynamic time windows from database (not hardcoded)
-  const [mealRows] = await connection.execute(`
-    SELECT 
-      CASE
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'breakfast'
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'lunch'
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'dinner'
-      END as MealType,
-      COUNT(DISTINCT DATE(f.CreatedAt)) as daysWithPosts,
-      COUNT(DISTINCT CASE 
-        WHEN TIME(f.CreatedAt) BETWEEN tw.WindowStartTime AND tw.WindowEndTime 
-        THEN DATE(f.CreatedAt)
-      END) as daysWithOnTimePosts
+  const [mealRecords] = await connection.execute(`
+    SELECT f.CreatedAt, f.AnalysisData
     FROM food_nutrition_data_table f
-    LEFT JOIN activity_time_windows_table tw ON (
-      tw.ActivityType = CASE
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'breakfast'
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'lunch'
-        WHEN TIME(f.CreatedAt) BETWEEN ? AND ? THEN 'dinner'
-      END
-      AND f.CreatedAt >= tw.EffectiveFromDate
-      AND (f.CreatedAt < tw.EffectiveToDate OR tw.EffectiveToDate IS NULL)
-    )
     WHERE CAST(f.UserID AS UNSIGNED) = ?
       AND DATE(f.CreatedAt) BETWEEN ? AND ?
       AND f.IsDeleted = 0
@@ -122,14 +103,7 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
         OR TIME(f.CreatedAt) BETWEEN ? AND ?
         OR TIME(f.CreatedAt) BETWEEN ? AND ?
       )
-    GROUP BY MealType
   `, [
-    breakfastWindow.start, breakfastWindow.end,
-    lunchWindow.start, lunchWindow.end,
-    dinnerWindow.start, dinnerWindow.end,
-    breakfastWindow.start, breakfastWindow.end,
-    lunchWindow.start, lunchWindow.end,
-    dinnerWindow.start, dinnerWindow.end,
     userId,
     startDateStr, endDateStr,
     breakfastWindow.start, breakfastWindow.end,
@@ -137,21 +111,41 @@ export async function calculateMemberDiscipline(connection, userId, startDate, e
     dinnerWindow.start, dinnerWindow.end
   ]);
   
-  // Organize meal data
+  // Organize meal data — filter out records that contain ONLY exempted beverages
   const mealData = {
     breakfast: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
     lunch: { daysWithPosts: 0, daysWithOnTimePosts: 0 },
     dinner: { daysWithPosts: 0, daysWithOnTimePosts: 0 }
   };
   
-  mealRows.forEach(row => {
-    if (row.MealType) {
-      mealData[row.MealType] = {
-        daysWithPosts: row.daysWithPosts,
-        daysWithOnTimePosts: row.daysWithOnTimePosts
-      };
+  const mealDates = {
+    breakfast: new Set(),
+    lunch: new Set(),
+    dinner: new Set()
+  };
+  
+  (mealRecords || []).forEach(row => {
+    // Skip beverage-only entries (water, coffee, tea, afresh, etc.)
+    if (isExemptedBeverageOnly(row.AnalysisData)) return;
+    
+    const timeMatch = String(row.CreatedAt).match(/(\d{2}:\d{2}:\d{2})/);
+    if (!timeMatch) return;
+    const time = timeMatch[1];
+    const date = String(row.CreatedAt).split('T')[0] || new Date(row.CreatedAt).toISOString().split('T')[0];
+    
+    let mealType = null;
+    if (time >= breakfastWindow.start && time <= breakfastWindow.end) mealType = 'breakfast';
+    else if (time >= lunchWindow.start && time <= lunchWindow.end) mealType = 'lunch';
+    else if (time >= dinnerWindow.start && time <= dinnerWindow.end) mealType = 'dinner';
+    
+    if (mealType) {
+      mealDates[mealType].add(date);
     }
   });
+  
+  mealData.breakfast = { daysWithPosts: mealDates.breakfast.size, daysWithOnTimePosts: mealDates.breakfast.size };
+  mealData.lunch = { daysWithPosts: mealDates.lunch.size, daysWithOnTimePosts: mealDates.lunch.size };
+  mealData.dinner = { daysWithPosts: mealDates.dinner.size, daysWithOnTimePosts: mealDates.dinner.size };
   
   // Calculate expected posts per activity
   const daysInPeriod = getDaysBetween(startDate, endDate);

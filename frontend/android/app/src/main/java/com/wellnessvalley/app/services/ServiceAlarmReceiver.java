@@ -51,18 +51,12 @@ public class ServiceAlarmReceiver extends BroadcastReceiver {
      * Check if GalleryMonitorService is running and restart if needed
      */
     private void performHeartbeatCheck(Context context) {
-        try {
-            if (!isServiceRunning(context, GalleryMonitorService.class)) {
-                Log.w(TAG, "⚠️ GalleryMonitorService NOT RUNNING! Restarting via AlarmManager...");
-                restartService(context);
-                
-                // Also reschedule WorkManager as backup
-                BootCompletedReceiver.scheduleHeartbeat(context);
-            } else {
-                Log.d(TAG, "✅ GalleryMonitorService is running (AlarmManager check)");
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "❌ Error during AlarmManager heartbeat check", e);
+        // ✅ Check if service is running
+        if (!isServiceRunning(context, GalleryMonitorService.class)) {
+            Log.w(TAG, "⚠️ Service not running, restarting...");
+            restartService(context);
+        } else {
+            Log.d(TAG, "✅ Service is running");
         }
     }
 

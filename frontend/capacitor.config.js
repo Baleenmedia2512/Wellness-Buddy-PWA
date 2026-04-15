@@ -21,11 +21,12 @@ const config = {
     }
   },
   
-  // ✅ Use HTTPS scheme for hardware acceleration
+  // ✅ Use HTTP scheme for local development (allows connecting to HTTP backend)
   server: {
     androidScheme: 'https',
     hostname: 'localhost',
-    allowNavigation: ['*']
+    allowNavigation: ['wellness-buddy-pwa-eta.vercel.app'],
+    cleartext: false
   },
   
   plugins: {

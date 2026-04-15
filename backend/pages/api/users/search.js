@@ -74,7 +74,7 @@ export default async function handler(req, res) {
     // Search for coaches by name or email, excluding current user
     const { data: coaches, error } = await supabase
       .from('team_table')
-      .select('UserId, UserName, Email, CoachName, TeamId')
+      .select('UserId, UserName, Email, TeamId')
       .eq('Status', 'Active')
       .neq('Email', currentUserEmail || '')
       .or(`UserName.ilike.%${searchQuery}%,Email.ilike.%${searchQuery}%`)
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
       userId: coach.UserId,
       userName: coach.UserName,
       email: maskEmail(coach.Email),
-      displayName: coach.CoachName || coach.UserName,
+      displayName: coach.UserName,
       teamId: coach.TeamId,
       hasTeamId: !!coach.TeamId
     }));

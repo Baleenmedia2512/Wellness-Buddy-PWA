@@ -58,9 +58,11 @@ export const GalleryMonitor = {
       
       for (let i = 0; i < maxRetries; i++) {
         try {
-          await GalleryMonitorPlugin.setCurrentUser({ 
-            userId, 
-            userEmail: userEmail // Use email if provided, otherwise fall back to userId
+          await GalleryMonitorPlugin.setCurrentUser({
+            userId,
+            userEmail: userEmail,
+            cachedDbUserId: userId, // userId IS the numeric DB user ID; cache it for native service lookup
+            apiBaseUrl: process.env.REACT_APP_API_BASE_URL || null
           });
           return; // Success
         } catch (error) {

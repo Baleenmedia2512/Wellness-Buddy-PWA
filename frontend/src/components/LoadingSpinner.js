@@ -12,6 +12,11 @@ const LoadingSpinner = ({ context = 'analysis' }) => {
       subtitle: "Gemini AI is analyzing your food and calculating nutrition",
       color: "green"
     },
+    steps: {
+      title: "Loading Step Counter...",
+      subtitle: "Fetching your activity data and syncing with your sensor",
+      color: "green"
+    },
     normal: {
       title: "Loading...",
       subtitle: "Your personal nutrition companion is getting ready",

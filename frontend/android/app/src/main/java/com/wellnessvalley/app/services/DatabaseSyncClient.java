@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
 import okhttp3.*;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.File;
@@ -105,6 +106,19 @@ public class DatabaseSyncClient {
                 return false;
             }
 
+            // ✅ Skip save if Gemini detected no food (empty foods array)
+            try {
+                JSONObject parsed = new JSONObject(analysisResult);
+                JSONArray foods = parsed.optJSONArray("foods");
+                if (foods == null || foods.length() == 0) {
+                    Log.d(TAG, "⏭️ Skipping database save — Gemini detected no food in this image");
+                    return false;
+                }
+            } catch (JSONException e) {
+                Log.e(TAG, "❌ Could not parse analysisResult to check foods array, skipping save: " + analysisResult);
+                return false;
+            }
+
             JSONObject requestBody = new JSONObject();
             requestBody.put("userId", userId);
             requestBody.put("imagePath", imagePath);
@@ -152,9 +166,74 @@ public class DatabaseSyncClient {
         }
     }
     
-    // Health check method to test database connectivity
-    public boolean testConnection() {
+    // Save daily step count to the backend (called by GalleryMonitorService step tracker)
+    public boolean saveDailySteps(String userId, String activityDate, int steps, double calories) {
+        return saveDailySteps(userId, activityDate, steps, calories, false);
+    }
+
+    // forceWrite=true bypasses the Math.max guard so a correction can lower an inflated DB value.
+    public boolean saveDailySteps(String userId, String activityDate, int steps, double calories, boolean forceWrite) {
         try {
+            JSONObject body = new JSONObject();
+            body.put("userId", userId);
+            body.put("activityDate", activityDate);
+            body.put("steps", steps);
+            body.put("activityType", "walking");
+            body.put("caloriesBurned", calories);
+            if (forceWrite) {
+                body.put("forceWrite", true);
+            }
+
+            Request request = new Request.Builder()
+                .url(apiBaseUrl + "/api/save-daily-activity")
+                .post(RequestBody.create(
+                    body.toString(),
+                    MediaType.parse("application/json")
+                ))
+                .addHeader("Content-Type", "application/json")
+                .addHeader("User-Agent", "WellnessValley-Android/1.0")
+                .build();
+
+            Response response = client.newCall(request).execute();
+            boolean success = response.isSuccessful();
+            response.close();
+            return success;
+        } catch (Exception e) {
+            Log.e(TAG, "❌ saveDailySteps failed", e);
+            return false;
+        }
+    }
+
+    // Save daily screen time to the backend (called by GalleryMonitorService UsageStats tracker)
+    public boolean saveScreenTime(String userId, String date, long totalScreenTimeSeconds) {
+        try {
+            JSONObject body = new JSONObject();
+            body.put("userId", userId);
+            body.put("date", date);
+            body.put("totalScreenTimeSeconds", totalScreenTimeSeconds);
+
+            Request request = new Request.Builder()
+                .url(apiBaseUrl + "/api/save-screen-time")
+                .post(RequestBody.create(
+                    body.toString(),
+                    MediaType.parse("application/json")
+                ))
+                .addHeader("Content-Type", "application/json")
+                .addHeader("User-Agent", "WellnessValley-Android/1.0")
+                .build();
+
+            Response response = client.newCall(request).execute();
+            boolean success = response.isSuccessful();
+            response.close();
+            return success;
+        } catch (Exception e) {
+            Log.e(TAG, "❌ saveScreenTime failed", e);
+            return false;
+        }
+    }
+
+    // Health check method to test database connectivity
+    public boolean testConnection() {        try {
             Request request = new Request.Builder()
                 .url(apiBaseUrl + "/api/get-background-analysis?userId=test&limit=1")
                 .get()

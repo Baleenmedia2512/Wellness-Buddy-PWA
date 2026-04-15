@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.wellnessvalley.app">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.wellnessvalley.app">
     <!-- Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.CAMERA" />
@@ -11,6 +13,41 @@
     <!-- For newer Android versions -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+        <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Location permissions for attendance tracking and outdoor GPS map -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+
+    <!-- Usage Stats permission for device-wide screen time comparison -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Background service restart permissions -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
+    <!-- Exact alarms: required on Android 12+ (API 31+) for precise reminder times -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <!-- USE_EXACT_ALARM: alternative for apps targeting Android 13+ (does not require runtime grant) -->
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Reschedule reminders after device reboot -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Wake device screen + CPU for alarm -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Vibrate device during alarm -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <!-- Show full-screen alarm popup on lock screen -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <!-- Queries for share functionality (Android 11+) -->
     <queries>
@@ -101,6 +138,75 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Background service for step counter and screen time tracking -->
+        <service
+            android:name=".services.GalleryMonitorService"
+            android:exported="false"
+            android:process=":background"
+            android:foregroundServiceType="dataSync|location"
+            android:stopWithTask="false" />
+
+        <!-- Restarts GalleryMonitorService after device reboot -->
+        <receiver
+            android:name=".services.BootCompletedReceiver"
+            android:exported="false">
+            <intent-filter android:priority="999">
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- AlarmManager watchdog — restarts service if killed -->
+        <receiver
+            android:name=".services.ServiceAlarmReceiver"
+            android:exported="false" />
+
+        <!-- ── Daily Activity Reminder receivers ──────────────────────── -->
+        <!-- Fires when an alarm triggers; shows notification + reschedules for next day -->
+        <receiver
+            android:name=".services.ReminderAlarmReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.wellnessvalley.app.REMINDER_WEIGHT" />
+                <action android:name="com.wellnessvalley.app.REMINDER_EDUCATION" />
+                <action android:name="com.wellnessvalley.app.REMINDER_BREAKFAST" />
+                <action android:name="com.wellnessvalley.app.REMINDER_LUNCH" />
+                <action android:name="com.wellnessvalley.app.REMINDER_DINNER" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Re-schedule reminders after device reboot -->
+        <receiver
+            android:name=".services.ReminderBootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Foreground service that plays alarm sound for 60 seconds -->
+        <service
+            android:name=".services.AlarmSoundService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <!-- Full-screen alarm popup shown on top of lock screen when alarm fires -->
+        <activity
+            android:name=".services.AlarmFullScreenActivity"
+            android:exported="false"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:launchMode="singleInstance"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
+        <!-- Stops the alarm sound when user taps Dismiss on the notification -->
+        <receiver
+            android:name=".services.AlarmDismissReceiver"
+            android:exported="false" />
         
     </application>
 </manifest>
