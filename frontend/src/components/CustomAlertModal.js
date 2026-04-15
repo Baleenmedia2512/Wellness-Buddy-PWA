@@ -110,11 +110,6 @@ const CustomAlertModal = ({
                   <X className="h-5 w-5 text-gray-600" />
                 </TouchFeedbackButton>
 
-                {/* Icon */}
-                <div className="flex justify-center mb-4">
-                  {config.icon}
-                </div>
-
                 {/* Title */}
                 <h2 className={`text-xl font-bold text-center ${config.titleColor}`}>
                   {title}

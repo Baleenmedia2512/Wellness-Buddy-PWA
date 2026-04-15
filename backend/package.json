@@ -1,6 +1,6 @@
 {
   "name": "wellness-valley-pwa-backend",
-  "version": "2.4",
+  "version": "2.5",
   "private": true,
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

@@ -294,8 +294,8 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 Photo Not From Today",
-                    message: `⚠️ This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today.`,
+                    title: "Photo Not From Today",
+                    message: `This photo was taken on ${photoDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: "error",
                   });
                   return;
@@ -355,8 +355,8 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 Photo Not From Today",
-                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today.`,
+                    title: "Photo Not From Today",
+                    message: `This photo was modified on ${fileDate.toLocaleDateString()}. Please take a FRESH photo today.`,
                     type: "error",
                   });
                   return;
@@ -421,8 +421,8 @@ const ImageUpload = forwardRef(
                   if (!isSameDay) {
                     setAlertModal({
                       isOpen: true,
-                      title: "🚨 Photo Not From Today",
-                      message: `⚠️ This photo was taken on ${parsed.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                      title: "Photo Not From Today",
+                      message: `This photo was taken on ${parsed.toLocaleDateString()}. Please use a FRESH photo taken today.`,
                       type: "error",
                     });
                     return;
@@ -470,8 +470,8 @@ const ImageUpload = forwardRef(
                 if (!isSameDay) {
                   setAlertModal({
                     isOpen: true,
-                    title: "🚨 Photo Not From Today",
-                    message: `⚠️ This photo was modified on ${fileDate.toLocaleDateString()}. Please use a FRESH photo taken today.`,
+                    title: "Photo Not From Today",
+                    message: `This photo was modified on ${fileDate.toLocaleDateString()}. Please use a FRESH photo taken today.`,
                     type: "error",
                   });
                   return;
