@@ -45,6 +45,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
+import android.database.ContentObserver;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -98,6 +100,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private ScheduledExecutorService scheduledExecutor;
     private DatabaseSyncClient databaseSyncClient;
 
+    // ── Gallery / Food Image Analysis ──────────────────────────────────────────
+    private ContentObserver imageObserver;
+    private long lastCheckedTime = 0;
+    private FoodImageQueue foodImageQueue;
+    private GeminiApiClient geminiApiClient;
+    private RetryQueue retryQueue;
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
+
     // ── GPS Tracking (writes to WellnessGPS SharedPrefs for map display) ────────
     private com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient;
     private com.google.android.gms.location.LocationCallback gpsLocationCallback;
@@ -130,6 +140,12 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // Initialize database sync client
         String apiBaseUrl = resolveApiBaseUrl();
         databaseSyncClient = new DatabaseSyncClient(apiBaseUrl, this);
+        
+        // Initialize gallery/food image analysis components
+        foodImageQueue = new FoodImageQueue(this);
+        geminiApiClient = new GeminiApiClient(BuildConfig.GEMINI_API_KEY);
+        retryQueue = new RetryQueue(this, databaseSyncClient);
+        lastCheckedTime = System.currentTimeMillis();
         Log.d(TAG, "Using API_BASE_URL for background sync: " + apiBaseUrl);
         
         // Test database connection
@@ -368,8 +384,27 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 }
             });
 
-            showAnalysisNotification(imagePath, result);
+            showFoodAnalysisNotification(imagePath, result);
             foodImageQueue.remove(imagePath);
+        }
+    }
+
+    private void showFoodAnalysisNotification(String imagePath, String result) {
+        try {
+            String fileName = new File(imagePath).getName();
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("Food Analysis Complete")
+                    .setContentText(fileName + " analyzed")
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(result))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true);
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify((int) System.currentTimeMillis(), builder.build());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing food analysis notification", e);
         }
     }
     
