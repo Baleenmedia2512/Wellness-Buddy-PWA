@@ -75,7 +75,7 @@ export const APP_VERSION = {
   VERSION: '2.5',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 27,
+  VERSION_CODE: 28,
   
   // Release name (for Play Store)
   RELEASE_NAME: 'Team Dashboard Enhancements',
