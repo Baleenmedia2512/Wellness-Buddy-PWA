@@ -40,7 +40,7 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Vibrate device during alarm -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed) -->
+    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed).. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Show full-screen alarm popup on lock screen -->
