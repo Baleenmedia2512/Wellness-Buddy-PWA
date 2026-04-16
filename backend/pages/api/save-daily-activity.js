@@ -201,8 +201,7 @@ export default async function handler(req, res) {
       steps: safeSteps,
       activityType: safeActivityType,
       caloriesBurned: computedCalories,
-      currentSensorTotal: safeSensorTotal,
-      forceWrite: req.body.forceWrite === true
+      currentSensorTotal: safeSensorTotal
     });
 
     // Update LastActiveAt in team_table to track user activity

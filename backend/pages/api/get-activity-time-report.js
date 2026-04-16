@@ -476,14 +476,11 @@ export default async function handler(req, res) {
         // Max calories burned per date from step activity (cumulative tracker)
         const calBurnedByDate = {};
         for (const r of (stepByUser.get(uid) || [])) {
-          const rawBurned = parseFloat(r.CaloriesBurned) || 0;
-          // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
-          // as positive burns — a negative value means real activity was recorded, just stored inverted.
-          const burned = Math.abs(rawBurned);
-          if ((r.Steps || 0) > 0 || burned > 0) {
+          if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
             const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
             const dateStr   = extractLocalDateString(localDate);
             if (!dateStr) continue;
+            const burned = parseFloat(r.CaloriesBurned) || 0;
             if ((calBurnedByDate[dateStr] || 0) < burned) {
               calBurnedByDate[dateStr] = burned;
             }
