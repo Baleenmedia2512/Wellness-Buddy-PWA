@@ -29,14 +29,11 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
-    <!-- Exact alarms: required on Android 12+ (API 31+) for precise reminder times -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- USE_EXACT_ALARM: alternative for apps targeting Android 13+ (does not require runtime grant) -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Exact alarms: SCHEDULE_EXACT_ALARM for Android 12 (API 31-32), requires runtime check -->
+    <!-- On Android 13+ (API 33+), use inexact alarms or request SCHEDULE_EXACT_ALARM at runtime -->
     <!-- Reschedule reminders after device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Wake device screen + CPU for alarm -->
