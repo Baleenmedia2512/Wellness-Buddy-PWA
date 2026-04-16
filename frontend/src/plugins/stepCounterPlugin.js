@@ -133,6 +133,27 @@ const wrappedPlugin = {
       return { remove: async () => {} };
     }
     return StepCounter.addListener(eventName, listenerFunc);
+  },
+
+  async isLocationEnabled() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return { enabled: true };
+      return await StepCounter.isLocationEnabled();
+    } catch (error) {
+      console.warn('[StepCounter] isLocationEnabled failed:', error);
+      return { enabled: true }; // fail open on web / error
+    }
+  },
+
+  async openLocationSettings() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return;
+      return await StepCounter.openLocationSettings();
+    } catch (error) {
+      console.warn('[StepCounter] openLocationSettings failed:', error);
+    }
   }
 };
 

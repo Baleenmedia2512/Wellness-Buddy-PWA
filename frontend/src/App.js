@@ -73,6 +73,7 @@ import {
   cleanup,
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
+import LocationGuard from "./components/LocationGuard";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -3592,6 +3593,7 @@ function WellnessValleyApp() {
 
   // Main app interface
   return (
+    <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
       <Header
         user={user}
@@ -4885,6 +4887,7 @@ function WellnessValleyApp() {
         </div>
       )}
     </div>
+    </LocationGuard>
   );
 }
 
