@@ -73,8 +73,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // 12-second window: ≥15 steps = user is walking
     private static final long   WALK_DETECT_WINDOW_MS      = 12_000L;
     private static final int    WALK_NOTIFY_STEP_THRESHOLD = 15;
-    // Minimum gap between successive walking notifications (1 minute)
-    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 60 * 1000L;
+    // Minimum gap between successive walking notifications (10 minutes)
+    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 10 * 60 * 1000L;
 
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
@@ -927,12 +927,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             Log.w(TAG, "⚠️ Could not check location state: " + e.getMessage());
         }
 
-        String title = locationEnabled
-                ? "Walking Detected"
-                : "Your Location is Off";
-        String message = locationEnabled
-                ? "Outdoor activity detected. Keep it up!"
-                : "You're walking but your location is OFF.";
+        // GPS ON → no notification (user is already being tracked outdoors)
+        if (locationEnabled) {
+            Log.d(TAG, "🚶 Walking detected but GPS is ON — skipping notification");
+            return;
+        }
+
+        String title = "Your Location is Off";
+        String message = "You're walking but your location is OFF.";
 
         // PendingIntent: open app when notification body is tapped
         Intent openIntent = new Intent(this, MainActivity.class);
@@ -958,27 +960,21 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 .setVibrate(new long[]{0, 250, 100, 250})
                 .setContentIntent(pendingIntent);
 
-        if (locationEnabled) {
-            // GPS ON → swipeable, auto-dismisses on tap
-            builder.setAutoCancel(true)
-                   .setOngoing(false);
-        } else {
-            // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
-            builder.setAutoCancel(false)
-                   .setOngoing(true);
+        // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
+        builder.setAutoCancel(false)
+               .setOngoing(true);
 
-            Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            PendingIntent settingsPendingIntent = PendingIntent.getActivity(
-                    this,
-                    WALK_NOTIFICATION_ID + 1,
-                    settingsIntent,
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                            ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                            : PendingIntent.FLAG_UPDATE_CURRENT
-            );
-            builder.addAction(R.mipmap.ic_launcher, "Turn On", settingsPendingIntent);
-        }
+        Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent settingsPendingIntent = PendingIntent.getActivity(
+                this,
+                WALK_NOTIFICATION_ID + 1,
+                settingsIntent,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                        : PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        builder.addAction(R.mipmap.ic_launcher, "Turn On", settingsPendingIntent);
 
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null) {
