@@ -105,6 +105,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // ── Gallery / Food Image Analysis ──────────────────────────────────────────
     private ContentObserver imageObserver;
     private long lastCheckedTime = 0;
+    private long lastContentObserverScanTime = 0;
+    private static final long CONTENT_OBSERVER_DEBOUNCE_MS = 5000;
     private FoodImageQueue foodImageQueue;
     private GeminiApiClient geminiApiClient;
     private RetryQueue retryQueue;
@@ -122,20 +124,63 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         super.onCreate();
         Log.d(TAG, "Service created");
 
+        // ✅ Cancel legacy AlarmManager heartbeat immediately.
+        // If this service was started by an old alarm, stop the chain here.
+        BootCompletedReceiver.cancelLegacyAlarm(this);
+
         createNotificationChannel();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
-                fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+        // Start as foreground service.
+        // On API 34+ (Android 14), including FOREGROUND_SERVICE_TYPE_LOCATION
+        // without the location permission already granted throws SecurityException
+        // — which crashes the :background process on first install before the user
+        // has had a chance to grant permissions.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+                    // Only include LOCATION type if permission is already granted
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this,
+                            android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+                        Log.d(TAG, "✅ Location permission granted — including LOCATION foreground type");
+                    } else {
+                        Log.d(TAG, "⚠️ Location permission not yet granted — starting without LOCATION type");
+                    }
+                }
+                startForeground(NOTIFICATION_ID, createNotification(), fgType);
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification());
             }
-            startForeground(NOTIFICATION_ID, createNotification(), fgType);
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification());
+        } catch (Exception e) {
+            Log.e(TAG, "❌ startForeground failed — falling back to basic type", e);
+            try {
+                startForeground(NOTIFICATION_ID, createNotification());
+            } catch (Exception e2) {
+                Log.e(TAG, "❌ Fallback startForeground also failed — stopping service", e2);
+                stopSelf();
+                return;
+            }
         }
 
         Toast.makeText(this, "Wellness Valley Service Running", Toast.LENGTH_SHORT).show();
 
+        try {
+            initServiceComponents();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Service initialization failed — stopping to avoid crash loop", e);
+            stopSelf();
+            return;
+        }
+    }
+
+    /**
+     * All heavy service initialization extracted here so a single
+     * try-catch in onCreate can prevent a crash from killing the
+     * :background process and triggering "App keeps stopping".
+     */
+    private void initServiceComponents() {
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
         
@@ -196,11 +241,17 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
 
-        // ✅ Register ContentObserver to detect image changes
+        // ✅ Register ContentObserver to detect image changes (with debounce to prevent flooding)
         imageObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
             @Override
             public void onChange(boolean selfChange, @Nullable Uri uri) {
                 super.onChange(selfChange, uri);
+                long now = System.currentTimeMillis();
+                if (now - lastContentObserverScanTime < CONTENT_OBSERVER_DEBOUNCE_MS) {
+                    Log.d(TAG, "📸 MediaStore change debounced (within " + CONTENT_OBSERVER_DEBOUNCE_MS + "ms)");
+                    return;
+                }
+                lastContentObserverScanTime = now;
                 Log.d(TAG, "📸 MediaStore content change detected: " + uri);
                 executorService.execute(() -> checkGalleryForNewImages());
             }
