@@ -4370,6 +4370,7 @@ function WellnessValleyApp() {
           weightValue={duplicateWeightInfo.existingWeight}
           unit={duplicateWeightInfo.unit}
           timeDifference={duplicateWeightInfo.timeDifference}
+          existingTime={duplicateWeightInfo.existingTime}
           onConfirm={handleDuplicateWeightConfirm}
           onCancel={handleDuplicateWeightCancel}
         />

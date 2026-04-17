@@ -582,10 +582,13 @@ export async function checkForDuplicateWeight({
             timeDifference,
           });
 
+          const existingTime = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
           return {
             isDuplicate: true,
             existingWeight: existingWeight,
             timeDifference: timeDifference,
+            existingTime: existingTime,
             unit: unit,
           };
         } catch (timeError) {
@@ -596,6 +599,7 @@ export async function checkForDuplicateWeight({
             isDuplicate: true,
             existingWeight: existingWeight,
             timeDifference: "recently",
+            existingTime: null,
             unit: unit,
           };
         }
