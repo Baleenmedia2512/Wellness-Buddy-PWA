@@ -29,6 +29,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.MediaStore;
 import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
@@ -44,6 +45,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
+import android.database.ContentObserver;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -99,6 +102,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private ScheduledExecutorService scheduledExecutor;
     private DatabaseSyncClient databaseSyncClient;
 
+    // ── Gallery / Food Image Analysis ──────────────────────────────────────────
+    private ContentObserver imageObserver;
+    private long lastCheckedTime = 0;
+    private FoodImageQueue foodImageQueue;
+    private GeminiApiClient geminiApiClient;
+    private RetryQueue retryQueue;
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
+
     // ── GPS Tracking (writes to WellnessGPS SharedPrefs for map display) ────────
     private com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient;
     private com.google.android.gms.location.LocationCallback gpsLocationCallback;
@@ -131,6 +142,12 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         // Initialize database sync client
         String apiBaseUrl = resolveApiBaseUrl();
         databaseSyncClient = new DatabaseSyncClient(apiBaseUrl, this);
+        
+        // Initialize gallery/food image analysis components
+        foodImageQueue = new FoodImageQueue(this);
+        geminiApiClient = new GeminiApiClient(BuildConfig.GEMINI_API_KEY);
+        retryQueue = new RetryQueue(this, databaseSyncClient);
+        lastCheckedTime = System.currentTimeMillis();
         Log.d(TAG, "Using API_BASE_URL for background sync: " + apiBaseUrl);
         
         // Test database connection
@@ -178,6 +195,22 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
+
+        // ✅ Register ContentObserver to detect image changes
+        imageObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
+            @Override
+            public void onChange(boolean selfChange, @Nullable Uri uri) {
+                super.onChange(selfChange, uri);
+                Log.d(TAG, "📸 MediaStore content change detected: " + uri);
+                executorService.execute(() -> checkGalleryForNewImages());
+            }
+        };
+
+        getContentResolver().registerContentObserver(
+                MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                true,
+                imageObserver
+        );
     }
 
     private Notification createNotification() {
@@ -237,6 +270,150 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         }
     }
 
+    private void scanDirectoryForNewImages(File dir, Consumer<File> callback) {
+        File[] files = dir.listFiles();
+        if (files == null) return;
+
+        for (File file : files) {
+            if (file.isDirectory()) {
+                scanDirectoryForNewImages(file, callback); // recurse
+            } else if (file.getName().toLowerCase().matches(".*\\.(jpg|jpeg|png)$")) {
+                if (file.lastModified() > lastCheckedTime) {
+                    callback.accept(file);
+                }
+            }
+        }
+    }
+
+    private void checkGalleryForNewImages() {
+        Log.d(TAG, "Checking for new images in DCIM/Camera only...");
+
+        // Only monitor DCIM/Camera folder - removed Screenshots and Downloads
+        File dcimDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM);
+        File cameraDir = new File(dcimDir, "Camera");
+
+        try {
+            final File[] latestImage = {null};
+            final long[] latestModified = {lastCheckedTime};
+
+            // Check DCIM/Camera folder only
+            if (cameraDir.exists() && cameraDir.isDirectory()) {
+                Log.d(TAG, "📂 Scanning: " + cameraDir.getAbsolutePath());
+                scanDirectoryForNewImages(cameraDir, imageFile -> {
+                    if (imageFile != null && imageFile.lastModified() > latestModified[0]) {
+                        latestImage[0] = imageFile;
+                        latestModified[0] = imageFile.lastModified();
+                    }
+                });
+            } else {
+                Log.d(TAG, "⚠️ Camera folder not found: " + cameraDir.getAbsolutePath());
+            }
+
+            if (latestImage[0] != null) {
+                Log.d(TAG, "🆕 New image detected: " + latestImage[0].getAbsolutePath());
+                if (isFoodImage(latestImage[0])) {
+                    handleFoodImage(latestImage[0].getAbsolutePath());
+                }
+                lastCheckedTime = latestModified[0];
+            }
+
+        } catch (Exception e) {
+            Log.e(TAG, "Error checking gallery", e);
+        }
+    }
+
+    // Always send images to Gemini API for food detection
+    private boolean isFoodImage(File imageFile) {
+        return true;
+    }
+
+    private void handleFoodImage(String imagePath) {
+        foodImageQueue.add(imagePath);
+        Log.d(TAG, "Image queued for analysis: " + imagePath);
+        // Try to process immediately if network is available
+        if (isNetworkAvailable()) {
+            executorService.execute(this::processQueuedImages);
+        }
+    }
+
+    private boolean isNetworkAvailable() {
+        android.net.ConnectivityManager cm = (android.net.ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+        android.net.NetworkInfo activeNetwork = cm.getActiveNetworkInfo();
+        return activeNetwork != null && activeNetwork.isConnected();
+    }
+
+    // No longer needed: JS will poll for queued images
+    private void processQueuedImages() {
+        Log.d(TAG, "Processing queued images for Gemini analysis...");
+        if (geminiApiClient == null) {
+            Log.d(TAG, "Gemini API not available, skipping image analysis.");
+            return;
+        }
+        if (!isNetworkAvailable()) {
+            Log.d(TAG, "Network unavailable, skipping analysis.");
+            return;
+        }
+        
+        java.util.Set<String> queueSet = foodImageQueue.getQueue();
+        java.util.List<String> queue = new java.util.ArrayList<>(queueSet);
+        
+        for (String imagePath : queue) {
+            Log.d(TAG, "Analyzing image: " + imagePath);
+            String result = geminiApiClient.analyzeImage(imagePath);
+
+            // 🆕 Save to MariaDB database in background thread, with imageBase64
+            final String currentUserId = getCurrentUserId();
+            final String imageBase64 = DatabaseSyncClient.encodeImageToBase64(imagePath);
+            executorService.execute(() -> {
+                boolean saved = databaseSyncClient.saveAnalysis(
+                    currentUserId,                    // User ID from SharedPreferences
+                    imagePath,                        // Full image path
+                    result,                           // Gemini JSON response
+                    System.currentTimeMillis(),       // Timestamp
+                    "Android Background Service",    // Device info
+                    imageBase64                       // Image as base64
+                );
+
+                if (saved) {
+                    Log.d(TAG, "✅ Analysis saved to MariaDB successfully for user: " + currentUserId);
+
+                    // 🚨 DEBUG: Show success notification (removable for production)
+                    if (SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
+                        // Post notification on main thread to ensure it's shown
+                        new Handler(Looper.getMainLooper()).post(() -> {
+                            showDatabaseSuccessNotification(imagePath, currentUserId);
+                        });
+                    }
+                } else {
+                    Log.w(TAG, "❌ Failed to save to MariaDB, adding to retry queue");
+                    retryQueue.add(currentUserId, imagePath, result, System.currentTimeMillis());
+                }
+            });
+
+            showFoodAnalysisNotification(imagePath, result);
+            foodImageQueue.remove(imagePath);
+        }
+    }
+
+    private void showFoodAnalysisNotification(String imagePath, String result) {
+        try {
+            String fileName = new File(imagePath).getName();
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("Food Analysis Complete")
+                    .setContentText(fileName + " analyzed")
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(result))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true);
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify((int) System.currentTimeMillis(), builder.build());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing food analysis notification", e);
+        }
+    }
+    
     // ── STEP TRACKING IMPLEMENTATION ────────────────────────────────────────────────
 
     /** Register the hardware TYPE_STEP_COUNTER sensor. */
@@ -596,6 +773,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         }
         if (dateChangeReceiver != null) {
             unregisterReceiver(dateChangeReceiver);
+        }
+        if (locationChangeReceiver != null) {
+            unregisterReceiver(locationChangeReceiver);
         }
         
         // Log final retry queue stats
@@ -994,5 +1174,46 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
                 * Math.sin(dLng / 2) * Math.sin(dLng / 2);
         return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    private void showDatabaseSuccessNotification(String imagePath, String userId) {
+        if (!SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
+            Log.d(TAG, "Debug notifications disabled, skipping success notification");
+            return;
+        }
+        
+        Log.d(TAG, "🔔 Creating database success notification for user: " + userId);
+        
+        String fileName = new File(imagePath).getName();
+        String shortText = "✅ Database save successful - " + fileName;
+        String longText = "Food analysis saved to database successfully\n" +
+                         "User ID: " + userId + "\n" +
+                         "File: " + fileName + "\n" +
+                         "Time: " + new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault()).format(new java.util.Date());
+        
+        try {
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("🗄️ Database Save Complete")
+                    .setContentText(shortText)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(longText))
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT) // Changed from LOW to DEFAULT for better visibility
+                    .setAutoCancel(true)
+                    .setShowWhen(true)
+                    .setWhen(System.currentTimeMillis());
+
+            // Remove setTimeoutAfter as it's not available on all API levels
+            
+            NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (notificationManager != null) {
+                int notificationId = (int) (System.currentTimeMillis() % Integer.MAX_VALUE);
+                notificationManager.notify(notificationId, builder.build());
+                Log.d(TAG, "✅ Database success notification posted with ID: " + notificationId);
+            } else {
+                Log.e(TAG, "❌ NotificationManager is null, cannot show notification");
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Error creating database success notification", e);
+        }
     }
 }
