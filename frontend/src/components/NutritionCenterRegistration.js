@@ -452,7 +452,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     try {
       const userId = await getUserId(user.email);
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=direct`,
+        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=self`,
         {
           cache: 'no-store',
           headers: {
@@ -463,11 +463,8 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
       const result = await response.json();
       if (result.success) {
-        // Filter to show only centres owned by current user
-        const ownedCenters = (result.data || []).filter(
-          (c) => c.owner_user_id === userId
-        );
-        setMyCenters(ownedCenters);
+        // Backend handles co-coach partnership — returns clubs for both coach & co-coach
+        setMyCenters(result.data || []);
       }
     } catch (err) {
       console.error('Error fetching centres:', err);
