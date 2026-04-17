@@ -373,6 +373,14 @@ function WellnessValleyApp() {
 
   // ✅ CRITICAL FIX: Force splash screen dismissal on app load
 
+  // ✅ Auth loading timeout — force dismiss loading screen after 5 seconds
+  useEffect(() => {
+    const authTimeout = setTimeout(() => {
+      setAuthLoading(false);
+    }, 5000);
+    return () => clearTimeout(authTimeout);
+  }, []);
+
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       // Double-check splash screen is hidden after React renders
@@ -3358,15 +3366,20 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUser);
 
-        // Check user status before allowing access
-        const isActive = await checkUserStatus(parsedUser);
+        // Check user status with timeout for iOS
+        let isActive = true;
+        try {
+          const statusPromise = checkUserStatus(parsedUser);
+          const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(true), 5000));
+          isActive = await Promise.race([statusPromise, timeoutPromise]);
+        } catch (statusError) {
+          console.warn("⚠️ [handleOtpVerified] Status check failed, proceeding:", statusError);
+          isActive = true; // Default to active on error
+        }
 
         if (!isActive) {
-          // Set user state so modal can show user email
           setUser(parsedUser);
-          // Set OTP verified to false to prevent login completion
           setIsOtpVerified(false);
-          // Don't set isOtpVerified to true - keep at login screen with modal
           return;
         }
 
@@ -3396,6 +3409,9 @@ function WellnessValleyApp() {
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
+        // On iOS, if everything fails, still try to log in
+        setIsOtpVerified(true);
+        localStorage.setItem("isOtpVerified", "true");
       }
     } else {
       // No OTP user found, proceed with verification

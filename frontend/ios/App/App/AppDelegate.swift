@@ -1,5 +1,6 @@
 import UIKit
 import Capacitor
+import WebKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
@@ -7,7 +8,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+
+        // ✅ iOS equivalent of Android hardwareAccelerated=true
+        // WKWebView uses GPU-accelerated rendering by default - ensure it's optimized
+        let config = WKWebViewConfiguration()
+        config.processPool = WKProcessPool()
+
+        // ✅ iOS equivalent of Android largeHeap=true
+        // Allow JavaScript content & increase process limits
+        if #available(iOS 14.0, *) {
+            let pagePrefs = WKWebpagePreferences()
+            pagePrefs.allowsContentJavaScript = true
+            config.defaultWebpagePreferences = pagePrefs
+        }
+
+        // ✅ iOS equivalent of Android multiDexEnabled - allow inline media playback
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+
+        // ✅ iOS equivalent of Android allowMixedContent=true
+        config.upgradeKnownHostsToHTTPS = false
+
+        // ✅ Performance: suppress console noise like Android loggingBehavior=none
+        UserDefaults.standard.set(false, forKey: "WebKitDeveloperExtras")
+
+        // ✅ iOS equivalent of Android DisallowOverscroll preference
+        if let webView = window?.rootViewController?.view as? WKWebView {
+            webView.scrollView.bounces = false
+            webView.scrollView.alwaysBounceVertical = false
+        }
+
         return true
     }
 

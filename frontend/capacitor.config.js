@@ -25,8 +25,25 @@ const config = {
   server: {
     androidScheme: 'https',
     hostname: 'localhost',
-    allowNavigation: ['wellness-buddy-pwa-eta.vercel.app'],
+    allowNavigation: [
+      'wellness-buddy-pwa-eta.vercel.app',
+      'wellness-buddy-pwa-backend-test.vercel.app',
+      '*.vercel.app',
+      '*.googleapis.com',
+      '*.firebase.com',
+      '*.firebaseapp.com',
+      '*.firebaseio.com'
+    ],
     cleartext: false
+  },
+  
+  // ✅ iOS configuration
+  ios: {
+    contentInset: 'automatic',
+    allowsLinkPreview: false,
+    scrollEnabled: true,
+    backgroundColor: '#ffffff',
+    limitsNavigationsToAppBoundDomains: false
   },
   
   plugins: {
