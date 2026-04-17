@@ -1461,17 +1461,17 @@ function WellnessValleyApp() {
         console.log('❌ Weight validation failed:', data.validation);
         
         // Build friendly, supportive message for user
-        let alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        let alertMessage = `We noticed a significant change from your last weigh-in.`;
         
         if (data.validation && data.message) {
           // Capitalise first letter of the backend message for display
           const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
-          alertMessage = `${detail}\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+          alertMessage = detail;
         }
         
         setAlertModal({
           isOpen: true,
-          title: "⚖️ Wait, is that right?",
+          title: "⚖️ Unrealistic Weight Change",
           message: alertMessage,
           type: "warning",
         });
@@ -1601,8 +1601,8 @@ function WellnessValleyApp() {
           setIsEditingWeight(false);
           setAlertModal({
             isOpen: true,
-            title: "⚖️ Wait, is that right?",
-            message: `We noticed a significant change from your last weigh-in.\n\nTip: Double-check the value you entered and make sure it reflects your actual weight.`,
+            title: "⚖️ Unrealistic Weight Change",
+            message: result.message ? result.message.charAt(0).toUpperCase() + result.message.slice(1) : `We noticed a significant change from your last weigh-in.`,
             type: "warning",
           });
         }
@@ -4033,6 +4033,8 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
+                              : Math.abs(weightDiff.change) < 1
+                              ? `${Math.round(Math.abs(weightDiff.change) * 1000)} g`
                               : `${Math.abs(weightDiff.change).toFixed(2)} ${weightResult.unit}`}
                           </p>
                           <p
