@@ -1240,10 +1240,10 @@ function WellnessValleyApp() {
             }
           } else {
             console.log("✅ [Setup Check] Setup already complete");
-            // Check if mandatory profile fields are filled
-            await checkProfileCompletion(userEmail);
-            // After profile completion check, check for profile picture
-            setTimeout(() => checkProfilePicture(user), 800);
+            // Profile completion + picture are already checked by the onAuthStateChange
+            // listener above. Running them again here would fire 3-5 duplicate API calls
+            // within 1 second of login. The onAuthStateChange path is the single
+            // authoritative source for profile gate checks.
           }
         } else {
           console.warn(
@@ -1461,17 +1461,17 @@ function WellnessValleyApp() {
         console.log('❌ Weight validation failed:', data.validation);
         
         // Build friendly, supportive message for user
-        let alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        let alertMessage = `We noticed a significant change from your last weigh-in.`;
         
         if (data.validation && data.message) {
           // Capitalise first letter of the backend message for display
           const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
-          alertMessage = `${detail}\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+          alertMessage = detail;
         }
         
         setAlertModal({
           isOpen: true,
-          title: "⚖️ Wait, is that right?",
+          title: "⚖️ Unrealistic Weight Change",
           message: alertMessage,
           type: "warning",
         });
@@ -1601,8 +1601,8 @@ function WellnessValleyApp() {
           setIsEditingWeight(false);
           setAlertModal({
             isOpen: true,
-            title: "⚖️ Wait, is that right?",
-            message: `We noticed a significant change from your last weigh-in.\n\nTip: Double-check the value you entered and make sure it reflects your actual weight.`,
+            title: "⚖️ Unrealistic Weight Change",
+            message: result.message ? result.message.charAt(0).toUpperCase() + result.message.slice(1) : `We noticed a significant change from your last weigh-in.`,
             type: "warning",
           });
         }
@@ -1628,9 +1628,9 @@ function WellnessValleyApp() {
           const prevWeight = parseFloat(diffData.stats.previousWeight.value);
           const weightChange = val - prevWeight;
           setWeightDiff({
-            previous: Math.round(prevWeight * 10) / 10,
+            previous: Math.round(prevWeight * 100) / 100,
             previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 10) / 10,
+            change: Math.round(weightChange * 100) / 100,
           });
         }
       } catch (_) {
@@ -2401,9 +2401,9 @@ function WellnessValleyApp() {
               if (diffData.success && diffData.stats?.previousWeight) {
                 const weightChange = parseFloat(diffData.stats.weightChange);
                 setWeightDiff({
-                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
+                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
                   previousDate: diffData.stats.previousWeight.date,
-                  change: Math.round(weightChange * 10) / 10,
+                  change: Math.round(weightChange * 100) / 100,
                 });
                 // ✅ Immediately inject into leaderboard strip — no API wait needed
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
@@ -4033,7 +4033,9 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
-                              : `${Math.abs(weightDiff.change).toFixed(3)} ${weightResult.unit}`}
+                              : Math.abs(weightDiff.change) < 1
+                              ? `${Math.round(Math.abs(weightDiff.change) * 1000)} g`
+                              : `${Math.abs(weightDiff.change).toFixed(2)} ${weightResult.unit}`}
                           </p>
                           <p
                             style={{ fontSize: 13, fontWeight: 600, margin: 0 }}

@@ -188,7 +188,7 @@ export function validateAndCorrectWeight(detectedWeight, previousWeight, previou
       finalWeight: workingWeight,
       wasCorrected: correction.wasCorrected,
       originalWeight: correction.original,
-      message: `Unrealistic weight ${direction} of ${absoluteDifference.toFixed(1)} kg ${timeContext}`,
+      message: `Weight ${direction} of ${absoluteDifference.toFixed(1)} kg ${timeContext}`,
       difference: difference,
       hoursSinceLastEntry: hoursDifference,
       maxAllowed: maxChange
