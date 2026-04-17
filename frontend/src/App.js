@@ -1064,7 +1064,7 @@ function WellnessValleyApp() {
     return unsubscribe;
   }, [user?.id]);
 
-  // Setup for authenticated users
+  // Setup for authenticated users.
   useEffect(() => {
     if (user) {
       requestAllPermissions();
