@@ -152,6 +152,7 @@ const DuplicateFoodModal = ({
             Do you want to add it again?
           </p>
 
+
           <div className="flex gap-3 pt-2">
             <button
               onClick={handleCancel}
