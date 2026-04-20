@@ -1261,8 +1261,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             const toFix = bgDays.filter(e => {
               const dbSteps = dbMap.get(e.date) || 0;
               if (e.steps <= dbSteps) return false;
-              // Never overwrite today's non-zero DB value from background service.
-              if (e.date === todayKey && dbSteps > 0) return false;
+              // For today: only skip if the delta is suspiciously large (> 5 000) —
+              // that indicates stale phantom SharedPreferences data (e.g. manual date
+              // testing), not legitimate background walking.
+              // The stale-data correction block below will reset SharedPrefs in that case.
+              // For a normal "app closed → walked → reopened" scenario the delta is
+              // well under 5 000, so we DO want to backfill today.
+              if (e.date === todayKey && dbSteps > 0 && (e.steps - dbSteps) > MAX_BACKFILL_DELTA) return false;
               // For all past days, trust background service unconditionally.
               // Removed the 5 000-step delta cap which was silently dropping full
               // day backfills for users who never opened the app that day.
