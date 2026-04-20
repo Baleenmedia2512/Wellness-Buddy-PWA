@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -23,12 +22,53 @@ import HierarchicalNode from "./common/HierarchicalNode";
 import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
+// ─── Custom Icons ─────────────────────────────────────────────────────────────
+
+/** Bathroom/body weighing scale icon with two footprints and a dial */
+const WeightScaleIcon = ({ className, style }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 100 100"
+    fill="currentColor"
+    className={className}
+    style={style}
+    aria-hidden="true"
+  >
+    {/* Scale body */}
+    <rect x="8" y="18" width="84" height="74" rx="12" ry="12" />
+    {/* Dial bump at top */}
+    <rect x="32" y="10" width="36" height="16" rx="8" ry="8" fill="currentColor" />
+    {/* Dial face (white cutout) */}
+    <rect x="34" y="11" width="32" height="13" rx="6" ry="6" fill="white" />
+    {/* Dial needle */}
+    <line x1="50" y1="22" x2="50" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    {/* Left tick marks */}
+    <line x1="39" y1="18" x2="40.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <line x1="43" y1="13.5" x2="43.5" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    {/* Right tick marks */}
+    <line x1="61" y1="18" x2="59.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    <line x1="57" y1="13.5" x2="56.5" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+    {/* Left foot */}
+    <ellipse cx="34" cy="68" rx="10" ry="14" fill="white" />
+    <ellipse cx="28" cy="54" rx="3.2" ry="3.8" fill="white" />
+    <ellipse cx="33" cy="52" rx="3" ry="3.5" fill="white" />
+    <ellipse cx="38.5" cy="52.5" rx="2.8" ry="3.2" fill="white" />
+    <ellipse cx="43.5" cy="54.5" rx="2.5" ry="2.8" fill="white" />
+    {/* Right foot */}
+    <ellipse cx="66" cy="68" rx="10" ry="14" fill="white" />
+    <ellipse cx="72" cy="54" rx="3.2" ry="3.8" fill="white" />
+    <ellipse cx="67" cy="52" rx="3" ry="3.5" fill="white" />
+    <ellipse cx="61.5" cy="52.5" rx="2.8" ry="3.2" fill="white" />
+    <ellipse cx="56.5" cy="54.5" rx="2.5" ry="2.8" fill="white" />
+  </svg>
+);
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education", "water", "caloriesBurned"];
+const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: Scale,    color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: WeightScaleIcon, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
@@ -402,11 +442,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
+  const [sortBy, setSortBy] = useState("all"); // "all" | "name" | "self" | "direct" | "full"
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
@@ -536,6 +577,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           const ka = computeActivitySortKey(a, filter);
           const kb = computeActivitySortKey(b, filter);
           return sortOrder === "desc" ? kb - ka : ka - kb;
@@ -543,7 +590,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder]);
+  }, [hierarchyData, filter, sortOrder, sortBy]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -897,8 +944,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilterBehavior("all");
         }}
       summaryStats={null}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortOrderChange={(dir) => setSortOrder(dir)}
+      onSortChange={(newSortBy, newSortOrder) => {
+        setSortBy(newSortBy);
+        setSortOrder(newSortOrder);
+      }}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
