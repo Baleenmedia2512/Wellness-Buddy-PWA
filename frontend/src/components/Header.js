@@ -20,7 +20,6 @@ import UserProfileModal from "./UserProfileModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 
-// const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
 const Header = ({
   user,
   userRole = "user",
@@ -36,7 +35,6 @@ const Header = ({
   onShowWellnessCounselling,
   onShowWellnessReport,
   onShowAttendanceReport,
-  onShowClubAttendanceReport,
   onShowNutritionCentersMap,
   onShowRegisterCenter,
   onLeaderboardRefresh,
@@ -539,25 +537,6 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             My Attendance
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Club Attendance Report */}
-                      {onShowClubAttendanceReport && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowClubAttendanceReport();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Club Attendance Report"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
-                            <FileBarChart className="h-5 w-5 text-blue-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Virtual Club
                           </span>
                         </TouchFeedbackButton>
                       )}
