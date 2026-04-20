@@ -483,156 +483,151 @@ const downloadImage = async (blob, fileName) => {
 /**
  * Try Web Share API with retry and fallback to download
  * Handles edge cases like Windows share dialog errors
- * @param {Blob} blob - Image blob to share
+ * 
+ * FIX NOTES (Web Mobile Browser):
+ * 1. Removed canShare() gate — it returns false on many mobile browsers even when
+ *    file sharing IS supported, causing silent fallback to download.
+ * 2. Removed text+files combination — mixing files+text causes NotAllowedError on
+ *    iOS Safari and some Android browsers.
+ * 3. navigator.share() is called as early as possible to stay within the user
+ *    gesture context window. The blob is passed in pre-built to avoid async delays.
+ * 4. WhatsApp on mobile web restricts file sharing via Web Share API — when this
+ *    happens we fall back to download with a clear instruction to the user.
+ * 
+ * @param {Blob} blob - Image blob to share (pre-built before user gesture)
  * @param {Object} options - Share options
  */
 const shareWithRetryAndFallback = async (blob, options) => {
-  const { title, text, fileName, shareAsDocument } = options;
-  const maxRetries = 2;
-  let lastError = null;
+  const { title, fileName } = options;
 
-  // Check if Web Share API is available
+  // Check if Web Share API exists at all
   if (!navigator.share) {
-    console.log("❌ Web Share API not available, falling back to download");
+    console.log("❌ Web Share API not supported in this browser, falling back to download");
     await downloadImage(blob, fileName);
     return;
   }
 
-  // Attempt Web Share with retries
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      console.log(`📤 Share attempt ${attempt}/${maxRetries}...`);
-      
-      const file = new File([blob], fileName, { type: "image/png" });
-      
-      // Check if we can share files
-      const canShareFiles = navigator.canShare && navigator.canShare({ files: [file] });
-      
-      if (!canShareFiles) {
-        console.log("⚠️ Browser cannot share files, falling back to download");
-        break; // Exit loop and fallback to download
-      }
-      
-      const shareOptions = {
-        files: [file],
-        title: title,
-      };
-      
-      // Include text for document mode (prevents compression on WhatsApp)
-      if (shareAsDocument && text) {
-        shareOptions.text = text;
-      }
-      
-      console.log("🚀 Calling navigator.share()...", shareOptions);
-      await navigator.share(shareOptions);
-      console.log("✅ Share completed successfully!");
-      return; // Success - exit function
-      
-    } catch (error) {
-      console.warn(`⚠️ Share attempt ${attempt} failed:`, error.name, error.message);
-      lastError = error;
-      
-      // Check if user canceled - stop immediately, no fallback
-      if (error.name === "AbortError" || 
-          error.message?.toLowerCase().includes("cancel")) {
-        console.log("ℹ️ User cancelled share - no fallback");
-        return;
-      }
-      
-      // Check for recoverable errors that warrant retry
-      const isRecoverableError = 
-        error.name === "NotAllowedError" ||
-        error.name === "DataError" ||
-        error.message?.includes("couldn't show") ||
-        error.message?.includes("ways you could share");
-      
-      if (isRecoverableError && attempt < maxRetries) {
-        console.log(`🔄 Retrying share in 800ms...`);
-        await new Promise(resolve => setTimeout(resolve, 800));
-        continue; // Retry
-      }
-      
-      // If we've exhausted retries, fall back to download
-      if (attempt === maxRetries) {
-        console.log(`❌ After ${maxRetries} attempts, share failed:`, error.message);
-        console.log("💡 Falling back to download...");
-        break;
-      }
-    }
-  }
-  
-  // Fallback: Download the image
   try {
-    await downloadImage(blob, fileName);
-  } catch (downloadError) {
-    console.error("❌ Download also failed:", downloadError);
-    alert("Unable to share or download. Please try again or check your browser settings.");
-    throw downloadError;
+    console.log("📤 Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
+
+    const file = new File([blob], fileName, { type: "image/png" });
+
+    // Share with files + title only — DO NOT include text when sharing files.
+    // Mixing files+text breaks sharing on iOS Safari and many Android browsers.
+    await navigator.share({
+      files: [file],
+      title: title,
+    });
+
+    console.log("✅ Web Share API: share completed successfully!");
+    return;
+
+  } catch (error) {
+    console.warn("⚠️ Web Share API failed:", error.name, "-", error.message);
+
+    // User deliberately cancelled — no fallback, no alert
+    if (error.name === "AbortError" ||
+        error.message?.toLowerCase().includes("cancel")) {
+      console.log("ℹ️ User cancelled share");
+      return;
+    }
+
+    // NotAllowedError = gesture chain broken (long async before share call)
+    // OR browser/app (e.g. WhatsApp web) blocked the share.
+    if (error.name === "NotAllowedError") {
+      console.log("⚠️ NotAllowedError — gesture context may have expired, or WhatsApp blocked web file share. Falling back to download.");
+      await downloadImage(blob, fileName);
+      alert(
+        "Image saved to your downloads! 📥\n\n" +
+        "To share on WhatsApp:\n" +
+        "1. Open WhatsApp\n" +
+        "2. Open the chat\n" +
+        "3. Tap 📎 → Gallery → select the downloaded image"
+      );
+      return;
+    }
+
+    // File sharing not supported by this browser build — fall back to download
+    if (error.name === "TypeError" || error.name === "DataError") {
+      console.log("⚠️ Browser does not support file sharing via Web Share API. Downloading instead.");
+      await downloadImage(blob, fileName);
+      return;
+    }
+
+    // Any other unexpected error — still fall back gracefully
+    console.error("❌ Unexpected share error, falling back to download:", error);
+    try {
+      await downloadImage(blob, fileName);
+    } catch (downloadError) {
+      console.error("❌ Download also failed:", downloadError);
+      alert("Unable to share or download. Please try again or check your browser settings.");
+      throw downloadError;
+    }
   }
 };
 
 /**
  * Web fallback share using Web Share API or download
- * @param {boolean} shareAsDocument - If true, share as document to prevent compression
+ * 
+ * FIX NOTES (Web Mobile Browser):
+ * - Removed canShare() gate and text+files combination (both cause silent failures
+ *   on mobile Chrome/Safari and iOS Safari respectively).
+ * - Uses files+title only — the safest combination across all mobile browsers.
+ * - Falls back to download with clear WhatsApp instructions when Web Share fails.
+ * 
+ * @param {boolean} shareAsDocument - Kept for API compatibility, not used on web
  */
 const shareWeb = async (
   blob,
-  { title, text, fileName, shareAsDocument = true },
+  { title, fileName },
 ) => {
   try {
-    // First try: Web Share API with files (best option)
+    // Try Web Share API with files only (no text — prevents NotAllowedError)
     if (navigator.share) {
       const file = new File([blob], fileName, { type: "image/png" });
 
-      // Try sharing with file (and text if document mode)
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        try {
-          const webShareOptions = {
-            files: [file],
-          };
-          // Include text for document mode to prevent compression
-          if (shareAsDocument) {
-            webShareOptions.text = text;
-            webShareOptions.title = title;
-          }
-          await navigator.share(webShareOptions);
-          console.log(
-            "✅ Shared via Web Share API with file",
-            shareAsDocument ? "(document mode)" : "",
-          );
-          return;
-        } catch (shareError) {
-          if (shareError.name === "AbortError") {
-            console.log("ℹ️ User canceled share");
-            return;
-          }
-          console.log("⚠️ Share with file failed, trying text only...");
-        }
-      }
-
-      // Second try: Share with title only (image couldn't be shared as file)
       try {
         await navigator.share({
+          files: [file],
           title: title,
         });
-        console.log("✅ Shared via Web Share API (text only)");
-
-        // Show message that image was not included
-        alert(
-          "Share initiated! Note: The image couldn't be automatically attached. You may need to add it manually.",
-        );
+        console.log("✅ Shared via Web Share API with file");
         return;
       } catch (shareError) {
-        if (shareError.name === "AbortError") {
+        // User cancelled — stop here, no fallback
+        if (shareError.name === "AbortError" ||
+            shareError.message?.toLowerCase().includes("cancel")) {
           console.log("ℹ️ User canceled share");
           return;
         }
-        console.log("⚠️ Text share also failed");
+
+        // NotAllowedError — WhatsApp or browser blocked web file share
+        if (shareError.name === "NotAllowedError") {
+          console.log("⚠️ NotAllowedError — falling back to download with WhatsApp instructions");
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          alert(
+            "Image saved to your downloads! 📥\n\n" +
+            "To share on WhatsApp:\n" +
+            "1. Open WhatsApp\n" +
+            "2. Open the chat\n" +
+            "3. Tap 📎 → Gallery → select the downloaded image"
+          );
+          return;
+        }
+
+        console.log("⚠️ Web Share API file share failed:", shareError.name, "— falling back to download");
       }
     }
 
-    // Last resort: Download with instructions
-    console.log("ℹ️ Web Share API not available, downloading image...");
+    // Fallback: Download with instructions
+    console.log("ℹ️ Web Share API not available or failed, downloading image...");
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -643,8 +638,6 @@ const shareWeb = async (
     URL.revokeObjectURL(url);
 
     console.log("✅ Image downloaded");
-
-    // Show helpful message
     alert(
       "Image downloaded! You can now attach it from your downloads folder.",
     );
