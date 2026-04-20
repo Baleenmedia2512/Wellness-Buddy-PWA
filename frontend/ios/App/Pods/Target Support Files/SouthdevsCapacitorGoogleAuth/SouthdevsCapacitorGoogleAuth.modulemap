@@ -1,0 +1,6 @@
+framework module SouthdevsCapacitorGoogleAuth {
+  umbrella header "SouthdevsCapacitorGoogleAuth-umbrella.h"
+
+  export *
+  module * { export * }
+}
