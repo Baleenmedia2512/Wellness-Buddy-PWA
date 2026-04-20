@@ -134,7 +134,7 @@ export default async function handler(req, res) {
         .from("team_table")
         .update(updateData)
         .eq("UserId", userId)
-        .select('"UserId"');
+        .select('UserId');
 
       if (updateError) throw updateError;
       if (!updatedRows || updatedRows.length === 0) {
@@ -165,8 +165,8 @@ export default async function handler(req, res) {
       // Verify persisted values to prevent false success responses.
       const { data: verifyRow, error: verifyError } = await supabase
         .from("team_table")
-        .select('"UserId", "Height", "DietType", "PhoneNumber"')
-        .eq('"UserId"', userId)
+        .select('UserId, Height, DietType, PhoneNumber')
+        .eq('UserId', userId)
         .maybeSingle();
 
       if (verifyError) throw verifyError;
@@ -200,10 +200,9 @@ export default async function handler(req, res) {
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
       if (!isNaN(bmrValue) && bmrValue > 0) {
-        const currentTime = getISTTimestamp();
         const { error: bmrUpdateError } = await supabase
           .from("team_table")
-          .update({ Bmr: bmrValue, UpdatedAt: currentTime })
+          .update({ Bmr: bmrValue })
           .eq("UserId", userId);
 
         if (bmrUpdateError) throw bmrUpdateError;
