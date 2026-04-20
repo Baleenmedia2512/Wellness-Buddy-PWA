@@ -571,10 +571,26 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const matchesSearch = useCallback((node, query) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (
+    
+    // Check current node
+    if (
       String(node.userName || "").toLowerCase().includes(q) ||
       String(node.email    || "").toLowerCase().includes(q)
-    );
+    ) {
+      return true;
+    }
+    
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        String(node.coCoachInfo.userName || "").toLowerCase().includes(q) ||
+        String(node.coCoachInfo.email    || "").toLowerCase().includes(q)
+      ) {
+        return true;
+      }
+    }
+    
+    return false;
   }, []);
 
   const getStatusStyle = useCallback((node) => {

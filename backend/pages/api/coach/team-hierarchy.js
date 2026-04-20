@@ -396,6 +396,22 @@ export default async function handler(req, res) {
     };
 
     const memberMap = flattenHierarchy(hierarchy);
+    
+    // Add co-coach to allMembers for search functionality
+    // Even though they're excluded from the nested tree view, they should be searchable
+    if (hierarchy.coCoachInfo && !memberMap.has(hierarchy.coCoachInfo.userId)) {
+      memberMap.set(hierarchy.coCoachInfo.userId, {
+        UserId: hierarchy.coCoachInfo.userId,
+        UserName: hierarchy.coCoachInfo.userName,
+        Email: hierarchy.coCoachInfo.email,
+        Role: hierarchy.coCoachInfo.role,
+        CoachId: hierarchy.coCoachInfo.coachId,
+        CoCoachId: hierarchy.coCoachInfo.coCoachId,
+        Status: hierarchy.coCoachInfo.status,
+        isCoCoach: true  // Flag to identify them in search results
+      });
+    }
+    
     const allMembers = Array.from(memberMap.values());
 
     console.log(
