@@ -203,11 +203,31 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
-        scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
+        // IMPORTANT: wrap in try-catch — ScheduledExecutorService silently cancels a
+        // periodic task forever if its Runnable throws any unchecked exception.
+        // Dispatching the blocking HTTP call to executorService keeps the scheduler
+        // thread free and prevents pool starvation under slow network conditions.
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                if (executorService != null && !executorService.isShutdown()) {
+                    executorService.execute(this::saveStepsToDB);
+                } else {
+                    saveStepsToDB();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [Steps] Scheduled save threw — task kept alive for next tick", e);
+            }
+        }, 30, 30, TimeUnit.SECONDS);
 
         // ✅ Walking detection fallback — fires every 30 s so sensor-batched events
         // (screen off / Doze) still trigger the notification reliably.
-        scheduledExecutor.scheduleAtFixedRate(this::checkWalkingBySchedule, 30, 30, TimeUnit.SECONDS);
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                checkWalkingBySchedule();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [Walk] Scheduled walk-check threw — task kept alive for next tick", e);
+            }
+        }, 30, 30, TimeUnit.SECONDS);
 
         // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
         initGpsTracking();
@@ -239,7 +259,13 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 new android.content.IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION));
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
-        scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                saveScreenTimeToDB();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [ScreenTime] Scheduled save threw — task kept alive for next tick", e);
+            }
+        }, 60, 60, TimeUnit.SECONDS);
 
         // ✅ Register ContentObserver to detect image changes (with debounce to prevent flooding)
         imageObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
@@ -602,7 +628,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     }
 
     private void saveStepsToDB() {
-        saveStepsToDBForDate(getTodayDateKey(), false);
+        try {
+            saveStepsToDBForDate(getTodayDateKey(), false);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ [Steps] saveStepsToDB failed", e);
+        }
     }
 
     private void saveStepsToDBForDate(String date) {
@@ -881,6 +911,38 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand called");
 
+        // ── User credentials delivered via Intent extras ──────────────────────
+        // GalleryMonitorPlugin.setCurrentUser() passes userId/email/cachedDbUserId
+        // as extras so the :background process always has a reliable userId.
+        // MODE_MULTI_PROCESS (used in getCurrentUserId) is deprecated and does NOT
+        // guarantee cross-process visibility on Android 8+ — this is the safe path.
+        if (intent != null) {
+            String intentCachedId = intent.getStringExtra("cachedDbUserId");
+            String intentEmail    = intent.getStringExtra("userEmail");
+            String intentUserId   = intent.getStringExtra("userId");
+            String intentApiUrl   = intent.getStringExtra("apiBaseUrl");
+            if (intentCachedId != null || intentEmail != null || intentUserId != null) {
+                SharedPreferences.Editor editor =
+                        getSharedPreferences("WellnessValley", MODE_PRIVATE).edit();
+                if (intentCachedId != null && !intentCachedId.isEmpty()) {
+                    editor.putString("cached_db_user_id", intentCachedId);
+                    Log.d(TAG, "✅ [onStartCommand] cached_db_user_id synced from Intent: " + intentCachedId);
+                }
+                if (intentEmail != null && !intentEmail.isEmpty()) {
+                    editor.putString("current_user_email", intentEmail);
+                }
+                if (intentUserId != null && !intentUserId.isEmpty()) {
+                    editor.putString("current_user_id", intentUserId);
+                }
+                if (intentApiUrl != null && !intentApiUrl.isEmpty()) {
+                    editor.putString("api_base_url", intentApiUrl);
+                }
+                // commit() instead of apply() — synchronous write so getCurrentUserId()
+                // reads the correct value on the very next scheduled save tick.
+                editor.commit();
+            }
+        }
+
         // React-side correction: when backfill detects stale SharedPrefs data
         // (e.g. after manual date testing), it sends an intent to reset the
         // per-day baseline so the service stops saving the wrong high value.
@@ -1142,6 +1204,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
      * Tapping the notification opens the app directly.
      */
     private void showWalkingNotification() {
+        // Notification disabled — user does not want location-off prompts.
+        Log.d(TAG, "🚶 Walking detected (notification suppressed)");
+        if (true) return;
         // Determine indoor / outdoor without needing location permission for a reading —
         // we only need to know whether the user has location services turned ON.
         boolean locationEnabled = false;

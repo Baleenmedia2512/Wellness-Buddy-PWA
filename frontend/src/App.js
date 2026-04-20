@@ -692,6 +692,16 @@ function WellnessValleyApp() {
         App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
+            // Re-start step tracking in case Android killed the service while app was in background
+            import('./plugins/stepCounterPlugin').then(({ StepCounterPlugin }) => {
+              StepCounterPlugin.isAvailable().then(av => {
+                if (av?.available) {
+                  StepCounterPlugin.getPermissionStatus().then(perm => {
+                    if (perm?.granted) StepCounterPlugin.startTracking().catch(() => {});
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }).catch(() => {});
           } else {
             // App going to background — reset sub-pages so reopening shows dashboard
             const page = localStorage.getItem("currentPage");
@@ -731,6 +741,30 @@ function WellnessValleyApp() {
       if (cleanupFn) cleanupFn();
     };
   }, [showDashboardPage]);
+
+  // ── Silent step tracking start — runs when user logs in / app opens ────────
+  // Starts the native step sensor in the background so steps are counted from
+  // day 1, even if the user never navigates to the StepCounter page.
+  // Permission is NEVER requested here — only resumes tracking if already granted.
+  useEffect(() => {
+    if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
+
+    const startStepTrackingIfPermitted = async () => {
+      try {
+        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+        const availability = await StepCounterPlugin.isAvailable();
+        if (!availability?.available) return;
+        const permission = await StepCounterPlugin.getPermissionStatus();
+        if (!permission?.granted) return;
+        await StepCounterPlugin.startTracking();
+        console.log('✅ [App] Background step tracking started silently');
+      } catch (err) {
+        console.warn('[App] Silent step tracking start failed:', err?.message || err);
+      }
+    };
+
+    startStepTrackingIfPermitted();
+  }, [user, isUserActive]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -4370,6 +4404,7 @@ function WellnessValleyApp() {
           weightValue={duplicateWeightInfo.existingWeight}
           unit={duplicateWeightInfo.unit}
           timeDifference={duplicateWeightInfo.timeDifference}
+          existingTime={duplicateWeightInfo.existingTime}
           onConfirm={handleDuplicateWeightConfirm}
           onCancel={handleDuplicateWeightCancel}
         />

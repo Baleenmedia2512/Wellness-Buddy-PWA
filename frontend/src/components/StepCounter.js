@@ -1,11 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
-import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw, MapPin, Share2 } from 'lucide-react';
-import { MapContainer, TileLayer, Polyline, CircleMarker, Tooltip, useMap } from 'react-leaflet';
+import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Share } from '@capacitor/share';
-import 'leaflet/dist/leaflet.css';
 import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
@@ -24,24 +20,11 @@ const POLL_INTERVAL_MS     = 5000;        // Fallback sensor poll every 5 second
 const STEP_GOAL            = 10000;
 const RING_RADIUS          = 80;
 const RING_CIRCUMFERENCE   = 2 * Math.PI * RING_RADIUS;
-const GPS_MIN_MOVE_METERS = 10;      // minimum gap to draw a new segment (↑ from 8 → fewer, cleaner points)
-const GPS_MAX_JUMP_METERS = 120;
-const GPS_MAX_WALK_SPEED_MPS = 4;
-const MAX_ROUTE_POINTS_PER_DAY = 1500;
-// ── GPS line accuracy ──────────────────────────────────────────────────────
-const GPS_PATH_ACCURACY_METERS = 20;  // min GPS accuracy required to draw the route line
-const GPS_SMOOTH_ALPHA = 0.25;        // EMA weight for new GPS fix (↓ from 0.35 → smoother curves)
-// ── GPS spike / stationary suppression ────────────────────────────────────
-// Reject a new GPS point if it would create a sharp U-turn (> MAX_COURSE_CHANGE_DEG)
-// on a short segment (< SPIKE_MIN_GAP_METERS). Eliminates the "arrow" jitter when
-// standing still and short GPS bounce-backs.
-const GPS_MAX_COURSE_CHANGE_DEG = 120; // any direction reversal sharper than 120° on a short segment = spike
-const GPS_SPIKE_MIN_GAP_METERS  = 18;  // only apply heading check when gap < 18 m (large gaps are real turns)
-// If the last N accepted points are all within STATIONARY_RADIUS_METERS of their centroid,
-// the user is standing still — stop drawing until movement of STATIONARY_RESUME_METERS.
-const GPS_STATIONARY_CLUSTER_SIZE   = 5;   // number of recent points to inspect
-const GPS_STATIONARY_RADIUS_METERS  = 12;  // all 5 within 12 m → stationary
-const GPS_STATIONARY_RESUME_METERS  = 20;  // must move 20 m from cluster centroid to resume
+const GPS_MIN_MOVE_METERS = 10;      // minimum gap to count distance
+const GPS_MAX_JUMP_METERS = 120;     // reject teleport glitches
+const GPS_MAX_WALK_SPEED_MPS = 4;   // reject vehicle/cycling
+// ── GPS distance accuracy ──────────────────────────────────────────────────
+const GPS_PATH_ACCURACY_METERS = 20; // min GPS accuracy required to count distance
 // ── Anti-fake step detection ───────────────────────────────────────────────
 const GPS_VEHICLE_SPEED_MPS = 6;         // ≥ 6 m/s (~22 kph) → likely vehicle/cycling
 const ANTI_FAKE_MAX_STEPS_PER_MIN = 260; // beyond human sprint capability
@@ -94,9 +77,6 @@ const getBaselineKey   = (dateKey) => `step_counter_baseline_${dateKey}`;
 const getSaveSensorKey = (dateKey) => `step_save_sensor_${dateKey}`;
 /** localStorage key for the step count at the time of the last DB save (used to detect bg-service additions). */
 const getSaveStepsKey  = (dateKey) => `step_save_steps_${dateKey}`;
-/** localStorage key for persisted GPS route of the day. */
-const getRouteStorageKey = (dateKey) => `step_route_points_${dateKey}`;
-
 /** Read today's sensor baseline from localStorage. Returns null if absent/invalid. */
 const readBaseline = (dateKey) => {
   try {
@@ -139,267 +119,30 @@ const distanceInMeters = (a, b) => {
   return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 };
 
-/**
- * Compass bearing (0–360°) from point a to point b.
- * Used to detect sharp direction reversals (GPS spike / bounce-back).
- */
-const bearingDeg = (a, b) => {
-  const toRad = (d) => (d * Math.PI) / 180;
-  const toDeg = (r) => (r * 180) / Math.PI;
-  const dLng  = toRad(b.lng - a.lng);
-  const lat1  = toRad(a.lat);
-  const lat2  = toRad(b.lat);
-  const y = Math.sin(dLng) * Math.cos(lat2);
-  const x = Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
-  return (toDeg(Math.atan2(y, x)) + 360) % 360;
-};
+// ─────────────────────────────────────────────────────────────────────────────
+// OUTDOOR DISTANCE PERSISTENCE
+// ─────────────────────────────────────────────────────────────────────────────
+const getDistanceStorageKey = (dateKey) => `step_outdoor_dist_${dateKey}`;
 
-/**
- * Geographic centroid (average lat/lng) of an array of points.
- */
-const centroidOf = (points) => {
-  if (!points.length) return null;
-  const sumLat = points.reduce((s, p) => s + p.lat, 0);
-  const sumLng = points.reduce((s, p) => s + p.lng, 0);
-  return { lat: sumLat / points.length, lng: sumLng / points.length };
-};
-
-const readPersistedRoute = (dateKey) => {
+const readPersistedDistance = (dateKey) => {
   try {
-    const raw = localStorage.getItem(getRouteStorageKey(dateKey));
-    if (!raw) return [];
+    const raw = localStorage.getItem(getDistanceStorageKey(dateKey));
+    if (!raw) return 0;
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((p) => ({
-        lat: Number(p?.lat),
-        lng: Number(p?.lng),
-        timestamp: Number(p?.timestamp) || Date.now(),
-        accuracy: Number(p?.accuracy),
-      }))
-      .filter((p) => isValidLatLng(p.lat, p.lng));
+    return Number.isFinite(parsed?.totalMeters) ? parsed.totalMeters : 0;
   } catch {
-    return [];
+    return 0;
   }
 };
 
-const persistRoute = (dateKey, points) => {
-  const safe = Array.isArray(points) ? points.slice(-MAX_ROUTE_POINTS_PER_DAY) : [];
-  localStorage.setItem(getRouteStorageKey(dateKey), JSON.stringify(safe));
+const persistDistance = (dateKey, totalMeters) => {
+  localStorage.setItem(getDistanceStorageKey(dateKey), JSON.stringify({ totalMeters, dateKey }));
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// BUILD WALK SHARE CANVAS
-// Renders the route as a clean fitness card using pure Canvas 2D API.
-// No external tile fetches — works in Android WebView / Capacitor with no CORS.
-// Returns a Promise<Blob>.
-// ─────────────────────────────────────────────────────────────────────────────
-const buildWalkShareCanvas = (points, distanceMeters, steps, dateLabel) => {
-  return new Promise((resolve, reject) => {
-    const W = 800;
-    const H = 500;
-    const PAD = 48;
-    const canvas = document.createElement('canvas');
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) { reject(new Error('Canvas not supported')); return; }
-
-    // ── Background gradient ────────────────────────────────────────────────
-    const bg = ctx.createLinearGradient(0, 0, W, H);
-    bg.addColorStop(0, '#0f172a');   // slate-900
-    bg.addColorStop(1, '#134e4a');   // teal-900
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-
-    // ── Grid lines (subtle) ─────────────────────────────────────────────────
-    ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-    ctx.lineWidth = 1;
-    for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
-    for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
-
-    // ── Draw route polyline ────────────────────────────────────────────────
-    const routeAreaH = H - 160;  // bottom 160px reserved for stats bar
-    if (points && points.length >= 2) {
-      // Project lat/lng → canvas pixels (simple equirectangular)
-      const lats = points.map(p => p.lat);
-      const lngs = points.map(p => p.lng);
-      const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-      const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-      const spanLat = maxLat - minLat || 0.0001;
-      const spanLng = maxLng - minLng || 0.0001;
-      // Keep aspect ratio
-      const scaleX = (W - PAD * 2) / spanLng;
-      const scaleY = (routeAreaH - PAD * 2) / spanLat;
-      const scale  = Math.min(scaleX, scaleY);
-      const projX  = lng => PAD + (lng - minLng) * scale + ((W - PAD * 2) - spanLng * scale) / 2;
-      const projY  = lat => PAD + (routeAreaH - PAD * 2) - (lat - minLat) * scale + ((routeAreaH - PAD * 2) - spanLat * scale) / 2;
-
-      // Glow shadow
-      ctx.shadowColor = '#10b981';
-      ctx.shadowBlur  = 12;
-
-      // Route line
-      ctx.beginPath();
-      ctx.strokeStyle = '#10b981';
-      ctx.lineWidth   = 4;
-      ctx.lineJoin    = 'round';
-      ctx.lineCap     = 'round';
-      points.forEach((p, i) => {
-        const x = projX(p.lng), y = projY(p.lat);
-        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      });
-      ctx.stroke();
-      ctx.shadowBlur = 0;
-
-      // Start dot (green)
-      const sx = projX(points[0].lng), sy = projY(points[0].lat);
-      ctx.beginPath();
-      ctx.arc(sx, sy, 8, 0, Math.PI * 2);
-      ctx.fillStyle   = '#10b981';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth   = 2;
-      ctx.stroke();
-
-      // End dot (rose)
-      const ex = projX(points[points.length - 1].lng), ey = projY(points[points.length - 1].lat);
-      ctx.beginPath();
-      ctx.arc(ex, ey, 8, 0, Math.PI * 2);
-      ctx.fillStyle   = '#f43f5e';
-      ctx.fill();
-      ctx.strokeStyle = '#fff';
-      ctx.lineWidth   = 2;
-      ctx.stroke();
-
-      // Start label
-      ctx.font      = 'bold 13px system-ui, sans-serif';
-      ctx.fillStyle = '#a7f3d0';
-      ctx.fillText('Start', sx + 12, sy + 5);
-
-      // End label
-      const distLabel = distanceMeters >= 1000
-        ? `${(distanceMeters / 1000).toFixed(2)} km`
-        : `${Math.round(distanceMeters)} m`;
-      ctx.fillStyle = '#fda4af';
-      ctx.fillText(distLabel, ex + 12, ey + 5);
-    } else {
-      // No route — draw placeholder text
-      ctx.font      = 'bold 18px system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.textAlign = 'center';
-      ctx.fillText('No route recorded yet', W / 2, routeAreaH / 2);
-      ctx.textAlign = 'left';
-    }
-
-    // ── Stats bar ──────────────────────────────────────────────────────────
-    const BAR_Y = H - 150;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    const barR = 16;
-    ctx.beginPath();
-    ctx.moveTo(0 + barR, BAR_Y);
-    ctx.lineTo(W - barR, BAR_Y);
-    ctx.lineTo(W, BAR_Y + barR);
-    ctx.lineTo(W, H); ctx.lineTo(0, H);
-    ctx.lineTo(0, BAR_Y + barR);
-    ctx.closePath();
-    ctx.fill();
-
-    // Distance
-    const distStr = distanceMeters >= 1000
-      ? (distanceMeters / 1000).toFixed(2)
-      : String(Math.round(distanceMeters));
-    const distUnit = distanceMeters >= 1000 ? 'km' : 'm';
-    ctx.textAlign = 'center';
-    ctx.font      = 'bold 42px system-ui, sans-serif';
-    ctx.fillStyle = '#10b981';
-    ctx.fillText(distStr, W * 0.25, BAR_Y + 55);
-    ctx.font      = 'bold 16px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText(distUnit + '  walked', W * 0.25, BAR_Y + 78);
-
-    // Steps
-    ctx.font      = 'bold 42px system-ui, sans-serif';
-    ctx.fillStyle = '#f59e0b';
-    ctx.fillText(steps.toLocaleString(), W * 0.65, BAR_Y + 55);
-    ctx.font      = 'bold 16px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.fillText('steps', W * 0.65, BAR_Y + 78);
-
-    // Date + branding
-    ctx.font      = '13px system-ui, sans-serif';
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.fillText(dateLabel || '', W * 0.25, BAR_Y + 108);
-    ctx.fillText('Wellness Valley', W * 0.65, BAR_Y + 108);
-    ctx.textAlign = 'left';
-
-    canvas.toBlob((blob) => {
-      if (blob) resolve(blob);
-      else reject(new Error('toBlob returned null'));
-    }, 'image/png');
-  });
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
-// MAP AUTO-FIT — re-centers/zooms to fit all path points whenever they change.
-// Must live inside <MapContainer> so useMap() can access the Leaflet instance.
-// ─────────────────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-// MAP FIT TO SHARE — called on demand to fit all points before screenshot
-// ─────────────────────────────────────────────────────────────────────────────
-const MapFitToShare = ({ points, triggerFit, onFitDone }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (!triggerFit || !points || points.length < 2) return;
-    const bounds = points.map(p => [p.lat, p.lng]);
-    map.fitBounds(bounds, { padding: [32, 32], maxZoom: 18, animate: false });
-    // Wait one frame for tile re-render, then signal ready
-    const t = setTimeout(() => onFitDone?.(), 600);
-    return () => clearTimeout(t);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [triggerFit]);
-  return null;
-};
-
-const MapAutoFit = ({ points, centerPoint }) => {
-  const map = useMap();
-  const prevLenRef = useRef(0);
-  const lastCenteredRef = useRef(null); // last position we centered the indoor map on
-  useEffect(() => {
-    if (points && points.length >= 2) {
-      // Outdoor route active — clear indoor ref so live GPS re-centers if route ends
-      lastCenteredRef.current = null;
-      const latest = points[points.length - 1];
-      const isNewPoint = points.length > prevLenRef.current;
-      prevLenRef.current = points.length;
-
-      if (points.length === 2) {
-        // First two points — fit bounds so both are visible
-        map.fitBounds(points.map(p => [p.lat, p.lng]), { padding: [40, 40], maxZoom: 18 });
-      } else if (isNewPoint) {
-        // Subsequent points — smoothly pan to latest, keep current zoom (street level)
-        map.flyTo([latest.lat, latest.lng], Math.max(map.getZoom(), 17), {
-          animate: true,
-          duration: 0.8,
-        });
-      }
-    } else if (centerPoint) {
-      const prev = lastCenteredRef.current;
-      // Re-center if: no previous center OR live GPS fix is > 20 m from the last centered point.
-      // This corrects the map when a stale restored position is replaced by the actual live fix.
-      const shouldRecenter = !prev || distanceInMeters(prev, centerPoint) > 20;
-      if (shouldRecenter) {
-        map.setView([centerPoint.lat, centerPoint.lng], 17);
-        lastCenteredRef.current = centerPoint;
-        prevLenRef.current = 0;
-      }
-    }
-  }, [map, points, centerPoint]);
-  return null;
-};
-
 /**
  * Main Step Counter Component
  */
@@ -432,23 +175,19 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const wrongDateWarningRef = useRef(null);
   useEffect(() => { wrongDateWarningRef.current = wrongDateWarning; }, [wrongDateWarning]);
 
-  // ── GPS Map State ──────────────────────────────────────────────
-  const [showMap, setShowMap]           = useState(false);
-  const [pathPoints, setPathPoints]     = useState([]); // [{lat, lng}, ...]
+  // ── GPS State ──────────────────────────────────────────────────
   const [gpsPermission, setGpsPermission] = useState('unknown'); // 'unknown'|'granted'|'denied'
-  // Last known GPS position (updated even when indoor — used to show map without a route)
+  // Last known GPS position (updated on every fix — used for indoor/outdoor status strip)
   const [lastGpsPos, setLastGpsPos]     = useState(null); // {lat, lng, isOutdoor}
   // Anti-fake activity warning: null | 'high_step_rate' | 'vehicle_detected'
   const [suspiciousActivity, setSuspiciousActivity] = useState(null);
-  // Share flow: when true, MapFitToShare fits map to bounds, then share capture fires
-  const [shareFitTrigger, setShareFitTrigger] = useState(false);
-  const shareFitResolverRef = useRef(null); // resolves the promise after fit+tiles ready
+  // Outdoor walked distance (meters) — independent accumulator, no map array
+  const [outdoorDistance, setOutdoorDistance] = useState(() => readPersistedDistance(toDateKey()));
+  const outdoorDistanceRef    = useRef(readPersistedDistance(toDateKey())); // running total in meters
+  const lastAcceptedGpsPtRef  = useRef(null);     // last accepted GPS point for incremental Haversine
   const gpsLastTsRef                   = useRef(0);    // dedup: skip duplicate GPS reads
   const gpsIntervalRef                 = useRef(null); // GPS poll interval handle
-  const mapCardRef                     = useRef(null); // ref to the map card for screenshot
-  const mapDivRef                      = useRef(null); // ref to the inner map div (for share capture)
   const routeDateRef                   = useRef(toDateKey());
-  const gpsSmoothedRef                 = useRef(null); // EMA smoothed {lat,lng} for clean route line
   const stepRateWindowRef              = useRef([]);   // anti-fake: [{steps, ts}] ring buffer
   const suspiciousActivityRef          = useRef(null); // ref mirror of suspiciousActivity state
 
@@ -876,7 +615,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       ? 'fake_detected'
       : acResult.shouldWarn
       ? 'high_step_rate'
-      : (suspiciousActivityRef.current === 'vehicle_detected' ? 'vehicle_detected' : null);
+      : null;
     if (newWarning !== suspiciousActivityRef.current) {
       suspiciousActivityRef.current = newWarning;
       setSuspiciousActivity(newWarning);
@@ -1522,8 +1261,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             const toFix = bgDays.filter(e => {
               const dbSteps = dbMap.get(e.date) || 0;
               if (e.steps <= dbSteps) return false;
-              // Never overwrite today's non-zero DB value from background service.
-              if (e.date === todayKey && dbSteps > 0) return false;
+              // For today: only skip if the delta is suspiciously large (> 5 000) —
+              // that indicates stale phantom SharedPreferences data (e.g. manual date
+              // testing), not legitimate background walking.
+              // The stale-data correction block below will reset SharedPrefs in that case.
+              // For a normal "app closed → walked → reopened" scenario the delta is
+              // well under 5 000, so we DO want to backfill today.
+              if (e.date === todayKey && dbSteps > 0 && (e.steps - dbSteps) > MAX_BACKFILL_DELTA) return false;
               // For all past days, trust background service unconditionally.
               // Removed the 5 000-step delta cap which was silently dropping full
               // day backfills for users who never opened the app that day.
@@ -1709,14 +1453,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
     const todayKey = toDateKey();
     routeDateRef.current = todayKey;
-    const restored = readPersistedRoute(todayKey);
-    if (restored.length >= 2) {
-      setPathPoints(restored);
-      setShowMap(true);
-      gpsLastTsRef.current = restored[restored.length - 1].timestamp || 0;
-    }
 
-    // Restore last known GPS position (supports indoor map display on reopen)
+    // Restore last known GPS position (for indoor/outdoor status strip on reopen)
     // Only restore if it was saved today — discard stale positions from a previous day
     try {
       const raw = localStorage.getItem('step_last_gps_pos');
@@ -1727,7 +1465,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (isValidLatLng(parsed.lat, parsed.lng) && parsed.date === toDateKey() && isFresh) {
           setLastGpsPos(parsed);
         } else {
-          // Stale (different day or > 10 min old) — remove it so we don't show wrong location
           localStorage.removeItem('step_last_gps_pos');
         }
       }
@@ -1747,6 +1484,45 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     if (Capacitor.isNativePlatform()) {
       let watchId = null;
 
+      // ── On mount: restore today's distance from native route_points ─────
+      // GalleryMonitorService accumulates GPS points in SharedPrefs even when
+      // the app is closed. On open, compute the canonical day total from those
+      // points so the stat card is correct regardless of background walking.
+      (async () => {
+        try {
+          const today = toDateKey();
+          const { points: rawJson, date } = await StepCounterPlugin.getBackgroundRoutePoints();
+          if (date !== today || !rawJson) return;
+          const pts = JSON.parse(rawJson);
+          if (!Array.isArray(pts) || pts.length < 2) return;
+
+          // Sum haversine on consecutive pairs (native already filtered acc<30m, gap>10m)
+          let nativeTotal = 0;
+          for (let i = 1; i < pts.length; i++) {
+            const gap = distanceInMeters(pts[i - 1], pts[i]);
+            // Skip obvious teleport glitches
+            if (gap < GPS_MAX_JUMP_METERS) nativeTotal += gap;
+          }
+
+          // Update state/ref/localStorage if native total is larger
+          if (nativeTotal > outdoorDistanceRef.current) {
+            outdoorDistanceRef.current = nativeTotal;
+            setOutdoorDistance(nativeTotal);
+            persistDistance(today, nativeTotal);
+          }
+
+          // Seed lastAcceptedGpsPtRef so live watchPosition continues cleanly
+          const lastPt = pts[pts.length - 1];
+          if (lastPt && !lastAcceptedGpsPtRef.current) {
+            lastAcceptedGpsPtRef.current = {
+              lat: lastPt.lat,
+              lng: lastPt.lng,
+              timestamp: lastPt.timestamp || Date.now(),
+            };
+          }
+        } catch (e) { /* silent — native not available or JSON parse error */ }
+      })();
+
       // ── Shared processor (called by both watchPosition and the poll) ────
       // speed: GPS Doppler speed m/s from watchPosition; null = unknown (poll path)
       const processPosition = (lat, lng, accuracy, timestamp, speed = null) => {
@@ -1756,17 +1532,17 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (routeDateRef.current !== todayKey) {
           const previousDateKey = routeDateRef.current;
           routeDateRef.current = todayKey;
-          gpsSmoothedRef.current = null; // reset EMA on day rollover
-          // Reset outdoor steps on day rollover
+          // Reset outdoor steps and distance on day rollover
           outdoorStepsRef.current = 0;
           outdoorSessionStartStepsRef.current = null;
           outdoorLastIsOutdoorRef.current = false;
           setOutdoorSteps(0);
-          setPathPoints([]);
-          setShowMap(false);
+          outdoorDistanceRef.current = 0;
+          setOutdoorDistance(0);
+          lastAcceptedGpsPtRef.current = null;
           setLastGpsPos(null);
           localStorage.removeItem('step_last_gps_pos');
-          if (previousDateKey) localStorage.removeItem(getRouteStorageKey(previousDateKey));
+          if (previousDateKey) localStorage.removeItem(getDistanceStorageKey(previousDateKey));
         }
 
         // watchPosition (speed known): use 25 m threshold — outdoor GPS gives 5–20 m;
@@ -1821,70 +1597,36 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (isOutdoor && accuracy <= GPS_PATH_ACCURACY_METERS) {
           // GPS Doppler speed = 0 when stationary — rejects shaking/sitting still.
           // Only guard when speed is actually available from watchPosition.
-          if (speed !== null && speed < 0.3) return;
-
-          // ── EMA coordinate smoothing ────────────────────────────────────
-          // Applies an Exponential Moving Average to GPS lat/lng before drawing,
-          // which removes the high-frequency noise that causes zigzag lines while
-          // still following the actual walking path with ~1-2 s of lag.
-          let smoothedLat = lat;
-          let smoothedLng = lng;
-          if (gpsSmoothedRef.current) {
-            smoothedLat = GPS_SMOOTH_ALPHA * lat + (1 - GPS_SMOOTH_ALPHA) * gpsSmoothedRef.current.lat;
-            smoothedLng = GPS_SMOOTH_ALPHA * lng + (1 - GPS_SMOOTH_ALPHA) * gpsSmoothedRef.current.lng;
+          if (speed !== null && speed < 0.3) {
+            acLastGpsMovedRef.current = false;
+            return;
           }
-          gpsSmoothedRef.current = { lat: smoothedLat, lng: smoothedLng };
-          // ─────────────────────────────────────────────────────────────────
 
-          const incoming = { lat: smoothedLat, lng: smoothedLng, timestamp, accuracy };
-          setPathPoints((prev) => {
-            const last  = prev[prev.length - 1];
-            const prev2 = prev[prev.length - 2];
+          const incoming = { lat, lng, timestamp };
+          const last = lastAcceptedGpsPtRef.current;
+          if (last) {
+            const gapMeters = distanceInMeters(last, incoming);
+            const dtSec = Math.max(2, ((incoming.timestamp || Date.now()) - (last.timestamp || 0)) / 1000);
+            const speedMps = gapMeters / dtSec;
 
-            if (last) {
-              const gapMeters = distanceInMeters(last, incoming);
-              // Floor dtSec to 2 s so rapid watchPosition callbacks don't produce
-              // falsely high speed values that reject valid walking points.
-              const dtSec  = Math.max(2, ((incoming.timestamp || Date.now()) - (last.timestamp || 0)) / 1000);
-              const speedMps = gapMeters / dtSec;
-              if (gapMeters < GPS_MIN_MOVE_METERS) return prev;
-              if (gapMeters > GPS_MAX_JUMP_METERS && dtSec <= 10) return prev;
-              if (speedMps > GPS_MAX_WALK_SPEED_MPS) return prev;
-
-              // ── Directional spike filter ─────────────────────────────────
-              if (prev2 && gapMeters < GPS_SPIKE_MIN_GAP_METERS) {
-                const prevBearing  = bearingDeg(prev2, last);
-                const newBearing   = bearingDeg(last, incoming);
-                const courseChange = Math.abs(((newBearing - prevBearing + 540) % 360) - 180);
-                if (courseChange > GPS_MAX_COURSE_CHANGE_DEG) return prev;
-              }
-              // ─────────────────────────────────────────────────────────────
-
-              // ── Stationary cluster detection ─────────────────────────────
-              if (prev.length >= GPS_STATIONARY_CLUSTER_SIZE) {
-                const cluster   = prev.slice(-GPS_STATIONARY_CLUSTER_SIZE);
-                const centroid  = centroidOf(cluster);
-                const maxSpread = Math.max(...cluster.map(p => distanceInMeters(p, centroid)));
-                if (maxSpread <= GPS_STATIONARY_RADIUS_METERS) {
-                  // ── Feed anti-cheat: GPS says user is stationary ─────────
-                  acLastGpsMovedRef.current = false;
-                  if (distanceInMeters(centroid, incoming) < GPS_STATIONARY_RESUME_METERS) {
-                    return prev;
-                  }
-                  gpsSmoothedRef.current = { lat: lat, lng: lng };
-                }
-              }
-              // ─────────────────────────────────────────────────────────────
+            if (gapMeters < GPS_MIN_MOVE_METERS) {
+              acLastGpsMovedRef.current = false; // stationary — feed anti-cheat
+            } else if (gapMeters > GPS_MAX_JUMP_METERS && dtSec <= 10) {
+              // teleport glitch — ignore
+            } else if (speedMps > GPS_MAX_WALK_SPEED_MPS) {
+              // vehicle speed — ignore
+            } else {
+              // Valid walking segment — accumulate distance
+              outdoorDistanceRef.current += gapMeters;
+              setOutdoorDistance(outdoorDistanceRef.current);
+              persistDistance(todayKey, outdoorDistanceRef.current);
+              acLastGpsMovedRef.current = true;
+              lastAcceptedGpsPtRef.current = incoming;
             }
-
-            // ── Feed anti-cheat: GPS recorded real movement ───────────────
-            acLastGpsMovedRef.current = true;
-
-            const next = [...prev, incoming].slice(-MAX_ROUTE_POINTS_PER_DAY);
-            persistRoute(todayKey, next);
-            if (next.length >= 2) setShowMap(true);
-            return next;
-          });
+          } else {
+            // First point — just record it
+            lastAcceptedGpsPtRef.current = incoming;
+          }
         }
       };
 
@@ -1925,66 +1667,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       poll();
       gpsIntervalRef.current = setInterval(poll, 5000);
 
-      // ── Load background-recorded route points from GalleryMonitorService ──
-      // The service accumulates GPS fixes into SharedPrefs while the app is closed.
-      // On mount we fetch, filter, smooth (EMA + spike filter), then merge points.
-      (async () => {
-        try {
-          const result = await StepCounterPlugin.getBackgroundRoutePoints();
-          const raw = JSON.parse(result?.points || '[]');
-          if (!Array.isArray(raw) || raw.length === 0) return;
-
-          // 1. Basic validity + accuracy filter (40 m — tighter than service's 50 m)
-          const filtered = raw.filter(p =>
-            isValidLatLng(p.lat, p.lng) && Number(p.accuracy) < 40
-          );
-          if (filtered.length === 0) return;
-
-          // 2. EMA smoothing pass — same alpha as live GPS
-          let smoothed = null;
-          const smoothedPts = [];
-          for (const p of filtered) {
-            if (!smoothed) {
-              smoothed = { lat: p.lat, lng: p.lng };
-            } else {
-              smoothed = {
-                lat: GPS_SMOOTH_ALPHA * p.lat + (1 - GPS_SMOOTH_ALPHA) * smoothed.lat,
-                lng: GPS_SMOOTH_ALPHA * p.lng + (1 - GPS_SMOOTH_ALPHA) * smoothed.lng,
-              };
-            }
-            smoothedPts.push({ lat: smoothed.lat, lng: smoothed.lng, accuracy: p.accuracy, timestamp: p.timestamp });
-          }
-
-          // 3. Spike filter — reject sharp U-turns on short segments
-          const clean = [];
-          for (let i = 0; i < smoothedPts.length; i++) {
-            const pt = smoothedPts[i];
-            if (clean.length < 2) { clean.push(pt); continue; }
-            const prev2 = clean[clean.length - 2];
-            const prev1 = clean[clean.length - 1];
-            const gap = distanceInMeters(prev1, pt);
-            if (gap < GPS_SPIKE_MIN_GAP_METERS) {
-              const b1 = bearingDeg(prev2, prev1);
-              const b2 = bearingDeg(prev1, pt);
-              const courseChange = Math.abs(((b2 - b1 + 540) % 360) - 180);
-              if (courseChange > GPS_MAX_COURSE_CHANGE_DEG) continue; // spike — skip
-            }
-            clean.push(pt);
-          }
-          if (clean.length === 0) return;
-
-          setPathPoints(prev => {
-            const existing = new Set(prev.map(p => p.timestamp));
-            const newPts = clean.filter(p => !existing.has(p.timestamp));
-            if (newPts.length === 0) return prev;
-            const merged = [...newPts, ...prev].slice(-MAX_ROUTE_POINTS_PER_DAY);
-            persistRoute(toDateKey(), merged);
-            if (merged.length >= 2) setShowMap(true);
-            return merged;
-          });
-        } catch (e) { /* silent — not critical */ }
-      })();
-
       return () => {
         if (watchId !== null) Geolocation.clearWatch({ id: watchId }).catch(() => {});
         if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
@@ -2007,43 +1689,6 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const stepProgress = Math.min(displaySteps / STEP_GOAL, 1);
   const ringOffset   = RING_CIRCUMFERENCE * (1 - stepProgress);
   const historyData  = historyView === 'week' ? displayHistory.slice(-7) : displayHistory;
-  const validPathPoints = pathPoints.filter(
-    (point) => point && Number.isFinite(Number(point.lat)) && Number.isFinite(Number(point.lng))
-  );
-
-  // Split validPathPoints into walk sessions based on time gaps (> 2 min gap = new session).
-  // This separates background-recorded segments from live-resumed segments.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const walkSessions = useMemo(() => {
-    if (validPathPoints.length === 0) return [];
-    const SESSION_GAP_MS = 2 * 60 * 1000; // 2 minutes
-    const sessions = [];
-    let current = [validPathPoints[0]];
-    for (let i = 1; i < validPathPoints.length; i++) {
-      const gap = (validPathPoints[i].timestamp || 0) - (validPathPoints[i - 1].timestamp || 0);
-      if (gap > SESSION_GAP_MS) {
-        sessions.push(current);
-        current = [validPathPoints[i]];
-      } else {
-        current.push(validPathPoints[i]);
-      }
-    }
-    sessions.push(current);
-    return sessions;
-  }, [validPathPoints]);
-  // Palette: older sessions get lighter teal, newest gets bright green
-  const SESSION_COLORS = ['#5eead4', '#2dd4bf', '#10b981'];
-
-  const lastPathPoint = validPathPoints[validPathPoints.length - 1];
-  const hasRouteForDisplay = validPathPoints.length >= 2;
-  // Map center: prefer last outdoor route point, fall back to any GPS fix (indoor)
-  const mapCenterPoint = lastPathPoint || lastGpsPos;
-  // Show map whenever we have any GPS position (outdoor route OR indoor fix)
-  const shouldShowMap = !!(mapCenterPoint && (showMap || hasRouteForDisplay || lastGpsPos));
-  const routeDistanceMeters = validPathPoints.reduce((sum, point, idx, arr) => {
-    if (idx === 0) return 0;
-    return sum + distanceInMeters(arr[idx - 1], point);
-  }, 0);
 
   if (loading && !ready) {
     return <LoadingSpinner context="steps" />;
@@ -2150,40 +1795,28 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         )}
 
         {/* ── Anti-fake suspicious activity warning ── */}
-        {suspiciousActivity && !isViewingOther && (
+        {suspiciousActivity && suspiciousActivity !== 'vehicle_detected' && !isViewingOther && (
           <div className={`border rounded-2xl p-4 flex items-start gap-3 ${
             suspiciousActivity === 'fake_detected'
               ? 'bg-red-50 border-red-300'
-              : suspiciousActivity === 'vehicle_detected'
-              ? 'bg-orange-50 border-orange-300'
               : 'bg-amber-50 border-amber-300'
           }`}>
             <ShieldAlert className={`w-5 h-5 flex-shrink-0 mt-0.5 ${
-              suspiciousActivity === 'fake_detected' ? 'text-red-500'
-              : suspiciousActivity === 'vehicle_detected' ? 'text-orange-500'
-              : 'text-amber-500'
+              suspiciousActivity === 'fake_detected' ? 'text-red-500' : 'text-amber-500'
             }`} />
             <div className="flex-1 min-w-0">
               <p className={`text-sm font-semibold ${
-                suspiciousActivity === 'fake_detected' ? 'text-red-900'
-                : suspiciousActivity === 'vehicle_detected' ? 'text-orange-900'
-                : 'text-amber-900'
+                suspiciousActivity === 'fake_detected' ? 'text-red-900' : 'text-amber-900'
               }`}>
                 {suspiciousActivity === 'fake_detected'
                   ? '⚠ Fake Steps Detected — Saving Reduced'
-                  : suspiciousActivity === 'vehicle_detected'
-                  ? 'Vehicle Movement Detected'
                   : 'Unusual Step Rate'}
               </p>
               <p className={`text-xs mt-0.5 ${
-                suspiciousActivity === 'fake_detected' ? 'text-red-700'
-                : suspiciousActivity === 'vehicle_detected' ? 'text-orange-700'
-                : 'text-amber-700'
+                suspiciousActivity === 'fake_detected' ? 'text-red-700' : 'text-amber-700'
               }`}>
                 {suspiciousActivity === 'fake_detected'
                   ? 'Movement patterns are inconsistent with real walking (phone shaking or automated tool detected). Suspicious steps are being quarantined and not saved to your history.'
-                  : suspiciousActivity === 'vehicle_detected'
-                  ? 'GPS shows movement at vehicle speed (~22+ kph). Steps counted while in a vehicle may be reviewed by your coach.'
                   : 'Step rate is above normal human limits. Activity is being monitored.'}
               </p>
             </div>
@@ -2291,230 +1924,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
         </div>
 
-        {/* ──── GPS permission prompt (native only, when denied) ──── */}
-        {isNativePlatform && gpsPermission === 'denied' && (
-          <div className="bg-orange-50 border border-orange-200 rounded-3xl p-5 flex items-start gap-3">
-            <MapPin className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-orange-900">Location permission needed</p>
-              <p className="text-xs text-orange-700 mt-0.5">Allow location access so the outdoor walk map can track your route.</p>
-              <button
-                onClick={async () => {
-                  try {
-                    const result = await Geolocation.requestPermissions({ permissions: ['location'] });
-                    const granted = result?.location === 'granted' || result?.coarseLocation === 'granted';
-                    setGpsPermission(granted ? 'granted' : 'denied');
-                  } catch (e) { /* user declined */ }
-                }}
-                className="mt-2 px-3 py-1.5 bg-orange-500 hover:bg-orange-600 text-white text-xs font-semibold rounded-xl transition-colors"
-              >
-                Grant Location
-              </button>
-            </div>
-          </div>
-        )}
 
-        {/* ──── GPS "waiting for outdoor signal" hint (granted but no GPS fix at all) ──── */}
-        {isNativePlatform && gpsPermission === 'granted' && !hasRouteForDisplay && !lastGpsPos && (
-          <div className="bg-emerald-50 border border-emerald-100 rounded-3xl p-4 flex items-center gap-3">
-            <MapPin className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-            <p className="text-xs text-emerald-700">Walk map will appear once GPS gets a location fix.</p>
-          </div>
-        )}
-
-        {/* ──── GPS Status Strip (always visible when permission granted) ──── */}
-        {isNativePlatform && gpsPermission === 'granted' && lastGpsPos && (
-          <div className={`rounded-2xl px-4 py-2.5 flex items-center gap-2.5 ${
-            lastGpsPos.isOutdoor ? 'bg-emerald-50 border border-emerald-200' : 'bg-blue-50 border border-blue-200'
-          }`}>
-            <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
-              lastGpsPos.isOutdoor ? 'bg-emerald-500 animate-pulse' : 'bg-blue-400'
-            }`} />
-            <span className={`text-xs font-bold flex-1 ${lastGpsPos.isOutdoor ? 'text-emerald-800' : 'text-blue-800'}`}>
-              {lastGpsPos.isOutdoor ? 'Outdoor' : 'Indoor'}
-            </span>
-            {hasRouteForDisplay && (
-              <span className="text-xs font-semibold text-emerald-700 flex-shrink-0">
-                {routeDistanceMeters >= 1000
-                  ? `${(routeDistanceMeters / 1000).toFixed(2)} km`
-                  : `${Math.round(routeDistanceMeters)} m`} walked
-              </span>
-            )}
-          </div>
-        )}
-
-        {/* ──── GPS Map Card (shows for both outdoor route and indoor position) ──── */}
-        {shouldShowMap && mapCenterPoint && (
-          <div ref={mapCardRef} className="bg-white rounded-3xl shadow-sm border border-gray-100/80 overflow-hidden">
-            <div className="flex items-center justify-between px-5 pt-4 pb-2">
-              <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
-                <MapPin className="w-4 h-4 text-emerald-500" />
-                {hasRouteForDisplay ? 'Outdoor Walk' : 'Current Location'}
-                {!Capacitor.isNativePlatform() && (
-                  <span className="text-xs font-semibold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-lg">DEMO</span>
-                )}
-                {Capacitor.isNativePlatform() && lastGpsPos && (
-                  <span className={`text-xs font-semibold px-1.5 py-0.5 rounded-lg ${
-                    lastGpsPos.isOutdoor ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
-                  }`}>
-                    {lastGpsPos.isOutdoor ? 'OUTDOOR' : 'INDOOR'}
-                  </span>
-                )}
-              </h2>
-              <div className="flex items-center gap-2">
-                {/* Share button — always shown, disabled when no route */}
-                <button
-                  disabled={!hasRouteForDisplay}
-                  onClick={async () => {
-                    try {
-                      const dateLabel = new Date().toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
-                      const blob = await buildWalkShareCanvas(validPathPoints, routeDistanceMeters, todaySteps, dateLabel);
-                      const distStr = routeDistanceMeters >= 1000
-                        ? `${(routeDistanceMeters / 1000).toFixed(2)} km`
-                        : `${Math.round(routeDistanceMeters)} m`;
-                      const shareText = `I walked ${distStr} today with Wellness Valley!`;
-
-                      if (Capacitor.isNativePlatform()) {
-                        // Native Android/iOS: write to cache file then use Capacitor Share
-                        try {
-                          const base64 = await new Promise((resolve, reject) => {
-                            const reader = new FileReader();
-                            reader.onload = () => resolve(reader.result.split(',')[1]);
-                            reader.onerror = reject;
-                            reader.readAsDataURL(blob);
-                          });
-                          const fileName = `walk-${Date.now()}.png`;
-                          await Filesystem.writeFile({
-                            path: fileName,
-                            data: base64,
-                            directory: Directory.Cache,
-                          });
-                          const { uri } = await Filesystem.getUri({
-                            path: fileName,
-                            directory: Directory.Cache,
-                          });
-                          await Share.share({
-                            title: 'My Walk',
-                            text: shareText,
-                            url: uri,
-                            dialogTitle: 'Share your walk',
-                          });
-                        } catch (nativeErr) {
-                          if (nativeErr?.message?.toLowerCase().includes('cancel')) return;
-                          console.warn('Native share failed:', nativeErr);
-                        }
-                      } else {
-                        // Web fallback: navigator.share or download
-                        const file = new File([blob], 'my-walk.png', { type: 'image/png' });
-                        const shareData = { title: 'My Walk', text: shareText, files: [file] };
-                        if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
-                          await navigator.share(shareData);
-                        } else {
-                          const url = URL.createObjectURL(blob);
-                          const a = document.createElement('a');
-                          a.href = url; a.download = 'my-walk.png'; a.click();
-                          URL.revokeObjectURL(url);
-                        }
-                      }
-                    } catch (e) {
-                      if (e?.name !== 'AbortError') console.warn('Share failed:', e);
-                    }
-                  }}
-                  className={`p-1.5 rounded-xl transition-colors ${
-                    hasRouteForDisplay
-                      ? 'bg-emerald-50 hover:bg-emerald-100 active:bg-emerald-200'
-                      : 'bg-gray-100 opacity-40 cursor-not-allowed'
-                  }`}
-                  aria-label="Share walk as image"
-                >
-                  <Share2 className={`w-4 h-4 ${hasRouteForDisplay ? 'text-emerald-600' : 'text-gray-400'}`} />
-                </button>
-              </div>
-            </div>
-            <div ref={mapDivRef} style={{ height: 220 }}>
-              <MapContainer
-                center={[mapCenterPoint.lat, mapCenterPoint.lng]}
-                zoom={17}
-                style={{ height: '100%', width: '100%' }}
-                zoomControl={false}
-                attributionControl={false}
-              >
-                <TileLayer
-                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-                  attribution='&copy; OpenStreetMap contributors &copy; CARTO'
-                />
-                {/* ── Outdoor route: one polyline per session ─────────────── */}
-                {hasRouteForDisplay && walkSessions.map((seg, si) => (
-                  seg.length >= 2 && (
-                    <Polyline
-                      key={`seg-${si}`}
-                      positions={seg.map((p) => [p.lat, p.lng])}
-                      color={si === walkSessions.length - 1 ? '#10b981' : SESSION_COLORS[Math.min(si, SESSION_COLORS.length - 2)]}
-                      weight={4}
-                      opacity={si === walkSessions.length - 1 ? 0.9 : 0.6}
-                    />
-                  )
-                ))}
-                {/* ── Gray end dots for each completed session (not the last) ── */}
-                {hasRouteForDisplay && walkSessions.slice(0, -1).map((seg, si) => {
-                  const endPt = seg[seg.length - 1];
-                  return endPt ? (
-                    <CircleMarker
-                      key={`seg-end-${si}`}
-                      center={[endPt.lat, endPt.lng]}
-                      radius={5}
-                      pathOptions={{ color: '#fff', fillColor: '#94a3b8', fillOpacity: 0.9, weight: 2 }}
-                    >
-                      <Tooltip permanent direction="top" offset={[0, -8]} className="leaflet-label-start">
-                        Paused
-                      </Tooltip>
-                    </CircleMarker>
-                  ) : null;
-                })}
-                {/* ── Start marker ──────────────────────────────────────── */}
-                {hasRouteForDisplay && (
-                  <CircleMarker
-                    center={[validPathPoints[0].lat, validPathPoints[0].lng]}
-                    radius={7}
-                    pathOptions={{ color: '#fff', fillColor: '#10b981', fillOpacity: 1, weight: 2 }}
-                  >
-                    <Tooltip permanent direction="top" offset={[0, -10]} className="leaflet-label-start">
-                      🟢 Start
-                    </Tooltip>
-                  </CircleMarker>
-                )}
-                {/* ── End / current position marker ─────────────────────── */}
-                {hasRouteForDisplay && validPathPoints.length >= 2 && (
-                  <CircleMarker
-                    center={[validPathPoints[validPathPoints.length - 1].lat, validPathPoints[validPathPoints.length - 1].lng]}
-                    radius={7}
-                    pathOptions={{ color: '#fff', fillColor: '#f43f5e', fillOpacity: 1, weight: 2 }}
-                  >
-                    <Tooltip permanent direction="top" offset={[0, -10]} className="leaflet-label-end">
-                      📍 {routeDistanceMeters >= 1000
-                        ? `${(routeDistanceMeters / 1000).toFixed(2)} km`
-                        : `${Math.round(routeDistanceMeters)} m`}
-                    </Tooltip>
-                  </CircleMarker>
-                )}
-                {/* ── Indoor: blue dot at current position ──────────────── */}
-                {!hasRouteForDisplay && mapCenterPoint && (
-                  <CircleMarker
-                    center={[mapCenterPoint.lat, mapCenterPoint.lng]}
-                    radius={8}
-                    pathOptions={{ color: '#fff', fillColor: '#3b82f6', fillOpacity: 0.9, weight: 2 }}
-                  >
-                    <Tooltip permanent direction="top" offset={[0, -12]} className="leaflet-label-start">
-                      📍 Here
-                    </Tooltip>
-                  </CircleMarker>
-                )}
-                {/* ── Auto-fit while walking ─────────────────────────────── */}
-                <MapAutoFit points={validPathPoints} centerPoint={mapCenterPoint} />
-              </MapContainer>
-            </div>
-          </div>
-        )}
 
         {/* ──── History Section ──── */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">

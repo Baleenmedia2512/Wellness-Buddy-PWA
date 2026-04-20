@@ -23,7 +23,7 @@ import HierarchicalNode from "./common/HierarchicalNode";
 import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ───Constants ────────────────────────────────────────────────────────────────
 
 const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education", "water", "caloriesBurned"];
 
