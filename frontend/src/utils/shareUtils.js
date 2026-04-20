@@ -113,41 +113,30 @@ export const captureAndShare = async (element, options = {}) => {
     );
 
     // Ensure all images in the element are fully loaded before capture
+    // On web browser, skip waiting — images are already rendered on screen.
+    // Waiting breaks the user gesture window needed for navigator.share().
     const images = element.querySelectorAll("img");
     console.log("🖼️ Found", images.length, "images in element");
 
-    await Promise.all(
-      Array.from(images).map((img) => {
-        if (img.complete && img.naturalWidth > 0) {
-          console.log(
-            "✅ Image already loaded:",
-            img.src.substring(0, 50),
-            `${img.naturalWidth}x${img.naturalHeight}`,
-          );
-          return Promise.resolve();
-        }
-        console.log("⏳ Waiting for image to load:", img.src.substring(0, 50));
-        return new Promise((resolve) => {
-          img.onload = () => {
-            console.log(
-              "✅ Image loaded:",
-              img.src.substring(0, 50),
-              `${img.naturalWidth}x${img.naturalHeight}`,
-            );
-            resolve();
-          };
-          img.onerror = () => {
-            console.log("⚠️ Image failed to load:", img.src.substring(0, 50));
-            resolve(); // Continue anyway
-          };
-          // Fallback timeout
-          setTimeout(resolve, 2000);
-        });
-      }),
-    );
-
-    // Quick delay for rendering
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    if (isNative) {
+      // Native app: wait for images (gesture window is not a concern here)
+      await Promise.all(
+        Array.from(images).map((img) => {
+          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
+          return new Promise((resolve) => {
+            img.onload = resolve;
+            img.onerror = resolve;
+            setTimeout(resolve, 2000);
+          });
+        }),
+      );
+      // Quick delay for rendering (native only)
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    } else {
+      // Web browser: skip all waits — every ms counts for the gesture window.
+      // Images visible on screen are already decoded by the browser.
+      console.log("💻 Web: skipping image-load wait to preserve gesture context for navigator.share()");
+    }
 
     // Log element dimensions
     console.log("📏 Element dimensions:", {
@@ -207,24 +196,32 @@ export const captureAndShare = async (element, options = {}) => {
       canvas.height,
     );
 
-    // Step 2: Convert canvas to LOSSLESS PNG blob (NO COMPRESSION)
+    // Step 2: Convert canvas to blob
+    // Native app  → PNG lossless (survives WhatsApp compression at full quality)
+    // Web browser → JPEG quality 0.90 (~300–700 KB vs 3–18 MB for PNG)
+    //   Web Share API on Android Chrome silently rejects files over ~5 MB.
+    //   JPEG keeps the file small so the share sheet opens with WhatsApp visible.
+    const webMimeType = "image/jpeg";
+    const webQuality = 0.90;
+    const nativeMimeType = "image/png";
+    const mimeType = isNative ? nativeMimeType : webMimeType;
+    const quality = isNative ? 1.0 : webQuality;
+    const webFileName = isNative ? fileName : fileName.replace(/\.png$/i, ".jpg");
+
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob(
-        (blob) => {
-          if (blob) {
-            resolve(blob);
-          } else {
-            reject(new Error("Failed to create blob from canvas"));
-          }
+        (b) => {
+          if (b) resolve(b);
+          else reject(new Error("Failed to create blob from canvas"));
         },
-        "image/png", // PNG = lossless format (no quality loss)
-        1.0, // Quality parameter (1.0 = maximum, though PNG is always lossless)
+        mimeType,
+        quality,
       );
     });
 
     const fileSizeKB = Math.round(blob.size / 1024);
     console.log(
-      "✅ High-quality PNG blob created:",
+      `✅ Blob created (${isNative ? "PNG lossless" : "JPEG web-optimised"}):`,
       blob.size,
       "bytes (",
       fileSizeKB,
@@ -240,7 +237,7 @@ export const captureAndShare = async (element, options = {}) => {
     } else {
       // Web browser - try Web Share API with fallback to download
       console.log("💻 Web browser detected, attempting share with fallback...");
-      await shareWithRetryAndFallback(blob, { title, text, fileName, shareAsDocument });
+      await shareWithRetryAndFallback(blob, { title, text, fileName: webFileName, shareAsDocument });
     }
 
     console.log("✅ Share completed successfully");
@@ -517,7 +514,9 @@ const shareWithRetryAndFallback = async (blob, options) => {
   try {
     console.log("📤 Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
 
-    const file = new File([blob], fileName, { type: "image/png" });
+    // ✅ Use blob.type so MIME matches the actual content (JPEG on web, PNG on native fallback)
+    const file = new File([blob], fileName, { type: blob.type });
+    console.log(`📄 File prepared: ${fileName} | type: ${blob.type} | size: ${Math.round(blob.size / 1024)} KB`);
 
     // Share with files + title only — DO NOT include text when sharing files.
     // Mixing files+text breaks sharing on iOS Safari and many Android browsers.
@@ -539,22 +538,10 @@ const shareWithRetryAndFallback = async (blob, options) => {
       return;
     }
 
-    // NotAllowedError = gesture chain broken OR file too large OR browser blocked.
-    // With scale:2 the file should be under 2 MB so this should rarely trigger.
+    // NotAllowedError = gesture chain broken OR browser blocked.
+    // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      console.log("⚠️ NotAllowedError — trying navigator.share() without files as last resort...");
-      // Last attempt: share title only so the share sheet opens,
-      // user can at least copy the title or share manually.
-      try {
-        const file = new File([blob], fileName, { type: "image/png" });
-        // Try once more with a tiny delay to re-enter gesture context
-        await new Promise(r => setTimeout(r, 100));
-        await navigator.share({ files: [file], title: title });
-        console.log("✅ Share succeeded on second attempt!");
-        return;
-      } catch (_) {
-        // Still failing — fall through to download
-      }
+      console.log("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
       await downloadImage(blob, fileName);
       alert(
         "Image saved to your downloads! 📥\n\n" +
@@ -603,7 +590,8 @@ const shareWeb = async (
   try {
     // Try Web Share API with files only (no text — prevents NotAllowedError)
     if (navigator.share) {
-      const file = new File([blob], fileName, { type: "image/png" });
+      // ✅ Use blob.type so MIME matches actual content (JPEG on web)
+      const file = new File([blob], fileName, { type: blob.type });
 
       try {
         await navigator.share({
