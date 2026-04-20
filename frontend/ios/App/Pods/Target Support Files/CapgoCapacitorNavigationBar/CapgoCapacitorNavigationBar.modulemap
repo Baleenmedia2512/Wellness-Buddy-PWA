@@ -1,0 +1,6 @@
+framework module CapgoCapacitorNavigationBar {
+  umbrella header "CapgoCapacitorNavigationBar-umbrella.h"
+
+  export *
+  module * { export * }
+}
