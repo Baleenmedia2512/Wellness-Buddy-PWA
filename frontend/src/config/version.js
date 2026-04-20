@@ -72,20 +72,43 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.4',
+  VERSION: '2.5',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 26,
+  VERSION_CODE: 29,
   
   // Release name (for Play Store)
   RELEASE_NAME: 'Team Dashboard Enhancements',
   
   // Build date
-  BUILD_DATE: '2026-03-10',
+  BUILD_DATE: '2026-04-15',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.5 (Code 27) - 2026-04-15
+ *   👣 Step Counter - Real-time step tracking with daily goals and progress display
+ *   ⏱️ Screen Timer - Monitor and manage daily screen usage time
+ *   🔔 Reminder System - Smart reminders for meals, workouts, hydration and wellness activities
+ *   📊 Activity Report - Comprehensive activity analytics with trends and insights
+ *   🎓 Wellness Valley University - In-app learning hub with wellness courses and educational content
+ *   ⌚ Smart Watch Option - Smartwatch integration support for health data sync
+ *   📈 Food Graph - Visual charts for food intake tracking over time
+ *   ⚖️ Weight Graph - Weight progress graphs with trend analysis
+ *   📚 Education Graph - Visual progress tracking for education and learning activities
+ *   🔥 Calorie Reduction - Smart calorie reduction suggestions and tracking
+ *   ✏️ Edit Option (All) - Full edit capability across all data entries and records
+ *   🔍 Missing Item Food Detection - AI-powered detection of missing or incomplete food entries
+ *   📋 Attendance Report - Detailed attendance tracking and reporting for teams
+ *   🏆 Virtual Club - Virtual wellness club with community features and challenges
+ *   🧠 Counselling - In-app wellness counselling and mental health support features
+ *   🏥 Medical & Health - Enhanced medical and health tracking features
+ *   ➕ Expand & Collapse Option - Collapsible sections across the app for better navigation
+ *   🐛 Bug Fixes - Resolved multiple reported bugs across all modules for smoother experience
+ *   📱 Responsive Design - Improved responsive layouts across all screens for mobile, tablet and web
+ *   🖼️ Logo for All Profiles - Added logo/avatar display across all user, team and club profile sections
+ *   🎨 UI Enhancements - Polished UI across all screens with improved visuals, spacing and consistency
  * 
  * Version 2.4 (Code 26) - 2026-03-10
  *   🐛 Fixed timezone issue causing incorrect date calculations

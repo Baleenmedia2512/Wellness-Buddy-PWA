@@ -847,7 +847,7 @@ const HierarchicalReportLayout = ({
                           }`}
                           ariaLabel="Expand all nodes"
                         >
-                          Expand
+                          Expand All
                         </TouchFeedbackButton>
                         <TouchFeedbackButton
                           onClick={() => { onCollapseAll && onCollapseAll(); setActiveExpandBtn("collapsed"); }}
@@ -858,11 +858,12 @@ const HierarchicalReportLayout = ({
                           }`}
                           ariaLabel="Collapse all nodes"
                         >
-                          Collapse
+                          Collapse All
                         </TouchFeedbackButton>
                       </div>
                     )}
 
+                    
                     {/* Direct / Full pill — always pushed to the right */}
                     {onTeamViewChange && (
                       <div className="ml-auto inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">

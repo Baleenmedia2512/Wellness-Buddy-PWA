@@ -2,12 +2,15 @@ package com.wellnessvalley.app.plugins;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.LocationManager;
 import android.os.Build;
+import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
 
@@ -218,6 +221,46 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
             ret.put("date", storedDate);
         }
         call.resolve(ret);
+    }
+
+    /**
+     * Returns whether device location services (GPS) are currently enabled.
+     * Output: { enabled: boolean }
+     */
+    @PluginMethod
+    public void isLocationEnabled(PluginCall call) {
+        try {
+            LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            boolean gpsEnabled = false;
+            boolean networkEnabled = false;
+            if (lm != null) {
+                try { gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                try { networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+            }
+            JSObject ret = new JSObject();
+            ret.put("enabled", gpsEnabled || networkEnabled);
+            call.resolve(ret);
+        } catch (Exception e) {
+            JSObject ret = new JSObject();
+            ret.put("enabled", false);
+            call.resolve(ret);
+        }
+    }
+
+    /**
+     * Opens the Android location/GPS settings screen so the user can enable location.
+     * Does not close the app or block navigation.
+     */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open location settings: " + e.getMessage());
+        }
     }
 
     @Override

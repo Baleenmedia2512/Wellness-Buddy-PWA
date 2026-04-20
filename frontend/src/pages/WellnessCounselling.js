@@ -1,5 +1,5 @@
 // src/pages/WellnessCounselling.js
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
@@ -25,14 +25,7 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [sortOrder, setSortOrder] = useState("desc");
   
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-
-  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
-  useEffect(() => {
-    if (expandOverride !== null) {
-      const t = setTimeout(() => setExpandOverride(null), 50);
-      return () => clearTimeout(t);
-    }
-  }, [expandOverride]);
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
 
   // Form states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -508,8 +501,8 @@ const WellnessCounselling = ({ user, onBack }) => {
         sortBy={sortBy}
         sortOrder={sortOrder}
         onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
-        onExpandAll={() => setExpandOverride("expanded")}
-        onCollapseAll={() => setExpandOverride("collapsed")}
+        onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
+        onCollapseAll={() => { lastExpandState.current = "collapsed"; setExpandOverride("collapsed"); }}
         expandedState={expandOverride}
         teamView={teamView}
         onTeamViewChange={setTeamView}
@@ -532,7 +525,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
             forceExpandedState={expandOverride}
-            defaultExpanded={false}
+            defaultExpanded={expandOverride === "expanded"}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

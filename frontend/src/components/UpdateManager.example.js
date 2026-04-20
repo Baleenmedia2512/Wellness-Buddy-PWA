@@ -30,7 +30,7 @@ const UpdateManager = () => {
 
         if (data.updateType === UpdateType.IMMEDIATE) {
           // Google Play will automatically show blocking UI
-          console.log('🚨 Critical update - Google Play will handle UI');
+          console.log('Critical update - Google Play will handle UI');
         } else {
           // Flexible update - can show custom notification
           console.log('✨ Optional update available - downloading...');

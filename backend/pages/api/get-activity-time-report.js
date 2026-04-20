@@ -246,11 +246,12 @@ export default async function handler(req, res) {
       // Education logs – UserId is stored as STRING in this table  ⚠️
       supabase
         .from('education_logs_table')
-        .select('"UserId", "CreatedAt"')
+        .select('"UserId", "CreatedAt", "Topic"')
         .in('"UserId"', targetUserIds.map(String))
         .gte('"CreatedAt"', startStr)
         .lte('"CreatedAt"', endStr + 'T23:59:59')
         .or('"IsDeleted".is.null,"IsDeleted".eq.0'),
+
 
       // Food / nutrition records for meal timing (UserID is stored as a string)
       supabase
@@ -337,6 +338,8 @@ export default async function handler(req, res) {
     }
 
     for (const r of (educationResult.data || [])) {
+      // Skip smartwatch calorie-burn entries (saved with Topic: "Calories Burned: NNN kcal")
+      if (r.Topic && String(r.Topic).startsWith('Calories Burned:')) continue;
       const uid = parseInt(r.UserId, 10); // Convert string to number
       if (!educationByUser.has(uid)) educationByUser.set(uid, []);
       educationByUser.get(uid).push({ CreatedAt: r.CreatedAt });

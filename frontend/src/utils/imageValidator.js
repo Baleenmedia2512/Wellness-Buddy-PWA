@@ -513,7 +513,7 @@ export async function validateImageForEducation(file, educationWindow = null) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: '🚨 Unable to verify image date. Please take a fresh photo.',
+        message: 'Unable to verify image date. Please take a fresh photo.',
         details: 'Image metadata is missing or corrupted.',
         imageTimestamp: null
       };
@@ -548,8 +548,8 @@ export async function validateImageForEducation(file, educationWindow = null) {
         isValid: false,
         reason: 'proxy',
         message: daysDiff < 0 
-          ? '🚨 Image date is in the future. Please check your device clock.'
-          : `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
+          ? 'Image date is in the future. Please check your device clock.'
+          : `This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
         details: `Image date: ${imageDate.toLocaleDateString()} ${imageTimeStr}. Only images from TODAY are allowed to prevent proxy submissions.`,
         imageDate,
         imageTimestamp: imageTimestampLocal,
@@ -575,7 +575,7 @@ export async function validateImageForEducation(file, educationWindow = null) {
     return {
       isValid: false,
       reason: 'error',
-      message: '🚨 Unable to validate image. Please try again.',
+      message: 'Unable to validate image. Please try again.',
       details: error.message,
       imageTimestamp: null
     };
@@ -639,7 +639,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: `🚨 This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
+        message: `This image is ${daysDiff} day(s) old. Please take a fresh photo TODAY.`,
         details: `Image date: ${imageDate.toLocaleDateString()}. Using old images is not allowed.`,
         imageDate,
         daysDiff
@@ -651,7 +651,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
       return {
         isValid: false,
         reason: 'proxy',
-        message: '🚨 Image date is in the future. Please check your device clock.',
+        message: 'Image date is in the future. Please check your device clock.',
         details: 'This may indicate device clock tampering or incorrect settings.',
         imageDate,
         daysDiff

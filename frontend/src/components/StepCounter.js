@@ -10,6 +10,7 @@ import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from './LoadingSpinner';
+import LocationGuard from './LocationGuard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -91,6 +92,8 @@ const calcCalories = (steps) => Number((steps * CALORIES_PER_STEP).toFixed(2));
 const getBaselineKey   = (dateKey) => `step_counter_baseline_${dateKey}`;
 /** localStorage key for the sensor total at the time of the last DB save. */
 const getSaveSensorKey = (dateKey) => `step_save_sensor_${dateKey}`;
+/** localStorage key for the step count at the time of the last DB save (used to detect bg-service additions). */
+const getSaveStepsKey  = (dateKey) => `step_save_steps_${dateKey}`;
 /** localStorage key for persisted GPS route of the day. */
 const getRouteStorageKey = (dateKey) => `step_route_points_${dateKey}`;
 
@@ -959,6 +962,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const sensorAtSave = latestSensorTotalRef.current;
       if (Number.isFinite(sensorAtSave)) {
         localStorage.setItem(getSaveSensorKey(todayKey), String(sensorAtSave));
+        localStorage.setItem(getSaveStepsKey(todayKey),  String(steps));
       }
       console.log('💾 [StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
     } catch (err) {
@@ -1419,16 +1423,32 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               let baselineToUse = currentSensor;
               if (!driftDetectedRef.current) {
                 const savedSensorStr = localStorage.getItem(getSaveSensorKey(toDateKey()));
+                const savedStepsStr  = localStorage.getItem(getSaveStepsKey(toDateKey()));
                 const savedSensor    = savedSensorStr ? Number(savedSensorStr) : null;
+                const savedSteps     = savedStepsStr  ? Number(savedStepsStr)  : null;
                 const MAX_UNSAVED = 3_000;
                 const unsavedIfTrusted = Math.max(0, currentSensor - (savedSensor ?? currentSensor));
+                // How many steps did the background service add to DB while app was closed?
+                // e.g. JS last saved 4431, DB now shows 4494 → bgAdded = 63
+                // Those 63 steps are already in dbOffset, so shift baseline forward
+                // by 63 to prevent processSensorValue from counting them again.
+                const bgAddedSteps = (savedSteps !== null && Number.isFinite(savedSteps))
+                  ? Math.max(0, todayEntry.steps - savedSteps)
+                  : 0;
+                const adjustedSensor = (savedSensor !== null && bgAddedSteps > 0)
+                  ? Math.min(currentSensor, savedSensor + bgAddedSteps)
+                  : savedSensor;
                 baselineToUse =
-                  (savedSensor !== null &&
-                   Number.isFinite(savedSensor) &&
-                   savedSensor <= currentSensor &&
+                  (adjustedSensor !== null &&
+                   Number.isFinite(adjustedSensor) &&
+                   adjustedSensor <= currentSensor &&
                    unsavedIfTrusted <= MAX_UNSAVED)
-                    ? savedSensor
+                    ? adjustedSensor
                     : currentSensor;
+                if (bgAddedSteps > 0) {
+                  console.log('🔧 [StepCounter] BG correction: savedSensor', savedSensor,
+                    '+ bgAdded', bgAddedSteps, '→ baseline', baselineToUse);
+                }
               }
               writeBaseline(toDateKey(), baselineToUse);
               // Reprocess with the corrected baseline
@@ -1970,29 +1990,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
       };
     } else {
-      // ── Web demo path ───────────────────────────────────────────────────
-      // Simulate a short outdoor walk so the map card appears in the browser.
-      // Tight demo walk — ~5 m between each point, same block
-      const DEMO_POINTS = [
-        { lat: 1.35220, lng: 103.81980 },
-        { lat: 1.35224, lng: 103.81985 },
-        { lat: 1.35228, lng: 103.81991 },
-        { lat: 1.35233, lng: 103.81996 },
-        { lat: 1.35237, lng: 103.82001 },
-        { lat: 1.35241, lng: 103.82007 },
-        { lat: 1.35245, lng: 103.82012 },
-        { lat: 1.35249, lng: 103.82017 },
-      ];
-      let idx = 0;
-      const addNext = () => {
-        if (idx >= DEMO_POINTS.length) return;
-        setPathPoints(prev => [...prev, DEMO_POINTS[idx]]);
-        setShowMap(true);
-        idx++;
-      };
-      // Stagger demo points so the polyline draws visibly
-      const timers = DEMO_POINTS.map((_, i) => setTimeout(addNext, 800 + i * 600));
-      return () => timers.forEach(clearTimeout);
+      // Web view — GPS/route tracking not available; no dummy data shown
+      return () => {};
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -2054,6 +2053,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   // RENDER
   // ─────────────────────────────────────────────────────────────────────────
   return (
+    <LocationGuard>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40">
 
       {/* ──── Header ──── */}
@@ -2624,6 +2624,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
       </div>
     </div>
+    </LocationGuard>
   );
 };
 
