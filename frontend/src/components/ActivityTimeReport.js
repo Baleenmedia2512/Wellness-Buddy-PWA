@@ -1000,9 +1000,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-full w-fit">
             {[
               { value: "all",     label: "All" },
-              { value: "correct", label: "Correct" },
+              { value: "correct", label: "On Time" },
               { value: "late",    label: "Late" },
-              { value: "missed",  label: "Not Taken" },
+              { value: "missed",  label: "Missed" },
             ].map((b) => (
               <button
                 key={b.value}
