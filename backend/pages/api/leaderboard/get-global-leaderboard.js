@@ -94,28 +94,34 @@ export default async function handler(req, res) {
       u.CoachName = u.CoachId ? coachNameMap[u.CoachId] : null;
     });
 
-    // Step 3: Calculate date ranges for today and yesterday
-    const now = new Date();
+    // Step 3: Calculate date ranges for today and yesterday in IST (UTC+5:30)
+    // ✅ FIX: Server runs on UTC (Vercel). DB stores timestamps as IST plain strings.
+    // Without this offset, before 5:30 AM IST the API would use the wrong UTC date,
+    // causing the leaderboard to show "yesterday vs day-before-yesterday" instead of
+    // "today vs yesterday". Shifting now to IST first ensures correct date at any hour.
+    const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000; // IST = UTC+5:30
+    const now = new Date(new Date().getTime() + IST_OFFSET_MS); // current IST moment
 
     const todayStart = new Date(now);
-    todayStart.setHours(0, 0, 0, 0);
+    todayStart.setUTCHours(0, 0, 0, 0);
 
     const todayEnd = new Date(now);
-    todayEnd.setHours(23, 59, 59, 999);
+    todayEnd.setUTCHours(23, 59, 59, 999);
 
     const yesterdayStart = new Date(now);
-    yesterdayStart.setDate(yesterdayStart.getDate() - 1);
-    yesterdayStart.setHours(0, 0, 0, 0);
+    yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+    yesterdayStart.setUTCHours(0, 0, 0, 0);
 
     const yesterdayEnd = new Date(now);
-    yesterdayEnd.setDate(yesterdayEnd.getDate() - 1);
-    yesterdayEnd.setHours(23, 59, 59, 999);
+    yesterdayEnd.setUTCDate(yesterdayEnd.getUTCDate() - 1);
+    yesterdayEnd.setUTCHours(23, 59, 59, 999);
 
-    // Format for database query (ISO format)
-    const todayStartStr = todayStart.toISOString();
-    const todayEndStr = todayEnd.toISOString();
-    const yesterdayStartStr = yesterdayStart.toISOString();
-    const yesterdayEndStr = yesterdayEnd.toISOString();
+    // Format as IST plain strings for DB query (DB stores "YYYY-MM-DD HH:MM:SS" in IST, no timezone)
+    const toISTString = (d) => d.toISOString().replace("T", " ").replace("Z", "").substring(0, 23);
+    const todayStartStr = toISTString(todayStart);
+    const todayEndStr = toISTString(todayEnd);
+    const yesterdayStartStr = toISTString(yesterdayStart);
+    const yesterdayEndStr = toISTString(yesterdayEnd);
 
     console.log(`📅 [LEADERBOARD] Today: ${todayStartStr} to ${todayEndStr}`);
     console.log(
