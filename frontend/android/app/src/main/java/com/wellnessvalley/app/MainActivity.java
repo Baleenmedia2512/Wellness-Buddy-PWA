@@ -27,6 +27,12 @@ public class MainActivity extends BridgeActivity {
     
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        // ✅ IMMEDIATE: Cancel legacy AlarmManager heartbeat before anything else.
+        // Users who update without force-stopping still have the old self-perpetuating
+        // alarm registered. Cancel it synchronously on the main thread so it can't
+        // fire and crash-restart the :background process.
+        com.wellnessvalley.app.services.BootCompletedReceiver.cancelLegacyAlarm(this);
+
         // ✅ CRITICAL FIX: Install and immediately dismiss splash screen to prevent window overlay
         SplashScreen splashScreen = SplashScreen.installSplashScreen(this);
         
@@ -69,8 +75,17 @@ public class MainActivity extends BridgeActivity {
         // ✅ ANDROID PERFORMANCE: Optimize WebView for fast image operations
         optimizeWebView();
         
-        // ✅ CACHE FIX: Clear cache when new version is installed
-        clearCacheOnVersionUpdate();
+        // ✅ Move heavy disk I/O and heartbeat scheduling off the main thread
+        // to avoid ANR on slow devices during cold start
+        new Thread(() -> {
+            // CACHE FIX: Clear cache when new version is installed (disk I/O)
+            clearCacheOnVersionUpdate();
+            
+            // Schedule heartbeat for service persistence (WorkManager enqueue)
+            com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
+            
+            android.util.Log.d("MainActivity", "✅ Background init tasks completed");
+        }).start();
         
         // ✅ CRITICAL FIX: Force splash screen dismissal after WebView is ready
         // This ensures no splash window remains in the window hierarchy
@@ -108,14 +123,13 @@ public class MainActivity extends BridgeActivity {
         // Request runtime permissions
         requestAllPermissions();
 
-        // Request battery optimization exemption
-        requestBatteryOptimizationExemption();
+        // Request battery optimization exemption (deferred to avoid blocking cold start)
+        new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+            requestBatteryOptimizationExemption();
+        }, 2000);
         
         // ✅ Background service enabled — will run silently without notifications
         android.util.Log.d("MainActivity", "✅ Background service enabled (silent mode)");
-        
-        // Schedule heartbeat for service persistence
-        com.wellnessvalley.app.services.BootCompletedReceiver.scheduleHeartbeat(this);
         
         // ✅ Check for app updates after app is fully initialized
         checkForAppUpdates();

@@ -39,11 +39,10 @@ public class ServiceAlarmReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
         if (ACTION_HEARTBEAT.equals(intent.getAction())) {
-            Log.d(TAG, "⏰ AlarmManager heartbeat fired at " + new java.util.Date());
-            performHeartbeatCheck(context);
-            
-            // Reschedule the alarm (self-perpetuating)
-            scheduleNextAlarm(context);
+            Log.d(TAG, "⏰ AlarmManager heartbeat fired — but this layer is now disabled.");
+            Log.d(TAG, "   Not restarting service or rescheduling. WorkManager handles this.");
+            // Do NOT call performHeartbeatCheck or scheduleNextAlarm.
+            // This receiver is kept in the manifest for backward compat but is a no-op.
         }
     }
 

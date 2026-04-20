@@ -253,14 +253,44 @@ public class DatabaseSyncClient {
         }
     }
     
-    // Utility to encode image file to base64 (with data URL prefix)
+    /** Max dimension for images encoded for DB upload — keeps memory usage low. */
+    private static final int MAX_IMAGE_DIMENSION = 1024;
+
+    /**
+     * Downsample + JPEG-compress the image before base64-encoding.
+     * A raw 10 MB camera photo would need ~30 MB heap (bytes + base64 + JSON).
+     * After resize to 1024px and 80% JPEG quality the payload is typically < 200 KB.
+     */
     public static String encodeImageToBase64(String imagePath) {
         try {
-            File file = new File(imagePath);
-            FileInputStream fis = new FileInputStream(file);
-            byte[] bytes = new byte[(int) file.length()];
-            fis.read(bytes);
-            fis.close();
+            // 1. Decode bounds only
+            android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+            opts.inJustDecodeBounds = true;
+            android.graphics.BitmapFactory.decodeFile(imagePath, opts);
+
+            // 2. Calculate down-sample factor
+            int w = opts.outWidth;
+            int h = opts.outHeight;
+            int inSampleSize = 1;
+            while ((w / inSampleSize) > MAX_IMAGE_DIMENSION || (h / inSampleSize) > MAX_IMAGE_DIMENSION) {
+                inSampleSize *= 2;
+            }
+
+            // 3. Decode with down-sampling
+            opts.inSampleSize = inSampleSize;
+            opts.inJustDecodeBounds = false;
+            android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(imagePath, opts);
+            if (bmp == null) {
+                Log.e("DatabaseSyncClient", "Failed to decode image: " + imagePath);
+                return null;
+            }
+
+            // 4. Compress to JPEG bytes
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+            bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bos);
+            bmp.recycle();
+            byte[] bytes = bos.toByteArray();
+
             return "data:image/jpeg;base64," + Base64.encodeToString(bytes, Base64.NO_WRAP);
         } catch (Exception e) {
             Log.e("DatabaseSyncClient", "Failed to encode image to base64", e);

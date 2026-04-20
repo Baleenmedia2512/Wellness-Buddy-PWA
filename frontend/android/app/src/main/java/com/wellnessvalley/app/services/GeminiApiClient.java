@@ -21,12 +21,19 @@ private static final String GEMINI_API_URL = "https://generativelanguage.googlea
 
     public GeminiApiClient(String apiKey) {
         this.apiKey = apiKey;
-        this.client = new OkHttpClient();
+        this.client = new OkHttpClient.Builder()
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .build();
     }
+
+    /** Max dimension (width or height) for images sent to Gemini — keeps memory usage low. */
+    private static final int MAX_IMAGE_DIMENSION = 1024;
 
     public String analyzeImage(String imagePath) {
         try {
-            byte[] imageBytes = readFileToBytes(imagePath);
+            byte[] imageBytes = readAndCompressImage(imagePath, MAX_IMAGE_DIMENSION);
             String base64Image = Base64.encodeToString(imageBytes, Base64.NO_WRAP);
 
             // Optimized prompt matching geminiService.js
@@ -93,13 +100,39 @@ private static final String GEMINI_API_URL = "https://generativelanguage.googlea
         }
     }
 
-    private byte[] readFileToBytes(String path) throws IOException {
-        File file = new File(path);
-        FileInputStream fis = new FileInputStream(file);
-        byte[] bytes = new byte[(int) file.length()];
-        fis.read(bytes);
-        fis.close();
-        return bytes;
+    /**
+     * Read an image file, downsample it if larger than maxDimension, and
+     * return JPEG-compressed bytes.  This avoids loading a full-resolution
+     * camera photo (10-25 MB) into a single byte[] + base64 string which
+     * would need ~3x the file size in heap and cause OOM on low-RAM devices.
+     */
+    private byte[] readAndCompressImage(String path, int maxDimension) throws IOException {
+        // 1. Decode bounds only (no pixel allocation)
+        android.graphics.BitmapFactory.Options opts = new android.graphics.BitmapFactory.Options();
+        opts.inJustDecodeBounds = true;
+        android.graphics.BitmapFactory.decodeFile(path, opts);
+
+        // 2. Calculate inSampleSize (power-of-2 down-scale)
+        int w = opts.outWidth;
+        int h = opts.outHeight;
+        int inSampleSize = 1;
+        while ((w / inSampleSize) > maxDimension || (h / inSampleSize) > maxDimension) {
+            inSampleSize *= 2;
+        }
+
+        // 3. Decode with down-sampling
+        opts.inSampleSize = inSampleSize;
+        opts.inJustDecodeBounds = false;
+        android.graphics.Bitmap bmp = android.graphics.BitmapFactory.decodeFile(path, opts);
+        if (bmp == null) {
+            throw new IOException("Failed to decode image: " + path);
+        }
+
+        // 4. Compress to JPEG bytes
+        java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream();
+        bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 80, bos);
+        bmp.recycle();
+        return bos.toByteArray();
     }
 
     private String parseGeminiResponse(String responseBody) {
