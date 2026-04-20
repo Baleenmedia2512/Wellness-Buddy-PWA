@@ -246,11 +246,12 @@ export default async function handler(req, res) {
       // Education logs – UserId is stored as STRING in this table  ⚠️
       supabase
         .from('education_logs_table')
-        .select('"UserId", "CreatedAt"')
+        .select('"UserId", "CreatedAt", "Topic"')
         .in('"UserId"', targetUserIds.map(String))
         .gte('"CreatedAt"', startStr)
         .lte('"CreatedAt"', endStr + 'T23:59:59')
         .or('"IsDeleted".is.null,"IsDeleted".eq.0'),
+
 
       // Food / nutrition records for meal timing (UserID is stored as a string)
       supabase
@@ -337,6 +338,8 @@ export default async function handler(req, res) {
     }
 
     for (const r of (educationResult.data || [])) {
+      // Skip smartwatch calorie-burn entries (saved with Topic: "Calories Burned: NNN kcal")
+      if (r.Topic && String(r.Topic).startsWith('Calories Burned:')) continue;
       const uid = parseInt(r.UserId, 10); // Convert string to number
       if (!educationByUser.has(uid)) educationByUser.set(uid, []);
       educationByUser.get(uid).push({ CreatedAt: r.CreatedAt });
@@ -473,14 +476,11 @@ export default async function handler(req, res) {
         // Max calories burned per date from step activity (cumulative tracker)
         const calBurnedByDate = {};
         for (const r of (stepByUser.get(uid) || [])) {
-          const rawBurned = parseFloat(r.CaloriesBurned) || 0;
-          // Use Math.abs so that negative CaloriesBurned values (sensor deltas/corrections) are treated
-          // as positive burns — a negative value means real activity was recorded, just stored inverted.
-          const burned = Math.abs(rawBurned);
-          if ((r.Steps || 0) > 0 || burned > 0) {
+          if ((r.Steps || 0) > 0 || (r.CaloriesBurned || 0) > 0) {
             const localDate = convertISTToLocalDate(r.CreatedAt, tzOffset);
             const dateStr   = extractLocalDateString(localDate);
             if (!dateStr) continue;
+            const burned = parseFloat(r.CaloriesBurned) || 0;
             if ((calBurnedByDate[dateStr] || 0) < burned) {
               calBurnedByDate[dateStr] = burned;
             }

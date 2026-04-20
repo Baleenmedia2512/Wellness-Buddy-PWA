@@ -21,8 +21,8 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
+import android.location.LocationManager;
 import android.content.pm.ServiceInfo;
-import android.database.ContentObserver;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -30,6 +30,7 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.provider.MediaStore;
+import android.provider.Settings;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -40,18 +41,17 @@ import com.wellnessvalley.app.MainActivity;
 import android.content.SharedPreferences;
 
 import java.io.File;
-import android.graphics.Bitmap;
-import android.graphics.BitmapFactory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.Arrays;
 import java.util.List;
+import java.util.function.Consumer;
+import android.database.ContentObserver;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.function.Consumer;
 import org.json.JSONObject;
 import org.json.JSONArray;
 
@@ -59,14 +59,25 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private static final String TAG = "GalleryMonitorService";
     private static final String CHANNEL_ID = "GalleryMonitorChannel";
     private static final int NOTIFICATION_ID = 101;
-    
-    // 🚨 DEBUG FEATURE: Set to false for live release to disable success notifications
-    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = true;
 
     // ── Step Tracking ──────────────────────────────────────────────────────────
     private static final String STEPS_PREFS       = "WellnessSteps";
     // Last successfully persisted step total per day (single-writer dedup guard).
     private static final String STEP_LAST_SAVED_PREFIX = "step_last_saved_";
+    // Anti-fake: physiological maximum steps per day (covers ultramarathon athletes).
+    private static final int DAILY_STEP_HARD_CAP  = 80_000;
+    // Anti-fake: max plausible step increase between two consecutive 30-s DB saves.
+    // 300 steps/30 s = 600 steps/min — beyond any human sprinting capability.
+    private static final int MAX_STEPS_PER_SAVE_WINDOW = 300;
+
+    // ── Walking Detection Notification ─────────────────────────────────────────
+    private static final String WALK_CHANNEL_ID            = "WalkingDetectChannel";
+    private static final int    WALK_NOTIFICATION_ID       = 2001;
+    // 12-second window: ≥15 steps = user is walking
+    private static final long   WALK_DETECT_WINDOW_MS      = 12_000L;
+    private static final int    WALK_NOTIFY_STEP_THRESHOLD = 15;
+    // Minimum gap between successive walking notifications (10 minutes)
+    private static final long   WALK_NOTIFY_COOLDOWN_MS    = 10 * 60 * 1000L;
 
     // ── Screen Time Tracking ───────────────────────────────────────────────────
     private static final String SCREEN_PREFS      = "WellnessScreen";
@@ -76,19 +87,31 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private int           stepLastSensorTotal = -1; // -1 = not yet received any reading
     private int           stepStoredBaseline  = -1; // steps already in SharedPrefs at start of this service session
     private BroadcastReceiver dateChangeReceiver;
+    private BroadcastReceiver locationChangeReceiver;
     // Prevent overlapping step-save API calls from timer/destroy/intent paths.
     private final AtomicBoolean stepSaveInProgress = new AtomicBoolean(false);
 
+    // ── Walking Detection state ────────────────────────────────────────────────
+    private long walkDetectWindowStartMs    = 0L; // 0 = window not yet open
+    private int  walkDetectWindowStartSteps = 0;
+    private long walkNotifyLastShownMs      = 0L;
+
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
+    private DatabaseSyncClient databaseSyncClient;
+
+    // ── Gallery / Food Image Analysis ──────────────────────────────────────────
     private ContentObserver imageObserver;
     private long lastCheckedTime = 0;
     private FoodImageQueue foodImageQueue;
-    private NetworkChangeReceiver networkChangeReceiver;
     private GeminiApiClient geminiApiClient;
-    private DatabaseSyncClient databaseSyncClient;
     private RetryQueue retryQueue;
-    
+    private static final boolean SHOW_DEBUG_SUCCESS_NOTIFICATIONS = false;
+
+    // ── GPS Tracking (writes to WellnessGPS SharedPrefs for map display) ────────
+    private com.google.android.gms.location.FusedLocationProviderClient fusedLocationClient;
+    private com.google.android.gms.location.LocationCallback gpsLocationCallback;
+
     // Database API configuration
     private static final String DEFAULT_API_BASE_URL = "https://wellness-buddy-pwa-backend-test.vercel.app";
 
@@ -100,8 +123,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         createNotificationChannel();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Only DATA_SYNC — MEDIA_PROCESSING requires its own permission and crashes without it
-            startForeground(NOTIFICATION_ID, createNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+                fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+            }
+            startForeground(NOTIFICATION_ID, createNotification(), fgType);
         } else {
             startForeground(NOTIFICATION_ID, createNotification());
         }
@@ -110,13 +136,16 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
-        foodImageQueue = new FoodImageQueue(this);
-        networkChangeReceiver = new NetworkChangeReceiver(() -> processQueuedImages());
-        registerReceiver(networkChangeReceiver, new android.content.IntentFilter(android.net.ConnectivityManager.CONNECTIVITY_ACTION));
         
         // Initialize database sync client
         String apiBaseUrl = resolveApiBaseUrl();
         databaseSyncClient = new DatabaseSyncClient(apiBaseUrl, this);
+        
+        // Initialize gallery/food image analysis components
+        foodImageQueue = new FoodImageQueue(this);
+        geminiApiClient = new GeminiApiClient(BuildConfig.GEMINI_API_KEY);
+        retryQueue = new RetryQueue(this, databaseSyncClient);
+        lastCheckedTime = System.currentTimeMillis();
         Log.d(TAG, "Using API_BASE_URL for background sync: " + apiBaseUrl);
         
         // Test database connection
@@ -124,36 +153,39 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             boolean connected = databaseSyncClient.testConnection();
             Log.d(TAG, connected ? "✅ Database connection successful" : "❌ Database connection failed");
         });
-        
-        // Initialize Gemini API client with BuildConfig key (injected at build time)
-        try {
-            String apiKey = BuildConfig.GEMINI_API_KEY;
-            if (apiKey == null || apiKey.isEmpty()) {
-                Log.e(TAG, "❌ GEMINI_API_KEY not configured! Set it in gradle.properties");
-                throw new IllegalStateException("GEMINI_API_KEY is required but not configured");
-            }
-            
-            geminiApiClient = new GeminiApiClient(apiKey);
-            Log.d(TAG, "✅ Gemini API client initialized successfully");
-            
-            // Initialize retry queue
-            retryQueue = new RetryQueue(this, databaseSyncClient);
-            
-            // Schedule retry processing every 30 minutes
-            scheduledExecutor.scheduleAtFixedRate(() -> {
-                Log.d(TAG, "Processing retry queue: " + retryQueue.getQueueStats());
-                retryQueue.processRetries();
-            }, 30, 30, TimeUnit.MINUTES);
-            
-        } catch (Exception e) {
-            Log.w(TAG, "⚠️ Gemini API not available, food AI disabled: " + e.getMessage());
-            geminiApiClient = null;
-            retryQueue = null;
-        }
 
         // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
         scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
+
+        // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
+        initGpsTracking();
+
+        // ✅ Auto-cancel walking notification when user enables location
+        locationChangeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                try {
+                    LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                    if (lm == null) return;
+                    boolean gps = false;
+                    boolean net = false;
+                    try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                    try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                    if (gps || net) {
+                        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+                        if (nm != null) {
+                            nm.cancel(WALK_NOTIFICATION_ID);
+                            Log.d(TAG, "✅ Location enabled — walking notification dismissed");
+                        }
+                    }
+                } catch (Exception e) {
+                    Log.w(TAG, "⚠️ locationChangeReceiver error: " + e.getMessage());
+                }
+            }
+        };
+        registerReceiver(locationChangeReceiver,
+                new android.content.IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION));
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
         scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
@@ -214,6 +246,20 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             if (manager != null) {
                 manager.createNotificationChannel(channel);
                 Log.d(TAG, "✅ Notification channel created: " + CHANNEL_ID);
+
+                // ── High-priority channel for walking detection ──────────────
+                NotificationChannel walkChannel = new NotificationChannel(
+                        WALK_CHANNEL_ID,
+                        "Walking Activity",
+                        NotificationManager.IMPORTANCE_HIGH
+                );
+                walkChannel.setDescription("Notifies when background walking is detected");
+                walkChannel.enableVibration(true);
+                walkChannel.setVibrationPattern(new long[]{0, 250, 100, 250});
+                walkChannel.enableLights(true);
+                walkChannel.setShowBadge(true);
+                manager.createNotificationChannel(walkChannel);
+                Log.d(TAG, "✅ Walking notification channel created: " + WALK_CHANNEL_ID);
             }
         }
     }
@@ -338,8 +384,27 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 }
             });
 
-            showAnalysisNotification(imagePath, result);
+            showFoodAnalysisNotification(imagePath, result);
             foodImageQueue.remove(imagePath);
+        }
+    }
+
+    private void showFoodAnalysisNotification(String imagePath, String result) {
+        try {
+            String fileName = new File(imagePath).getName();
+            NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setContentTitle("Food Analysis Complete")
+                    .setContentText(fileName + " analyzed")
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(result))
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true);
+            NotificationManager manager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            if (manager != null) {
+                manager.notify((int) System.currentTimeMillis(), builder.build());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Error showing food analysis notification", e);
         }
     }
     
@@ -448,6 +513,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
         prefs.edit().putInt("step_daily_" + today, newTotal).apply();
+
+        // Walking detection: piggyback on every sensor event (no extra polling)
+        checkWalkingDetection(sensorTotal);
     }
 
     @Override
@@ -503,9 +571,28 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             return;
         }
 
+        // ── Anti-fake: hard daily cap (physiological maximum) ─────────────────
+        if (steps > DAILY_STEP_HARD_CAP) {
+            Log.w(TAG, "⚠️ [AntiCheat] Daily cap enforced: " + steps + " → " + DAILY_STEP_HARD_CAP);
+            steps = DAILY_STEP_HARD_CAP;
+            prefs.edit().putInt("step_daily_" + date, steps).apply();
+        }
+
+        // ── Anti-fake: step rate anomaly detection (30-s window) ─────────────
+        // If steps increased by more than MAX_STEPS_PER_SAVE_WINDOW since last save,
+        // it is physically impossible — log a warning but still save (hardware sensor
+        // may batch Doze-delayed steps; we trust the Android hardware pedometer).
+        int lastSaved = prefs.getInt(STEP_LAST_SAVED_PREFIX + date, -1);
+        if (!forceWrite && lastSaved >= 0) {
+            int delta = steps - lastSaved;
+            if (delta > MAX_STEPS_PER_SAVE_WINDOW) {
+                Log.w(TAG, "⚠️ [AntiCheat] Anomalous step burst: +" + delta
+                        + " in ~30s for date=" + date + " (may be Doze batch)");
+            }
+        }
+
         // Single-writer dedup: skip unchanged values to avoid redundant 60s posts.
         // Always proceed for forceWrite (correction) even if value looks the same.
-        int lastSaved = prefs.getInt(STEP_LAST_SAVED_PREFIX + date, -1);
         if (!forceWrite && lastSaved == steps) {
             Log.d(TAG, "⏭️ [Steps] Skip DB save (unchanged): date=" + date + " steps=" + steps);
             return;
@@ -654,8 +741,13 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         super.onDestroy();
         Log.d(TAG, "Service destroyed");
 
-        if (imageObserver != null) {
-            getContentResolver().unregisterContentObserver(imageObserver);
+        // Stop GPS updates
+        if (fusedLocationClient != null && gpsLocationCallback != null) {
+            try {
+                fusedLocationClient.removeLocationUpdates(gpsLocationCallback);
+            } catch (Exception e) {
+                Log.w(TAG, "Error removing GPS updates: " + e.getMessage());
+            }
         }
 
         // Unregister step sensor
@@ -673,11 +765,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         if (scheduledExecutor != null) {
             scheduledExecutor.shutdown();
         }
-        if (networkChangeReceiver != null) {
-            unregisterReceiver(networkChangeReceiver);
-        }
         if (dateChangeReceiver != null) {
             unregisterReceiver(dateChangeReceiver);
+        }
+        if (locationChangeReceiver != null) {
+            unregisterReceiver(locationChangeReceiver);
         }
         
         // Log final retry queue stats
@@ -783,98 +875,248 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         return null;
     }
 
-    // Show Gemini analysis result notification
-    private void showAnalysisNotification(String imagePath, String result) {
-        String foodName = "Food";
-        int calories = -1;
-        double protein = -1, carbs = -1, fat = -1, fiber = -1;
-        boolean hasFood = false;
-        
-        // Check if result is a valid JSON before parsing
-        if (result == null || result.startsWith("Analysis failed") || result.startsWith("Error:") || result.equals("No result")) {
-            Log.d(TAG, "Skipping notification for non-JSON result: " + result);
+    // ── GPS helpers ───────────────────────────────────────────────────────────
+
+    private void initGpsTracking() {
+        try {
+            fusedLocationClient = com.google.android.gms.location.LocationServices
+                    .getFusedLocationProviderClient(this);
+
+            com.google.android.gms.location.LocationRequest locationRequest =
+                    new com.google.android.gms.location.LocationRequest.Builder(
+                            com.google.android.gms.location.Priority.PRIORITY_HIGH_ACCURACY, 5000L)
+                            .setMinUpdateIntervalMillis(3000L)
+                            .build();
+
+            gpsLocationCallback = new com.google.android.gms.location.LocationCallback() {
+                @Override
+                public void onLocationResult(com.google.android.gms.location.LocationResult result) {
+                    if (result == null) return;
+                    for (android.location.Location loc : result.getLocations()) {
+                        processGpsLocation(loc);
+                    }
+                }
+            };
+
+            fusedLocationClient.requestLocationUpdates(locationRequest, gpsLocationCallback,
+                    Looper.getMainLooper());
+            Log.d(TAG, "✅ GPS tracking initialised");
+        } catch (SecurityException e) {
+            Log.w(TAG, "⚠️ GPS: location permission not granted — skipping GPS tracking");
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ GPS init failed: " + e.getMessage());
+        }
+    }
+
+    private void processGpsLocation(android.location.Location location) {
+        if (location == null) return;
+        float accuracy = location.getAccuracy();
+        boolean isOutdoor = accuracy < 50f;  // single-point flag (kept at 50 m for display)
+        double lat = location.getLatitude();
+        double lng = location.getLongitude();
+        long now = System.currentTimeMillis();
+
+        // ── Always write single "last fix" fields (used by getLastGpsLocation) ────
+        SharedPreferences prefs = getSharedPreferences("WellnessGPS", MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        editor.putFloat("gps_lat", (float) lat);
+        editor.putFloat("gps_lng", (float) lng);
+        editor.putFloat("gps_accuracy", accuracy);
+        editor.putBoolean("gps_is_outdoor", isOutdoor);
+        editor.putLong("gps_timestamp", now);
+
+        // ── Accumulate outdoor route points (background route array) ────────────
+        // Only record fixes with accuracy < 30 m to prevent off-road/building-cross lines.
+        // Points are stored as a JSON array and capped at 1000 entries per day.
+        // Cleared on day rollover so yesterday's route never bleeds into today.
+        if (accuracy < 30f) {
+            String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                    .format(new java.util.Date(now));
+            String storedDate = prefs.getString("route_date", "");
+
+            // Day rollover — clear stale route
+            if (!today.equals(storedDate)) {
+                editor.putString("route_date", today);
+                editor.putString("route_points", "[]");
+            }
+
+            // Load existing array
+            String existingJson = prefs.getString("route_points", "[]");
+            try {
+                JSONArray arr = new JSONArray(existingJson);
+
+                // Minimum distance filter: skip if < 10 m from last recorded point
+                boolean tooClose = false;
+                if (arr.length() > 0) {
+                    JSONObject last = arr.getJSONObject(arr.length() - 1);
+                    double lastLat = last.getDouble("lat");
+                    double lastLng = last.getDouble("lng");
+                    double dist = haversineMeters(lastLat, lastLng, lat, lng);
+                    tooClose = dist < 10.0;
+                }
+
+                if (!tooClose) {
+                    // Cap at 1000 points — remove oldest when exceeded
+                    if (arr.length() >= 1000) {
+                        JSONArray trimmed = new JSONArray();
+                        for (int i = arr.length() - 999; i < arr.length(); i++) {
+                            trimmed.put(arr.get(i));
+                        }
+                        arr = trimmed;
+                    }
+                    JSONObject point = new JSONObject();
+                    point.put("lat", lat);
+                    point.put("lng", lng);
+                    point.put("accuracy", (double) accuracy);
+                    point.put("timestamp", now);
+                    arr.put(point);
+                    editor.putString("route_points", arr.toString());
+                    Log.d(TAG, "📍 BG route point added — total=" + arr.length()
+                            + " lat=" + lat + " lng=" + lng + " acc=" + accuracy);
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "⚠️ BG route JSON error: " + e.getMessage());
+                // Reset corrupted array
+                editor.putString("route_points", "[]");
+            }
+        }
+
+        editor.apply();
+    }
+
+    // ── Walking Detection ─────────────────────────────────────────────────────
+
+    /**
+     * Called on every step sensor event.
+     * Opens a 12-second sliding window; if ≥15 steps are counted inside it
+     * we consider the user to be walking and fire a heads-up notification
+     * (subject to a 10-minute cooldown so we never spam).
+     * No threads, no polling — piggybacks on the existing sensor callback.
+     */
+    private void checkWalkingDetection(int sensorTotal) {
+        long now = System.currentTimeMillis();
+
+        // Open a new window on the very first sensor event after init / reset
+        if (walkDetectWindowStartMs == 0L) {
+            walkDetectWindowStartMs    = now;
+            walkDetectWindowStartSteps = sensorTotal;
             return;
         }
-        
+
+        long elapsed = now - walkDetectWindowStartMs;
+        if (elapsed < WALK_DETECT_WINDOW_MS) {
+            // Window still open — keep accumulating
+            return;
+        }
+
+        // Window expired — evaluate and always reset for next measurement
+        int stepDelta = sensorTotal - walkDetectWindowStartSteps;
+        walkDetectWindowStartMs    = now;
+        walkDetectWindowStartSteps = sensorTotal;
+
+        if (stepDelta >= WALK_NOTIFY_STEP_THRESHOLD) {
+            if (now - walkNotifyLastShownMs >= WALK_NOTIFY_COOLDOWN_MS) {
+                walkNotifyLastShownMs = now;
+                Log.d(TAG, "🚶 Walking detected: " + stepDelta + " steps in " + elapsed + " ms — sending notification");
+                showWalkingNotification();
+            } else {
+                Log.d(TAG, "🚶 Walking detected but cooldown active — skipping notification");
+            }
+        }
+    }
+
+    /**
+     * Shows a high-priority heads-up notification when walking is detected.
+     * Checks GPS / network provider state to decide indoor vs outdoor message.
+     * Tapping the notification opens the app directly.
+     */
+    private void showWalkingNotification() {
+        // Determine indoor / outdoor without needing location permission for a reading —
+        // we only need to know whether the user has location services turned ON.
+        boolean locationEnabled = false;
         try {
-            JSONObject obj = new JSONObject(result);
-            JSONArray foods = obj.optJSONArray("foods");
-            if (foods != null && foods.length() > 0) {
-                hasFood = true;
-                JSONObject firstFood = foods.getJSONObject(0);
-                foodName = firstFood.optString("name", foodName);
-                JSONObject nutrition = firstFood.optJSONObject("nutrition");
-                if (nutrition != null) {
-                    calories = nutrition.optInt("calories", -1);
-                    protein = nutrition.optDouble("protein", -1);
-                    carbs = nutrition.optDouble("carbs", -1);
-                    fat = nutrition.optDouble("fat", -1);
-                    fiber = nutrition.optDouble("fiber", -1);
-                }
+            LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+            if (lm != null) {
+                boolean gps = false;
+                boolean net = false;
+                try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                locationEnabled = gps || net;
             }
         } catch (Exception e) {
-            Log.e(TAG, "Error parsing Gemini result for notification", e);
-            Log.d(TAG, "Result that failed to parse: " + result);
-            return;
+            Log.w(TAG, "⚠️ Could not check location state: " + e.getMessage());
         }
 
-        if (!hasFood) {
-            Log.d(TAG, "No food detected by Gemini. Skipping notification.");
-            return;
-        }
+        String message = locationEnabled
+                ? "Outdoor activity detected"
+                : "Indoor activity detected";
 
-        StringBuilder contentTextBuilder = new StringBuilder();
-        contentTextBuilder.append(foodName);
-        if (calories >= 0) contentTextBuilder.append(" • ").append(calories).append(" kcal");
-        if (protein >= 0) contentTextBuilder.append(" • Protein: ").append(protein).append("g");
-        if (carbs >= 0) contentTextBuilder.append(" • Carbs: ").append(carbs).append("g");
-        if (fat >= 0) contentTextBuilder.append(" • Fat: ").append(fat).append("g");
-        if (fiber >= 0) contentTextBuilder.append(" • Fiber: ").append(fiber).append("g");
-        String contentText = contentTextBuilder.toString();
-
-        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("🍽️ Food Analysis Complete")
-                .setContentText(contentText)
-                .setPriority(NotificationCompat.PRIORITY_HIGH)
-                .setAutoCancel(true);
-
-        // Make notification clickable - opens app with background history flag
-        Intent notificationIntent = new Intent(this, MainActivity.class);
-        notificationIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-        notificationIntent.putExtra("openBackgroundHistory", true);
-        
+        // PendingIntent: open app when notification body is tapped
+        Intent openIntent = new Intent(this, MainActivity.class);
+        openIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        openIntent.putExtra("openStepCounter", true);
         PendingIntent pendingIntent = PendingIntent.getActivity(
-                this, 
-                (int) System.currentTimeMillis(), 
-                notificationIntent,
+                this,
+                WALK_NOTIFICATION_ID,
+                openIntent,
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                         ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
                         : PendingIntent.FLAG_UPDATE_CURRENT
         );
-        
-        builder.setContentIntent(pendingIntent);
 
-        // Try to show the image in the notification
-        try {
-            File imgFile = new File(imagePath);
-            if (imgFile.exists()) {
-                Bitmap bitmap = BitmapFactory.decodeFile(imgFile.getAbsolutePath());
-                if (bitmap != null) {
-                    builder.setStyle(new NotificationCompat.BigPictureStyle()
-                            .bigPicture(bitmap)
-                            .setSummaryText(contentText));
-                }
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Error loading image for notification", e);
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, WALK_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle("Walking Detected")
+                .setContentText(message)
+                .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_STATUS)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .setVibrate(new long[]{0, 250, 100, 250})
+                .setContentIntent(pendingIntent);
+
+        if (locationEnabled) {
+            // GPS ON → swipeable, auto-dismisses on tap
+            builder.setAutoCancel(true)
+                   .setOngoing(false);
+        } else {
+            // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
+            builder.setAutoCancel(false)
+                   .setOngoing(true);
+
+            Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            PendingIntent settingsPendingIntent = PendingIntent.getActivity(
+                    this,
+                    WALK_NOTIFICATION_ID + 1,
+                    settingsIntent,
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                            ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                            : PendingIntent.FLAG_UPDATE_CURRENT
+            );
+            builder.addAction(R.mipmap.ic_launcher, "Turn On GPS", settingsPendingIntent);
         }
 
-        NotificationManager notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
-        notificationManager.notify((int) System.currentTimeMillis(), builder.build());
+        NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        if (nm != null) {
+            nm.notify(WALK_NOTIFICATION_ID, builder.build());
+            Log.d(TAG, "🔔 Walking notification posted: " + message + " | locationEnabled=" + locationEnabled);
+        }
     }
-    
-    // 🚨 DEBUG: Show database save success notification (removable for production)
+
+    // ── END Walking Detection ─────────────────────────────────────────────────
+
+    /** Haversine distance in metres between two lat/lng pairs. */
+    private static double haversineMeters(double lat1, double lng1, double lat2, double lng2) {
+        final double R = 6371000.0;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLng = Math.toRadians(lng2 - lng1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1)) * Math.cos(Math.toRadians(lat2))
+                * Math.sin(dLng / 2) * Math.sin(dLng / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
     private void showDatabaseSuccessNotification(String imagePath, String userId) {
         if (!SHOW_DEBUG_SUCCESS_NOTIFICATIONS) {
             Log.d(TAG, "Debug notifications disabled, skipping success notification");

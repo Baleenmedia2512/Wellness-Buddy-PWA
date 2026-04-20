@@ -13,7 +13,7 @@ export const initializeBackButton = (goBack, showToast, isMainPage) => {
       clearTimeout(backButtonTimeout);
     }
 
-    // If not on main page, always try to navigate back first
+    // If not on main page, always try to navigate back first.
     if (!isMainPage) {
       goBack();
       return;

@@ -2,12 +2,15 @@ package com.wellnessvalley.app.plugins;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.location.LocationManager;
 import android.os.Build;
+import android.provider.Settings;
 
 import androidx.core.content.ContextCompat;
 
@@ -170,6 +173,94 @@ public class StepCounterPlugin extends Plugin implements SensorEventListener {
         JSObject ret = new JSObject();
         ret.put("history", history);
         call.resolve(ret);
+    }
+
+    /**
+     * Returns the last GPS location stored by GalleryMonitorService in WellnessGPS SharedPrefs.
+     * Used by StepCounter.js to update the outdoor map polyline.
+     */
+    @PluginMethod
+    public void getLastGpsLocation(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessGPS", android.content.Context.MODE_PRIVATE);
+        long timestamp = prefs.getLong("gps_timestamp", 0L);
+        JSObject ret = new JSObject();
+        ret.put("lat", (double) prefs.getFloat("gps_lat", 0f));
+        ret.put("lng", (double) prefs.getFloat("gps_lng", 0f));
+        ret.put("accuracy", (double) prefs.getFloat("gps_accuracy", 999f));
+        ret.put("isOutdoor", prefs.getBoolean("gps_is_outdoor", false));
+        ret.put("timestamp", timestamp);
+        ret.put("hasLocation", timestamp > 0);
+        call.resolve(ret);
+    }
+
+    /**
+     * Returns the background-recorded GPS route points for a given date.
+     * The JSON array is accumulated by GalleryMonitorService while the app runs
+     * in the background.
+     *
+     * @param call Optional "date" string ("YYYY-MM-DD"). Defaults to today.
+     */
+    @PluginMethod
+    public void getBackgroundRoutePoints(PluginCall call) {
+        android.content.SharedPreferences prefs = getContext()
+                .getSharedPreferences("WellnessGPS", android.content.Context.MODE_PRIVATE);
+
+        String storedDate = prefs.getString("route_date", "");
+        String today = new java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US)
+                .format(new java.util.Date());
+
+        JSObject ret = new JSObject();
+        // If the stored date doesn't match today the array belongs to yesterday — return empty
+        if (!storedDate.equals(today)) {
+            ret.put("points", "[]");
+            ret.put("date", today);
+        } else {
+            String json = prefs.getString("route_points", "[]");
+            ret.put("points", json);
+            ret.put("date", storedDate);
+        }
+        call.resolve(ret);
+    }
+
+    /**
+     * Returns whether device location services (GPS) are currently enabled.
+     * Output: { enabled: boolean }
+     */
+    @PluginMethod
+    public void isLocationEnabled(PluginCall call) {
+        try {
+            LocationManager lm = (LocationManager) getContext().getSystemService(Context.LOCATION_SERVICE);
+            boolean gpsEnabled = false;
+            boolean networkEnabled = false;
+            if (lm != null) {
+                try { gpsEnabled = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                try { networkEnabled = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+            }
+            JSObject ret = new JSObject();
+            ret.put("enabled", gpsEnabled || networkEnabled);
+            call.resolve(ret);
+        } catch (Exception e) {
+            JSObject ret = new JSObject();
+            ret.put("enabled", false);
+            call.resolve(ret);
+        }
+    }
+
+    /**
+     * Opens the Android location/GPS settings screen so the user can enable location.
+     * Does not close the app or block navigation.
+     */
+    @PluginMethod
+    public void openLocationSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Could not open location settings: " + e.getMessage());
+        }
     }
 
     @Override

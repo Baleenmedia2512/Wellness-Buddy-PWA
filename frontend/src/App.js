@@ -73,6 +73,7 @@ import {
   cleanup,
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
+import LocationGuard from "./components/LocationGuard";
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -1468,18 +1469,19 @@ function WellnessValleyApp() {
         console.log('❌ Weight validation failed:', data.validation);
         
         // Build friendly, supportive message for user
-        let alertMessage = data.message || "Failed to save weight entry";
+        let alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
         
-        if (data.validation) {
-          // Generic validation message without showing weight difference
-          alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        if (data.validation && data.message) {
+          // Capitalise first letter of the backend message for display
+          const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
+          alertMessage = `${detail}\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
         }
         
         setAlertModal({
           isOpen: true,
           title: "⚖️ Wait, is that right?",
           message: alertMessage,
-          type: "warning", // Changed from "error" to "warning" for yellow icon
+          type: "warning",
         });
         
         // Clear loading states
@@ -1558,7 +1560,10 @@ function WellnessValleyApp() {
       setSaveLoading(false);
       setLoadingState("idle");
       
-      setError(err.message || "Failed to save weight entry");
+      // Weight validation errors are already shown via alertModal — don't show the red error card
+      if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
+        setError(err.message || "Failed to save weight entry");
+      }
       throw err;
     }
   };
@@ -1598,8 +1603,19 @@ function WellnessValleyApp() {
         body: JSON.stringify(payload),
       });
       const result = await response.json();
-      if (!response.ok || !result.success)
+      if (!response.ok || !result.success) {
+        // Show the same friendly alert modal as photo upload validation
+        if (result.validation) {
+          setIsEditingWeight(false);
+          setAlertModal({
+            isOpen: true,
+            title: "⚖️ Wait, is that right?",
+            message: `We noticed a significant change from your last weigh-in.\n\nTip: Double-check the value you entered and make sure it reflects your actual weight.`,
+            type: "warning",
+          });
+        }
         throw new Error(result.message || "Failed to update");
+      }
 
       // Keep the ref in sync with whichever row was actually updated
       if (result?.id) {
@@ -1683,7 +1699,10 @@ function WellnessValleyApp() {
       await performWeightSave(weightData, imageBase64, userId, captureTimestamp);
     } catch (err) {
       console.error("❌ Save weight error:", err);
-      setError(err.message || "Failed to save weight entry");
+      // Weight validation errors are already shown via alertModal — don't show the red error card
+      if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
+        setError(err.message || "Failed to save weight entry");
+      }
       throw err;
     }
   };
@@ -3590,6 +3609,7 @@ function WellnessValleyApp() {
 
   // Main app interface
   return (
+    <LocationGuard>
     <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
       <Header
         user={user}
@@ -4883,6 +4903,7 @@ function WellnessValleyApp() {
         </div>
       )}
     </div>
+    </LocationGuard>
   );
 }
 

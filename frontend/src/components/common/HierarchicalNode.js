@@ -359,6 +359,8 @@ const HierarchicalNode = ({
                     filter={filter}
                     matchesFilter={matchesFilter}
                     matchesSearch={matchesSearch}
+                    forceExpandedState={forceExpandedState}
+                    defaultExpanded={defaultExpanded}
                     defaultShowDetails={defaultShowDetails}
                   />
                 ))}

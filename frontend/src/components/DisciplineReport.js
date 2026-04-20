@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -46,14 +46,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-
-  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
-  useEffect(() => {
-    if (expandOverride !== null) {
-      const t = setTimeout(() => setExpandOverride(null), 50);
-      return () => clearTimeout(t);
-    }
-  }, [expandOverride]);
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
 
   // Load data
   const fetchData = async (isBackground = false) => {
@@ -825,8 +818,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       onFilterChange={setFilter}
       filterOptions={filterOptions}
       summaryStats={hierarchySummaryStats}
-      onExpandAll={() => setExpandOverride("expanded")}
-      onCollapseAll={() => setExpandOverride("collapsed")}
+      onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
+      onCollapseAll={() => { lastExpandState.current = "collapsed"; setExpandOverride("collapsed"); }}
       expandedState={expandOverride}
       onTeamViewChange={setTeamView}
       teamView={teamView}
@@ -923,7 +916,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           matchesFilter={matchesFilter}
           matchesSearch={matchesSearch}
           forceExpandedState={expandOverride}
-          defaultExpanded={false}
+          defaultExpanded={expandOverride === "expanded"}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">

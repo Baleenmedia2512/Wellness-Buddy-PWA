@@ -15,9 +15,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
         <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
 
-    <!-- Location permissions for attendance tracking -->
+    <!-- Location permissions for attendance tracking and outdoor GPS map -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- ACCESS_BACKGROUND_LOCATION removed — foreground location is sufficient -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
 
     <!-- Usage Stats permission for device-wide screen time comparison -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
@@ -27,21 +29,18 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
 
     <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
-    <!-- Exact alarms: required on Android 12+ (API 31+) for precise reminder times -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
-    <!-- USE_EXACT_ALARM: alternative for apps targeting Android 13+ (does not require runtime grant) -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Exact alarms: SCHEDULE_EXACT_ALARM for Android 12 (API 31-32), requires runtime check -->
+    <!-- On Android 13+ (API 33+), use inexact alarms or request SCHEDULE_EXACT_ALARM at runtime -->
     <!-- Reschedule reminders after device reboot -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Wake device screen + CPU for alarm -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Vibrate device during alarm -->
     <uses-permission android:name="android.permission.VIBRATE" />
-    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed) -->
+    <!-- Run alarm sound as foreground service (keeps audio playing when app is closed).. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <!-- Show full-screen alarm popup on lock screen -->
@@ -142,7 +141,7 @@
             android:name=".services.GalleryMonitorService"
             android:exported="false"
             android:process=":background"
-            android:foregroundServiceType="dataSync"
+            android:foregroundServiceType="dataSync|location"
             android:stopWithTask="false" />
 
         <!-- Restarts GalleryMonitorService after device reboot -->

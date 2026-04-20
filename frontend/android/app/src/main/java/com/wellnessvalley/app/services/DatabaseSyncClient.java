@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Base64;
 import android.util.Log;
 import okhttp3.*;
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 import java.io.File;
@@ -102,6 +103,19 @@ public class DatabaseSyncClient {
             // Check if analysisResult is valid JSON before processing
             if (analysisResult == null || analysisResult.startsWith("Analysis failed") || analysisResult.startsWith("Error:") || analysisResult.equals("No result")) {
                 Log.d(TAG, "❌ Skipping database save for non-JSON result: " + analysisResult);
+                return false;
+            }
+
+            // ✅ Skip save if Gemini detected no food (empty foods array)
+            try {
+                JSONObject parsed = new JSONObject(analysisResult);
+                JSONArray foods = parsed.optJSONArray("foods");
+                if (foods == null || foods.length() == 0) {
+                    Log.d(TAG, "⏭️ Skipping database save — Gemini detected no food in this image");
+                    return false;
+                }
+            } catch (JSONException e) {
+                Log.e(TAG, "❌ Could not parse analysisResult to check foods array, skipping save: " + analysisResult);
                 return false;
             }
 

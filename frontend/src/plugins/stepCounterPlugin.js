@@ -106,11 +106,54 @@ const wrappedPlugin = {
     }
   },
 
+  async getLastGpsLocation() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return { hasLocation: false, isOutdoor: false, lat: 0, lng: 0, accuracy: 999 };
+      return await StepCounter.getLastGpsLocation();
+    } catch (error) {
+      console.warn('[StepCounter] getLastGpsLocation failed:', error);
+      return { hasLocation: false, isOutdoor: false, lat: 0, lng: 0, accuracy: 999 };
+    }
+  },
+
+  async getBackgroundRoutePoints() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return { points: '[]', date: '' };
+      return await StepCounter.getBackgroundRoutePoints();
+    } catch (error) {
+      console.warn('[StepCounter] getBackgroundRoutePoints failed:', error);
+      return { points: '[]', date: '' };
+    }
+  },
+
   addListener(eventName, listenerFunc) {
     if (!Capacitor.isNativePlatform()) {
       return { remove: async () => {} };
     }
     return StepCounter.addListener(eventName, listenerFunc);
+  },
+
+  async isLocationEnabled() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return { enabled: true };
+      return await StepCounter.isLocationEnabled();
+    } catch (error) {
+      console.warn('[StepCounter] isLocationEnabled failed:', error);
+      return { enabled: true }; // fail open on web / error
+    }
+  },
+
+  async openLocationSettings() {
+    try {
+      await this.init();
+      if (!Capacitor.isNativePlatform()) return;
+      return await StepCounter.openLocationSettings();
+    } catch (error) {
+      console.warn('[StepCounter] openLocationSettings failed:', error);
+    }
   }
 };
 

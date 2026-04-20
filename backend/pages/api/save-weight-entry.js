@@ -112,7 +112,23 @@ export default async function handler(req, res) {
       console.log(`✏️ [Manual Edit] Validating weight change for entry ${entryId}, comparing against previous entry`);
     }
 
-    const { data: lastWeightEntry } = await query.limit(1).maybeSingle();
+    let lastWeightEntry = null;
+    const { data: lastWeightEntryData } = await query.limit(1).maybeSingle();
+    lastWeightEntry = lastWeightEntryData;
+
+    // If editing and no previous entry found (this is the only entry),
+    // compare against the current stored value of the entry being edited
+    if (!lastWeightEntry && entryId) {
+      const { data: currentEntry } = await supabase
+        .from("weight_records_table")
+        .select("ID, Weight, CreatedAt")
+        .eq("ID", entryId)
+        .maybeSingle();
+      if (currentEntry && currentEntry.Weight) {
+        lastWeightEntry = currentEntry;
+        console.log(`✏️ [Manual Edit] Only entry - comparing against own stored value: ${currentEntry.Weight} kg`);
+      }
+    }
 
     if (lastWeightEntry && lastWeightEntry.Weight) {
       // Validate and auto-correct weight

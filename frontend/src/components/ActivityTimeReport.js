@@ -401,21 +401,13 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
   const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-
-  // Reset expandOverride to null after it fires so newly-opened nodes start from defaultExpanded
-  useEffect(() => {
-    if (expandOverride !== null) {
-      const t = setTimeout(() => setExpandOverride(null), 50);
-      return () => clearTimeout(t);
-    }
-  }, [expandOverride]);
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
   const [activityRowSortOrder, setActivityRowSortOrder] = useState("asc"); // "asc", "desc"
@@ -434,9 +426,25 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       setError("");
 
       try {
+        // Fetch hierarchy first to determine if this user has team members.
+        // If they do, treat them as "coach" for the activity report API so that
+        // all downline member data is returned — matching the behaviour of
+        // DisciplineReport and AttendanceReport.
+        const hierarchyRes = await teamHierarchyService
+          .getTeamHierarchy(user.id, false)
+          .catch(() => null);
+
+        const hasTeamMembers =
+          hierarchyRes?.hierarchy?.teamMembers?.length > 0;
+
+        const effectiveRole =
+          hasTeamMembers && mapRoleForApi(userRole) === "member"
+            ? "coach"
+            : mapRoleForApi(userRole);
+
         const params = new URLSearchParams({
           userId: String(user.id),
-          role: mapRoleForApi(userRole),
+          role: effectiveRole,
           dateRange: mapUiRangeToApiRange(dateRange),
           userTimezoneOffset: String(timezoneOffset),
         });
@@ -445,10 +453,10 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           params.set("endDate", formatDateForApi(customEndDate));
         }
 
-        const [hierarchyRes, reportRes] = await Promise.all([
-          teamHierarchyService.getTeamHierarchy(user.id, false).catch(() => null),
-          fetch(`${apiBaseUrl}/api/get-activity-time-report?${params}`, { cache: "no-store" }),
-        ]);
+        const reportRes = await fetch(
+          `${apiBaseUrl}/api/get-activity-time-report?${params}`,
+          { cache: "no-store" },
+        );
 
         const reportJson = await reportRes.json();
         if (!reportRes.ok || !reportJson?.success) {
@@ -528,23 +536,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
-          let ka, kb;
-          if (sortBy === "direct") {
-            ka = a.__directAvg ?? 0;
-            kb = b.__directAvg ?? 0;
-          } else if (sortBy === "full") {
-            ka = a.__fullAvg ?? 0;
-            kb = b.__fullAvg ?? 0;
-          } else {
-            ka = computeActivitySortKey(a, filter);
-            kb = computeActivitySortKey(b, filter);
-          }
+          const ka = computeActivitySortKey(a, filter);
+          const kb = computeActivitySortKey(b, filter);
           return sortOrder === "desc" ? kb - ka : ka - kb;
         })
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder, sortBy]);
+  }, [hierarchyData, filter, sortOrder]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -626,35 +625,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       note: "Score: On-time = 100 pts · Late = 50 pts · Missed = 0 pts — averaged across all activities × days.",
     };
   }, [flatData]);
-
-  // ── Team-view toggle ───────────────────────────────────────────────────────
-
-  const teamViewToggle = (
-    <div className="flex justify-end mb-3 sm:mb-4">
-      <div className="inline-flex bg-green-50 border border-green-200 rounded-full p-0.5">
-        <button
-          onClick={() => setTeamView("direct")}
-          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-            teamView === "direct"
-              ? "bg-green-600 text-white shadow-sm"
-              : "text-green-700 hover:text-green-800"
-          }`}
-        >
-          Direct
-        </button>
-        <button
-          onClick={() => setTeamView("full")}
-          className={`px-3 sm:px-4 py-1 sm:py-1.5 rounded-full text-xs font-semibold transition-all ${
-            teamView === "full"
-              ? "bg-green-600 text-white shadow-sm"
-              : "text-green-700 hover:text-green-800"
-          }`}
-        >
-          Full
-        </button>
-      </div>
-    </div>
-  );
 
   // ── Direct / Full hierarchy filter ────────────────────────────────────────
   const buildHierarchyForView = useCallback((view) => {
@@ -926,20 +896,19 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilter(val);
           setFilterBehavior("all");
         }}
-      sortBy={sortBy}
-      sortOrder={sortOrder}
-      onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
       summaryStats={null}
+      sortOrder={sortOrder}
+      onSortOrderChange={(dir) => setSortOrder(dir)}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
-      onExpandAll={() => setExpandOverride("expanded")}
-      onCollapseAll={() => setExpandOverride("collapsed")}
+      onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
+      onCollapseAll={() => { lastExpandState.current = "collapsed"; setExpandOverride("collapsed"); }}
       expandedState={expandOverride}
+      teamView={teamView}
+      onTeamViewChange={setTeamView}
     >
       {filteredHierarchy ? (
         <>
-          {teamViewToggle}
-
           {/* Daily Activity Sorting Controls
           <div className="mb-4 p-3 bg-blue-50 rounded-xl border border-blue-200">
             <div className="flex flex-col gap-2">
@@ -1014,7 +983,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             matchesFilter={matchesFilter}
             matchesSearch={matchesSearch}
             forceExpandedState={expandOverride}
-            defaultExpanded={false}
+            defaultExpanded={expandOverride === "expanded"}
             defaultShowDetails={true}
           />
         </>
