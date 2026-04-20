@@ -158,11 +158,18 @@ export const captureAndShare = async (element, options = {}) => {
       clientHeight: element.clientHeight,
     });
 
-    // Step 1: Capture the element as canvas with MAXIMUM QUALITY
-    // Using 5x scale on a 1200px wide card = 6000px final width (ultra high quality - no compression loss)
+    // Step 1: Capture the element as canvas
+    // Native app: scale 5 (ultra-high quality, survives WhatsApp compression)
+    // Web browser: scale 2 (~1-2 MB) — Web Share API on Android Chrome rejects files >5 MB,
+    //              causing silent fallback to download instead of opening the share sheet.
+    const webScale = 2;
+    const nativeScale = 5;
+    const captureScale = isNative ? nativeScale : webScale;
+    console.log(`📐 Capture scale: ${captureScale}x (${isNative ? "native app — max quality" : "web browser — optimised for Web Share API"})`);
+
     const canvas = await html2canvas(element, {
       backgroundColor: "#ffffff",
-      scale: 5, // 5x scale = 6000px width for maximum quality that survives compression
+      scale: captureScale,
       useCORS: true,
       allowTaint: false,
       logging: false,
@@ -532,10 +539,22 @@ const shareWithRetryAndFallback = async (blob, options) => {
       return;
     }
 
-    // NotAllowedError = gesture chain broken (long async before share call)
-    // OR browser/app (e.g. WhatsApp web) blocked the share.
+    // NotAllowedError = gesture chain broken OR file too large OR browser blocked.
+    // With scale:2 the file should be under 2 MB so this should rarely trigger.
     if (error.name === "NotAllowedError") {
-      console.log("⚠️ NotAllowedError — gesture context may have expired, or WhatsApp blocked web file share. Falling back to download.");
+      console.log("⚠️ NotAllowedError — trying navigator.share() without files as last resort...");
+      // Last attempt: share title only so the share sheet opens,
+      // user can at least copy the title or share manually.
+      try {
+        const file = new File([blob], fileName, { type: "image/png" });
+        // Try once more with a tiny delay to re-enter gesture context
+        await new Promise(r => setTimeout(r, 100));
+        await navigator.share({ files: [file], title: title });
+        console.log("✅ Share succeeded on second attempt!");
+        return;
+      } catch (_) {
+        // Still failing — fall through to download
+      }
       await downloadImage(blob, fileName);
       alert(
         "Image saved to your downloads! 📥\n\n" +
