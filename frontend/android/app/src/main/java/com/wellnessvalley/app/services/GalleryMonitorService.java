@@ -1091,6 +1091,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
      * Tapping the notification opens the app directly.
      */
     private void showWalkingNotification() {
+        // Notification disabled — user does not want location-off prompts.
+        Log.d(TAG, "🚶 Walking detected (notification suppressed)");
+        if (true) return;
         // Determine indoor / outdoor without needing location permission for a reading —
         // we only need to know whether the user has location services turned ON.
         boolean locationEnabled = false;
