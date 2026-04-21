@@ -72,20 +72,27 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.5',
+  VERSION: '2.6',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 29,
+  VERSION_CODE: 30,
   
   // Release name (for Play Store)
-  RELEASE_NAME: 'Team Dashboard Enhancements',
+  RELEASE_NAME: 'Firebase & Stability Update',
   
   // Build date
-  BUILD_DATE: '2026-04-15',
+  BUILD_DATE: '2026-04-21',
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.6 (Code 30) - 2026-04-21
+ *   🔥 Firebase Update - Updated Firebase configuration and client IDs for Wellness Valley project
+ *   🔐 Auth Improvement - Refreshed Google Sign-In client IDs for improved authentication reliability
+ *   📱 Capacitor Config - Updated capacitor configuration to align with new Firebase setup
+ *   🔧 Code Quality - Minor code readability improvements across backend API utilities
+ *   🐛 Bug Fixes - General stability improvements and minor fixes
  * 
  * Version 2.5 (Code 27) - 2026-04-15
  *   👣 Step Counter - Real-time step tracking with daily goals and progress display
