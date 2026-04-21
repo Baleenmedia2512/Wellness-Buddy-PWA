@@ -29,9 +29,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, date, clubId, type } = req.query;
+  const { userId, date, clubId } = req.query;
 
-  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId, type });
+  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId });
 
   if (!userId) {
     res.status(400).json({
@@ -289,10 +289,7 @@ export default async function handler(req, res) {
     };
 
     // Condition function to check if someone has attended
-    // When type=remote, only count members who did remote sessions
-    const attendedConditionFn = type === 'remote'
-      ? (child) => (child.metrics?.remoteCount || 0) > 0
-      : (child) => child.metrics?.attended === true;
+    const attendedConditionFn = (child) => child.metrics?.attended === true;
 
     const hierarchyWithAttendance = buildHierarchyWithMetricCounts(
       teamHierarchy,
