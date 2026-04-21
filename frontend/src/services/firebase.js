@@ -14,12 +14,12 @@ import { GoogleAuth } from '@southdevs/capacitor-google-auth';
 
 //  Firebase config
 const firebaseConfig = {
-  apiKey: 'AIzaSyArJQHNTFraEOp3ENdd67T6aV49hCCxoUo',
-  authDomain: 'wellness-buddy-5de14.firebaseapp.com',
-  projectId: 'wellness-buddy-5de14',
-  storageBucket: 'wellness-buddy-5de14.appspot.com',
-  messagingSenderId: '610941252952',
-  appId: '1:610941252952:android:a04c921f5a95815857e12d',
+  apiKey: 'AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps',
+  authDomain: 'wellness-valley.firebaseapp.com',
+  projectId: 'wellness-valley',
+  storageBucket: 'wellness-valley.firebasestorage.app',
+  messagingSenderId: '499376291787',
+  appId: '1:499376291787:android:7f587d91cbb40b5be9404e',
 };
 
 // 🔥 Initialize Firebase
@@ -89,7 +89,7 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       // Initialize Google Auth for Capacitor
       await GoogleAuth.initialize({
         scopes: ['profile', 'email'],
-        serverClientId: '610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com',
+        serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',
         forceCodeForRefreshToken: true
       });
 

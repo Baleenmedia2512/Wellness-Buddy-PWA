@@ -1,214 +1,33 @@
 {
   "project_info": {
-    "project_number": "610941252952",
-    "project_id": "wellness-buddy-5de14",
-    "storage_bucket": "wellness-buddy-5de14.firebasestorage.app"
+    "project_number": "499376291787",
+    "project_id": "wellness-valley",
+    "storage_bucket": "wellness-valley.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:610941252952:android:a04c921f5a95815857e12d",
-        "android_client_info": {
-          "package_name": "com.wellnessbuddy.app"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "610941252952-0hpf749d431ufnggh8m0lq6talniu5jg.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "34fc80536c84c20f5ec7ffae7e39ab5e6a4f44ed"
-          }
-        },
-        {
-          "client_id": "610941252952-1ovol30kmvb8g0cbg3u85521aq1bj4el.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "25f340c610614d704d17bcfc6ec12db35a813930"
-          }
-        },
-        {
-          "client_id": "610941252952-6u6pv9to6rrhrurdb9chhcsf7pva8jeb.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "fb1a43d4d618de3c7fbe736d052442dbdd2b8e83"
-          }
-        },
-        {
-          "client_id": "610941252952-9i08ksfnatqslh35fcccr7c1lkod3mqp.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "c0ea30a4c209e7767606c12c1e823dc582b9828c"
-          }
-        },
-        {
-          "client_id": "610941252952-bd150c5jrgd3ol7umdf708e2d184efqd.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "7ddf44eaa733cbab7866ee017dfc89250ae44c1f"
-          }
-        },
-        {
-          "client_id": "610941252952-in3q7dasg7cn44kh9mtgaq12rc42v882.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "d6cf38eebca47e5486f0e083f676a104a3494327"
-          }
-        },
-        {
-          "client_id": "610941252952-m9hukk2fkn8e3p4kf8kq12gcm2iv4qoh.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessbuddy.app",
-            "certificate_hash": "28d018a391cb5ea3f6134da460dcbd285b6503e5"
-          }
-        },
-        {
-          "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyArJQHNTFraEOp3ENdd67T6aV49hCCxoUo"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
-    },
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:610941252952:android:49f6a868b9191a7f57e12d",
+        "mobilesdk_app_id": "1:499376291787:android:7f587d91cbb40b5be9404e",
         "android_client_info": {
           "package_name": "com.wellnessvalley.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "610941252952-2ohap1n93hdfas5jk9l0u5v54j82ctq5.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "7ddf44eaa733cbab7866ee017dfc89250ae44c1f"
-          }
-        },
-        {
-          "client_id": "610941252952-4a6amctqm56kvt586dvp0eus3st9b4hj.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "a5241c1b1d21212ce1c99a49c529e5fb7555de0c"
-          }
-        },
-        {
-          "client_id": "610941252952-9n4viluobaajkpgqfagd0463f616sc29.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "c0ea30a4c209e7767606c12c1e823dc582b9828c"
-          }
-        },
-        {
-          "client_id": "610941252952-hu9prv06p069ji3740okplcl80236c9q.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "34fc80536c84c20f5ec7ffae7e39ab5e6a4f44ed"
-          }
-        },
-        {
-          "client_id": "610941252952-ian0dqk59jgjkp45p5ad9s7bdl26q7qc.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "d6cf38eebca47e5486f0e083f676a104a3494327"
-          }
-        },
-        {
-          "client_id": "610941252952-kn4bks114ndq3ufg9vicqdf60caa849d.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "28d018a391cb5ea3f6134da460dcbd285b6503e5"
-          }
-        },
-        {
-          "client_id": "610941252952-lssti71a9q6ve0e6gmosmur15662cl3f.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "fb1a43d4d618de3c7fbe736d052442dbdd2b8e83"
-          }
-        },
-        {
-          "client_id": "610941252952-ltt11sld3ae1a26emmh2h7fll9c140cj.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "bc1925fcdf604fb39ec4177ed76e056d81bb8e51"
-          }
-        },
-        {
-          "client_id": "610941252952-qh1ehq97t3dpd87kmh509c8dl17ocfd3.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "25f340c610614d704d17bcfc6ec12db35a813930"
-          }
-        },
-        {
-          "client_id": "610941252952-qjjvuna4h745ll979dja5s7b9kgm8d3e.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "ed421268c78a9ca853e5c7708e73037aebe9c514"
-          }
-        },
-        {
-          "client_id": "610941252952-qvp8g22pke199jaqo6c2ngt24uvc2pmp.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "42853895132d6948b2bd494cc8e1477d8360add5"
-          }
-        },
-        {
-          "client_id": "610941252952-u6bvvq1cer3rt1gtb69t6u7123e17ebd.apps.googleusercontent.com",
-          "client_type": 1,
-          "android_info": {
-            "package_name": "com.wellnessvalley.app",
-            "certificate_hash": "c0a1f89955ce0029061afbc66bb015e4f8a5979a"
-          }
-        },
-        {
-          "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
+          "client_id": "499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyArJQHNTFraEOp3ENdd67T6aV49hCCxoUo"
+          "current_key": "AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com",
+              "client_id": "499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com",
               "client_type": 3
             }
           ]
