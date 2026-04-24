@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -25,10 +24,10 @@ import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
 // ───Constants ────────────────────────────────────────────────────────────────
 
-const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education", "water", "caloriesBurned"];
+const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: Scale,    color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: WeightScaleIcon, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
@@ -402,11 +401,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
+  const [sortBy, setSortBy] = useState("all"); // "all" | "name" | "self" | "direct" | "full"
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
@@ -536,6 +536,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           const ka = computeActivitySortKey(a, filter);
           const kb = computeActivitySortKey(b, filter);
           return sortOrder === "desc" ? kb - ka : ka - kb;
@@ -543,7 +549,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder]);
+  }, [hierarchyData, filter, sortOrder, sortBy]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -913,8 +919,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilterBehavior("all");
         }}
       summaryStats={null}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortOrderChange={(dir) => setSortOrder(dir)}
+      onSortChange={(newSortBy, newSortOrder) => {
+        setSortBy(newSortBy);
+        setSortOrder(newSortOrder);
+      }}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
@@ -965,9 +975,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-full w-fit">
             {[
               { value: "all",     label: "All" },
-              { value: "correct", label: "Correct" },
+              { value: "correct", label: "On Time" },
               { value: "late",    label: "Late" },
-              { value: "missed",  label: "Not Taken" },
+              { value: "missed",  label: "Missed" },
             ].map((b) => (
               <button
                 key={b.value}

@@ -818,14 +818,17 @@ const HierarchicalReportLayout = ({
                       {/* Direction toggle button */}
                       <TouchFeedbackButton
                         onClick={() => onSortChange(sortBy, sortOrder === "desc" ? "asc" : "desc")}
-                        className="h-9 w-9 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center"
+                        className="h-9 px-2 rounded-full border bg-white border-gray-200 hover:bg-gray-50 transition-all flex flex-col items-center justify-center gap-0"
                         ariaLabel="Toggle sort direction"
                       >
                         {sortOrder === "desc" ? (
-                          <ArrowDown className="h-4 w-4 text-gray-600" />
+                          <ArrowDown className="h-3.5 w-3.5 text-gray-600" />
                         ) : (
-                          <ArrowUp className="h-4 w-4 text-gray-600" />
+                          <ArrowUp className="h-3.5 w-3.5 text-gray-600" />
                         )}
+                        <span className="text-[9px] font-bold text-gray-500 leading-none">
+                          {sortOrder === "desc" ? "Z-A" : "A-Z"}
+                        </span>
                       </TouchFeedbackButton>
                     </div>
                   )}

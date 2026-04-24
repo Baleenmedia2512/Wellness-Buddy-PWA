@@ -17,7 +17,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email, displayName, photoURL } = req.body;
+  const { email: rawEmail, displayName, photoURL } = req.body;
+  const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
   console.log("💾 [save-google-user] Request received:", {
     email,
