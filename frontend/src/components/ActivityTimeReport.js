@@ -365,7 +365,7 @@ function TimeReportDetails({ node, dateRange, filter }) {
 
   if (!entry) return null;
 
-  const visibleKeys = filter && filter !== "all" ? [filter] : ACTIVITY_KEYS;
+  const visibleKeys = ACTIVITY_KEYS;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
