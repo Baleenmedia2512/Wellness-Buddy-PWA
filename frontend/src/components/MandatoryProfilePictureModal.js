@@ -479,7 +479,7 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
           {/* Remind Me Later */}
           {onRemindLater && (
             canSnooze ? (
-              <div className="text-center pt-1 px-4 py-3 bg-gray-300 border border-gray-200 rounded-xl">
+              <div className="text-center pt-1 px-3 sm:px-4 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">
                 <button
                   onClick={() => {
                     // Increment snooze count before calling onRemindLater
@@ -489,17 +489,20 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
                     onRemindLater();
                   }}
                   disabled={isSaving}
-                  className="inline-flex items-center space-x-1.5 text-sm text-gray-700 hover:text-gray-700 font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-xl shadow-sm hover:bg-gray-50 hover:text-gray-800 hover:border-gray-400 hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
                 >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>Remind me later ({MAX_SNOOZE_ATTEMPTS - snoozeCount} left)</span>
+                  <Clock className="w-4 h-4 flex-shrink-0 text-amber-500" />
+                  <span>Remind me later</span>
+                  <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold text-white bg-amber-400 rounded-full leading-none">
+                    {MAX_SNOOZE_ATTEMPTS - snoozeCount}
+                  </span>
                 </button>
-                <p className="text-xs text-gray-400 mt-0.5">You will be reminded again in 24 hours</p>
+                <p className="text-xs text-gray-400 mt-2">Reminder in 24 hours &bull; {MAX_SNOOZE_ATTEMPTS - snoozeCount} of {MAX_SNOOZE_ATTEMPTS} left</p>
               </div>
             ) : (
-              <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-center">
-                <p className="text-sm font-medium text-red-700">Profile picture is now required</p>
-                <p className="text-xs text-red-500 mt-0.5">You have used all {MAX_SNOOZE_ATTEMPTS} reminders. Please upload your photo to continue.</p>
+              <div className="px-3 sm:px-4 py-3 bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl shadow-sm text-center">
+                <p className="text-sm font-semibold text-red-700">Profile picture is now required</p>
+                <p className="text-xs text-red-400 mt-0.5">All {MAX_SNOOZE_ATTEMPTS} reminders used. Please upload your photo to continue.</p>
               </div>
             )
           )}
