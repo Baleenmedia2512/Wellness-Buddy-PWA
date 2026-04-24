@@ -15,7 +15,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { recipient, otp, contactType = 'email' } = req.body;
+  const { recipient: rawRecipient, otp, contactType = 'email' } = req.body;
+  const recipient = rawRecipient ? rawRecipient.toLowerCase().trim() : rawRecipient;
 
   if (!recipient || !otp) {
     res.status(400).json({ message: 'Recipient and OTP are required' });
@@ -25,11 +26,11 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
-    // Get active OTP token
+    // Get active OTP token (case-insensitive recipient match)
     const { data: rows, error: otpError } = await supabase
       .from('otp_tokens_table')
       .select('"ID", "OTPHash", "ExpiresAt"')
-      .eq('"Recipient"', recipient)
+      .ilike('Recipient', recipient)
       .eq('"ContactType"', contactType)
       .eq('"IsActive"', true)
       .order('"ID"', { ascending: false })
@@ -72,11 +73,11 @@ export default async function handler(req, res) {
 
     if (updateError) throw updateError;
 
-    // Check if user exists
+    // Check if user exists (case-insensitive to handle Gmail.com vs gmail.com)
     const { data: userRows, error: userError } = await supabase
       .from('team_table')
       .select('*')
-      .eq('"Email"', recipient)
+      .ilike('Email', recipient)
       .limit(1);
 
     if (userError) throw userError;
