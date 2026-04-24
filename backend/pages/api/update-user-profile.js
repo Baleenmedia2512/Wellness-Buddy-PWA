@@ -134,7 +134,7 @@ export default async function handler(req, res) {
         .from("team_table")
         .update(updateData)
         .eq("UserId", userId)
-        .select('"UserId"');
+        .select('UserId');
 
       if (updateError) throw updateError;
       if (!updatedRows || updatedRows.length === 0) {
@@ -165,8 +165,8 @@ export default async function handler(req, res) {
       // Verify persisted values to prevent false success responses.
       const { data: verifyRow, error: verifyError } = await supabase
         .from("team_table")
-        .select('"UserId", "Height", "DietType", "PhoneNumber"')
-        .eq('"UserId"', userId)
+        .select('UserId, Height, DietType, PhoneNumber')
+        .eq('UserId', userId)
         .maybeSingle();
 
       if (verifyError) throw verifyError;
@@ -195,77 +195,19 @@ export default async function handler(req, res) {
       }
     }
 
-    // Update BMR in the latest weight record if provided
+    // Update BMR directly in team_table if provided
     let savedBmr = null;
     if (bmr !== undefined && bmr !== null) {
       const bmrValue = parseFloat(bmr);
       if (!isNaN(bmrValue) && bmrValue > 0) {
-        // Check if user has any weight records (match same filter as get-user-profile)
-        const { data: weightRecords, error: weightError } = await supabase
-          .from("weight_records_table")
-          .select('"ID"')
-          .eq('"UserId"', userId)
-          .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-          .order('"CreatedAt"', { ascending: false })
-          .limit(1);
+        const { error: bmrUpdateError } = await supabase
+          .from("team_table")
+          .update({ Bmr: bmrValue })
+          .eq("UserId", userId);
 
-        if (weightError) throw weightError;
-
-        if (weightRecords && weightRecords.length > 0) {
-          // Update the latest weight record with BMR
-          const currentTime = getISTTimestamp();
-          const { error: bmrUpdateError } = await supabase
-            .from("weight_records_table")
-            .update({ Bmr: bmrValue, UpdatedAt: currentTime })
-            .eq('"ID"', weightRecords[0].ID);
-
-          if (bmrUpdateError) throw bmrUpdateError;
-          console.log(
-            "✅ [update-user-profile] BMR updated in latest weight record:",
-            bmrValue,
-          );
-          console.log("🔍 [DEBUG] Verifying BMR was saved correctly...");
-          
-          // Verify what was actually saved
-          const { data: verifyBmr } = await supabase
-            .from("weight_records_table")
-            .select("Bmr")
-            .eq("ID", weightRecords[0].ID)
-            .single();
-          
-          console.log("🔍 [DEBUG] BMR value in database:", verifyBmr?.Bmr);
-          savedBmr = bmrValue;
-        } else {
-          // 🔥 FIX: No weight records exist - Create a placeholder weight record with BMR
-          console.log(
-            "⚠️ [update-user-profile] No weight records found, creating placeholder with BMR:",
-            bmrValue,
-          );
-          const currentTime = getISTTimestamp();
-          const { error: createError } = await supabase
-            .from("weight_records_table")
-            .insert({
-              UserId: userId,
-              Weight: null, // No weight yet
-              Bmr: bmrValue,
-              CreatedAt: currentTime,
-              UpdatedAt: currentTime,
-            });
-
-          if (createError) {
-            console.error(
-              "❌ [update-user-profile] Failed to create BMR record:",
-              createError,
-            );
-            // Don't throw - still return success for profile update
-          } else {
-            console.log(
-              "✅ [update-user-profile] BMR placeholder record created:",
-              bmrValue,
-            );
-            savedBmr = bmrValue;
-          }
-        }
+        if (bmrUpdateError) throw bmrUpdateError;
+        console.log("✅ [update-user-profile] BMR updated in team_table:", bmrValue);
+        savedBmr = bmrValue;
       }
     }
 

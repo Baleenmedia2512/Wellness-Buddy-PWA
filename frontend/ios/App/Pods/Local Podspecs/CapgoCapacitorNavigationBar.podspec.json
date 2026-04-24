@@ -1,0 +1,21 @@
+{
+  "name": "CapgoCapacitorNavigationBar",
+  "version": "7.1.33",
+  "summary": "Set navigation bar color for android lolipop and higher",
+  "license": "MIT",
+  "homepage": "git+https://github.com/Cap-go/capacitor-navigation-bar.git",
+  "authors": "Cap-go <contact@capgo.app>",
+  "source": {
+    "git": "git+https://github.com/Cap-go/capacitor-navigation-bar.git",
+    "tag": "7.1.33"
+  },
+  "source_files": "ios/Plugin/**/*.{swift,h,m,c,cc,mm,cpp}",
+  "platforms": {
+    "ios": "14.0"
+  },
+  "dependencies": {
+    "Capacitor": []
+  },
+  "swift_versions": "5.1",
+  "swift_version": "5.1"
+}

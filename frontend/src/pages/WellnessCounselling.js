@@ -211,10 +211,26 @@ const WellnessCounselling = ({ user, onBack }) => {
   const matchesSearch = (node, query) => {
     if (!query) return true;
     const lowerQuery = query.toLowerCase();
-    return (
+    
+    // Check current node
+    if (
       node.userName?.toLowerCase().includes(lowerQuery) ||
       node.userEmail?.toLowerCase().includes(lowerQuery)
-    );
+    ) {
+      return true;
+    }
+    
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
+    }
+    
+    return false;
   };
 
   // Render status badge

@@ -147,6 +147,16 @@ const AttendanceReport = ({ user, onBack }) => {
       return true;
     }
 
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
+    }
+
     // Check descendants
     if (node.teamMembers && node.teamMembers.length > 0) {
       return node.teamMembers.some((child) => matchesSearch(child, query));
