@@ -45,8 +45,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
+  const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct ↔ Full switch
 
   // Load data
   const fetchData = async (isBackground = false) => {
