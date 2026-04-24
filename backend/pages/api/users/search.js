@@ -84,15 +84,23 @@ export default async function handler(req, res) {
 
     if (error) throw error;
 
-    // Format results with masked email
-    const results = (coaches || []).map(coach => ({
-      userId: coach.UserId,
-      userName: coach.UserName,
-      email: maskEmail(coach.Email),
-      displayName: coach.UserName,
-      teamId: coach.TeamId,
-      hasTeamId: !!coach.TeamId
-    }));
+    // Format results with masked email, deduplicating by email (case-insensitive)
+    const seenEmails = new Set();
+    const results = (coaches || []).reduce((acc, coach) => {
+      const emailKey = (coach.Email || '').toLowerCase();
+      if (!seenEmails.has(emailKey)) {
+        seenEmails.add(emailKey);
+        acc.push({
+          userId: coach.UserId,
+          userName: coach.UserName,
+          email: maskEmail(coach.Email),
+          displayName: coach.UserName,
+          teamId: coach.TeamId,
+          hasTeamId: !!coach.TeamId
+        });
+      }
+      return acc;
+    }, []);
 
     res.status(200).json({
       success: true,

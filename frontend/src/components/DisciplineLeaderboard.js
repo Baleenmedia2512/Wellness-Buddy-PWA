@@ -241,6 +241,8 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             style={{
               animationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
               animationPlayState: isPaused ? "paused" : "running",
+              WebkitAnimationDuration: `${Math.max(25, leaderboardData.length * 4)}s`,
+              WebkitAnimationPlayState: isPaused ? "paused" : "running",
             }}
           >
             {/* First set of items */}
