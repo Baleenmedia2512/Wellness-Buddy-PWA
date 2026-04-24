@@ -49,6 +49,9 @@ import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
+import SmartFoodSearchModal from "./components/SmartFoodSearchModal";
+import ManualEducationEntryModal from "./components/ManualEducationEntryModal";
+import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
@@ -135,6 +138,12 @@ function WellnessValleyApp() {
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
+  const [showManualFoodModal, setShowManualFoodModal] = useState(false);
+  const [showManualEducationModal, setShowManualEducationModal] = useState(false);
+  const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
+  const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
+  const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
@@ -156,6 +165,7 @@ function WellnessValleyApp() {
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload → pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
+  const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 
@@ -634,6 +644,19 @@ function WellnessValleyApp() {
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
 
+      // Request ACTIVITY_RECOGNITION so the background step sensor works from day 1
+      // without requiring the user to visit the StepCounter page first.
+      try {
+        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+        const av = await StepCounterPlugin.isAvailable();
+        if (av?.available) {
+          await StepCounterPlugin.requestPermission();
+          console.log('✅ Activity recognition permission requested');
+        }
+      } catch (stepErr) {
+        console.warn('⚠️ Step counter permission request failed:', stepErr?.message || stepErr);
+      }
+
       console.log("✅ All permissions requested");
     } catch (err) {
       console.warn("❌ Permission request failed:", err);
@@ -907,7 +930,16 @@ function WellnessValleyApp() {
           }
         }
 
-        // No valid profile picture found - show mandatory upload modal
+        // No valid profile picture found - check snooze before showing mandatory modal
+        const snoozeKey = "profilePicRemindLater_" + userEmail;
+        const snoozeUntil = localStorage.getItem(snoozeKey);
+        if (snoozeUntil && Date.now() < parseInt(snoozeUntil, 10)) {
+          console.log("⏰ [Profile Picture] Snoozed until", new Date(parseInt(snoozeUntil, 10)).toLocaleString());
+          return;
+        }
+        // Clear expired snooze if any
+        if (snoozeUntil) localStorage.removeItem(snoozeKey);
+
         console.log("⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
         // Clear localStorage flag in case it was set incorrectly
         localStorage.removeItem(profilePictureKey);
@@ -1123,6 +1155,9 @@ function WellnessValleyApp() {
         } else {
           console.warn("⚠️ Education window not found in response:", data);
         }
+        if (data.success && data.windows?.weight) {
+          setWeightWindow(data.windows.weight);
+        }
       } catch (err) {
         console.warn("⚠️ Failed to fetch education window from DB:", err.message);
       }
@@ -1274,10 +1309,10 @@ function WellnessValleyApp() {
             }
           } else {
             console.log("✅ [Setup Check] Setup already complete");
-            // Profile completion + picture are already checked by the onAuthStateChange
-            // listener above. Running them again here would fire 3-5 duplicate API calls
-            // within 1 second of login. The onAuthStateChange path is the single
-            // authoritative source for profile gate checks.
+            // Check profile completion and profile picture
+            // (Firebase auth may not fire these when suspended/offline, so we run them here too)
+            await checkProfileCompletion(userEmail);
+            setTimeout(() => checkProfilePicture(user), 800);
           }
         } else {
           console.warn(
@@ -1365,8 +1400,10 @@ function WellnessValleyApp() {
       .then(data => {
         if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
+        if (data?.success && data?.data?.userName) setSavedUserName(data.data.userName);
+        else setSavedUserName(null);
       })
-      .catch(() => setSavedProfileImage(null));
+      .catch(() => { setSavedProfileImage(null); setSavedUserName(null); });
   }, [user?.email, apiBaseUrl]);
 
   // Cleanup on unmount
@@ -1529,6 +1566,25 @@ function WellnessValleyApp() {
         originalWeight: data.correction?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
       });
+
+      // Fetch previous weight to show "vs Previous entry" diff immediately
+      try {
+        const histRes = await fetch(
+          `${apiBaseUrl}/api/get-weight-history?userId=${userId}&includeImage=false&_t=${Date.now()}`
+        );
+        const histData = await histRes.json();
+        if (histData.success && histData.stats?.previousWeight) {
+          const prevWeight = parseFloat(histData.stats.previousWeight.value);
+          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
+          setWeightDiff({
+            previous: Math.round(prevWeight * 100) / 100,
+            previousDate: histData.stats.previousWeight.date,
+            change: Math.round(weightChange * 100) / 100,
+          });
+        } else {
+          setWeightDiff(null);
+        }
+      } catch (_) { /* non-critical */ }
 
       // Check if weight was auto-corrected
       if (data.correction && data.correction.wasCorrected) {
@@ -1760,6 +1816,211 @@ function WellnessValleyApp() {
     } catch (err) {
       console.error("❌ Manual weight save error:", err);
       throw err; // Re-throw to show error in modal
+    }
+  };
+
+  /** Determine meal type label from a Date object based on hour */
+  const getMealTypeFromTime = (date) => {
+    const h = (date || new Date()).getHours();
+    if (h < 10) return "Breakfast";
+    if (h < 14) return "Lunch";
+    if (h < 18) return "Dinner";
+    return "Snack";
+  };
+
+  /**
+   * Returns the two alt-switch buttons for a given modal type (the other two options).
+   * Used to render "No, it's X" inside each auto-opened modal.
+   */
+  const getAltSwitchButtons = (currentType) =>
+    [
+      currentType !== "food" && {
+        label: "Food",
+        icon: "🍽",
+        onClick: () => {
+          setShowManualWeightModal(false);
+          setShowManualEducationModal(false);
+          setManualMealType(getMealTypeFromTime(new Date()));
+          setShowManualFoodModal(true);
+        },
+      },
+      currentType !== "weight" && {
+        label: "Weight",
+        icon: "⚖️",
+        onClick: () => {
+          setShowManualFoodModal(false);
+          setShowManualEducationModal(false);
+          fetchLastWeight();
+          setCurrentWeightImage(null);
+          setShowManualWeightModal(true);
+        },
+      },
+      currentType !== "education" && {
+        label: "Education",
+        icon: "🎓",
+        onClick: () => {
+          setShowManualFoodModal(false);
+          setShowManualWeightModal(false);
+          setShowManualEducationModal(true);
+        },
+      },
+    ].filter(Boolean);
+
+  /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
+  const openBestManualModal = () => {
+    const now = imageTimestamp ? new Date(imageTimestamp) : new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+
+    const inWindow = (win) => {
+      if (!win?.start || !win?.end) return false;
+      const [sh, sm] = win.start.split(":").map(Number);
+      const [eh, em] = win.end.split(":").map(Number);
+      return mins >= sh * 60 + sm && mins <= eh * 60 + em;
+    };
+
+    if (inWindow(weightWindow)) {
+      fetchLastWeight();
+      setCurrentWeightImage(null);
+      setShowManualWeightModal(true);
+    } else if (inWindow(educationWindow)) {
+      setShowManualEducationModal(true);
+    } else {
+      // Default → food
+      setManualMealType(getMealTypeFromTime(now));
+      setShowManualFoodModal(true);
+    }
+  };
+
+  /** Fetch the user's most recent weight entry for the hint card */
+  const fetchLastWeight = async () => {
+    try {
+      let uid = user?.id;
+      if (!uid) uid = await getUserId(user);
+      if (!uid) return;
+      const res = await fetch(
+        `${apiBaseUrl}/api/get-weight-history?userId=${uid}&includeImage=false&_t=${Date.now()}`
+      );
+      const data = await res.json();
+      if (data.success && data.stats?.latestWeight) {
+        setLastWeight({
+          value: data.stats.latestWeight.value,
+          unit: "kg",
+          date: data.stats.latestWeight.date,
+        });
+      }
+    } catch {
+      /* non-critical */
+    }
+  };
+
+  /**
+   * Handle manual food entry from modal (used when AI is unavailable)
+   */
+  const handleManualFoodSave = async (manualData) => {
+    try {
+      setShowManualFoodModal(false);
+      setError(null);
+      setImageType("food");
+      setLoadingState("saving");
+      setSaveLoading(true);
+
+      // Build detailedItems — either a full plate (multiple) or a single food
+      let detailedItems;
+      let totalNutrition;
+      let categoryName;
+
+      if (manualData.isPlate && Array.isArray(manualData.items)) {
+        detailedItems = manualData.items.map((f) => ({
+          name: f.name,
+          portionDescription: "1 serving",
+          estimatedWeight: "Unknown",
+          calories: f.calories ?? 0,
+          protein: f.protein ?? 0,
+          carbs: f.carbs ?? 0,
+          fat: f.fat ?? 0,
+          fiber: f.fiber ?? 0,
+          nutrition: {
+            calories: f.calories ?? 0,
+            protein: f.protein ?? 0,
+            carbs: f.carbs ?? 0,
+            fat: f.fat ?? 0,
+            fiber: f.fiber ?? 0,
+          },
+        }));
+        totalNutrition = manualData.total || detailedItems.reduce(
+          (acc, f) => ({
+            calories: acc.calories + f.calories,
+            protein: acc.protein + f.protein,
+            carbs: acc.carbs + f.carbs,
+            fat: acc.fat + f.fat,
+            fiber: acc.fiber + f.fiber,
+          }),
+          { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+        );
+        categoryName = manualData.plateName || "Mixed Plate";
+      } else {
+        detailedItems = [
+          {
+            name: manualData.foodName,
+            portionDescription: manualData.portion,
+            estimatedWeight: "Unknown",
+            calories: manualData.calories,
+            protein: manualData.protein,
+            carbs: manualData.carbs,
+            fat: manualData.fat,
+            fiber: manualData.fiber,
+            nutrition: {
+              calories: manualData.calories,
+              protein: manualData.protein,
+              carbs: manualData.carbs,
+              fat: manualData.fat,
+              fiber: manualData.fiber,
+            },
+          },
+        ];
+        totalNutrition = {
+          calories: manualData.calories,
+          protein: manualData.protein,
+          carbs: manualData.carbs,
+          fat: manualData.fat,
+          fiber: manualData.fiber,
+        };
+        categoryName = manualData.foodName;
+      }
+
+      const result = {
+        nutrition: totalNutrition,
+        category: { name: categoryName },
+        source: "Manual Entry",
+        isRealData: true,
+        isManualEntry: true,
+        itemCount: detailedItems.length,
+        confidence: "high",
+        detailedItems,
+        loggedAt: new Date().toISOString(),
+      };
+
+      setNutritionData(result);
+
+      let actualUserId = user?.id;
+      if (!actualUserId) {
+        actualUserId = await getUserId(user);
+      }
+
+      await performNutritionSave({
+        userId: actualUserId,
+        imagePath: "manual-entry",
+        imageBase64: null,
+        analysisResult: result,
+        deviceInfo: window.navigator.userAgent,
+        userEmail: user?.email || user?.Email || "unknown",
+        captureTimestamp: null,
+      });
+    } catch (err) {
+      console.error("❌ Manual food save error:", err);
+      throw err;
+    } finally {
+      setSaveLoading(false);
     }
   };
 
@@ -2736,8 +2997,7 @@ function WellnessValleyApp() {
           if (isApiError) {
             errorMessage =
               "🤖 The AI model is temporarily unavailable. Please try again later.";
-          } else if (isNetworkError) {
-            errorMessage =
+          } else if (isNetworkError) {            errorMessage =
               "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isNonFoodImage) {
             errorMessage =
@@ -2750,6 +3010,7 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
+          if (isApiError) openBestManualModal();
           setLoading(false);
           return;
         }
@@ -3719,37 +3980,142 @@ function WellnessValleyApp() {
             educationWindow={educationWindow}
           />
 
-          {error && (
-            <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
-              <div className="flex items-start space-x-3">
-                <div className="text-xl">⚠️</div>
-                <div className="flex-1">
-                  <p className="font-semibold">Error</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
+          {error && (() => {
+            const isAiUnavailable = error.includes("AI model is temporarily unavailable");
+
+            if (isAiUnavailable) {
+              const now = new Date();  // always use current device time, not image EXIF
+              const mins = now.getHours() * 60 + now.getMinutes();
+              const inOrNear = (win) => {
+                if (!win?.start || !win?.end) return false;
+                const [sh, sm] = win.start.split(":").map(Number);
+                const [eh, em] = win.end.split(":").map(Number);
+                const start = sh * 60 + sm, end = eh * 60 + em;
+                return mins >= start && mins <= end;  // exact window only
+              };
+
+              // Primary type based on time
+              const primaryType = inOrNear(weightWindow) ? "weight"
+                : inOrNear(educationWindow) ? "education"
+                : "food";
+
+              const typeConfig = {
+                food: {
+                  icon: "🍽",
+                  label: "Log Food",
+                  sub: getMealTypeFromTime(now),
+                  bg: "bg-orange-500 hover:bg-orange-600 active:bg-orange-700",
+                  onClick: () => { setManualMealType(getMealTypeFromTime(now)); setShowManualFoodModal(true); },
+                },
+                weight: {
+                  icon: "⚖️",
+                  label: "Log Weight",
+                  sub: "Scale photo",
+                  bg: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800",
+                  onClick: () => { fetchLastWeight(); setCurrentWeightImage(null); setShowManualWeightModal(true); },
+                },
+                education: {
+                  icon: "🎓",
+                  label: "Log Education",
+                  sub: "Session / class",
+                  bg: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800",
+                  onClick: () => setShowManualEducationModal(true),
+                },
+              };
+
+              const primary = typeConfig[primaryType];
+              // Always show all other options so user can correct
+              const altButtons = ["food", "weight", "education"]
+                .filter(t => t !== primaryType)
+                .map(t => typeConfig[t]);
+
+              const timeLabel = {
+                weight: `It's weight time (${weightWindow?.start?.slice(0,5)}–${weightWindow?.end?.slice(0,5)})`,
+                education: `It's education time (${educationWindow?.start?.slice(0,5)}–${educationWindow?.end?.slice(0,5)})`,
+                food: `It's food time right now`,
+              }[primaryType];
+
+              return (
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  {/* Header */}
+                  <div className="flex items-center justify-between px-4 pt-4 pb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-base">🤖</span>
+                      <p className="text-sm font-bold text-gray-900">AI Unavailable</p>
+                    </div>
+                    <button
+                      onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                      className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Friendly time hint */}
+                  <p className="px-4 pb-2 text-xs text-gray-500">{timeLabel} — log it manually below.</p>
+
+                  {/* Primary time-based action */}
+                  <div className="px-4 pb-2">
+                    <TouchFeedbackButton
+                      onClick={primary.onClick}
+                      className={`w-full ${primary.bg} text-white rounded-xl py-3 flex items-center justify-center gap-2 text-sm font-bold transition-colors`}
+                    >
+                      <span className="text-base">{primary.icon}</span>
+                      <span>{primary.label}</span>
+                    </TouchFeedbackButton>
+                  </div>
+
+                  {/* Alt options */}
+                  {altButtons.length > 0 && (
+                    <div className="flex gap-2 px-4 pb-4">
+                      {altButtons.map((btn) => (
+                        <TouchFeedbackButton
+                          key={btn.label}
+                          onClick={btn.onClick}
+                          className="flex-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 py-2 rounded-xl text-xs font-semibold transition-colors text-center"
+                        >
+                          {btn.icon} No, it's {btn.label.replace("Log ", "")}
+                        </TouchFeedbackButton>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              );
+            }
+
+            return (
+              <div className="bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+                  <span className="text-lg leading-none flex-shrink-0">⚠️</span>
+                  <p className="font-semibold text-sm text-red-700 flex-1">Error</p>
+                  <button
+                    onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600"
+                    aria-label="Dismiss"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-sm text-red-600 px-4 pb-3 leading-relaxed break-words">
+                  {error.replace(/^[🤖⚠️🌐📸🍽️]\s*/, "")}
+                </p>
+                {lastImageFileRef.current && (
+                  <div className="px-4 pb-3">
+                    <TouchFeedbackButton
+                      onClick={handleRetryAnalysis}
+                      className="w-full bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors text-center"
+                    >
+                      Retry
+                    </TouchFeedbackButton>
+                  </div>
+                )}
               </div>
-              {lastImageFileRef.current && (
-                <div className="mt-2 flex gap-2 justify-end">
-                  <TouchFeedbackButton
-                    onClick={handleRetryAnalysis}
-                    className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
-                  >
-                    Retry
-                  </TouchFeedbackButton>
-                  <TouchFeedbackButton
-                    onClick={() => {
-                      setError(null);
-                      setImagePreview(null);
-                      lastImageFileRef.current = null;
-                    }}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  >
-                    Dismiss
-                  </TouchFeedbackButton>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {imageType === "food" && nutritionData && (
             <NutritionCard
@@ -3881,9 +4247,9 @@ function WellnessValleyApp() {
                           margin: "0 0 6px 0",
                         }}
                       >
-                        {user?.displayName ||
+                        {savedUserName ||
+                          user?.displayName ||
                           user?.name ||
-                          user?.email?.split("@")[0] ||
                           "Wellness User"}
                       </p>
                       <p
@@ -4372,6 +4738,67 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}
+      <SmartFoodSearchModal
+        isOpen={showManualFoodModal}
+        onClose={() => { setShowManualFoodModal(false); setManualMealType(""); }}
+        onSave={handleManualFoodSave}
+        mealType={manualMealType}
+        apiBaseUrl={apiBaseUrl}
+        userId={user?.id}
+        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("food") : []}
+      />
+
+      {/* Manual Education Entry Modal */}
+      <ManualEducationEntryModal
+        isOpen={showManualEducationModal}
+        onClose={() => setShowManualEducationModal(false)}
+        onBack={() => setShowManualEducationModal(false)}
+        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("education") : []}
+        onSave={async (data) => {
+          setShowManualEducationModal(false);
+          setError(null);
+          // Clear uploaded image — it's unrelated to this education log
+          setImagePreview(null);
+          setSelectedImage(null);
+          setImageType("education");
+          setLoadingState("saving");
+          setSaveLoading(true);
+          await saveEducationLog(
+            { platform: data.platform, topic: data.topic, confidence: 0.9, participantCount: null },
+            null,
+            null,
+            null,
+          );
+        }}
+      />
+
+      {/* Manual Watch Entry Modal */}
+      <ManualWatchEntryModal
+        isOpen={showManualWatchModal}
+        onClose={() => setShowManualWatchModal(false)}
+        onBack={() => setShowManualWatchModal(false)}
+        onSave={async (data) => {
+          setShowManualWatchModal(false);
+          setError(null);
+          // Clear any uploaded image so the watch card doesn't show the wrong photo
+          setImagePreview(null);
+          setSelectedImage(null);
+          let resolvedUserId = user?.id;
+          if (!resolvedUserId) {
+            try { resolvedUserId = await getUserId(user); } catch (_) {}
+          }
+          setImageType("smartwatch");
+          setWatchResult({
+            caloriesBurned: data.caloriesBurned,
+            source: data.source,
+            loggedAt: new Date().toISOString(),
+            userId: resolvedUserId,
+            isManualEntry: true,
+          });
+        }}
+      />
+
       {/* Manual Weight Entry Modal */}
       <ManualWeightEntryModal
         isOpen={showManualWeightModal}
@@ -4380,8 +4807,11 @@ function WellnessValleyApp() {
           setCurrentWeightImage(null);
           setLoading(false);
         }}
+        onBack={() => { setShowManualWeightModal(false); setCurrentWeightImage(null); }}
         onSave={handleManualWeightSave}
         imagePreview={currentWeightImage}
+        lastWeight={lastWeight}
+        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("weight") : []}
       />
 
       {/* Duplicate Food Modal */}
@@ -4487,6 +4917,16 @@ function WellnessValleyApp() {
         <MandatoryProfilePictureModal
           user={user}
           apiBaseUrl={apiBaseUrl}
+          onRemindLater={() => {
+            const userEmail = user.email || user.Email;
+            if (userEmail) {
+              // Snooze for 30 seconds
+              const snoozeUntil = Date.now() + 30 * 1000;
+              localStorage.setItem("profilePicRemindLater_" + userEmail, String(snoozeUntil));
+              console.log("⏰ [Profile Picture] Remind me later — snoozed for 30 seconds");
+            }
+            setShowMandatoryProfilePictureModal(false);
+          }}
           onComplete={async (uploadedImage) => {
             console.log("✅ [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
