@@ -108,7 +108,6 @@ export const APP_VERSION = {
  *   ✏️ Edit Option (All) - Full edit capability across all data entries and records
  *   🔍 Missing Item Food Detection - AI-powered detection of missing or incomplete food entries
  *   📋 Attendance Report - Detailed attendance tracking and reporting for teams
- *   🏆 Virtual Club - Virtual wellness club with community features and challenges
  *   🧠 Counselling - In-app wellness counselling and mental health support features
  *   🏥 Medical & Health - Enhanced medical and health tracking features
  *   ➕ Expand & Collapse Option - Collapsible sections across the app for better navigation

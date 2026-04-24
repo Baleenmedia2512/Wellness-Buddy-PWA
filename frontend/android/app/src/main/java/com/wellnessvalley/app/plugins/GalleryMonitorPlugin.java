@@ -117,10 +117,26 @@ public class GalleryMonitorPlugin extends Plugin {
 
             editor.apply();
             
-            // ✅ Background service enabled — start GalleryMonitorService silently
+            // ✅ Background service enabled — start GalleryMonitorService silently.
+            // Pass user credentials as Intent extras so the :background process
+            // receives them reliably without depending on cross-process SharedPrefs
+            // (MODE_MULTI_PROCESS is deprecated and unreliable on Android 8+).
             try {
                 Context context = getContext();
                 Intent serviceIntent = new Intent(context, GalleryMonitorService.class);
+                serviceIntent.putExtra("userId", userId);
+                if (userEmail != null && !userEmail.isEmpty()) {
+                    serviceIntent.putExtra("userEmail", userEmail);
+                }
+                // Re-read the final cachedDbUserId value in case it was updated in prefs
+                String finalCachedId = prefs.getString("cached_db_user_id", null);
+                if (finalCachedId != null && !finalCachedId.isEmpty()) {
+                    serviceIntent.putExtra("cachedDbUserId", finalCachedId);
+                }
+                String finalApiUrl = prefs.getString("api_base_url", null);
+                if (finalApiUrl != null && !finalApiUrl.isEmpty()) {
+                    serviceIntent.putExtra("apiBaseUrl", finalApiUrl);
+                }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(serviceIntent);
                 } else {

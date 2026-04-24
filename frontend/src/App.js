@@ -81,9 +81,6 @@ const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
-const ClubAttendanceReport = lazy(() =>
-  import("./components/ClubAttendanceReport"),
-);
 const NutritionCentersMap = lazy(() =>
   import("./components/NutritionCentersMap"),
 );
@@ -238,10 +235,6 @@ function WellnessValleyApp() {
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
-
-  // Club attendance report state (for coaches/club owners)
-  const [showClubAttendanceReport, setShowClubAttendanceReport] =
-    useState(false);
 
   // Nutrition centers map state (for all users)
   const [showNutritionCentersMap, setShowNutritionCentersMap] = useState(false);
@@ -692,6 +685,16 @@ function WellnessValleyApp() {
         App.addListener("appStateChange", ({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
+            // Re-start step tracking in case Android killed the service while app was in background
+            import('./plugins/stepCounterPlugin').then(({ StepCounterPlugin }) => {
+              StepCounterPlugin.isAvailable().then(av => {
+                if (av?.available) {
+                  StepCounterPlugin.getPermissionStatus().then(perm => {
+                    if (perm?.granted) StepCounterPlugin.startTracking().catch(() => {});
+                  }).catch(() => {});
+                }
+              }).catch(() => {});
+            }).catch(() => {});
           } else {
             // App going to background — reset sub-pages so reopening shows dashboard
             const page = localStorage.getItem("currentPage");
@@ -731,6 +734,30 @@ function WellnessValleyApp() {
       if (cleanupFn) cleanupFn();
     };
   }, [showDashboardPage]);
+
+  // ── Silent step tracking start — runs when user logs in / app opens ────────
+  // Starts the native step sensor in the background so steps are counted from
+  // day 1, even if the user never navigates to the StepCounter page.
+  // Permission is NEVER requested here — only resumes tracking if already granted.
+  useEffect(() => {
+    if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
+
+    const startStepTrackingIfPermitted = async () => {
+      try {
+        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+        const availability = await StepCounterPlugin.isAvailable();
+        if (!availability?.available) return;
+        const permission = await StepCounterPlugin.getPermissionStatus();
+        if (!permission?.granted) return;
+        await StepCounterPlugin.startTracking();
+        console.log('✅ [App] Background step tracking started silently');
+      } catch (err) {
+        console.warn('[App] Silent step tracking start failed:', err?.message || err);
+      }
+    };
+
+    startStepTrackingIfPermitted();
+  }, [user, isUserActive]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -1240,10 +1267,10 @@ function WellnessValleyApp() {
             }
           } else {
             console.log("✅ [Setup Check] Setup already complete");
-            // Check if mandatory profile fields are filled
-            await checkProfileCompletion(userEmail);
-            // After profile completion check, check for profile picture
-            setTimeout(() => checkProfilePicture(user), 800);
+            // Profile completion + picture are already checked by the onAuthStateChange
+            // listener above. Running them again here would fire 3-5 duplicate API calls
+            // within 1 second of login. The onAuthStateChange path is the single
+            // authoritative source for profile gate checks.
           }
         } else {
           console.warn(
@@ -1461,17 +1488,17 @@ function WellnessValleyApp() {
         console.log('❌ Weight validation failed:', data.validation);
         
         // Build friendly, supportive message for user
-        let alertMessage = `We noticed a significant change from your last weigh-in.\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+        let alertMessage = `We noticed a significant change from your last weigh-in.`;
         
         if (data.validation && data.message) {
           // Capitalise first letter of the backend message for display
           const detail = data.message.charAt(0).toUpperCase() + data.message.slice(1);
-          alertMessage = `${detail}\n\nTip: Make sure the scale is on a flat, hard surface and shows a stable reading before taking the photo.`;
+          alertMessage = detail;
         }
         
         setAlertModal({
           isOpen: true,
-          title: "⚖️ Wait, is that right?",
+          title: "⚖️ Unrealistic Weight Change",
           message: alertMessage,
           type: "warning",
         });
@@ -1601,8 +1628,8 @@ function WellnessValleyApp() {
           setIsEditingWeight(false);
           setAlertModal({
             isOpen: true,
-            title: "⚖️ Wait, is that right?",
-            message: `We noticed a significant change from your last weigh-in.\n\nTip: Double-check the value you entered and make sure it reflects your actual weight.`,
+            title: "⚖️ Unrealistic Weight Change",
+            message: result.message ? result.message.charAt(0).toUpperCase() + result.message.slice(1) : `We noticed a significant change from your last weigh-in.`,
             type: "warning",
           });
         }
@@ -1628,9 +1655,9 @@ function WellnessValleyApp() {
           const prevWeight = parseFloat(diffData.stats.previousWeight.value);
           const weightChange = val - prevWeight;
           setWeightDiff({
-            previous: Math.round(prevWeight * 10) / 10,
+            previous: Math.round(prevWeight * 100) / 100,
             previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 10) / 10,
+            change: Math.round(weightChange * 100) / 100,
           });
         }
       } catch (_) {
@@ -2401,9 +2428,9 @@ function WellnessValleyApp() {
               if (diffData.success && diffData.stats?.previousWeight) {
                 const weightChange = parseFloat(diffData.stats.weightChange);
                 setWeightDiff({
-                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 10) / 10,
+                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
                   previousDate: diffData.stats.previousWeight.date,
-                  change: Math.round(weightChange * 10) / 10,
+                  change: Math.round(weightChange * 100) / 100,
                 });
                 // ✅ Immediately inject into leaderboard strip — no API wait needed
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
@@ -3625,7 +3652,6 @@ function WellnessValleyApp() {
         }
         onShowWellnessCounselling={() => setShowWellnessCounselling(true)}
         onShowAttendanceReport={() => setShowAttendanceReport(true)}
-        onShowClubAttendanceReport={() => setShowClubAttendanceReport(true)}
         onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
         onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
@@ -4033,7 +4059,9 @@ function WellnessValleyApp() {
                               : "—"}{" "}
                             {weightDiff.change === 0
                               ? "No change"
-                              : `${Math.abs(weightDiff.change).toFixed(3)} ${weightResult.unit}`}
+                              : Math.abs(weightDiff.change) < 1
+                              ? `${Math.round(Math.abs(weightDiff.change) * 1000)} g`
+                              : `${Math.abs(weightDiff.change).toFixed(2)} ${weightResult.unit}`}
                           </p>
                           <p
                             style={{ fontSize: 13, fontWeight: 600, margin: 0 }}
@@ -4368,6 +4396,7 @@ function WellnessValleyApp() {
           weightValue={duplicateWeightInfo.existingWeight}
           unit={duplicateWeightInfo.unit}
           timeDifference={duplicateWeightInfo.timeDifference}
+          existingTime={duplicateWeightInfo.existingTime}
           onConfirm={handleDuplicateWeightConfirm}
           onCancel={handleDuplicateWeightCancel}
         />
@@ -4523,19 +4552,7 @@ function WellnessValleyApp() {
         </Suspense>
       )}
 
-      {/* Club Attendance Report */}
-      {showClubAttendanceReport && (
-        <Suspense
-          fallback={
-            <LoadingSpinner message="Loading club attendance report..." />
-          }
-        >
-          <ClubAttendanceReport
-            user={user}
-            onBack={() => setShowClubAttendanceReport(false)}
-          />
-        </Suspense>
-      )}
+
 
       {/* Nutrition Centers Map */}
       {showNutritionCentersMap && (

@@ -167,6 +167,14 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       throw new Error('Sign-in was cancelled. Please try again.');
     }
 
+    // Handle unauthorized domain - suggest email sign-in
+    if (error.code === 'auth/unauthorized-domain') {
+      console.error('🚫 Unauthorized domain for Google Sign-in. Domain must be added to Firebase Console → Authentication → Authorized domains.');
+      const err = new Error('Google sign-in is not available on this domain. Please use email sign-in instead.');
+      err.code = 'auth/unauthorized-domain';
+      throw err;
+    }
+
     // Handle native Google Auth errors
     if (error.message?.includes('User cancelled the flow')) {
       throw new Error('Sign-in was cancelled. Please try again.');
@@ -188,6 +196,11 @@ export const signInWithGooglePopup = async () => {
     }
     if (error.code === 'auth/popup-closed-by-user') {
       throw new Error('Sign-in was cancelled. Please try again.');
+    }
+    if (error.code === 'auth/unauthorized-domain') {
+      const err = new Error('Google sign-in is not available on this domain. Please use email sign-in instead.');
+      err.code = 'auth/unauthorized-domain';
+      throw err;
     }
     throw error;
   }

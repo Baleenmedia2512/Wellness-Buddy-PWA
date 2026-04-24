@@ -10,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Droplets,
+  Scale,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
@@ -22,53 +23,12 @@ import HierarchicalNode from "./common/HierarchicalNode";
 import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
-// ─── Custom Icons ─────────────────────────────────────────────────────────────
-
-/** Bathroom/body weighing scale icon with two footprints and a dial */
-const WeightScaleIcon = ({ className, style }) => (
-  <svg
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 100 100"
-    fill="currentColor"
-    className={className}
-    style={style}
-    aria-hidden="true"
-  >
-    {/* Scale body */}
-    <rect x="8" y="18" width="84" height="74" rx="12" ry="12" />
-    {/* Dial bump at top */}
-    <rect x="32" y="10" width="36" height="16" rx="8" ry="8" fill="currentColor" />
-    {/* Dial face (white cutout) */}
-    <rect x="34" y="11" width="32" height="13" rx="6" ry="6" fill="white" />
-    {/* Dial needle */}
-    <line x1="50" y1="22" x2="50" y2="13" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-    {/* Left tick marks */}
-    <line x1="39" y1="18" x2="40.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="43" y1="13.5" x2="43.5" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    {/* Right tick marks */}
-    <line x1="61" y1="18" x2="59.5" y2="14" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    <line x1="57" y1="13.5" x2="56.5" y2="12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-    {/* Left foot */}
-    <ellipse cx="34" cy="68" rx="10" ry="14" fill="white" />
-    <ellipse cx="28" cy="54" rx="3.2" ry="3.8" fill="white" />
-    <ellipse cx="33" cy="52" rx="3" ry="3.5" fill="white" />
-    <ellipse cx="38.5" cy="52.5" rx="2.8" ry="3.2" fill="white" />
-    <ellipse cx="43.5" cy="54.5" rx="2.5" ry="2.8" fill="white" />
-    {/* Right foot */}
-    <ellipse cx="66" cy="68" rx="10" ry="14" fill="white" />
-    <ellipse cx="72" cy="54" rx="3.2" ry="3.8" fill="white" />
-    <ellipse cx="67" cy="52" rx="3" ry="3.5" fill="white" />
-    <ellipse cx="61.5" cy="52.5" rx="2.8" ry="3.2" fill="white" />
-    <ellipse cx="56.5" cy="54.5" rx="2.5" ry="2.8" fill="white" />
-  </svg>
-);
-
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ───Constants ────────────────────────────────────────────────────────────────
 
 const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: WeightScaleIcon, color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: Scale, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
@@ -618,10 +578,26 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const matchesSearch = useCallback((node, query) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (
+    
+    // Check current node
+    if (
       String(node.userName || "").toLowerCase().includes(q) ||
       String(node.email    || "").toLowerCase().includes(q)
-    );
+    ) {
+      return true;
+    }
+    
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        String(node.coCoachInfo.userName || "").toLowerCase().includes(q) ||
+        String(node.coCoachInfo.email    || "").toLowerCase().includes(q)
+      ) {
+        return true;
+      }
+    }
+    
+    return false;
   }, []);
 
   const getStatusStyle = useCallback((node) => {

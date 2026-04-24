@@ -365,6 +365,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       return true;
     }
 
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
+    }
+
     if (node.teamMembers && node.teamMembers.length > 0) {
       return node.teamMembers.some((child) => matchesSearch(child, query));
     }

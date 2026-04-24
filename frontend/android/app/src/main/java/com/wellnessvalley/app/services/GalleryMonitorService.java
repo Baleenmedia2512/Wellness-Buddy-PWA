@@ -95,6 +95,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     private long walkDetectWindowStartMs    = 0L; // 0 = window not yet open
     private int  walkDetectWindowStartSteps = 0;
     private long walkNotifyLastShownMs      = 0L;
+    // Scheduled fallback: steps snapshot from last 30-sec tick (handles sensor batching)
+    private int  walkScheduledLastSteps     = -1;
 
     private ExecutorService executorService;
     private ScheduledExecutorService scheduledExecutor;
@@ -103,6 +105,8 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // ── Gallery / Food Image Analysis ──────────────────────────────────────────
     private ContentObserver imageObserver;
     private long lastCheckedTime = 0;
+    private long lastContentObserverScanTime = 0;
+    private static final long CONTENT_OBSERVER_DEBOUNCE_MS = 5000;
     private FoodImageQueue foodImageQueue;
     private GeminiApiClient geminiApiClient;
     private RetryQueue retryQueue;
@@ -120,20 +124,63 @@ public class GalleryMonitorService extends Service implements SensorEventListene
         super.onCreate();
         Log.d(TAG, "Service created");
 
+        // ✅ Cancel legacy AlarmManager heartbeat immediately.
+        // If this service was started by an old alarm, stop the chain here.
+        BootCompletedReceiver.cancelLegacyAlarm(this);
+
         createNotificationChannel();
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
-                fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+        // Start as foreground service.
+        // On API 34+ (Android 14), including FOREGROUND_SERVICE_TYPE_LOCATION
+        // without the location permission already granted throws SecurityException
+        // — which crashes the :background process on first install before the user
+        // has had a chance to grant permissions.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                int fgType = ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) { // API 34+
+                    // Only include LOCATION type if permission is already granted
+                    if (androidx.core.content.ContextCompat.checkSelfPermission(this,
+                            android.Manifest.permission.ACCESS_FINE_LOCATION)
+                            == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        fgType |= ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION;
+                        Log.d(TAG, "✅ Location permission granted — including LOCATION foreground type");
+                    } else {
+                        Log.d(TAG, "⚠️ Location permission not yet granted — starting without LOCATION type");
+                    }
+                }
+                startForeground(NOTIFICATION_ID, createNotification(), fgType);
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification());
             }
-            startForeground(NOTIFICATION_ID, createNotification(), fgType);
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification());
+        } catch (Exception e) {
+            Log.e(TAG, "❌ startForeground failed — falling back to basic type", e);
+            try {
+                startForeground(NOTIFICATION_ID, createNotification());
+            } catch (Exception e2) {
+                Log.e(TAG, "❌ Fallback startForeground also failed — stopping service", e2);
+                stopSelf();
+                return;
+            }
         }
 
         Toast.makeText(this, "Wellness Valley Service Running", Toast.LENGTH_SHORT).show();
 
+        try {
+            initServiceComponents();
+        } catch (Exception e) {
+            Log.e(TAG, "❌ Service initialization failed — stopping to avoid crash loop", e);
+            stopSelf();
+            return;
+        }
+    }
+
+    /**
+     * All heavy service initialization extracted here so a single
+     * try-catch in onCreate can prevent a crash from killing the
+     * :background process and triggering "App keeps stopping".
+     */
+    private void initServiceComponents() {
         executorService = Executors.newSingleThreadExecutor();
         scheduledExecutor = Executors.newScheduledThreadPool(2);
         
@@ -156,7 +203,31 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         // ✅ Step tracking — start sensor + schedule 30-sec DB saves
         initStepTracking();
-        scheduledExecutor.scheduleAtFixedRate(this::saveStepsToDB, 30, 30, TimeUnit.SECONDS);
+        // IMPORTANT: wrap in try-catch — ScheduledExecutorService silently cancels a
+        // periodic task forever if its Runnable throws any unchecked exception.
+        // Dispatching the blocking HTTP call to executorService keeps the scheduler
+        // thread free and prevents pool starvation under slow network conditions.
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                if (executorService != null && !executorService.isShutdown()) {
+                    executorService.execute(this::saveStepsToDB);
+                } else {
+                    saveStepsToDB();
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [Steps] Scheduled save threw — task kept alive for next tick", e);
+            }
+        }, 30, 30, TimeUnit.SECONDS);
+
+        // ✅ Walking detection fallback — fires every 30 s so sensor-batched events
+        // (screen off / Doze) still trigger the notification reliably.
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                checkWalkingBySchedule();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [Walk] Scheduled walk-check threw — task kept alive for next tick", e);
+            }
+        }, 30, 30, TimeUnit.SECONDS);
 
         // ✅ GPS tracking — writes lat/lng/isOutdoor to WellnessGPS SharedPrefs for map display
         initGpsTracking();
@@ -188,13 +259,25 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 new android.content.IntentFilter(LocationManager.PROVIDERS_CHANGED_ACTION));
 
         // ✅ Screen time tracking — query UsageStats + schedule 60-sec DB saves
-        scheduledExecutor.scheduleAtFixedRate(this::saveScreenTimeToDB, 60, 60, TimeUnit.SECONDS);
+        scheduledExecutor.scheduleAtFixedRate(() -> {
+            try {
+                saveScreenTimeToDB();
+            } catch (Exception e) {
+                Log.e(TAG, "❌ [ScreenTime] Scheduled save threw — task kept alive for next tick", e);
+            }
+        }, 60, 60, TimeUnit.SECONDS);
 
-        // ✅ Register ContentObserver to detect image changes
+        // ✅ Register ContentObserver to detect image changes (with debounce to prevent flooding)
         imageObserver = new ContentObserver(new Handler(Looper.getMainLooper())) {
             @Override
             public void onChange(boolean selfChange, @Nullable Uri uri) {
                 super.onChange(selfChange, uri);
+                long now = System.currentTimeMillis();
+                if (now - lastContentObserverScanTime < CONTENT_OBSERVER_DEBOUNCE_MS) {
+                    Log.d(TAG, "📸 MediaStore change debounced (within " + CONTENT_OBSERVER_DEBOUNCE_MS + "ms)");
+                    return;
+                }
+                lastContentObserverScanTime = now;
                 Log.d(TAG, "📸 MediaStore content change detected: " + uri);
                 executorService.execute(() -> checkGalleryForNewImages());
             }
@@ -545,7 +628,11 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     }
 
     private void saveStepsToDB() {
-        saveStepsToDBForDate(getTodayDateKey(), false);
+        try {
+            saveStepsToDBForDate(getTodayDateKey(), false);
+        } catch (Exception e) {
+            Log.e(TAG, "❌ [Steps] saveStepsToDB failed", e);
+        }
     }
 
     private void saveStepsToDBForDate(String date) {
@@ -824,6 +911,38 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "onStartCommand called");
 
+        // ── User credentials delivered via Intent extras ──────────────────────
+        // GalleryMonitorPlugin.setCurrentUser() passes userId/email/cachedDbUserId
+        // as extras so the :background process always has a reliable userId.
+        // MODE_MULTI_PROCESS (used in getCurrentUserId) is deprecated and does NOT
+        // guarantee cross-process visibility on Android 8+ — this is the safe path.
+        if (intent != null) {
+            String intentCachedId = intent.getStringExtra("cachedDbUserId");
+            String intentEmail    = intent.getStringExtra("userEmail");
+            String intentUserId   = intent.getStringExtra("userId");
+            String intentApiUrl   = intent.getStringExtra("apiBaseUrl");
+            if (intentCachedId != null || intentEmail != null || intentUserId != null) {
+                SharedPreferences.Editor editor =
+                        getSharedPreferences("WellnessValley", MODE_PRIVATE).edit();
+                if (intentCachedId != null && !intentCachedId.isEmpty()) {
+                    editor.putString("cached_db_user_id", intentCachedId);
+                    Log.d(TAG, "✅ [onStartCommand] cached_db_user_id synced from Intent: " + intentCachedId);
+                }
+                if (intentEmail != null && !intentEmail.isEmpty()) {
+                    editor.putString("current_user_email", intentEmail);
+                }
+                if (intentUserId != null && !intentUserId.isEmpty()) {
+                    editor.putString("current_user_id", intentUserId);
+                }
+                if (intentApiUrl != null && !intentApiUrl.isEmpty()) {
+                    editor.putString("api_base_url", intentApiUrl);
+                }
+                // commit() instead of apply() — synchronous write so getCurrentUserId()
+                // reads the correct value on the very next scheduled save tick.
+                editor.commit();
+            }
+        }
+
         // React-side correction: when backfill detects stale SharedPrefs data
         // (e.g. after manual date testing), it sends an intent to reset the
         // per-day baseline so the service stops saving the wrong high value.
@@ -987,6 +1106,60 @@ public class GalleryMonitorService extends Service implements SensorEventListene
     // ── Walking Detection ─────────────────────────────────────────────────────
 
     /**
+     * Scheduled fallback for walking detection — runs every 30 seconds.
+     * Reads the step count from SharedPreferences (written by onSensorChanged).
+     * This works even when sensor events are batched by Android Doze / screen off,
+     * because SharedPreferences is updated inside every onSensorChanged call.
+     * If steps increased by ≥ WALK_NOTIFY_STEP_THRESHOLD since last tick AND
+     * location is OFF → fire the walking/location notification.
+     */
+    private void checkWalkingBySchedule() {
+        try {
+            // Check location state — only fire when GPS is OFF
+            boolean locationEnabled = false;
+            try {
+                LocationManager lm = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
+                if (lm != null) {
+                    boolean gps = false, net = false;
+                    try { gps = lm.isProviderEnabled(LocationManager.GPS_PROVIDER); } catch (Exception ignored) {}
+                    try { net = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER); } catch (Exception ignored) {}
+                    locationEnabled = gps || net;
+                }
+            } catch (Exception ignored) {}
+
+            if (locationEnabled) {
+                // GPS is ON — reset snapshot so we're ready when GPS goes OFF again
+                walkScheduledLastSteps = -1;
+                return;
+            }
+
+            // Read current step total from SharedPreferences
+            SharedPreferences prefs = getSharedPreferences(STEPS_PREFS, MODE_PRIVATE);
+            int currentSteps = prefs.getInt("step_daily_" + getTodayDateKey(), 0);
+
+            if (walkScheduledLastSteps < 0) {
+                // First tick — just record baseline, no notification yet
+                walkScheduledLastSteps = currentSteps;
+                return;
+            }
+
+            int delta = currentSteps - walkScheduledLastSteps;
+            walkScheduledLastSteps = currentSteps;
+
+            if (delta >= WALK_NOTIFY_STEP_THRESHOLD) {
+                long now = System.currentTimeMillis();
+                if (now - walkNotifyLastShownMs >= WALK_NOTIFY_COOLDOWN_MS) {
+                    walkNotifyLastShownMs = now;
+                    Log.d(TAG, "🚶 [Schedule] Walking detected: +" + delta + " steps in 30s — sending notification");
+                    showWalkingNotification();
+                }
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ checkWalkingBySchedule error: " + e.getMessage());
+        }
+    }
+
+    /**
      * Called on every step sensor event.
      * Opens a 12-second sliding window; if ≥15 steps are counted inside it
      * we consider the user to be walking and fire a heads-up notification
@@ -1031,6 +1204,9 @@ public class GalleryMonitorService extends Service implements SensorEventListene
      * Tapping the notification opens the app directly.
      */
     private void showWalkingNotification() {
+        // Notification disabled — user does not want location-off prompts.
+        Log.d(TAG, "🚶 Walking detected (notification suppressed)");
+        if (true) return;
         // Determine indoor / outdoor without needing location permission for a reading —
         // we only need to know whether the user has location services turned ON.
         boolean locationEnabled = false;
@@ -1047,9 +1223,14 @@ public class GalleryMonitorService extends Service implements SensorEventListene
             Log.w(TAG, "⚠️ Could not check location state: " + e.getMessage());
         }
 
-        String message = locationEnabled
-                ? "Outdoor activity detected"
-                : "Indoor activity detected";
+        // GPS ON → no notification (user is already being tracked outdoors)
+        if (locationEnabled) {
+            Log.d(TAG, "🚶 Walking detected but GPS is ON — skipping notification");
+            return;
+        }
+
+        String title = "Your Location is Off";
+        String message = "You're walking but your location is OFF.";
 
         // PendingIntent: open app when notification body is tapped
         Intent openIntent = new Intent(this, MainActivity.class);
@@ -1066,7 +1247,7 @@ public class GalleryMonitorService extends Service implements SensorEventListene
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, WALK_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
-                .setContentTitle("Walking Detected")
+                .setContentTitle(title)
                 .setContentText(message)
                 .setStyle(new NotificationCompat.BigTextStyle().bigText(message))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
@@ -1075,27 +1256,21 @@ public class GalleryMonitorService extends Service implements SensorEventListene
                 .setVibrate(new long[]{0, 250, 100, 250})
                 .setContentIntent(pendingIntent);
 
-        if (locationEnabled) {
-            // GPS ON → swipeable, auto-dismisses on tap
-            builder.setAutoCancel(true)
-                   .setOngoing(false);
-        } else {
-            // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
-            builder.setAutoCancel(false)
-                   .setOngoing(true);
+        // GPS OFF → persistent (not swipeable), shows "Turn On GPS" action button
+        builder.setAutoCancel(false)
+               .setOngoing(true);
 
-            Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
-            settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-            PendingIntent settingsPendingIntent = PendingIntent.getActivity(
-                    this,
-                    WALK_NOTIFICATION_ID + 1,
-                    settingsIntent,
-                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                            ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
-                            : PendingIntent.FLAG_UPDATE_CURRENT
-            );
-            builder.addAction(R.mipmap.ic_launcher, "Turn On GPS", settingsPendingIntent);
-        }
+        Intent settingsIntent = new Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS);
+        settingsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        PendingIntent settingsPendingIntent = PendingIntent.getActivity(
+                this,
+                WALK_NOTIFICATION_ID + 1,
+                settingsIntent,
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                        ? PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE
+                        : PendingIntent.FLAG_UPDATE_CURRENT
+        );
+        builder.addAction(R.mipmap.ic_launcher, "Turn On", settingsPendingIntent);
 
         NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         if (nm != null) {
