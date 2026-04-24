@@ -10,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Droplets,
+  Scale,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
@@ -27,7 +28,7 @@ import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: WeightScaleIcon, color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: Scale, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
