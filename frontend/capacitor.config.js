@@ -25,7 +25,10 @@ const config = {
   server: {
     androidScheme: 'https',
     hostname: 'localhost',
-    allowNavigation: ['wellness-buddy-pwa-eta.vercel.app'],
+    allowNavigation: [
+      'wellness-buddy-pwa-eta.vercel.app',
+      'wellness-buddy-pwa-backend-test.vercel.app'
+    ],
     cleartext: false
   },
   

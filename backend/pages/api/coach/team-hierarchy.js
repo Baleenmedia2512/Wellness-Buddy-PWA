@@ -340,11 +340,18 @@ export default async function handler(req, res) {
         existingIds.add(coachIdInt);
         existingIds.add(partnerId);
 
-        const coCoachDirectMembers = allUsers.filter(
-          u => u.CoachId === partnerId && !existingIds.has(u.UserId)
-        );
+        // FIXED: Check both CoachId AND derived CoCoachId for co-coach's members
+        const coCoachDirectMembers = allUsers.filter(u => {
+          const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
+          return (
+            (u.CoachId === partnerId || derivedCoCoachId === partnerId) &&
+            !existingIds.has(u.UserId)
+          );
+        });
 
-        console.log(`👥 [team-hierarchy] Adding ${coCoachDirectMembers.length} co-coach members to root`);
+        console.log(`👥 [team-hierarchy] Adding ${coCoachDirectMembers.length} co-coach members to root:`,
+          coCoachDirectMembers.map(m => ({ UserId: m.UserId, UserName: m.UserName, CoachId: m.CoachId }))
+        );
 
         // Build hierarchy for each co-coach member and add to root
         coCoachDirectMembers.forEach(member => {

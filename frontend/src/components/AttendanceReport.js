@@ -520,9 +520,67 @@ const AttendanceReport = ({ user, onBack }) => {
     fetchData(true);
   };
 
-  const handleDownload = () => {
-    console.log("Download attendance report");
-    // Implement download logic here
+  const handleDownload = async () => {
+    try {
+      console.log("📥 Downloading attendance report...");
+      
+      const userId = await getUserId(user.email);
+      const date = getTargetDate();
+      
+      // Fetch attendance data for Excel export
+      const response = await fetch(
+        `${apiBaseUrl}/api/coach/download-attendance-excel?userId=${userId}&date=${date}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to fetch attendance data");
+      }
+      
+      const attendanceData = result.data || [];
+      
+      if (attendanceData.length === 0) {
+        alert("No attendance records found for the selected date.");
+        return;
+      }
+      
+      // Generate CSV content
+      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Attended Time", "Club Name"];
+      const csvRows = [
+        headers.join(","),
+        ...attendanceData.map(record => [
+          record.sno,
+          `"${(record.userName || '').replace(/"/g, '""')}"`,
+          `"${(record.city || '').replace(/"/g, '""')}"`,
+          `"${(record.village || '').replace(/"/g, '""')}"`,
+          `"${(record.phone || '').replace(/"/g, '""')}"`,
+          `"${(record.coach || '').replace(/"/g, '""')}"`,
+          `"${(record.attendedTime || '').replace(/"/g, '""')}"`,
+          `"${(record.clubName || '').replace(/"/g, '""')}"`
+        ].join(","))
+      ];
+      
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      
+      // Create download link
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `attendance_report_${date}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log("✅ Attendance report downloaded successfully");
+      
+    } catch (error) {
+      console.error("❌ Error downloading attendance report:", error);
+      alert("Failed to download attendance report. Please try again.");
+    }
   };
 
   const handleSortChange = (newSortBy, newSortOrder) => {
