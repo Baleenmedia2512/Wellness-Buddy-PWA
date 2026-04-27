@@ -39,6 +39,8 @@ const Header = ({
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
+  manualModeActive = false,
+  onToggleManualMode,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
@@ -219,29 +221,68 @@ const Header = ({
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* User Profile Menu */}
           <div className="relative">
-            <TouchFeedbackButton
-              onClick={toggleMenu}
-              className="focus:outline-none rounded-full"
-              title="User Menu"
-              ariaLabel="User Menu"
-            >
-              {savedProfileImage ? (
-                <img
-                  src={savedProfileImage}
-                  alt="User Avatar"
-                  className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div
-                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+            <div className="flex flex-col items-center gap-1">
+              <TouchFeedbackButton
+                onClick={toggleMenu}
+                className="focus:outline-none rounded-full"
+                title="User Menu"
+                ariaLabel="User Menu"
+              >
+                {savedProfileImage ? (
+                  <img
+                    src={savedProfileImage}
+                    alt="User Avatar"
+                    className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+                  >
+                    {getInitial()}
+                  </div>
+                )}
+              </TouchFeedbackButton>
+
+              {/* AI/Manual mode indicator (read-only) */}
+              <div
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
+                style={{
+                  background: manualModeActive ? "#fff7ed" : "#f0fdf4",
+                  borderColor: manualModeActive ? "#f97316" : "#16a34a",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="text-[9px] font-bold leading-none"
+                  style={{ color: manualModeActive ? "#ea580c" : "#15803d" }}
                 >
-                  {getInitial()}
-                </div>
-              )}
-            </TouchFeedbackButton>
+                  {manualModeActive ? "Manual" : "AI"}
+                </span>
+                {/* Toggle track */}
+                <span
+                  className="relative inline-flex flex-shrink-0 rounded-full transition-colors duration-200"
+                  style={{
+                    background: manualModeActive ? "#f97316" : "#16a34a",
+                    height: "12px",
+                    width: "22px",
+                  }}
+                >
+                  <span
+                    className="absolute rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      top: "2px",
+                      height: "8px",
+                      width: "8px",
+                      transform: manualModeActive ? "translateX(12px)" : "translateX(2px)",
+                    }}
+                  />
+                </span>
+              </div>
+            </div>
 
             {menuOpen && (
               <>

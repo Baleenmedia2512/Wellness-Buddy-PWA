@@ -114,7 +114,7 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
     let actualUserEmail = userEmail; // Store email for logging
     
     // If userId looks like an email, lookup the team_table UserID
-    if (userId && userId.includes('@')) {
+    if (userId && String(userId).includes('@')) {
       try {
         const lookupResult = await lookupUserId(userId);
         if (lookupResult.success && lookupResult.userId) {
