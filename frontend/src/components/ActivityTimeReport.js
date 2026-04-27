@@ -401,8 +401,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
-  const [sortBy, setSortBy] = useState("all"); // "all" | "name" | "self" | "direct" | "full"
+  const [sortOrder, setSortOrder] = useState("asc"); // member sort: asc | desc  (asc = A-Z)
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
@@ -923,7 +923,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       sortBy={sortBy}
       sortOrder={sortOrder}
       onSortChange={(newSortBy, newSortOrder) => {
-        setSortBy(newSortBy);
+        setSortBy("name"); // A-Z / Z-A always sorts by name
         setSortOrder(newSortOrder);
       }}
       allowedDateRanges={["today", "yesterday"]}

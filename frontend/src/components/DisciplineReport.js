@@ -41,8 +41,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [sortOrder, setSortOrder] = useState("desc"); // 'asc' or 'desc'
-  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
@@ -314,6 +314,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
         const regular = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
         regular.sort((a, b) => {
+          // A-Z / Z-A name sort
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           let sa, sb;
           if (sortBy === "direct") {
             sa = a.directTeamDiscipline?.percentage || 0;
@@ -786,7 +793,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   const handleSortChange = (newSortBy, newSortOrder) => {
-    setSortBy(newSortBy);
+    setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
   };
 
