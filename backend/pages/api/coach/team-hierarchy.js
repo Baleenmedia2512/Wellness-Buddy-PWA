@@ -134,7 +134,7 @@ export default async function handler(req, res) {
     if (coachTeamIds.length > 0) {
       const { data: coachTeams, error: teamsError } = await supabase
         .from("coach_teams_table")
-        .select("id, TeamId, CoachId, CoCoachId")
+        .select("Id, TeamId, CoachId, CoCoachId")
         .in("TeamId", coachTeamIds) // TEMPORARY: Query by TeamId string until schema migration
         .eq("Status", "active");
       
@@ -290,16 +290,56 @@ export default async function handler(req, res) {
       return;
     }
 
+    console.log(`🔍 [team-hierarchy] Logged-in user:`, {
+      UserId: loggedInCoach.UserId,
+      UserName: loggedInCoach.UserName,
+      Role: loggedInCoach.Role,
+      CoachId: loggedInCoach.CoachId,
+      CoachTeamId: loggedInCoach.CoachTeamId
+    });
+
     // Check if this coach has a co-coach partner
-    // Query coach_teams_table to find which team this coach manages
+    // Query coach_teams_table using BOTH the user's ID and their CoachTeamId
     let coachPartnerIds = [coachIdInt];
+    let managedTeam = null;
     
-    const { data: managedTeam } = await supabase
+    // Try multiple approaches to find the partnership:
+    // 1. Check if user is Coach or CoCoach in coach_teams_table
+    const { data: teamByRole } = await supabase
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
       .eq('Status', 'active')
       .maybeSingle();
+    
+    // 2. If user has CoachTeamId, also try looking up by TeamId
+    if (!teamByRole && loggedInCoach.CoachTeamId) {
+      const { data: teamByTeamId } = await supabase
+        .from('coach_teams_table')
+        .select('TeamId, CoachId, CoCoachId')
+        .eq('TeamId', loggedInCoach.CoachTeamId)
+        .eq('Status', 'active')
+        .maybeSingle();
+      
+      // Verify the user is actually part of this team
+      if (teamByTeamId && 
+          (teamByTeamId.CoachId === coachIdInt || teamByTeamId.CoCoachId === coachIdInt)) {
+        managedTeam = teamByTeamId;
+      }
+    } else {
+      managedTeam = teamByRole;
+    }
+    
+    console.log(`🔍 [team-hierarchy] Partnership lookup result:`, {
+      foundTeam: !!managedTeam,
+      teamData: managedTeam ? {
+        TeamId: managedTeam.TeamId,
+        CoachId: managedTeam.CoachId,
+        CoCoachId: managedTeam.CoCoachId
+      } : null,
+      loggedInUserId: coachIdInt,
+      loggedInUserTeamId: loggedInCoach.CoachTeamId
+    });
     
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
       // This coach has a co-coach partner - exclude both from each other's nested view
@@ -340,6 +380,21 @@ export default async function handler(req, res) {
           directMemberCount: 0,
           totalMemberCount: 0,
         };
+
+        console.log(`✅ [team-hierarchy] Partnership setup complete:`, {
+          LoggedInUser: {
+            userId: hierarchy.userId,
+            userName: hierarchy.userName,
+            isCoach: hierarchy.isCoach,
+            isCoCoach: hierarchy.isCoCoach
+          },
+          Partner: {
+            userId: hierarchy.coCoachInfo.userId,
+            userName: hierarchy.coCoachInfo.userName,
+            isCoach: hierarchy.coCoachInfo.isCoach,
+            isCoCoach: hierarchy.coCoachInfo.isCoCoach
+          }
+        });
 
         // Find ALL members who report to EITHER partner (merge both teams)
         const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
@@ -385,7 +440,11 @@ export default async function handler(req, res) {
         hierarchy.directMemberCount = hierarchy.teamMembers.length;
         hierarchy.totalMemberCount = hierarchy.directMemberCount +
           hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
+      } else {
+        console.warn(`⚠️ [team-hierarchy] Partner data not found for partnerId: ${partnerId}`);
       }
+    } else {
+      console.log(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
     }
 
     // Flatten hierarchy to get all members (for enrollment reports)

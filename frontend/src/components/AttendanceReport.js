@@ -89,13 +89,28 @@ const AttendanceReport = ({ user, onBack }) => {
         throw new Error(result.message || "Failed to fetch attendance data");
       }
 
+      // Debug: Log partnership info in browser console
+      console.log('🔍 [AttendanceReport] Hierarchy data received:', {
+        hasCoCoachInfo: !!result.data?.hierarchy?.coCoachInfo,
+        coCoachInfoKeys: result.data?.hierarchy?.coCoachInfo ? Object.keys(result.data.hierarchy.coCoachInfo) : [],
+        isCoach: result.data?.hierarchy?.isCoach,
+        isCoCoach: result.data?.hierarchy?.isCoCoach,
+        rootUserId: result.data?.hierarchy?.userId,
+        rootUserName: result.data?.hierarchy?.userName
+      });
+
       // Map field names for HierarchicalNode component
       const mapFields = (node) => {
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
         
         // DON'T set upline properties if this is a root coach/co-coach with partnership
-        if (!node.coCoachInfo) {
+        // Check if coCoachInfo exists and has content (not just empty object)
+        const hasPartnership = node.coCoachInfo && 
+          Object.keys(node.coCoachInfo).length > 0 && 
+          node.coCoachInfo.userId;
+        
+        if (!hasPartnership) {
           mapped.uplineCoachName = node.coachName || node.uplineCoachName;
           mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
         }

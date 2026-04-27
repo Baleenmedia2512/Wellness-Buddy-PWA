@@ -95,6 +95,19 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           ),
         ]);
 
+      // Debug: Log partnership info in browser console
+      console.log('🔍 [DisciplineReport] Hierarchy data received:', {
+        hasCoCoachInfo: !!hierarchyResponse?.coCoachInfo,
+        coCoachInfoKeys: hierarchyResponse?.coCoachInfo ? Object.keys(hierarchyResponse.coCoachInfo) : [],
+        coCoachInfoUserId: hierarchyResponse?.coCoachInfo?.userId,
+        isCoach: hierarchyResponse?.isCoach,
+        isCoCoach: hierarchyResponse?.isCoCoach,
+        rootUserId: hierarchyResponse?.userId,
+        rootUserName: hierarchyResponse?.userName,
+        hasUplineCoachName: !!hierarchyResponse?.coachName,
+        hasUplineCoCoachName: !!hierarchyResponse?.coCoachName
+      });
+
       // Build discipline scores map
       const scores = {};
       const activities = {};
@@ -199,8 +212,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         enrichedNode.userEmail = node.email || node.userEmail;
         
         // DON'T set upline properties if this is a root coach/co-coach with partnership
-        // (having coCoachInfo means this is the root of a partnership hierarchy)
-        if (!node.coCoachInfo) {
+        // Check if coCoachInfo exists and has content (not just empty object)
+        const hasPartnership = node.coCoachInfo && 
+          Object.keys(node.coCoachInfo).length > 0 && 
+          node.coCoachInfo.userId;
+        
+        if (!hasPartnership) {
           enrichedNode.uplineCoachName = node.coachName || node.uplineCoachName;
           enrichedNode.uplineCoCoachName =
             node.coCoachName || node.uplineCoCoachName;

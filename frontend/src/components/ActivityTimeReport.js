@@ -497,7 +497,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           };
           
           // DON'T set upline properties if this is a root coach/co-coach with partnership
-          if (!node.coCoachInfo) {
+          // Check if coCoachInfo exists and has content (not just empty object)
+          const hasPartnership = node.coCoachInfo && 
+            Object.keys(node.coCoachInfo).length > 0 && 
+            node.coCoachInfo.userId;
+          
+          if (!hasPartnership) {
             enriched.uplineCoachName = node.coachName ?? node.uplineCoachName ?? null;
             enriched.uplineCoCoachName = node.coCoachName ?? node.uplineCoCoachName ?? null;
           }
