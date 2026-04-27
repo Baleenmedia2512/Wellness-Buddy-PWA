@@ -210,7 +210,7 @@ const Header = ({
                 </span>
               </h1>
               <p className="text-xs sm:text-sm text-green-600 truncate">
-                Track your meals effortlessly
+                Tracking Wellness with Ease
               </p>
             </div>
           </div>

@@ -22,7 +22,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email } = req.query;
+  const { email: rawEmail } = req.query;
+  const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
   console.log('👤 [get-user-profile] Request received:', { email });
 
@@ -54,7 +55,7 @@ export default async function handler(req, res) {
     const { data: user, error: userError } = await supabase
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr"')
-      .eq('"Email"', email)
+      .ilike('Email', email)
       .maybeSingle();
 
     if (userError) {

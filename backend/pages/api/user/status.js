@@ -55,7 +55,8 @@ export default async function handler(req, res) {
 
   try {
     // Get email from query parameter
-    const { email } = req.query;
+    const { email: rawEmail } = req.query;
+    const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
     if (!email) {
       res.status(400).json({
@@ -71,7 +72,7 @@ export default async function handler(req, res) {
     const { data: user, error: userError } = await supabase
       .from("team_table")
       .select('"UserId", "TeamId", "CoachId", "Role", "SetupSkipped"')
-      .eq('"Email"', email)
+      .ilike('Email', email)
       .maybeSingle();
 
     if (userError) {
