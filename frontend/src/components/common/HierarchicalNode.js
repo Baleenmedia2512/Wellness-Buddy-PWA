@@ -175,8 +175,13 @@ const HierarchicalNode = ({
                       {node.userName || node.name}
                     </div>
                     <div className="text-[9px] text-amber-600 font-medium uppercase">
-                      Coach
+                      {node.isCoCoach ? "Co-Coach" : "Coach"}
                     </div>
+                    {isCurrentUser && (
+                      <span className="text-[8px] bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
+                        YOU
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -185,7 +190,7 @@ const HierarchicalNode = ({
                   <span className="text-amber-400 font-bold">&</span>
                 </div>
 
-                {/* Co-Coach */}
+                {/* Co-Coach/Partner */}
                 <div className="flex items-start gap-2 flex-1">
                   <div className="relative w-9 h-9 flex-shrink-0">
                     {coCoach.profileImage || coCoach.photoURL ? (
@@ -224,7 +229,7 @@ const HierarchicalNode = ({
                       {coCoach.userName || coCoach.name}
                     </div>
                     <div className="text-[9px] text-amber-600 font-medium uppercase">
-                      Co-Coach
+                      {coCoach.isCoCoach ? "Co-Coach" : "Coach"}
                     </div>
                   </div>
                 </div>
@@ -278,7 +283,7 @@ const HierarchicalNode = ({
                     className="overflow-hidden"
                   >
                     <div className="px-3 pb-3 space-y-2">
-                      {/* Coach Individual Report */}
+                      {/* First Partner Individual Report */}
                       <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
                         <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
                           <div className="flex items-center gap-2">
@@ -286,14 +291,19 @@ const HierarchicalNode = ({
                               {node.userName || node.name}
                             </span>
                             <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              (Coach)
+                              ({node.isCoCoach ? "Co-Coach" : "Coach"})
                             </span>
+                            {isCurrentUser && (
+                              <span className="text-[8px] bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
+                                YOU
+                              </span>
+                            )}
                           </div>
                         </div>
                         {renderExpandedDetails && renderExpandedDetails(node, level, isCurrentUser)}
                       </div>
 
-                      {/* Co-Coach Individual Report */}
+                      {/* Second Partner Individual Report */}
                       <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
                         <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
                           <div className="flex items-center gap-2">
@@ -301,8 +311,7 @@ const HierarchicalNode = ({
                               {coCoach.userName || coCoach.name}
                             </span>
                             <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              (Co-Coach)
-                            </span>
+                              ({coCoach.isCoCoach ? "Co-Coach" : "Coach"})\n                            </span>
                           </div>
                         </div>
                         {renderExpandedDetails && renderExpandedDetails(coCoach, level, false)}

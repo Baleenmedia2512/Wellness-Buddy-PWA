@@ -1,6 +1,159 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
+
+/**
+ * Helper function to get team hierarchy with partnership support
+ * Same logic as hierarchical-club-attendance.js
+ */
+async function getTeamHierarchyFromAPI(userId) {
+  const supabase = getSupabaseClient();
+  
+  // Query team_table to get all users
+  let query = supabase
+    .from("team_table")
+    .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage, PhoneNumber")
+    .eq("Status", "Active");
+
+  const { data: allUsers } = await query.order("UserName");
+  
+  // Derive CoCoachId from coach_teams_table
+  const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
+  const coachTeamsMap = {};
+  
+  if (coachTeamIds.length > 0) {
+    const { data: coachTeams } = await supabase
+      .from("coach_teams_table")
+      .select("Id, TeamId, CoachId, CoCoachId")
+      .in("TeamId", coachTeamIds)
+      .eq("Status", "active");
+    
+    if (coachTeams) {
+      coachTeams.forEach(team => {
+        coachTeamsMap[team.TeamId] = {
+          coachId: team.CoachId,
+          coCoachId: team.CoCoachId
+        };
+      });
+    }
+  }
+  
+  // Build user map with derived coCoachId
+  const userMap = new Map();
+  const coachNameMap = {}; // Map CoachId -> CoachName
+  
+  // First pass: build coach name map
+  allUsers.forEach((user) => {
+    coachNameMap[user.UserId] = user.UserName;
+  });
+  
+  // Second pass: build user map with all needed fields
+  allUsers.forEach((user) => {
+    const team = coachTeamsMap[user.CoachTeamId];
+    let coCoachId = null;
+    
+    if (team) {
+      if (user.CoachId === team.coachId) {
+        coCoachId = team.coCoachId;
+      } else if (user.CoachId === team.coCoachId) {
+        coCoachId = team.coachId;
+      }
+    }
+    
+    userMap.set(user.UserId, {
+      UserId: user.UserId,
+      UserName: user.UserName,
+      Email: user.Email,
+      Role: user.Role,
+      CoachId: user.CoachId,
+      CoCoachId: coCoachId,
+      CoachName: user.CoachId ? (coachNameMap[user.CoachId] || null) : null,
+      CoCoachName: coCoachId ? (coachNameMap[coCoachId] || null) : null,
+      CoachTeamId: user.CoachTeamId,
+      Status: user.Status,
+      ProfileImage: user.ProfileImage,
+      PhoneNumber: user.PhoneNumber
+    });
+  });
+  
+  // Check if user is part of a coach partnership
+  const { data: managedTeam } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId')
+    .or(`CoachId.eq.${userId},CoCoachId.eq.${userId}`)
+    .eq('Status', 'active')
+    .maybeSingle();
+  
+  // Collect all team members (including nested hierarchy)
+  const teamMembers = [];
+  const addedIds = new Set();
+  
+  // Helper function to recursively collect all downline members
+  const collectDownline = (coachId, visited = new Set()) => {
+    if (visited.has(coachId)) return; // Prevent circular references
+    visited.add(coachId);
+    
+    allUsers.forEach(user => {
+      if (addedIds.has(user.UserId)) return; // Already added
+      
+      const userData = userMap.get(user.UserId);
+      
+      // Check if this user reports to the given coachId (via CoachId or CoCoachId)
+      const reportsToCoach = (
+        user.CoachId === coachId || 
+        userData.CoCoachId === coachId
+      );
+      
+      if (reportsToCoach) {
+        teamMembers.push(userData);
+        addedIds.add(user.UserId);
+        
+        // Recursively collect this user's downline
+        collectDownline(user.UserId, visited);
+      }
+    });
+  };
+  
+  if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+    // Partnership exists - collect ALL members in downline of EITHER partner
+    const coachId = managedTeam.CoachId;
+    const coCoachId = managedTeam.CoCoachId;
+    
+    console.log(`👥 [download-attendance-excel] Partnership detected: Coach ${coachId}, Co-Coach ${coCoachId}`);
+    
+    // Add both coaches to the team members list
+    const coachData = userMap.get(coachId);
+    const coCoachData = userMap.get(coCoachId);
+    
+    if (coachData) {
+      teamMembers.push(coachData);
+      addedIds.add(coachId);
+    }
+    
+    if (coCoachData) {
+      teamMembers.push(coCoachData);
+      addedIds.add(coCoachId);
+    }
+    
+    // Recursively collect downline of BOTH partners
+    collectDownline(coachId);
+    collectDownline(coCoachId);
+    
+    console.log(`👥 [download-attendance-excel] Total team members (including full downline): ${teamMembers.length}`);
+    console.log(`👥 [download-attendance-excel] Member IDs:`, teamMembers.map(m => m.UserId));
+  } else {
+    // No partnership - collect logged-in user and their full downline
+    const loggedInUser = userMap.get(userId);
+    if (loggedInUser) {
+      teamMembers.push(loggedInUser);
+      addedIds.add(userId);
+    }
+    
+    // Recursively collect downline
+    collectDownline(userId);
+  }
+  
+  return teamMembers;
+}
 
 /**
  * API: Download Attendance Report as Excel
@@ -47,32 +200,11 @@ export default async function handler(req, res) {
 
     console.log('📅 [download-attendance-excel] Target date:', targetDate);
 
-    // Step 1: Get team hierarchy (includes logged-in coach, co-coach, and full downline)
-    // This function handles co-coaching partnerships automatically
-    const teamHierarchy = await getDualCoachingTeamHierarchy(userIdNum, true);
-    
-    console.log('👥 [download-attendance-excel] Team hierarchy for user', userIdNum, ':', {
-      totalMembers: teamHierarchy.length,
-      levelBreakdown: teamHierarchy.reduce((acc, m) => {
-        acc[m.HierarchyLevel] = (acc[m.HierarchyLevel] || 0) + 1;
-        return acc;
-      }, {}),
-      coaches: teamHierarchy.filter(m => m.HierarchyLevel === 0 || m.IsCoCoach).map(m => ({
-        id: m.UserId,
-        name: m.UserName,
-        level: m.HierarchyLevel,
-        isLoggedIn: m.IsLoggedInCoach,
-        isCoCoach: m.IsCoCoach
-      })),
-      directTeam: teamHierarchy.filter(m => m.HierarchyLevel === 1 && !m.IsCoCoach).map(m => ({
-        id: m.UserId,
-        name: m.UserName,
-        coachId: m.CoachId
-      })),
-      allUserIds: teamHierarchy.map(m => m.UserId)
-    });
+    // Step 1: Get team hierarchy using partnership-aware logic
+    const teamHierarchy = await getTeamHierarchyFromAPI(userIdNum);
     
     if (!teamHierarchy || teamHierarchy.length === 0) {
+      console.log('⚠️ [download-attendance-excel] No team members found');
       return res.status(200).json({
         success: true,
         data: [],
@@ -80,7 +212,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Step 2: Get all user IDs from hierarchy (includes coach, co-coach, and all team members)
+    console.log('👥 [download-attendance-excel] Team hierarchy has', teamHierarchy.length, 'members');
+
+    // Step 2: Get all user IDs from hierarchy
     const allUserIds = teamHierarchy.map(m => m.UserId);
     
     console.log('🔍 [download-attendance-excel] Searching attendance for', allUserIds.length, 'team members');
@@ -122,7 +256,7 @@ export default async function handler(req, res) {
       throw new Error(logsError.message);
     }
 
-    // Step 4: Get user details (name, phone, coach) for all attendees
+    // Step 4: Build user map from teamHierarchy (already has all data we need)
     const attendeeIds = [...new Set(attendanceLogs.map(log => parseInt(log.UserId)))];
     
     if (attendeeIds.length === 0) {
@@ -133,41 +267,10 @@ export default async function handler(req, res) {
       });
     }
 
-    const { data: usersData, error: usersError } = await supabase
-      .from('team_table')
-      .select(`
-        "UserId",
-        "UserName",
-        "PhoneNumber",
-        "CoachId"
-      `)
-      .in('"UserId"', attendeeIds);
+    const userMap = new Map(teamHierarchy.map(u => [u.UserId, u]));
 
-    if (usersError) {
-      console.error('❌ [download-attendance-excel] Error fetching users:', usersError);
-      throw new Error(usersError.message);
-    }
-
-    // Step 5: Get coach names
-    const coachIds = [...new Set(usersData.map(u => u.CoachId).filter(Boolean))];
-    let coachNamesMap = {};
-    
-    if (coachIds.length > 0) {
-      const { data: coaches } = await supabase
-        .from('team_table')
-        .select('"UserId", "UserName"')
-        .in('"UserId"', coachIds);
-      
-      if (coaches) {
-        coaches.forEach(coach => {
-          coachNamesMap[coach.UserId] = coach.UserName;
-        });
-      }
-    }
-
-    // Step 6: Build attendance records with all required fields
+    // Step 5: Build attendance records with all required fields
     const attendanceRecords = [];
-    const userMap = new Map(usersData.map(u => [u.UserId, u]));
 
     attendanceLogs.forEach(log => {
       const userId = parseInt(log.UserId);
@@ -180,7 +283,7 @@ export default async function handler(req, res) {
           city: log.City || '',
           village: log.Village || '',
           phone: user.PhoneNumber || '',
-          coach: user.CoachId ? (coachNamesMap[user.CoachId] || 'Unknown') : 'No Coach',
+          coach: user.CoachName || 'No Coach',
           attendedTime: new Date(log.CreatedAt).toLocaleString('en-IN', {
             timeZone: 'Asia/Kolkata',
             year: 'numeric',
@@ -196,14 +299,14 @@ export default async function handler(req, res) {
       }
     });
 
-    // Step 7: Sort by attended time
+    // Step 6: Sort by attended time
     attendanceRecords.sort((a, b) => {
       const timeA = new Date(a.attendedTime);
       const timeB = new Date(b.attendedTime);
       return timeA - timeB;
     });
 
-    // Step 8: Add serial numbers
+    // Step 7: Add serial numbers
     const finalData = attendanceRecords.map((record, index) => ({
       sno: index + 1,
       ...record

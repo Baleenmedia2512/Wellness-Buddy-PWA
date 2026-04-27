@@ -134,7 +134,7 @@ export default async function handler(req, res) {
     if (coachTeamIds.length > 0) {
       const { data: coachTeams, error: teamsError } = await supabase
         .from("coach_teams_table")
-        .select("id, TeamId, CoachId, CoCoachId")
+        .select("Id, TeamId, CoachId, CoCoachId")
         .in("TeamId", coachTeamIds) // TEMPORARY: Query by TeamId string until schema migration
         .eq("Status", "active");
       
@@ -290,16 +290,56 @@ export default async function handler(req, res) {
       return;
     }
 
+    console.log(`🔍 [team-hierarchy] Logged-in user:`, {
+      UserId: loggedInCoach.UserId,
+      UserName: loggedInCoach.UserName,
+      Role: loggedInCoach.Role,
+      CoachId: loggedInCoach.CoachId,
+      CoachTeamId: loggedInCoach.CoachTeamId
+    });
+
     // Check if this coach has a co-coach partner
-    // Query coach_teams_table to find which team this coach manages
+    // Query coach_teams_table using BOTH the user's ID and their CoachTeamId
     let coachPartnerIds = [coachIdInt];
+    let managedTeam = null;
     
-    const { data: managedTeam } = await supabase
+    // Try multiple approaches to find the partnership:
+    // 1. Check if user is Coach or CoCoach in coach_teams_table
+    const { data: teamByRole } = await supabase
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${coachIdInt},CoCoachId.eq.${coachIdInt}`)
       .eq('Status', 'active')
       .maybeSingle();
+    
+    // 2. If user has CoachTeamId, also try looking up by TeamId
+    if (!teamByRole && loggedInCoach.CoachTeamId) {
+      const { data: teamByTeamId } = await supabase
+        .from('coach_teams_table')
+        .select('TeamId, CoachId, CoCoachId')
+        .eq('TeamId', loggedInCoach.CoachTeamId)
+        .eq('Status', 'active')
+        .maybeSingle();
+      
+      // Verify the user is actually part of this team
+      if (teamByTeamId && 
+          (teamByTeamId.CoachId === coachIdInt || teamByTeamId.CoCoachId === coachIdInt)) {
+        managedTeam = teamByTeamId;
+      }
+    } else {
+      managedTeam = teamByRole;
+    }
+    
+    console.log(`🔍 [team-hierarchy] Partnership lookup result:`, {
+      foundTeam: !!managedTeam,
+      teamData: managedTeam ? {
+        TeamId: managedTeam.TeamId,
+        CoachId: managedTeam.CoachId,
+        CoCoachId: managedTeam.CoCoachId
+      } : null,
+      loggedInUserId: coachIdInt,
+      loggedInUserTeamId: loggedInCoach.CoachTeamId
+    });
     
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
       // This coach has a co-coach partner - exclude both from each other's nested view
@@ -323,38 +363,68 @@ export default async function handler(req, res) {
         ? managedTeam.CoCoachId
         : managedTeam.CoachId;
 
+      // Mark the logged-in user's role in the partnership
+      const loggedInIsCoach = (coachIdInt === managedTeam.CoachId);
+      hierarchy.isCoach = loggedInIsCoach;
+      hierarchy.isCoCoach = !loggedInIsCoach;
+
       const partnerData = userMap.get(partnerId);
       if (partnerData) {
         // Store co-coach info at root level (NOT in teamMembers array)
         hierarchy.coCoachInfo = {
           ...partnerData,
-          isCoCoach: true,
+          isCoach: !loggedInIsCoach,
+          isCoCoach: loggedInIsCoach,
           parentCoachId: coachIdInt,
           teamMembers: [],
           directMemberCount: 0,
           totalMemberCount: 0,
         };
 
-        // Find co-coach's direct members that aren't already in root's team
+        console.log(`✅ [team-hierarchy] Partnership setup complete:`, {
+          LoggedInUser: {
+            userId: hierarchy.userId,
+            userName: hierarchy.userName,
+            isCoach: hierarchy.isCoach,
+            isCoCoach: hierarchy.isCoCoach
+          },
+          Partner: {
+            userId: hierarchy.coCoachInfo.userId,
+            userName: hierarchy.coCoachInfo.userName,
+            isCoach: hierarchy.coCoachInfo.isCoach,
+            isCoCoach: hierarchy.coCoachInfo.isCoCoach
+          }
+        });
+
+        // Find ALL members who report to EITHER partner (merge both teams)
         const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
         existingIds.add(coachIdInt);
         existingIds.add(partnerId);
 
-        // FIXED: Check both CoachId AND derived CoCoachId for co-coach's members
-        const coCoachDirectMembers = allUsers.filter(u => {
+        // Find all members who report to either coach or co-coach
+        // This ensures both partners see ALL team members regardless of who they directly report to
+        const partnerMembers = allUsers.filter(u => {
           const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-          return (
-            (u.CoachId === partnerId || derivedCoCoachId === partnerId) &&
-            !existingIds.has(u.UserId)
+          const reportsToEitherPartner = (
+            u.CoachId === coachIdInt || 
+            u.CoachId === partnerId ||
+            derivedCoCoachId === coachIdInt || 
+            derivedCoCoachId === partnerId
           );
+          return reportsToEitherPartner && !existingIds.has(u.UserId);
         });
 
-        console.log(`👥 [team-hierarchy] Adding ${coCoachDirectMembers.length} co-coach members to root:`,
-          coCoachDirectMembers.map(m => ({ UserId: m.UserId, UserName: m.UserName, CoachId: m.CoachId }))
+        console.log(`👥 [team-hierarchy] Merging ${partnerMembers.length} team members from partnership:`,
+          partnerMembers.map(m => ({ 
+            UserId: m.UserId, 
+            UserName: m.UserName, 
+            CoachId: m.CoachId,
+            CoachTeamId: m.CoachTeamId 
+          }))
         );
 
-        // Build hierarchy for each co-coach member and add to root
-        coCoachDirectMembers.forEach(member => {
+        // Build hierarchy for each partner member and add to root
+        partnerMembers.forEach(member => {
           const memberNode = buildHierarchy(
             member.UserId,
             coachIdInt,
@@ -370,7 +440,11 @@ export default async function handler(req, res) {
         hierarchy.directMemberCount = hierarchy.teamMembers.length;
         hierarchy.totalMemberCount = hierarchy.directMemberCount +
           hierarchy.teamMembers.reduce((sum, m) => sum + (m.totalMemberCount || 0), 0);
+      } else {
+        console.warn(`⚠️ [team-hierarchy] Partner data not found for partnerId: ${partnerId}`);
       }
+    } else {
+      console.log(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
     }
 
     // Flatten hierarchy to get all members (for enrollment reports)
