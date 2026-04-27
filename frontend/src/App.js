@@ -134,6 +134,8 @@ function WellnessValleyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
+  const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
   const [showManualFoodModal, setShowManualFoodModal] = useState(false);
   const [showManualEducationModal, setShowManualEducationModal] = useState(false);
@@ -195,6 +197,8 @@ function WellnessValleyApp() {
 
   // Mandatory profile picture modal state - show when user has no valid profile picture
   const [showMandatoryProfilePictureModal, setShowMandatoryProfilePictureModal] = useState(false);
+  // Snooze data from DB: { count, max, until } or null
+  const [profilePicSnoozeData, setProfilePicSnoozeData] = useState(null);
 
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
@@ -814,11 +818,9 @@ function WellnessValleyApp() {
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail) => {
+    async (userEmail, userObj) => {
       if (!userEmail) return;
-      // Skip if user already completed profile in this session (prevents race conditions)
-      if (profileCompletedRef.current) return;
-      // Mark check in-flight so the gate doesn’t render while we’re fetching
+      // Mark check in-flight so the gate does not render while we are fetching
       setProfileChecking(true);
       try {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -843,6 +845,8 @@ function WellnessValleyApp() {
             localStorage.setItem("profileComplete_v2_" + userEmail, "true");
             setProfileChecking(false);
             setShowCompleteProfile(false);
+            // Profile fields complete — check picture gate separately
+            if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
             return;
           }
 
@@ -859,6 +863,8 @@ function WellnessValleyApp() {
             phoneNumber: latestData?.phoneNumber ?? null,
           },
         );
+        // Store snooze data so merged screen can use it
+        setProfilePicSnoozeData(latestData?.profilePicSnooze || null);
         setProfileChecking(false);
         setShowCompleteProfile(true);
       } catch (err) {
@@ -923,15 +929,19 @@ function WellnessValleyApp() {
           }
         }
 
-        // No valid profile picture found - check snooze before showing mandatory modal
-        const snoozeKey = "profilePicRemindLater_" + userEmail;
-        const snoozeUntil = localStorage.getItem(snoozeKey);
-        if (snoozeUntil && Date.now() < parseInt(snoozeUntil, 10)) {
-          console.log("⏰ [Profile Picture] Snoozed until", new Date(parseInt(snoozeUntil, 10)).toLocaleString());
-          return;
+        // No valid profile picture found - check snooze from DB before showing modal
+        const snooze = profile.profilePicSnooze;
+        if (snooze) {
+          const snoozeUntil = new Date(snooze.until).getTime();
+          const snoozeCount = snooze.count ?? 0;
+          const snoozeMax = snooze.max ?? 5;
+          if (snoozeCount > 0 && snoozeCount < snoozeMax && Date.now() < snoozeUntil) {
+            console.log("⏰ [Profile Picture] Snoozed (DB) until", new Date(snoozeUntil).toLocaleString());
+            return;
+          }
         }
-        // Clear expired snooze if any
-        if (snoozeUntil) localStorage.removeItem(snoozeKey);
+        // Store snooze data in state so modal can use count/max
+        setProfilePicSnoozeData(snooze || null);
 
         console.log("⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
         // Clear localStorage flag in case it was set incorrectly
@@ -1062,9 +1072,9 @@ function WellnessValleyApp() {
                 } else {
                   console.log("✅ [Auth State] Setup already complete");
                   // Check if mandatory profile fields are filled
-                  await checkProfileCompletion(userEmail);
-                  // After profile completion check, check for profile picture
-                  setTimeout(() => checkProfilePicture(user), 800);
+                  // checkProfilePicture is only called inside checkProfileCompletion
+                  // when profile IS complete (to avoid double gate)
+                  await checkProfileCompletion(userEmail, user);
                 }
               } else {
                 console.warn(
@@ -1825,21 +1835,24 @@ function WellnessValleyApp() {
    * Returns the two alt-switch buttons for a given modal type (the other two options).
    * Used to render "No, it's X" inside each auto-opened modal.
    */
-  const getAltSwitchButtons = (currentType) =>
-    [
+  const getAltSwitchButtons = (currentType) => {
+    const now = new Date();
+    return [
       currentType !== "food" && {
         label: "Food",
         icon: "🍽",
+        sub: `It's ${getMealTypeFromTime(now).toLowerCase()} time`,
         onClick: () => {
           setShowManualWeightModal(false);
           setShowManualEducationModal(false);
-          setManualMealType(getMealTypeFromTime(new Date()));
+          setManualMealType(getMealTypeFromTime(now));
           setShowManualFoodModal(true);
         },
       },
       currentType !== "weight" && {
         label: "Weight",
         icon: "⚖️",
+        sub: weightWindow ? `${weightWindow.start?.slice(0,5)}–${weightWindow.end?.slice(0,5)}` : null,
         onClick: () => {
           setShowManualFoodModal(false);
           setShowManualEducationModal(false);
@@ -1851,6 +1864,7 @@ function WellnessValleyApp() {
       currentType !== "education" && {
         label: "Education",
         icon: "🎓",
+        sub: educationWindow ? `${educationWindow.start?.slice(0,5)}–${educationWindow.end?.slice(0,5)}` : null,
         onClick: () => {
           setShowManualFoodModal(false);
           setShowManualWeightModal(false);
@@ -1858,9 +1872,22 @@ function WellnessValleyApp() {
         },
       },
     ].filter(Boolean);
+  };
+
+  /** Toggle manual mode on/off and persist to localStorage */
+  const toggleManualMode = () => {
+    setManualModeActive((prev) => {
+      const next = !prev;
+      localStorage.setItem("manualModeActive", String(next));
+      setManualModeToast(next ? "enabled" : "disabled");
+      setTimeout(() => setManualModeToast(""), 2500);
+      return next;
+    });
+  };
 
   /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
   const openBestManualModal = () => {
+    setError(null); // clear AI Unavailable card — modal handles the UI
     const now = imageTimestamp ? new Date(imageTimestamp) : new Date();
     const mins = now.getHours() * 60 + now.getMinutes();
 
@@ -2387,6 +2414,13 @@ function WellnessValleyApp() {
         "📸 Image file is too large. Please choose a smaller image (max 10MB).",
       );
       imageProcessingInProgress.current = false;
+      return;
+    }
+
+    // ✋ MANUAL MODE: skip AI entirely, open best manual modal
+    if (manualModeActive) {
+      imageProcessingInProgress.current = false;
+      openBestManualModal();
       return;
     }
 
@@ -3003,7 +3037,10 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
-          if (isApiError) openBestManualModal();
+          if (isApiError) {
+            // AI failed for this upload — open manual modal without permanently enabling manual mode
+            openBestManualModal();
+          }
           setLoading(false);
           return;
         }
@@ -3917,6 +3954,8 @@ function WellnessValleyApp() {
         onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
+        manualModeActive={manualModeActive}
+        onToggleManualMode={toggleManualMode}
         onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
@@ -4030,14 +4069,15 @@ function WellnessValleyApp() {
               return (
                 <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
                   {/* Header */}
-                  <div className="flex items-center justify-between px-4 pt-4 pb-1">
-                    <div className="flex items-center gap-2">
+                  <div className="relative flex items-center justify-center px-4 pt-4 pb-2">
+                    <div className="flex flex-col items-center gap-0.5">
                       <span className="text-base">🤖</span>
-                      <p className="text-sm font-bold text-gray-900">AI Unavailable</p>
+                      <p className="text-sm font-bold text-gray-900 leading-tight">AI Unavailable</p>
+                      <p className="text-xs text-gray-400 leading-tight">Log manually below</p>
                     </div>
                     <button
                       onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
-                      className="p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400"
+                      className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400"
                     >
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -4045,19 +4085,25 @@ function WellnessValleyApp() {
                     </button>
                   </div>
 
-                  {/* Friendly time hint */}
-                  <p className="px-4 pb-2 text-xs text-gray-500">{timeLabel} — log it manually below.</p>
-
                   {/* Primary time-based action */}
-                  <div className="px-4 pb-2">
+                  <div className="px-4 pb-3">
                     <TouchFeedbackButton
                       onClick={primary.onClick}
-                      className={`w-full ${primary.bg} text-white rounded-xl py-3 flex items-center justify-center gap-2 text-sm font-bold transition-colors`}
+                      className={`w-full ${primary.bg} text-white rounded-2xl py-4 flex flex-col items-center justify-center gap-1 transition-colors`}
                     >
-                      <span className="text-base">{primary.icon}</span>
-                      <span>{primary.label}</span>
+                      <span className="text-3xl leading-none">{primary.icon}</span>
+                      <span className="text-base font-bold">{primary.label}</span>
                     </TouchFeedbackButton>
                   </div>
+
+                  {/* Divider */}
+                  {altButtons.length > 0 && (
+                    <div className="flex items-center gap-3 px-4 pb-3">
+                      <div className="flex-1 h-px bg-gray-100" />
+                      <span className="text-xs text-gray-400 font-medium">not this?</span>
+                      <div className="flex-1 h-px bg-gray-100" />
+                    </div>
+                  )}
 
                   {/* Alt options */}
                   {altButtons.length > 0 && (
@@ -4066,9 +4112,10 @@ function WellnessValleyApp() {
                         <TouchFeedbackButton
                           key={btn.label}
                           onClick={btn.onClick}
-                          className="flex-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 text-gray-600 py-2 rounded-xl text-xs font-semibold transition-colors text-center"
+                          className="flex-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-600 py-3 rounded-xl flex flex-col items-center gap-1 transition-colors"
                         >
-                          {btn.icon} No, it's {btn.label.replace("Log ", "")}
+                          <span className="text-xl leading-none">{btn.icon}</span>
+                          <span className="text-xs font-semibold">{btn.label.replace("Log ", "")}</span>
                         </TouchFeedbackButton>
                       ))}
                     </div>
@@ -4722,6 +4769,20 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Manual Mode Toast */}
+      {manualModeToast && (
+        <div
+          key={manualModeToast}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none animate-manual-toast"
+        >
+          <span className={`text-xs font-semibold tracking-wide ${
+            manualModeToast === "enabled" ? "text-green-500" : "text-gray-400"
+          }`}>
+            {manualModeToast === "enabled" ? "✦ Manual mode enabled" : "✦ Manual mode disabled"}
+          </span>
+        </div>
+      )}
+
       {/* User Not Found Modal */}
       {showUserNotFoundModal && (
         <UserNotFoundModal
@@ -4738,15 +4799,19 @@ function WellnessValleyApp() {
         mealType={manualMealType}
         apiBaseUrl={apiBaseUrl}
         userId={user?.id}
-        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("food") : []}
+        timeLabel="It's food time! Do you want to add manually?"
+        altSwitchButtons={getAltSwitchButtons("food")}
       />
 
       {/* Manual Education Entry Modal */}
       <ManualEducationEntryModal
         isOpen={showManualEducationModal}
         onClose={() => setShowManualEducationModal(false)}
-        onBack={() => setShowManualEducationModal(false)}
-        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("education") : []}
+        onBack={() => {
+          setShowManualEducationModal(false);
+          if (manualModeActive) openBestManualModal();
+        }}
+        altSwitchButtons={getAltSwitchButtons("education")}
         onSave={async (data) => {
           setShowManualEducationModal(false);
           setError(null);
@@ -4799,11 +4864,15 @@ function WellnessValleyApp() {
           setCurrentWeightImage(null);
           setLoading(false);
         }}
-        onBack={() => { setShowManualWeightModal(false); setCurrentWeightImage(null); }}
+        onBack={() => {
+          setShowManualWeightModal(false);
+          setCurrentWeightImage(null);
+          if (manualModeActive) openBestManualModal();
+        }}
         onSave={handleManualWeightSave}
         imagePreview={currentWeightImage}
         lastWeight={lastWeight}
-        altSwitchButtons={error?.includes("AI model is temporarily unavailable") ? getAltSwitchButtons("weight") : []}
+        altSwitchButtons={getAltSwitchButtons("weight")}
       />
 
       {/* Duplicate Food Modal */}
@@ -4881,22 +4950,32 @@ function WellnessValleyApp() {
         <CompleteProfilePage
           user={user}
           apiBaseUrl={apiBaseUrl}
-          onComplete={async () => {
+          showPictureSection={true}
+          snoozeData={profilePicSnoozeData}
+          userId={user.id || user.UserId || localStorage.getItem("dbUserId")}
+          onComplete={async (savedData) => {
             const email =
               user?.email ||
               user?.Email ||
               localStorage.getItem("userEmail") ||
               "";
-            profileCompletedRef.current = true; // Mark as complete to prevent re-showing
+            profileCompletedRef.current = true;
             localStorage.setItem("profileComplete_v2_" + email, "true");
-            setShowCompleteProfile(false); // Hide the profile completion page immediately
+            setShowCompleteProfile(false);
             setProfileChecking(false);
-            
-            // After profile completion, check for profile picture with delay for state update
-            setTimeout(() => {
-              console.log("🔄 [Profile Complete] Checking for profile picture...");
-              checkProfilePicture(user);
-            }, 800);
+
+            // If picture was saved, update user state immediately
+            if (savedData?.profileImage) {
+              setUser((prevUser) => ({
+                ...prevUser,
+                profileImage: savedData.profileImage,
+                ProfileImage: savedData.profileImage,
+                photoURL: savedData.profileImage,
+              }));
+            } else {
+              // Picture was snoozed — snooze data already saved to DB by handleRemindLater
+              setProfilePicSnoozeData(null);
+            }
           }}
         />
       )}
@@ -4905,17 +4984,28 @@ function WellnessValleyApp() {
            Shown after profile completion if user doesn't have a valid
            profile picture. Cannot be dismissed until picture is uploaded.
       ─────────────────────────────────────────────────────────────────── */}
-      {showMandatoryProfilePictureModal && user && (
+      {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
           apiBaseUrl={apiBaseUrl}
-          onRemindLater={() => {
-            const userEmail = user.email || user.Email;
-            if (userEmail) {
-              // Snooze for 30 seconds
-              const snoozeUntil = Date.now() + 30 * 1000;
-              localStorage.setItem("profilePicRemindLater_" + userEmail, String(snoozeUntil));
-              console.log("⏰ [Profile Picture] Remind me later — snoozed for 30 seconds");
+          snoozeData={profilePicSnoozeData}
+          onRemindLater={async () => {
+            const userId = user.id || user.UserId || localStorage.getItem("dbUserId");
+            if (userId) {
+              try {
+                const res = await fetch(`${apiBaseUrl}/api/snooze-profile-pic`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ userId }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  setProfilePicSnoozeData(data.snooze);
+                  console.log("⏰ [Profile Picture] Snooze saved to DB:", data.snooze);
+                }
+              } catch (err) {
+                console.error("❌ [Profile Picture] Failed to save snooze to DB:", err);
+              }
             }
             setShowMandatoryProfilePictureModal(false);
           }}

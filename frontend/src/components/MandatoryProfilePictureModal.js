@@ -46,7 +46,7 @@ const getCroppedImg = (imageSrc, pixelCrop, rotation = 0, flip = { h: false, v: 
  */
 const MAX_SNOOZE_ATTEMPTS = 5;
 
-const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLater }) => {
+const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLater, snoozeData }) => {
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [error, setError] = useState("");
@@ -65,11 +65,10 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
   const [flip] = useState({ h: false, v: false });
   const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
 
-  // Read snooze attempt count from localStorage
-  const userEmail = user?.email || user?.Email || "";
-  const snoozeCountKey = "profilePicSnoozeCount_" + userEmail;
-  const snoozeCount = userEmail ? parseInt(localStorage.getItem(snoozeCountKey) || "0", 10) : 0;
-  const canSnooze = onRemindLater && snoozeCount < MAX_SNOOZE_ATTEMPTS;
+  // Read snooze data from DB (passed as prop from App.js)
+  const snoozeCount = snoozeData?.count ?? 0;
+  const snoozeMax = snoozeData?.max ?? MAX_SNOOZE_ATTEMPTS;
+  const canSnooze = onRemindLater && snoozeCount < snoozeMax;
 
   // Call Gemini directly (client-side) for face detection
   const detectFace = useCallback(async (base64String) => {
@@ -91,7 +90,7 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
 
       const result = await model.generateContent([
         { inlineData: { mimeType, data: base64Data } },
-        "Does this image contain a clear, visible human face? Answer with only 'yes' or 'no'.",
+        "Look at this image carefully. Is it a real photograph of an actual human being taken with a camera or phone? Answer 'no' if the image is: a cartoon, an illustrated avatar, a drawing, a vector/clip art icon, anime, 3D CGI, AI-generated art, a painting, a sketch, or has any glowing/robotic/cybernetic elements. Answer 'no' if the face looks drawn or stylized rather than photographed. Only answer 'yes' if it is clearly a real photo of a real person. Answer with only 'yes' or 'no'.",
       ]);
 
       const text = result.response.text().trim().toLowerCase();
@@ -482,10 +481,6 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
               <div className="text-center pt-1 px-3 sm:px-4 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">
                 <button
                   onClick={() => {
-                    // Increment snooze count before calling onRemindLater
-                    if (userEmail) {
-                      localStorage.setItem(snoozeCountKey, String(snoozeCount + 1));
-                    }
                     onRemindLater();
                   }}
                   disabled={isSaving}
@@ -494,15 +489,15 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
                   <Clock className="w-4 h-4 flex-shrink-0 text-amber-500" />
                   <span>Remind me later</span>
                   <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold text-white bg-amber-400 rounded-full leading-none">
-                    {MAX_SNOOZE_ATTEMPTS - snoozeCount}
+                    {snoozeMax - snoozeCount}
                   </span>
                 </button>
-                <p className="text-xs text-gray-400 mt-2">Reminder in 24 hours &bull; {MAX_SNOOZE_ATTEMPTS - snoozeCount} of {MAX_SNOOZE_ATTEMPTS} left</p>
+                <p className="text-xs text-gray-400 mt-2">Reminder in 24 hours &bull; {snoozeMax - snoozeCount} of {snoozeMax} left</p>
               </div>
             ) : (
               <div className="px-3 sm:px-4 py-3 bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl shadow-sm text-center">
                 <p className="text-sm font-semibold text-red-700">Profile picture is now required</p>
-                <p className="text-xs text-red-400 mt-0.5">All {MAX_SNOOZE_ATTEMPTS} reminders used. Please upload your photo to continue.</p>
+                <p className="text-xs text-red-400 mt-0.5">All {snoozeMax} reminders used. Please upload your photo to continue.</p>
               </div>
             )
           )}

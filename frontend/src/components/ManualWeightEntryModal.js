@@ -32,6 +32,7 @@ const WeighingScaleIcon = ({ className }) => (
  * Supports manual BMR entry
  */
 const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack, lastWeight, altSwitchButtons }) => {
+  const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [weight, setWeight] = useState("");
   const [unit, setUnit] = useState("kg");
   const [bmr, setBmr] = useState("");
@@ -103,6 +104,7 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
     setUnit("kg");
     setBmr("");
     setError("");
+    setShowTypeSelect(true);
     onClose();
   };
 
@@ -111,6 +113,7 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
     setUnit("kg");
     setBmr("");
     setError("");
+    setShowTypeSelect(true);
     onBack();
   };
 
@@ -119,6 +122,76 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[90vh] overflow-y-auto">
+
+        {/* ── Type Selection Screen ── */}
+        {showTypeSelect && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
+              <div>
+                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
+                  AI couldn&apos;t detect your input. Please log manually.
+                </p>
+              </div>
+              <button
+                onClick={handleCancel}
+                className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Primary weight card */}
+            <div className="px-4 pb-3">
+              <button
+                onClick={() => setShowTypeSelect(false)}
+                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
+                style={{
+                  background: "linear-gradient(135deg, #9333ea 0%, #a855f7 60%, #c084fc 100%)",
+                  boxShadow: "0 6px 18px rgba(147,51,234,0.30)",
+                }}
+              >
+                <span className="text-2xl leading-none">⚖️</span>
+                <span className="text-sm font-bold tracking-tight">Log Weight</span>
+                <span className="text-[11px] font-normal opacity-80">It&apos;s weight time! Enter manually</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            {altSwitchButtons?.length > 0 && (
+              <div className="flex items-center gap-3 px-4 pb-2">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">Log something else</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+            )}
+
+            {/* Alt cards */}
+            {altSwitchButtons?.length > 0 && (
+              <div className="flex gap-2 px-4 pb-4">
+                {altSwitchButtons.map((btn) => (
+                  <button
+                    key={btn.label}
+                    onClick={btn.onClick}
+                    className="flex-1 bg-white py-3 px-2 rounded-[14px] flex flex-col items-center justify-center gap-0.5 transition-all active:scale-[0.97]"
+                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.07)", minHeight: "72px" }}
+                  >
+                    <span className="text-xl leading-none mb-0.5">{btn.icon}</span>
+                    <span className="text-xs text-gray-700 font-semibold whitespace-nowrap">No, it&apos;s {btn.label}</span>
+                    {btn.sub && (
+                      <span className="text-[10px] text-gray-400">{btn.sub}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Weight Entry Form ── */}
+        {!showTypeSelect && (
+        <>
         {/* Header */}
         <div className="relative flex flex-col items-center px-4 pt-4 pb-3 border-b border-gray-100">
           {/* Back */}
@@ -217,23 +290,6 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
               </div>
             </div>
 
-            {/* BMR Field */}
-            <div>
-              <label className="flex items-center gap-1 text-xs font-semibold text-gray-600 mb-1.5">
-                <Flame className="w-3.5 h-3.5 text-orange-500" />
-                BMR (kcal) <span className="text-gray-400 font-normal">— optional</span>
-              </label>
-              <input
-                type="number"
-                inputMode="numeric"
-                value={bmr}
-                onChange={(e) => setBmr(e.target.value)}
-                placeholder="e.g. 2200"
-                className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-xl focus:border-orange-400 focus:outline-none text-sm font-semibold bg-white"
-                style={{ fontSize: "16px" }}
-              />
-            </div>
-
             {/* Error Message */}
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-lg text-xs font-medium">
@@ -268,24 +324,9 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
           </button>
         </div>
 
-        {/* Wrong type strip */}
-        {altSwitchButtons?.length > 0 && (
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <span className="text-xs text-gray-400 whitespace-nowrap">Not weight?</span>
-            <div className="flex gap-1.5 flex-1">
-              {altSwitchButtons.map((btn) => (
-                <button
-                  key={btn.label}
-                  onClick={btn.onClick}
-                  className="flex-1 flex items-center justify-center gap-1 border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 py-1.5 rounded-full text-xs font-medium transition-colors"
-                >
-                  <span>{btn.icon}</span>
-                  <span>{btn.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+        </> /* end !showTypeSelect */
         )}
+
       </div>
     </div>
   );

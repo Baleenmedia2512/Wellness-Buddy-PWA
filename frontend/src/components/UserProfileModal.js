@@ -101,6 +101,8 @@ const UserProfileModal = ({
   // Holds a Promise that resolves with the face status once detection completes
   const faceDetectionPromiseRef = useRef(null);
   const faceDetectionResolveRef = useRef(null);
+  // Always points to the latest handleSave so useEffect can call it without stale closure
+  const handleSaveRef = useRef(null);
 
   // Call Gemini directly (client-side) for face detection
   const detectFace = useCallback(async (base64String) => {
@@ -128,7 +130,7 @@ const UserProfileModal = ({
 
       const result = await model.generateContent([
         { inlineData: { mimeType, data: base64Data } },
-        "Does this image contain a clear, visible human face? Answer with only 'yes' or 'no'.",
+        "Look at this image carefully. Is it a real photograph of an actual human being taken with a camera or phone? Answer 'no' if the image is: a cartoon, an illustrated avatar, a drawing, a vector/clip art icon, anime, 3D CGI, AI-generated art, a painting, a sketch, or if the face has cybernetic parts, glowing eyes, or unrealistic skin textures. Answer 'no' if the face looks drawn or stylized rather than photographed. Only answer 'yes' if it is clearly a real photo of a real person. Answer with only 'yes' or 'no'.",
       ]);
 
       const text = result.response.text().trim().toLowerCase();
@@ -452,6 +454,21 @@ const UserProfileModal = ({
       setIsSaving(false);
     }
   };
+
+  // Keep ref in sync with latest handleSave (must be after handleSave definition)
+  handleSaveRef.current = handleSave;
+
+  // Auto-save when face detection succeeds; show error when it fails
+  useEffect(() => {
+    if (faceStatus === "face_found" && profileImage) {
+      handleSaveRef.current?.();
+    } else if (faceStatus === "no_face") {
+      setError("No face detected. Please upload a clear real photo of your face.");
+    } else if (faceStatus === "detection_error") {
+      setError("Photo verification failed. Please try again with a different photo.");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faceStatus]);
 
   const handleCancel = () => {
     // Prevent closing modal while saving is in progress

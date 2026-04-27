@@ -47,68 +47,46 @@ export default async function handler(req, res) {
 
     const lowerTerm = searchTerm.toLowerCase();
 
-    // Helper: extract a plate from a DB row (returns null if not a multi-item meal with a match)
-    function extractPlate(row) {
+    // Extract individual food items that match the search term from a DB row
+    function extractMatchingItems(row) {
       try {
         const analysis = typeof row.AnalysisData === 'string'
           ? JSON.parse(row.AnalysisData)
           : row.AnalysisData;
         const foods = analysis?.foods || [];
-        const hasMatch = foods.some(f => (f.name || '').toLowerCase().includes(lowerTerm));
-        if (!hasMatch || foods.length < 2) return null;
-
-        const allFoods = foods.map(f => ({
-          name: (f.name || '').trim(),
-          calories: f.nutrition?.calories != null ? Math.round(f.nutrition.calories) : null,
-          protein: f.nutrition?.protein != null ? Math.round(f.nutrition.protein) : null,
-          carbs: f.nutrition?.carbs != null ? Math.round(f.nutrition.carbs) : null,
-          fat: f.nutrition?.fat != null ? Math.round(f.nutrition.fat) : null,
-          fiber: f.nutrition?.fiber != null ? Math.round(f.nutrition.fiber) : null,
-        }));
-
-        const total = analysis?.total || allFoods.reduce((acc, f) => ({
-          calories: (acc.calories || 0) + (f.calories || 0),
-          protein: (acc.protein || 0) + (f.protein || 0),
-          carbs: (acc.carbs || 0) + (f.carbs || 0),
-          fat: (acc.fat || 0) + (f.fat || 0),
-          fiber: (acc.fiber || 0) + (f.fiber || 0),
-        }), {});
-
-        return {
-          mealId: row.ID,
-          title: foods[0].name || searchTerm,
-          foods: allFoods,
-          total: {
-            calories: total.calories != null ? Math.round(total.calories) : null,
-            protein: total.protein != null ? Math.round(total.protein) : null,
-            carbs: total.carbs != null ? Math.round(total.carbs) : null,
-            fat: total.fat != null ? Math.round(total.fat) : null,
-            fiber: total.fiber != null ? Math.round(total.fiber) : null,
-          },
-          createdAt: row.CreatedAt,
-        };
-      } catch { return null; }
+        return foods
+          .filter(f => (f.name || '').toLowerCase().includes(lowerTerm))
+          .map(f => ({
+            name: (f.name || '').trim(),
+            weight_g: f.weight_g != null ? Math.round(f.weight_g) : 100,
+            calories: f.nutrition?.calories != null ? Math.round(f.nutrition.calories) : null,
+            protein: f.nutrition?.protein != null ? Math.round(f.nutrition.protein) : null,
+            carbs: f.nutrition?.carbs != null ? Math.round(f.nutrition.carbs) : null,
+            fat: f.nutrition?.fat != null ? Math.round(f.nutrition.fat) : null,
+            fiber: f.nutrition?.fiber != null ? Math.round(f.nutrition.fiber) : null,
+          }));
+      } catch { return []; }
     }
 
-    // Deduplicate plates by normalized title — keep most recent
-    function dedupPlates(rows) {
-      const plateMap = new Map();
+    // Deduplicate by normalized food name — keep most recent (rows sorted desc)
+    function dedupItems(rows) {
+      const seen = new Map();
       for (const row of rows) {
-        const plate = extractPlate(row);
-        if (!plate) continue;
-        const key = plate.title.toLowerCase().trim();
-        if (!plateMap.has(key)) plateMap.set(key, plate);
+        for (const item of extractMatchingItems(row)) {
+          const key = item.name.toLowerCase().trim();
+          if (!seen.has(key)) seen.set(key, item);
+        }
       }
-      return Array.from(plateMap.values());
+      return Array.from(seen.values());
     }
 
-    const myPlates = dedupPlates(myMealRes.data || []);
-    const communityPlates = dedupPlates(communityMealRes.data || []);
+    const myItems = dedupItems(myMealRes.data || []);
+    const communityItems = dedupItems(communityMealRes.data || []);
 
     return res.status(200).json({
       success: true,
-      myPlates,
-      communityPlates,
+      myItems,
+      communityItems,
     });
   } catch (error) {
     console.error('[search-food-history] Error:', error);

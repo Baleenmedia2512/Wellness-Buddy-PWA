@@ -10,6 +10,7 @@ const PLATFORMS = ["Zoom", "Microsoft Teams", "Google Meet", "In-person", "Other
  * Lets them manually log the platform so it saves to the education log.
  */
 const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchButtons }) => {
+  const [showTypeSelect, setShowTypeSelect] = useState(true);
   const [platform, setPlatform] = useState("Zoom");
   const [topic, setTopic] = useState("");
   const [error, setError] = useState("");
@@ -19,6 +20,7 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchB
     setPlatform("Zoom");
     setTopic("");
     setError("");
+    setShowTypeSelect(true);
   };
 
   const handleCancel = () => {
@@ -54,6 +56,76 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchB
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+
+        {/* ── Type Selection Screen ── */}
+        {showTypeSelect && (
+          <>
+            {/* Header */}
+            <div className="flex items-start justify-between px-4 pt-4 pb-2 flex-shrink-0">
+              <div>
+                <p className="text-sm font-bold text-gray-900 leading-snug">AI Unavailable</p>
+                <p className="text-[11px] text-gray-400 mt-0.5 leading-snug max-w-[220px]">
+                  AI couldn&apos;t detect your input. Please log manually.
+                </p>
+              </div>
+              <button
+                onClick={handleCancel}
+                className="p-1.5 rounded-xl hover:bg-gray-100 active:bg-gray-200 transition-colors flex-shrink-0"
+              >
+                <X className="w-4 h-4 text-gray-400" />
+              </button>
+            </div>
+
+            {/* Primary education card */}
+            <div className="px-4 pb-3">
+              <button
+                onClick={() => setShowTypeSelect(false)}
+                className="w-full text-white rounded-[16px] py-3 px-4 flex flex-col items-center justify-center gap-1 transition-all active:scale-[0.97]"
+                style={{
+                  background: "linear-gradient(135deg, #2563eb 0%, #3b82f6 60%, #60a5fa 100%)",
+                  boxShadow: "0 6px 18px rgba(37,99,235,0.30)",
+                }}
+              >
+                <span className="text-2xl leading-none">🎓</span>
+                <span className="text-sm font-bold tracking-tight">Log Education</span>
+                <span className="text-[11px] font-normal opacity-80">It&apos;s education time! Log manually</span>
+              </button>
+            </div>
+
+            {/* Divider */}
+            {altSwitchButtons?.length > 0 && (
+              <div className="flex items-center gap-3 px-4 pb-2">
+                <div className="flex-1 h-px bg-gray-100" />
+                <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">Log something else</span>
+                <div className="flex-1 h-px bg-gray-100" />
+              </div>
+            )}
+
+            {/* Alt cards */}
+            {altSwitchButtons?.length > 0 && (
+              <div className="flex gap-2 px-4 pb-4">
+                {altSwitchButtons.map((btn) => (
+                  <button
+                    key={btn.label}
+                    onClick={btn.onClick}
+                    className="flex-1 bg-white py-3 px-2 rounded-[14px] flex flex-col items-center justify-center gap-0.5 transition-all active:scale-[0.97]"
+                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.07)", minHeight: "72px" }}
+                  >
+                    <span className="text-xl leading-none mb-0.5">{btn.icon}</span>
+                    <span className="text-xs text-gray-700 font-semibold whitespace-nowrap">No, it&apos;s {btn.label}</span>
+                    {btn.sub && (
+                      <span className="text-[10px] text-gray-400">{btn.sub}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Education Form ── */}
+        {!showTypeSelect && (
+        <>
         {/* Header */}
         <div className="relative flex flex-col items-center px-4 pt-4 pb-3 border-b border-gray-100">
           {onBack && (
@@ -97,21 +169,6 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchB
             </div>
           </div>
 
-          {/* Topic */}
-          <div>
-            <label className="block text-xs font-semibold text-gray-600 mb-1.5">
-              Topic <span className="text-gray-400 font-normal">(optional)</span>
-            </label>
-            <input
-              type="text"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              placeholder="e.g., Nutrition session, Wellness class"
-              className="w-full px-3 py-2.5 border-2 border-gray-300 rounded-xl focus:border-blue-400 focus:outline-none text-sm bg-white"
-              style={{ fontSize: "16px" }}
-            />
-          </div>
-
           {/* Error */}
           {error && (
             <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-600 text-xs px-3 py-2 rounded-xl">
@@ -149,24 +206,9 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchB
           </button>
         </div>
 
-        {/* Wrong type strip */}
-        {altSwitchButtons?.length > 0 && (
-          <div className="flex items-center gap-2 px-4 pb-3">
-            <span className="text-xs text-gray-400 whitespace-nowrap">Not education?</span>
-            <div className="flex gap-1.5 flex-1">
-              {altSwitchButtons.map((btn) => (
-                <button
-                  key={btn.label}
-                  onClick={btn.onClick}
-                  className="flex-1 flex items-center justify-center gap-1 border border-gray-200 bg-white hover:bg-gray-50 text-gray-500 py-1.5 rounded-full text-xs font-medium transition-colors"
-                >
-                  <span>{btn.icon}</span>
-                  <span>{btn.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+        </> /* end !showTypeSelect */
         )}
+
       </div>
     </div>
   );
