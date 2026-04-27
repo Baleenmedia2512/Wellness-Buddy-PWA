@@ -1836,6 +1836,54 @@ function WellnessValleyApp() {
         return; // Wait for user to select club
       }
 
+      // Get address from GPS coordinates using reverse geocoding
+      let userCity = null;
+      let userVillage = null;
+      
+      if (attendance.latitude && attendance.longitude) {
+        try {
+          console.log("📍 Fetching address from GPS:", {
+            lat: attendance.latitude,
+            lon: attendance.longitude
+          });
+          
+          const geoResponse = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1`,
+            {
+              headers: {
+                'User-Agent': 'WellnessBuddy/1.0'
+              }
+            }
+          );
+          
+          if (geoResponse.ok) {
+            const geoData = await geoResponse.json();
+            if (geoData && geoData.address) {
+              const addr = geoData.address;
+              
+              // Extract city (main city/town)
+              userCity = addr.city || addr.town || addr.village || addr.county || null;
+              
+              // Extract village (neighbourhood, suburb, hamlet - smaller areas)
+              const villageParts = [];
+              if (addr.neighbourhood) villageParts.push(addr.neighbourhood);
+              if (addr.suburb && addr.suburb !== addr.neighbourhood) villageParts.push(addr.suburb);
+              if (addr.hamlet) villageParts.push(addr.hamlet);
+              
+              userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
+              
+              console.log("✅ Address extracted:", {
+                city: userCity,
+                village: userVillage,
+                fullAddress: geoData.display_name
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("⚠️ Failed to fetch address from GPS:", err);
+        }
+      }
+
       // Determine final values
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
       const finalCenterName =
@@ -1871,6 +1919,8 @@ function WellnessValleyApp() {
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
+          city: userCity,
+          village: userVillage,
         }),
       });
 
