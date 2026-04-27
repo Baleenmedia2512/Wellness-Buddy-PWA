@@ -323,38 +323,53 @@ export default async function handler(req, res) {
         ? managedTeam.CoCoachId
         : managedTeam.CoachId;
 
+      // Mark the logged-in user's role in the partnership
+      const loggedInIsCoach = (coachIdInt === managedTeam.CoachId);
+      hierarchy.isCoach = loggedInIsCoach;
+      hierarchy.isCoCoach = !loggedInIsCoach;
+
       const partnerData = userMap.get(partnerId);
       if (partnerData) {
         // Store co-coach info at root level (NOT in teamMembers array)
         hierarchy.coCoachInfo = {
           ...partnerData,
-          isCoCoach: true,
+          isCoach: !loggedInIsCoach,
+          isCoCoach: loggedInIsCoach,
           parentCoachId: coachIdInt,
           teamMembers: [],
           directMemberCount: 0,
           totalMemberCount: 0,
         };
 
-        // Find co-coach's direct members that aren't already in root's team
+        // Find ALL members who report to EITHER partner (merge both teams)
         const existingIds = new Set(hierarchy.teamMembers.map(m => m.userId));
         existingIds.add(coachIdInt);
         existingIds.add(partnerId);
 
-        // FIXED: Check both CoachId AND derived CoCoachId for co-coach's members
-        const coCoachDirectMembers = allUsers.filter(u => {
+        // Find all members who report to either coach or co-coach
+        // This ensures both partners see ALL team members regardless of who they directly report to
+        const partnerMembers = allUsers.filter(u => {
           const derivedCoCoachId = userMap.get(u.UserId)?.coCoachId;
-          return (
-            (u.CoachId === partnerId || derivedCoCoachId === partnerId) &&
-            !existingIds.has(u.UserId)
+          const reportsToEitherPartner = (
+            u.CoachId === coachIdInt || 
+            u.CoachId === partnerId ||
+            derivedCoCoachId === coachIdInt || 
+            derivedCoCoachId === partnerId
           );
+          return reportsToEitherPartner && !existingIds.has(u.UserId);
         });
 
-        console.log(`👥 [team-hierarchy] Adding ${coCoachDirectMembers.length} co-coach members to root:`,
-          coCoachDirectMembers.map(m => ({ UserId: m.UserId, UserName: m.UserName, CoachId: m.CoachId }))
+        console.log(`👥 [team-hierarchy] Merging ${partnerMembers.length} team members from partnership:`,
+          partnerMembers.map(m => ({ 
+            UserId: m.UserId, 
+            UserName: m.UserName, 
+            CoachId: m.CoachId,
+            CoachTeamId: m.CoachTeamId 
+          }))
         );
 
-        // Build hierarchy for each co-coach member and add to root
-        coCoachDirectMembers.forEach(member => {
+        // Build hierarchy for each partner member and add to root
+        partnerMembers.forEach(member => {
           const memberNode = buildHierarchy(
             member.UserId,
             coachIdInt,

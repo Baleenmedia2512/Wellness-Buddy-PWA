@@ -197,9 +197,15 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         };
         // Map field names for HierarchicalNode component
         enrichedNode.userEmail = node.email || node.userEmail;
-        enrichedNode.uplineCoachName = node.coachName || node.uplineCoachName;
-        enrichedNode.uplineCoCoachName =
-          node.coCoachName || node.uplineCoCoachName;
+        
+        // DON'T set upline properties if this is a root coach/co-coach with partnership
+        // (having coCoachInfo means this is the root of a partnership hierarchy)
+        if (!node.coCoachInfo) {
+          enrichedNode.uplineCoachName = node.coachName || node.uplineCoachName;
+          enrichedNode.uplineCoCoachName =
+            node.coCoachName || node.uplineCoCoachName;
+        }
+        
         // Profile image fields (these would need to come from user profile data)
         enrichedNode.profileImage = node.profileImage;
         enrichedNode.photoURL = node.photoURL;

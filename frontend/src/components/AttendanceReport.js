@@ -93,8 +93,13 @@ const AttendanceReport = ({ user, onBack }) => {
       const mapFields = (node) => {
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
-        mapped.uplineCoachName = node.coachName || node.uplineCoachName;
-        mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        
+        // DON'T set upline properties if this is a root coach/co-coach with partnership
+        if (!node.coCoachInfo) {
+          mapped.uplineCoachName = node.coachName || node.uplineCoachName;
+          mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        }
+        
         if (mapped.teamMembers && mapped.teamMembers.length > 0) {
           mapped.teamMembers = mapped.teamMembers.map(mapFields);
         }
