@@ -171,7 +171,7 @@ export default async function handler(req, res) {
       // Admin: every active user in the system
       const { data: allUsers, error: allErr } = await supabase
         .from('team_table')
-        .select('UserId, UserName, Email, Role')
+        .select('UserId, UserName, Email, Role, Bmr')
         .eq('Status', 'Active');
 
       if (allErr) throw allErr;
@@ -189,6 +189,7 @@ export default async function handler(req, res) {
             UserName: m.UserName,
             Email:    m.Email,
             Role:     m.Role,
+            Bmr:      m.Bmr ?? null,
           });
         }
         return acc;
@@ -198,7 +199,7 @@ export default async function handler(req, res) {
       // Member: only themselves
       const { data: me, error: meErr } = await supabase
         .from('team_table')
-        .select('UserId, UserName, Email, Role')
+        .select('UserId, UserName, Email, Role, Bmr')
         .eq('UserId', userIdInt)
         .eq('Status', 'Active')
         .maybeSingle();
@@ -369,13 +370,15 @@ export default async function handler(req, res) {
       stepByUser.get(uid).push(r);
     }
 
-    // Build latest BMR and body weight maps (bmrResult is ordered desc by CreatedAt)
+    // Build latest BMR and body weight maps
+    // BMR → from team_table.Bmr (already fetched in usersInfo) — single source of truth
+    // Body weight → from weight_records_table latest row (for water requirement calc)
+    for (const u of usersInfo) {
+      const b = parseFloat(u.Bmr);
+      userBmrMap[u.UserId] = (!isNaN(b) && b > 0) ? b : null;
+    }
     for (const r of (bmrResult.data || [])) {
       const uid = r.UserId;
-      if (!(uid in userBmrMap)) {
-        const b = parseFloat(r.Bmr);
-        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
-      }
       if (!(uid in userBodyWeightMap)) {
         const w = parseFloat(r.Weight);
         userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
