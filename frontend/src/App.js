@@ -3682,7 +3682,7 @@ function WellnessValleyApp() {
   // Main app interface
   return (
     <LocationGuard>
-    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Header
         user={user}
         userRole={userRole}
@@ -3752,11 +3752,11 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
-        <div className="max-w-md w-full mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 xs:px-4 pt-14 xs:pt-16" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
+        <div className="max-w-lg w-full mx-auto space-y-4 xs:space-y-6 py-2 xs:py-3">
           {/* Back button toast message */}
           {toast.visible && (
-            <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
+            <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
               {toast.message}
             </div>
           )}
@@ -4711,7 +4711,7 @@ function WellnessValleyApp() {
         <button
           onClick={() => setShowCorrectionModal(true)}
           disabled={correctionLogs.length === 0}
-          className={`fixed bottom-24 right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
+          className={`fixed bottom-24 right-4 xs:right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
             correctionLogs.length > 0 
               ? 'bg-orange-500 hover:bg-orange-600 hover:shadow-xl active:scale-95 hover:scale-110 cursor-pointer' 
               : 'bg-gray-400 cursor-not-allowed opacity-50'

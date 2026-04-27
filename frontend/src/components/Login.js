@@ -168,23 +168,23 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+    <div className="min-h-screen flex items-center justify-center px-4 py-6 xs:py-8 relative overflow-hidden" style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), 24px)', paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
       {/* Splashing background elements */}
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-20 -left-20 w-64 h-64 bg-green-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
-        <div className="absolute -bottom-20 -right-20 w-72 h-72 bg-teal-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
-        <div className="absolute top-1/2 right-0 w-60 h-60 bg-emerald-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
+        <div className="absolute -top-20 -left-20 w-48 h-48 xs:w-64 xs:h-64 bg-green-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob"></div>
+        <div className="absolute -bottom-20 -right-20 w-56 h-56 xs:w-72 xs:h-72 bg-teal-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 right-0 w-44 h-44 xs:w-60 xs:h-60 bg-emerald-100 rounded-full mix-blend-multiply filter blur-xl opacity-70 animate-blob animation-delay-4000"></div>
       </div>
       
       {/* Login card */}
-      <div className="w-full max-w-md bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden relative z-10 border border-white/20">
+      <div className="w-full max-w-sm xs:max-w-md bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden relative z-10 border border-white/20">
         {/* Decorative accent */}
-        <div className="h-2 bg-gradient-to-r from-green-400 to-teal-400"></div>
+        <div className="h-1.5 xs:h-2 bg-gradient-to-r from-green-400 to-teal-400"></div>
         
-        <div className="p-8">
-          <div className="text-center mb-8">
+        <div className="p-5 xs:p-6 sm:p-8">
+          <div className="text-center mb-6 xs:mb-8">
             {/* Wellness Valley Logo */}
-            <div className="w-24 h-24 rounded-2xl flex items-center justify-center mx-auto mb-4 overflow-hidden">
+            <div className="w-20 h-20 xs:w-24 xs:h-24 rounded-2xl flex items-center justify-center mx-auto mb-3 xs:mb-4 overflow-hidden">
               <img 
                 src={wellnessValleyIcon} 
                 alt="Wellness Valley" 
@@ -199,10 +199,10 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
               />
             </div>
             
-            <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            <h1 className="text-2xl xs:text-3xl font-bold text-gray-800 mb-1.5 xs:mb-2">
               {otpSent ? 'Enter OTP' : 'Wellness Valley'}
             </h1>
-            <p className="text-gray-500">
+            <p className="text-sm xs:text-base text-gray-500">
               {otpSent 
                 ? `We've sent a verification code to ${email}` 
                 : 'Sign in to continue your wellness journey'
@@ -236,7 +236,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                   onSignIn();
                 }}
                 disabled={loading}
-                className="w-full flex items-center justify-center px-6 py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-4"
+                className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-3 xs:mb-4 min-h-[48px]"
               >
                 <div className="flex items-center">
                   <img 
@@ -259,7 +259,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
               </button>
 
               {/* Divider */}
-              <div className="relative my-6">
+              <div className="relative my-4 xs:my-6">
                 <div className="absolute inset-0 flex items-center">
                   <div className="w-full border-t border-gray-200"></div>
                 </div>
@@ -271,7 +271,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
               {/* Email form toggle */}
               <button
                 onClick={() => setShowEmailForm(true)}
-                className="w-full flex items-center justify-center px-6 py-3.5 bg-gray-50 border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:bg-gray-100 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400"
+                className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gray-50 border border-gray-200 rounded-xl shadow-sm hover:shadow-md hover:bg-gray-100 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 min-h-[48px]"
               >
                 <div className="flex items-center">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-3 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -293,7 +293,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
-                  className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-300"
+                className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-transparent transition-all duration-300 text-base"
                   placeholder="Enter your email"
                 />
               </div>
@@ -302,7 +302,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 type="button"
                 onClick={handleSendOTP}
                 disabled={emailLoading || !email}
-                className="w-full flex items-center justify-center px-6 py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50"
+                className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-gradient-to-r from-green-400 to-teal-400 text-white rounded-xl shadow-sm hover:shadow-md hover:from-green-500 hover:to-teal-500 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 min-h-[48px]"
               >
                 {emailLoading ? (
                   <span className="flex items-center">
@@ -331,7 +331,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
           ) : (
             <div className="space-y-6">
               {/* OTP Input Fields */}
-              <div className="flex justify-center space-x-3">
+              <div className="flex justify-center gap-2 xs:gap-3">
                 {otp.map((digit, index) => (
                   <input
                     key={index}
@@ -343,7 +343,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                     onKeyDown={(e) => handleKeyDown(e, index)}
                     onPaste={handlePaste}
                     onContextMenu={(e) => e.preventDefault()}
-                    className="w-12 h-12 text-center text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300"
+                    className="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300"
                     autoComplete="off"
                   />
                 ))}
@@ -353,7 +353,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
               <button
                 onClick={() => handleVerifyOTP()}
                 disabled={emailLoading || otp.some(digit => digit === '') || otpVerified}
-                className={`w-full flex items-center justify-center px-6 py-3.5 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 ${
+                className={`w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 rounded-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 min-h-[48px] ${
                   otpVerified
                     ? 'bg-green-300 cursor-not-allowed'
                     : 'bg-gradient-to-r from-green-400 to-teal-400 text-white hover:shadow-md hover:from-green-500 hover:to-teal-500'

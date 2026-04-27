@@ -176,8 +176,8 @@ const Header = ({
   };
 
   return (
-    <header className="bg-white shadow-lg border-b-4 border-green-500">
-      <div className="max-w-md mx-auto px-2 py-2 flex justify-between items-center">
+    <header className="bg-white shadow-lg border-b-4 border-green-500" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+      <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-1">
             <img
@@ -197,7 +197,7 @@ const Header = ({
               }}
             />
             <div className="flex-1 min-w-0 -ml-1">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
+              <h1 className="text-lg xs:text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
                 Wellness Valley
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
                   <span className="text-gray-500">
@@ -211,7 +211,7 @@ const Header = ({
                   <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span> */}
                 </span>
               </h1>
-              <p className="text-xs sm:text-sm text-green-600 truncate">
+              <p className="text-xs text-green-600 truncate hidden xs:block">
                 Track your meals effortlessly
               </p>
             </div>
@@ -254,7 +254,7 @@ const Header = ({
                 />
 
                 {/* Google-style fixed centered panel — no scroll */}
-                <div ref={menuPanelRef} className="fixed top-[68px] left-1/2 w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
+                <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] left-1/2 w-[min(320px,calc(100vw-20px))] xs:w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
                   {/* ── PROFILE CARD ── */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
                     {/* Close button */}

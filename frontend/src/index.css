@@ -55,7 +55,32 @@ body {
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Prevent double-tap zoom on iOS/Android */
+  touch-action: manipulation;
+  /* Responsive base font: 15px on small phones, 16px on normal+ */
+  font-size: 15px;
 }
+
+@media (min-width: 375px) {
+  body {
+    font-size: 16px;
+  }
+}
+
+/* Improve tap targets globally */
+button, a, [role="button"] {
+  min-height: 44px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Full-bleed iOS safe area helper */
+.safe-top    { padding-top:    env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.safe-left   { padding-left:   env(safe-area-inset-left, 0px); }
+.safe-right  { padding-right:  env(safe-area-inset-right, 0px); }
+
+/* Margin equivalents */
+.safe-mb { margin-bottom: env(safe-area-inset-bottom, 0px); }
 
 /* ── Leaflet route labels (Start / End) ─────────────────────────────────── */
 .leaflet-label-start,
