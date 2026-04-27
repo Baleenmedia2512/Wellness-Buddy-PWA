@@ -127,6 +127,11 @@ function WellnessValleyApp() {
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   const [showStepCounter, setShowStepCounter] = useState(false);
   const [user, setUser] = useState(null);
+  // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
+  // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
+  const [forceLoggedOut, setForceLoggedOut] = useState(
+    localStorage.getItem("userSignedOut") === "true"
+  );
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
     localStorage.getItem("isOtpVerified") === "true",
@@ -902,6 +907,24 @@ function WellnessValleyApp() {
       if (signOutInProgress.current) {
         return;
       }
+      // ✅ Also ignore if userEmail was cleared (sign-out completed)
+      const storedEmail = localStorage.getItem("userEmail");
+      if (!user && !storedEmail) {
+        // Normal sign-out state — do nothing, UI already reset
+        return;
+      }
+      // ✅ Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
+      if (user && localStorage.getItem("userSignedOut") === "true") {
+        console.warn("🚫 [Auth State] Blocked silent re-auth — user signed out");
+        auth.signOut().catch(() => {});
+        return;
+      }
+      // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
+      if (forceLoggedOut) {
+        console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
+        auth.signOut().catch(() => {});
+        return;
+      }
 
       if (user) {
         // Get database UserId if not already attached
@@ -1070,7 +1093,7 @@ function WellnessValleyApp() {
     });
 
     return unsubscribe;
-  }, [user?.id]);
+  }, [user?.id, forceLoggedOut]);
 
   // Setup for authenticated users
   useEffect(() => {
@@ -3020,6 +3043,10 @@ function WellnessValleyApp() {
       setLoading(true);
       setError(null);
 
+      // ✅ User is intentionally signing in — clear the sign-out block flags
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
+
       // Flag should already be set by Login component
       // But set it here too for redirect flow safety
       if (!sessionStorage.getItem("freshGoogleSignIn")) {
@@ -3154,6 +3181,10 @@ function WellnessValleyApp() {
     try {
       setLoading(true);
       setError(null);
+
+      // ✅ User is intentionally signing in — clear the sign-out block flags
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
 
       // Flag is already set by Login component before this function is called
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
@@ -3332,6 +3363,10 @@ function WellnessValleyApp() {
       // Set sign-out in progress flag to prevent concurrent sign-in
       signOutInProgress.current = true;
 
+      // ✅ Set React gate FIRST — this immediately shows Login screen
+      // and blocks any Firebase re-auth callbacks from re-logging in
+      setForceLoggedOut(true);
+
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem("freshGoogleSignIn");
 
@@ -3362,16 +3397,32 @@ function WellnessValleyApp() {
         }
       }
       await signOutUser();
+      // ✅ Clear all auth-related localStorage keys
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isOtpVerified");
+      localStorage.removeItem("otpUser");
+      localStorage.removeItem("currentPage");
+      localStorage.removeItem("dbUserId");
+      // Keep "userSignedOut" flag — set by signOutUser() to block iOS silent re-auth
+      sessionStorage.clear();
       resetApp();
     } catch (error) {
       console.error("❌ Sign out error:", error);
-      setError("Failed to sign out. Please try again.");
+      // ✅ Even if signOut throws, force clear the UI so user isn't stuck
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isOtpVerified");
+      localStorage.removeItem("otpUser");
+      localStorage.removeItem("currentPage");
+      localStorage.removeItem("dbUserId");
+      // Keep "userSignedOut" flag to block re-auth
+      sessionStorage.clear();
+      resetApp();
     } finally {
       setLoading(false);
-      // Reset the sign-out flag after a delay to allow cleanup
+      // Reset the sign-out flag after a longer delay on iOS to prevent re-auth
       setTimeout(() => {
         signOutInProgress.current = false;
-      }, 1000);
+      }, 3000);
     }
   };
 
@@ -3405,6 +3456,10 @@ function WellnessValleyApp() {
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
 
+        // ✅ User is logging in via OTP — clear the sign-out gate
+        localStorage.removeItem("userSignedOut");
+        setForceLoggedOut(false);
+
         // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
@@ -3429,11 +3484,15 @@ function WellnessValleyApp() {
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
+        localStorage.removeItem("userSignedOut");
+        setForceLoggedOut(false);
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
       }
     } else {
       // No OTP user found, proceed with verification
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
       setIsOtpVerified(true);
       localStorage.setItem("isOtpVerified", "true");
     }
@@ -3442,6 +3501,19 @@ function WellnessValleyApp() {
   // Loading state
   if (authLoading) {
     return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ iOS Sign-out gate: user explicitly signed out — always show Login
+  // This prevents Firebase silent re-auth from bypassing the logout
+  if (forceLoggedOut) {
+    return (
+      <Login
+        onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+        loading={loading}
+        error={error}
+        onOtpVerified={handleOtpVerified}
+      />
+    );
   }
 
   // Authentication flow

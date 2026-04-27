@@ -1,6 +1,7 @@
 import UIKit
 import Capacitor
 import WebKit
+import UserNotifications
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {

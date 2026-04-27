@@ -664,7 +664,7 @@ const ReminderSettingsPage = ({ onBack }) => {
           <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex gap-3 items-start">
             <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
             <p className="text-xs text-gray-500 leading-relaxed">
-              Alarms work on the <strong>Android app</strong> only.
+              Alarms work on the <strong>Android</strong> and <strong>iOS</strong> apps only.
               Preferences saved here will apply when you open the app.
             </p>
           </div>
