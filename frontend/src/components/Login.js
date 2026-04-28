@@ -228,53 +228,57 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 </div>
               )}
 
-              {/* Enhanced Google button - Primary */}
-              <button
-                onClick={async () => {
-                  // Set flag BEFORE calling onSignIn to prevent race condition
-                  sessionStorage.setItem('freshGoogleSignIn', 'true');
-                  console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
-                  try {
-                    await onSignIn();
-                  } catch (error) {
-                    if (error?.code === 'auth/unauthorized-domain') {
-                      setGoogleUnavailable(true);
-                      setShowEmailForm(true);
-                    }
-                  }
-                }}
-                disabled={loading}
-                className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-3 xs:mb-4 min-h-[48px]"
-              >
-                <div className="flex items-center">
-                  <img 
-                    src="https://developers.google.com/identity/images/g-logo.png"
-                    alt="Google logo" 
-                    className="h-5 w-5 mr-3"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    {loading ? (
-                      <span className="flex items-center">
-                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Signing in...
+              {/* Enhanced Google button - Hidden on iOS (not supported on iOS native app) */}
+              {Capacitor.getPlatform() !== 'ios' && (
+                <>
+                  <button
+                    onClick={async () => {
+                      // Set flag BEFORE calling onSignIn to prevent race condition
+                      sessionStorage.setItem('freshGoogleSignIn', 'true');
+                      console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
+                      try {
+                        await onSignIn();
+                      } catch (error) {
+                        if (error?.code === 'auth/unauthorized-domain') {
+                          setGoogleUnavailable(true);
+                          setShowEmailForm(true);
+                        }
+                      }
+                    }}
+                    disabled={loading}
+                    className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-3 xs:mb-4 min-h-[48px]"
+                  >
+                    <div className="flex items-center">
+                      <img 
+                        src="https://developers.google.com/identity/images/g-logo.png"
+                        alt="Google logo" 
+                        className="h-5 w-5 mr-3"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        {loading ? (
+                          <span className="flex items-center">
+                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-green-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                            </svg>
+                            Signing in...
+                          </span>
+                        ) : 'Continue with Google'}
                       </span>
-                    ) : 'Continue with Google'}
-                  </span>
-                </div>
-              </button>
+                    </div>
+                  </button>
 
-              {/* Divider */}
-              <div className="relative my-4 xs:my-6">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-200"></div>
-                </div>
-                <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">or</span>
-                </div>
-              </div>
+                  {/* Divider - only shown when Google button is visible */}
+                  <div className="relative my-4 xs:my-6">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-gray-200"></div>
+                    </div>
+                    <div className="relative flex justify-center text-sm">
+                      <span className="px-2 bg-white text-gray-500">or</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Email form toggle */}
               <button
