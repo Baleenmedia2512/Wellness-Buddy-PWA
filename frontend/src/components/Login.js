@@ -342,6 +342,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 )}
               </button>
 
+              {/* Back to other options button hidden
               <button
                 type="button"
                 onClick={() => {
@@ -352,6 +353,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
               >
                ← Back to other options
               </button>
+              */}
             </div>
           ) : (
             <div className="space-y-6">
