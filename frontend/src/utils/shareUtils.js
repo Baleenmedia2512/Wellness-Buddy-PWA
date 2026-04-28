@@ -2,7 +2,6 @@
 import html2canvas from "html2canvas";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
-import { isPlatform } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 
 /**
@@ -573,88 +572,6 @@ const shareWithRetryAndFallback = async (blob, options) => {
 };
 
 /**
- * Web fallback share using Web Share API or download
- * 
- * FIX NOTES (Web Mobile Browser):
- * - Removed canShare() gate and text+files combination (both cause silent failures
- *   on mobile Chrome/Safari and iOS Safari respectively).
- * - Uses files+title only — the safest combination across all mobile browsers.
- * - Falls back to download with clear WhatsApp instructions when Web Share fails.
- * 
- * @param {boolean} shareAsDocument - Kept for API compatibility, not used on web
- */
-const shareWeb = async (
-  blob,
-  { title, fileName },
-) => {
-  try {
-    // Try Web Share API with files only (no text — prevents NotAllowedError)
-    if (navigator.share) {
-      // ✅ Use blob.type so MIME matches actual content (JPEG on web)
-      const file = new File([blob], fileName, { type: blob.type });
-
-      try {
-        await navigator.share({
-          files: [file],
-          title: title,
-        });
-        console.log("✅ Shared via Web Share API with file");
-        return;
-      } catch (shareError) {
-        // User cancelled — stop here, no fallback
-        if (shareError.name === "AbortError" ||
-            shareError.message?.toLowerCase().includes("cancel")) {
-          console.log("ℹ️ User canceled share");
-          return;
-        }
-
-        // NotAllowedError — WhatsApp or browser blocked web file share
-        if (shareError.name === "NotAllowedError") {
-          console.log("⚠️ NotAllowedError — falling back to download with WhatsApp instructions");
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement("a");
-          link.href = url;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-          alert(
-            "Image saved to your downloads! 📥\n\n" +
-            "To share on WhatsApp:\n" +
-            "1. Open WhatsApp\n" +
-            "2. Open the chat\n" +
-            "3. Tap 📎 → Gallery → select the downloaded image"
-          );
-          return;
-        }
-
-        console.log("⚠️ Web Share API file share failed:", shareError.name, "— falling back to download");
-      }
-    }
-
-    // Fallback: Download with instructions
-    console.log("ℹ️ Web Share API not available or failed, downloading image...");
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-
-    console.log("✅ Image downloaded");
-    alert(
-      "Image downloaded! You can now attach it from your downloads folder.",
-    );
-  } catch (error) {
-    console.error("❌ Web share failed:", error);
-    throw error;
-  }
-};
-
-/**
  * Convert blob to base64 string
  */
 const blobToBase64 = (blob) => {
@@ -695,9 +612,6 @@ export const shareToWhatsApp = async (element, message = "") => {
       data: base64String,
       directory: Directory.Cache,
     });
-
-    // Construct WhatsApp share intent URL
-    const whatsappUrl = `whatsapp://send?text=${encodeURIComponent(message)}`;
 
     // On Android, we can use Share with specific app
     const shareResult = await Share.share({
