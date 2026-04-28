@@ -121,7 +121,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
     for (let i = 1; i < targetCount - 1; i++) {
       sampledIndices.push(Math.round(i * step));
     }
-    sampledIndices.push(0); // Always include oldest
+    sampledIndices.push(0); // Always include oldest.
 
     return Array.from(new Set(sampledIndices))
       .sort((a, b) => a - b)
