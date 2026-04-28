@@ -200,11 +200,8 @@ public class AlarmSoundService extends Service {
 
             AlarmManager am = (AlarmManager) getSystemService(Context.ALARM_SERVICE);
             if (am != null) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && am.canScheduleExactAlarms()) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                } else {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                }
+                // Use inexact alarm — no exact alarm permission needed
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
                 Log.d(TAG, "💤 Snoozed — will re-ring in 5 minutes");
             }
         } catch (Exception e) {
