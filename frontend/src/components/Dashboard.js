@@ -53,8 +53,8 @@ const EducationIcon = ({ className }) => (
 const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
 const WeightDashboard = lazy(() => import('./WeightDashboard'));
 const EducationDashboard = lazy(() => import('./EducationDashboard'));
-const StepsDashboard = lazy(() => import('./StepsDashboard'));
-const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
+// FEATURE DISABLED: const StepsDashboard = lazy(() => import('./StepsDashboard'));
+// FEATURE DISABLED: const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
 /**
  * Unified Dashboard with tabs for Nutrition and Weight tracking
@@ -153,10 +153,10 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           </div>
 
           {/* Tab navigation */}
-          <div className="grid grid-cols-5 border-b border-gray-200">
+          <div className="flex justify-center border-b border-gray-200">
             <TouchFeedbackButton
               onClick={() => handleTabChange('nutrition')}
-              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'nutrition'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -175,7 +175,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('weight')}
-              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'weight'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -187,7 +187,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('education')}
-              className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'education'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
@@ -197,6 +197,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               <span>Education</span>
             </TouchFeedbackButton>
 
+            {/* FEATURE DISABLED: Steps tab button
             <TouchFeedbackButton
               onClick={() => handleTabChange('steps')}
               className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
@@ -208,7 +209,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               <Footprints className="hidden md:block h-4 w-4" />
               <span>Steps</span>
             </TouchFeedbackButton>
+            */}
 
+            {/* FEATURE DISABLED: Screen tab button
             <TouchFeedbackButton
               onClick={() => handleTabChange('screen')}
               className={`w-full min-w-0 flex items-center justify-center gap-1 md:gap-2 py-3 px-1 md:px-4 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
@@ -220,6 +223,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               <Smartphone className="hidden md:block h-4 w-4" />
               <span>Screen</span>
             </TouchFeedbackButton>
+            */}
           </div>
         </div>
       </div>
@@ -425,6 +429,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
             />
           )}
 
+          {/* FEATURE DISABLED: Steps tab content
           {activeTab === 'steps' && (
             <StepsDashboard
               user={displayUser}
@@ -434,7 +439,9 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
             />
           )}
+          */}
 
+          {/* FEATURE DISABLED: Screen tab content
           {activeTab === 'screen' && (
             <ScreenDashboard
               key={displayUser?.id || displayUser?.userId || 'self'}
@@ -445,6 +452,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
               setSelectedDate={(d) => { setSelectedDate(d); setShowCalendar(false); }}
             />
           )}
+          */}
         </Suspense>
       </div>
     </div>

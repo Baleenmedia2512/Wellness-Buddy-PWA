@@ -59,10 +59,11 @@ import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
-import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
-import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
+// ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
+const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
+const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
+const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 import CoachScoreSummary from "./components/CoachScoreSummary";
-import PersonalDisciplineScore from "./components/PersonalDisciplineScore";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -584,6 +585,17 @@ function WellnessValleyApp() {
       // Clear nutrition data and image preview when switching to dashboard
       if (nutritionData) setNutritionData(null);
       if (imagePreview) setImagePreview(null);
+      if (watchResult) setWatchResult(null);
+      if (educationResult) setEducationResult(null);
+      if (weightResult) {
+        setWeightResult(null);
+        setPendingWeightImage(null);
+        setWeightEntrySaved(false);
+        setSavedWeightId(null);
+        savedWeightIdRef.current = null;
+      }
+      if (selectedImage) setSelectedImage(null);
+      if (imageType) setImageType(null);
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
       if (
@@ -605,7 +617,7 @@ function WellnessValleyApp() {
       setShowDashboard(true);
       localStorage.setItem("currentPage", "dashboard");
     },
-    [user, checkUserStatus, nutritionData, imagePreview, imageType],
+    [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
   );
 
   const showMainPage = () => {
@@ -1433,9 +1445,8 @@ function WellnessValleyApp() {
   // Fetch saved custom profile image for share card
   useEffect(() => {
     if (!user?.email || !apiBaseUrl) { setSavedProfileImage(null); return; }
-    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`, {
-      cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-    })
+    // Use standard caching — no need to bust cache on every render
+    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);

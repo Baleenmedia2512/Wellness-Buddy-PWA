@@ -5,12 +5,21 @@ import WellnessValleyApp from './App';
 import { SplashScreen } from '@capacitor/splash-screen';
 import { Capacitor } from '@capacitor/core';
 
+// ✅ PERFORMANCE: Suppress all console output in production
+// In iOS WKWebView, every console.log bridges to native — very expensive
+if (process.env.NODE_ENV === 'production') {
+  const noop = () => {};
+  console.log = noop;
+  console.warn = noop;
+  console.info = noop;
+  console.debug = noop;
+  // Keep console.error for critical crash reporting only
+}
+
 // ✅ CRITICAL FIX: Explicitly hide splash screen to prevent text selection overlay issue //
 if (Capacitor.isNativePlatform()) {
   // Hide splash screen immediately to remove window layer
-  SplashScreen.hide().catch(err => {
-    console.warn('Splash screen already hidden:', err);
-  });
+  SplashScreen.hide().catch(() => {});
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));

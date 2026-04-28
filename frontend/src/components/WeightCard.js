@@ -24,6 +24,11 @@ const WeightCard = React.memo(({
   const [deletedOnce, setDeletedOnce] = useState(false);
 
   const startXRef = useRef(0);
+  const startYRef = useRef(0);
+  const dxRef = useRef(0);
+  const draggingRef = useRef(false);
+  const armedRef = useRef(false);
+  const touchBlockedRef = useRef(false);
   const rafRef = useRef(null);
   const elRef = useRef(null);
 
@@ -61,25 +66,17 @@ const WeightCard = React.memo(({
       ' · ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
-  const onPointerDown = (e) => {
-    if (!e.isPrimary || leaving) return;
-    cancelRAF();
-    setDragging(true);
-    setAnimating(false);
-    startXRef.current = e.clientX;
-    elRef.current?.setPointerCapture?.(e.pointerId);
-  };
-
-  const onPointerMove = (e) => {
-    if (!dragging || !e.isPrimary || leaving) return;
-    const delta = e.clientX - startXRef.current;
+  const applyDelta = (clientX) => {
+    const delta = clientX - startXRef.current;
     const nextDx = Math.max(Math.min(delta, 0), -SWIPE_MAX);
+    dxRef.current = nextDx;
     if (!rafRef.current) {
       rafRef.current = requestAnimationFrame(() => {
-        setDx(nextDx);
+        setDx(dxRef.current);
         rafRef.current = null;
-        const isNowArmed = Math.abs(nextDx) >= SWIPE_DELETE_THRESHOLD;
-        if (isNowArmed !== armed) {
+        const isNowArmed = Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD;
+        if (isNowArmed !== armedRef.current) {
+          armedRef.current = isNowArmed;
           setArmed(isNowArmed);
           if (isNowArmed && typeof navigator !== 'undefined' && 'vibrate' in navigator) {
             try { navigator.vibrate(10); } catch {}
@@ -89,18 +86,19 @@ const WeightCard = React.memo(({
     }
   };
 
-  const finishInteraction = (e) => {
-    if (!dragging) return;
+  const finishGesture = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
     setDragging(false);
     cancelRAF();
-    elRef.current?.releasePointerCapture?.(e?.pointerId);
-    if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
+    if (Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD) {
       if (deletedOnce) return;
       setDeletedOnce(true);
       setLeaving(true);
       setAnimating(true);
       requestAnimationFrame(() => {
         setDx(-window.innerWidth);
+        dxRef.current = -window.innerWidth;
         setTimeout(() => { onDelete(data); }, 180);
       });
       return;
@@ -108,13 +106,66 @@ const WeightCard = React.memo(({
     setAnimating(true);
     requestAnimationFrame(() => {
       setDx(0);
-      setTimeout(() => { setAnimating(false); setArmed(false); }, 220);
+      dxRef.current = 0;
+      setTimeout(() => { setAnimating(false); setArmed(false); armedRef.current = false; }, 220);
     });
   };
 
-  const onPointerUp = (e) => finishInteraction(e);
-  const onPointerCancel = (e) => finishInteraction(e);
-  const onPointerLeave = (e) => finishInteraction(e);
+  // Touch events — primary path on iOS
+  const onTouchStart = (e) => {
+    if (leaving) return;
+    touchBlockedRef.current = false;
+    const t = e.touches[0];
+    startXRef.current = t.clientX;
+    startYRef.current = t.clientY;
+    dxRef.current = 0;
+    draggingRef.current = true;
+    setDragging(true);
+    setAnimating(false);
+  };
+
+  const onTouchMove = (e) => {
+    if (!draggingRef.current || leaving) return;
+    const t = e.touches[0];
+    const deltaX = t.clientX - startXRef.current;
+    const deltaY = t.clientY - startYRef.current;
+    if (!touchBlockedRef.current && Math.abs(deltaY) > Math.abs(deltaX) + 5) {
+      touchBlockedRef.current = true;
+      draggingRef.current = false;
+      setDragging(false);
+      cancelRAF();
+      setAnimating(true);
+      requestAnimationFrame(() => { setDx(0); dxRef.current = 0; setTimeout(() => setAnimating(false), 220); });
+      return;
+    }
+    if (touchBlockedRef.current) return;
+    if (deltaX < 0) e.preventDefault();
+    applyDelta(t.clientX);
+  };
+
+  const onTouchEnd = () => finishGesture();
+  const onTouchCancel = () => finishGesture();
+
+  // Pointer events — fallback for non-touch (desktop/Android mouse)
+  const onPointerDown = (e) => {
+    if (!e.isPrimary || leaving || e.pointerType === 'touch') return;
+    cancelRAF();
+    draggingRef.current = true;
+    setDragging(true);
+    setAnimating(false);
+    startXRef.current = e.clientX;
+    dxRef.current = 0;
+    try { elRef.current?.setPointerCapture?.(e.pointerId); } catch {}
+  };
+
+  const onPointerMove = (e) => {
+    if (!draggingRef.current || !e.isPrimary || leaving || e.pointerType === 'touch') return;
+    applyDelta(e.clientX);
+  };
+
+  const onPointerUp = (e) => { if (e.pointerType !== 'touch') finishGesture(); };
+  const onPointerCancel = (e) => { if (e.pointerType !== 'touch') finishGesture(); };
+  const onPointerLeave = (e) => { if (e.pointerType !== 'touch') finishGesture(); };
 
   const progress = Math.min(1, Math.abs(dx) / SWIPE_DELETE_THRESHOLD);
   const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
@@ -124,7 +175,7 @@ const WeightCard = React.memo(({
   return (
     <div
       className="relative w-full"
-      style={{ touchAction: 'pan-y', minHeight: 80, animation: 'slideInUp 0.2s ease-out both' }}
+      style={{ touchAction: dragging ? 'none' : 'pan-y', minHeight: 80, animation: 'slideInUp 0.2s ease-out both' }}
     >
       {/* Swipe delete background */}
       <div aria-hidden className="absolute inset-0 z-0 flex items-center justify-end pr-5 overflow-hidden rounded-2xl">
@@ -151,9 +202,13 @@ const WeightCard = React.memo(({
         tabIndex={0}
         onKeyDown={(e) => {
           if (leaving) return;
-          if (e.key === 'Backspace' || e.key === 'Delete') finishInteraction(e);
+          if (e.key === 'Backspace' || e.key === 'Delete') finishGesture();
           if (e.key === 'Enter') onView(data);
         }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchCancel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
