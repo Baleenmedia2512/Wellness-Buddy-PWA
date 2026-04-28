@@ -2325,6 +2325,16 @@ function WellnessValleyApp() {
         if (detectedType.details?.weightValue) {
           // Weight was already extracted in the unified detection call
           console.log("✅ Using weight data from unified detection");
+          // Normalize BMR - AI may return different casing or include units
+          const rawBmr = detectedType.details?.bmr ?? detectedType.details?.Bmr ?? detectedType.details?.BMR ?? null;
+          let normalizedBmr = null;
+          if (rawBmr !== undefined && rawBmr !== null) {
+            // Strip non-digits and parse integer (e.g., "1500 kcal" -> 1500)
+            const digits = String(rawBmr).replace(/[^0-9]/g, '');
+            const parsed = digits ? parseInt(digits, 10) : NaN;
+            normalizedBmr = !isNaN(parsed) && parsed > 0 ? parsed : null;
+          }
+
           detectedWeight = {
             success: true,
             weightValue: detectedType.details.weightValue,
@@ -2333,7 +2343,7 @@ function WellnessValleyApp() {
             bmi: detectedType.details.bmi,
             bodyFat: detectedType.details.bodyFat,
             muscleMass: detectedType.details.muscleMass,
-            bmr: detectedType.details.bmr,
+            bmr: normalizedBmr,
           };
         } else {
           // Fallback: Weight value not extracted, need manual entry

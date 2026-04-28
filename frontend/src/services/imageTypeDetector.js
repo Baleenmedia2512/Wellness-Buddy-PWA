@@ -102,8 +102,8 @@ class ImageTypeDetector {
 
 STEP 1 - CLASSIFY:
 - "education" - Online meeting screenshot (Zoom, Meet, Teams, WebEx) OR in-person gathering photo (group of people at club/nutrition center/classroom/wellness center)
-- "weight" - Weighing scale showing body weight
-- "smartwatch" - Smartwatch, fitness band, or health/fitness app screenshot showing activity/calories burned (Apple Watch, Samsung Galaxy Watch, Fitbit, Garmin, Mi Band, Google Fit, Apple Health, Samsung Health, etc.)
+- "weight" - ⚡ HIGHEST PRIORITY: Physical weighing scale device OR smart scale app screenshot/result (Huawei Health, Mi Fit, Fitdays, Renpho, Garmin Connect, iHealth, Yunmai, FitTrack, Eufy, body composition report showing Weight + any of: BMI, Body Fat, BMR, Muscle Mass, Skeletal Muscle, Visceral Fat, Bone Mass, Protein %, Body Water, Body Age)
+- "smartwatch" - Smartwatch or fitness band ACTIVITY screen (Apple Watch, Samsung Galaxy Watch, Fitbit, Garmin, Mi Band, Google Fit, Apple Health, Samsung Health) showing steps/calories BURNED/heart rate rings — NOT a body composition results screen
 - "food" - Food, meal, or drink (DEFAULT if none of the above)
 
 STEP 2 - EXTRACT DATA based on classification:
@@ -118,17 +118,17 @@ IF EDUCATION:
   "participantCount": number of visible people (for in-person gatherings)
 }
 
-IF WEIGHT:
+IF WEIGHT (physical scale OR smart scale app screenshot):
 {
   "type": "weight",
   "confidence": 0.0-1.0,
   "reason": "brief explanation",
-  "weight": number (20-300 kg or 44-660 lbs),
+  "weight": number (20-300 kg or 44-660 lbs) — REQUIRED,
   "unit": "kg"|"lbs",
   "bmi": number|null,
   "bodyFat": number|null,
   "muscleMass": number|null,
-  "bmr": number|null
+  "bmr": number|null   ← CRITICAL: extract integer calorie value (e.g. "1703kcal" → 1703, "BMR: 1703" → 1703)
 }
 
 IF SMARTWATCH:
@@ -159,32 +159,30 @@ IF FOOD (default):
   "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
 }
 
-CRITICAL RULES:
-- If you see a SMARTWATCH or FITNESS BAND on a wrist, or a FITNESS/HEALTH APP screenshot (showing steps, calories, heart rate rings) = "smartwatch" (HIGH PRIORITY)
-- If you see a WEIGHING SCALE (bathroom scale, body composition scale) with digital/analog display showing numbers = "weight" (HIGHEST PRIORITY)
-- If you see MULTIPLE PEOPLE gathered together (not eating, not on a scale) = "education"
-- If you see food/meals on plates/bowls = "food"
-- For FOOD: MUST return at least ONE food item - NEVER empty array
-- For FOOD: If unclear, describe what you see (Rice, Curry, Mixed meal)
+🏋️ WEIGHT SCALE DETECTION — READ CAREFULLY:
+CLASSIFY AS "weight" if you see ANY of these:
+✅ Physical digital/analog bathroom scale or body composition scale device
+✅ Smart scale app result screen (Huawei Health, Mi Fit, Fitdays, Renpho, iHealth, Yunmai, FitTrack, Eufy, etc.)
+✅ Mobile app screenshot showing a table/list of body metrics: Weight, BMI, Body Fat %, Muscle Mass, BMR, Skeletal Muscle, Visceral Fat, Bone Mass, Body Water, Protein %, Body Age, Subcutaneous Fat
+✅ Screenshot from a health app showing a body composition measurement result (even if no physical scale is visible)
 
-⚠️ WEIGHT SCALE DETECTION:
-- Look for: digital displays with numbers, scale platform, feet on scale, bathroom scale design
-- Common scale types: digital scales, smart scales (with BF%, BMI), analog scales with dial
-- If ANY scale-like device is visible with weight measurement = classify as "weight"
-- Do NOT confuse scales with phones, tablets, or meeting screens
+⚠️ BMR EXTRACTION RULES (CRITICAL for smart scale screenshots):
+- Look for "BMR" label in the metrics list — value is in kcal (e.g. "1703kcal" or "1703 kcal")
+- Extract ONLY the numeric integer part: "1703kcal" → bmr: 1703
+- BMR is typically between 800 and 4000 kcal for adults
+- If visible, ALWAYS populate the bmr field — do NOT return null if you can read the number
 
-🔥 NUTRITION ESTIMATION RULES (CRITICAL):
+⚠️ DO NOT classify as "smartwatch" if the screenshot shows body composition results (BMI, Body Fat, BMR, etc.)
+⚠️ DO NOT classify as "food" if the image is a body metrics report/table
+
+🔥 NUTRITION ESTIMATION RULES (CRITICAL — for food only):
 - NEVER return 0 for calories UNLESS truly zero-calorie (water, black tea, black coffee only)
-- If unsure about exact values, provide REASONABLE ESTIMATES based on:
-  * Typical serving size for that food type
-  * Visual portion size in the image
-  * Standard nutrition for that cuisine/category
+- If unsure about exact values, provide REASONABLE ESTIMATES based on typical serving sizes
 - Indian food examples:
   * Lemon Rice (1 plate ~150g) = ~230 cal, 45g carbs, 4g protein, 5g fat
   * Biryani (1 plate ~200g) = ~350 cal, 48g carbs, 12g protein, 12g fat
   * Idli (1 piece ~40g) = ~39 cal, 8g carbs, 2g protein, 0.2g fat
   * Dosa (1 piece ~70g) = ~133 cal, 20g carbs, 4g protein, 4g fat
-- If genuinely cannot estimate, use category averages (rice dish ~200 cal/100g, curry ~80 cal/100g)
 - ALWAYS provide estimates - empty/null nutrition is NOT acceptable
 
 Return ONLY JSON matching ONE of the above formats.`;
