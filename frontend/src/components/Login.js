@@ -228,12 +228,11 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 </div>
               )}
 
-              {/* Enhanced Google button - Hidden on iOS (not supported on iOS native app) */}
-              {Capacitor.getPlatform() !== 'ios' && (
+              {/* Enhanced Google button - DISABLED */}
+              {false && Capacitor.getPlatform() !== 'ios' && (
                 <>
                   <button
                     onClick={async () => {
-                      // Set flag BEFORE calling onSignIn to prevent race condition
                       sessionStorage.setItem('freshGoogleSignIn', 'true');
                       console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
                       try {
@@ -268,7 +267,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                     </div>
                   </button>
 
-                  {/* Divider - only shown when Google button is visible */}
+                  {/* Divider */}
                   <div className="relative my-4 xs:my-6">
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-gray-200"></div>

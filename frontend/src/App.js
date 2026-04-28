@@ -1003,13 +1003,13 @@ function WellnessValleyApp() {
       // ✅ Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
       if (user && localStorage.getItem("userSignedOut") === "true") {
         console.warn("🚫 [Auth State] Blocked silent re-auth — user signed out");
-        auth.signOut().catch(() => {});
+        signOutUser().catch(() => {});
         return;
       }
       // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
       if (forceLoggedOut) {
         console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
-        auth.signOut().catch(() => {});
+        signOutUser().catch(() => {});
         return;
       }
 
