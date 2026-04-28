@@ -1,7 +1,7 @@
 {
   "files": {
     "main.css": "./static/css/main.e4804cc3.css",
-    "main.js": "./static/js/main.37e754a5.js",
+    "main.js": "./static/js/main.53026e6b.js",
     "static/js/721.eaeee08d.chunk.js": "./static/js/721.eaeee08d.chunk.js",
     "static/js/77.7fc045ca.chunk.js": "./static/js/77.7fc045ca.chunk.js",
     "static/js/872.210fc427.chunk.js": "./static/js/872.210fc427.chunk.js",
@@ -53,7 +53,7 @@
     "static/media/wellness-valley-icon.png": "./static/media/wellness-valley-icon.b27d38d712432f83be6e.png",
     "index.html": "./index.html",
     "main.e4804cc3.css.map": "./static/css/main.e4804cc3.css.map",
-    "main.37e754a5.js.map": "./static/js/main.37e754a5.js.map",
+    "main.53026e6b.js.map": "./static/js/main.53026e6b.js.map",
     "721.eaeee08d.chunk.js.map": "./static/js/721.eaeee08d.chunk.js.map",
     "77.7fc045ca.chunk.js.map": "./static/js/77.7fc045ca.chunk.js.map",
     "872.210fc427.chunk.js.map": "./static/js/872.210fc427.chunk.js.map",
@@ -105,6 +105,6 @@
   },
   "entrypoints": [
     "static/css/main.e4804cc3.css",
-    "static/js/main.37e754a5.js"
+    "static/js/main.53026e6b.js"
   ]
 }

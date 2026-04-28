@@ -3358,10 +3358,14 @@ function WellnessValleyApp() {
 
   const handleSignOut = async () => {
     try {
-      setLoading(true);
+      // Do NOT set loading=true here — it would pass loading=true to Login
+      // which immediately shows "Signing in..." on the Google button after sign-out.
 
       // Set sign-out in progress flag to prevent concurrent sign-in
       signOutInProgress.current = true;
+
+      // ✅ Ensure loading is false BEFORE showing Login screen
+      setLoading(false);
 
       // ✅ Set React gate FIRST — this immediately shows Login screen
       // and blocks any Firebase re-auth callbacks from re-logging in
