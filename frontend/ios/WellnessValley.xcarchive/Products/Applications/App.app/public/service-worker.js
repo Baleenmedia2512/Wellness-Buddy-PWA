@@ -1,6 +1,6 @@
 // Wellness Valley PWA Service Worker
 // Version changes automatically on each build to force cache update
-const VERSION = '2.4.1777359615539'; // Will be replaced during build
+const VERSION = '2.4.1777360363217'; // Will be replaced during build
 const CACHE_NAME = `wellness-valley-${VERSION}`;
 const DATA_CACHE_NAME = `wellness-data-${VERSION}`;
 
