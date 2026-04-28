@@ -1486,6 +1486,13 @@ function WellnessValleyApp() {
       if (!response.ok || !data.success) {
         // Weight validation failed - show user-friendly alert modal
         console.log('❌ Weight validation failed:', data.validation);
+
+        // 🔥 Even though weight was rejected, BMR may have been saved by the backend.
+        // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
+        if (data.bmrSaved && weightData.bmr) {
+          console.log('🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:', weightData.bmr);
+          setBmrUpdateKey((prev) => prev + 1);
+        }
         
         // Build friendly, supportive message for user
         let alertMessage = `We noticed a significant change from your last weigh-in.`;
@@ -1558,6 +1565,13 @@ function WellnessValleyApp() {
       if (data?.id) {
         setSavedWeightId(data.id);
         savedWeightIdRef.current = data.id;
+      }
+
+      // 🔥 If BMR was saved with this weight entry, force NutritionDashboard to re-fetch
+      // BMR is synced to team_table by the backend — increment the key so it re-reads it
+      if (weightData.bmr) {
+        setBmrUpdateKey((prev) => prev + 1);
+        console.log("🔥 [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:", weightData.bmr);
       }
 
       // Hide saving overlay
