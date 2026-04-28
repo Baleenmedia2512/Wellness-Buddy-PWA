@@ -223,8 +223,13 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (am.canScheduleExactAlarms()) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                    Log.d(TAG, "✅ Rescheduled (exact) for " + activityType + " at " + nextDay.getTime());
+                    try {
+                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
+                        Log.d(TAG, "✅ Rescheduled (exact) for " + activityType + " at " + nextDay.getTime());
+                    } catch (SecurityException se) {
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
+                        Log.w(TAG, "⚠️ Rescheduled (inexact) fallback for " + activityType);
+                    }
                 } else {
                     am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
                     Log.w(TAG, "⚠️ Rescheduled (inexact) for " + activityType);
@@ -289,10 +294,17 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (am.canScheduleExactAlarms()) {
-                    am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                            trigger.getTimeInMillis(), pi);
-                    Log.d(TAG, "✅ Scheduled (exact) " + activityType
-                            + " at " + trigger.getTime());
+                    try {
+                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                                trigger.getTimeInMillis(), pi);
+                        Log.d(TAG, "✅ Scheduled (exact) " + activityType
+                                + " at " + trigger.getTime());
+                    } catch (SecurityException se) {
+                        // Fallback: permission revoked between check and call
+                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                                trigger.getTimeInMillis(), pi);
+                        Log.w(TAG, "⚠️ Fell back to inexact for " + activityType + ": " + se.getMessage());
+                    }
                 } else {
                     am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
                             trigger.getTimeInMillis(), pi);

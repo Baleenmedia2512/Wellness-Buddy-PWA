@@ -4,11 +4,14 @@ import WebKit
 import UserNotifications
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+
+        // ✅ Set notification delegate so notifications appear while app is in foreground
+        UNUserNotificationCenter.current().delegate = self
 
         // ✅ iOS equivalent of Android hardwareAccelerated=true
         // WKWebView uses GPU-accelerated rendering by default - ensure it's optimized
@@ -77,4 +80,29 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    // MARK: - UNUserNotificationCenterDelegate
+
+    /// Called when a notification is about to be displayed while the app is in the FOREGROUND.
+    /// Without this, iOS silently drops local notifications when the app is open.
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        // Show banner + play sound even when the app is open
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
+    }
+
+    /// Called when the user taps a notification (foreground or background).
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void
+    ) {
+        completionHandler()
+    }
 }

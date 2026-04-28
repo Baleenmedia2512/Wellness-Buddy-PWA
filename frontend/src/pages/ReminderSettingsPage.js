@@ -39,6 +39,7 @@ import {
   REMINDER_OFFSET,
   fetchTimeWindows,
   loadReminderPreferences,
+  saveReminderPreferences,
   buildDefaultPreferences,
   mergePreferencesWithWindows,
   updateReminders,
@@ -265,7 +266,8 @@ const ReminderSettingsPage = ({ onBack }) => {
   const [needsExactPerm, setNeedsExactPerm] = useState(false);
   const [resetting,     setResetting]     = useState(false);
 
-  const isNative = Capacitor.isNativePlatform();
+  const isNative   = Capacitor.isNativePlatform();
+  const isAndroid  = Capacitor.getPlatform() === 'android';
 
   // ── Load on mount ─────────────────────────────────────────────────────
 
@@ -284,8 +286,8 @@ const ReminderSettingsPage = ({ onBack }) => {
 
       setPrefs(currentPrefs);
 
-      // Check exact-alarm permission on Android 12+
-      if (isNative) {
+      // Check exact-alarm permission on Android 12+ only
+      if (isAndroid) {
         const { canScheduleExact } = await checkExactAlarmPermission();
         setNeedsExactPerm(!canScheduleExact);
       }
@@ -295,7 +297,7 @@ const ReminderSettingsPage = ({ onBack }) => {
     } finally {
       setLoading(false);
     }
-  }, [isNative]);
+  }, [isNative, isAndroid]);
 
   useEffect(() => {
     loadPreferences();
@@ -355,7 +357,9 @@ const ReminderSettingsPage = ({ onBack }) => {
         : 'Reminder preferences saved!');
     } catch (err) {
       console.error('[ReminderSettingsPage] Save error:', err);
-      showToast('error', 'Failed to save reminders. Please try again.');
+      // Still save preferences to localStorage even if native scheduling failed
+      saveReminderPreferences(prefs);
+      showToast('success', 'Preferences saved! (Scheduling may be limited by device settings)');
     } finally {
       setSaving(false);
     }
@@ -469,9 +473,9 @@ const ReminderSettingsPage = ({ onBack }) => {
       {/* ── Body ─────────────────────────────────────────────────────── */}
       <div className="max-w-lg mx-auto w-full px-4 pt-5 space-y-3">
 
-        {/* ── Exact-alarm permission banner (Android 12+) ───────────── */}
+        {/* ── Exact-alarm permission banner (Android 12 only) ──────── */}
         <AnimatePresence>
-          {isNative && needsExactPerm && (
+          {isAndroid && needsExactPerm && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -481,17 +485,18 @@ const ReminderSettingsPage = ({ onBack }) => {
               <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
               <div className="flex-1">
                 <p className="text-sm font-bold text-amber-800 mb-1">
-                  Exact Alarm Permission Required
+                  Exact Alarm Permission Needed
                 </p>
                 <p className="text-xs text-amber-700 mb-3 leading-relaxed">
-                  Android 12+ requires explicit permission to schedule exact
-                  reminders. Without it, alarms may be delayed by the OS.
+                  For precise reminder times, please grant exact alarm
+                  permission in Settings. Reminders will still work
+                  but may arrive a few minutes late without it.
                 </p>
                 <TouchFeedbackButton
                   onClick={handleGrantExactAlarm}
                   className="px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-xl active:bg-amber-600"
                 >
-                  Grant Permission
+                  Open Settings
                 </TouchFeedbackButton>
               </div>
             </motion.div>

@@ -47,6 +47,7 @@ import { duplicateDetectionService } from "./services/duplicateDetectionService"
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
+import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/reminderService";
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
@@ -646,6 +647,18 @@ function WellnessValleyApp() {
 
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
+
+      // On Android, also prompt for exact-alarm permission so reminders fire on time
+      if (Capacitor.getPlatform() === "android") {
+        try {
+          const { canScheduleExact } = await checkExactAlarmPermission();
+          if (!canScheduleExact) {
+            await openExactAlarmSettings();
+          }
+        } catch (e) {
+          console.warn("⚠️ Exact alarm permission check failed:", e);
+        }
+      }
 
       console.log("✅ All permissions requested");
     } catch (err) {
