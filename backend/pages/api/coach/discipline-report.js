@@ -11,7 +11,7 @@ import {
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:35) are counted on-time
-// const WINDOW_BUFFER_SECONDS = 300;
+// const WINDOW_BUFFER_SECONDS = 300;...
 const WINDOW_BUFFER_SECONDS = 59;
 
 // Helper: Add buffer seconds to a time string "HH:MM:SS"
