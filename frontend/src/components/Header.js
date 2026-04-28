@@ -246,8 +246,8 @@ const Header = ({
                 )}
               </TouchFeedbackButton>
 
-              {/* AI/Manual mode indicator (read-only) */}
-              <div
+              {/* AI/Manual mode indicator — FEATURE DISABLED */}
+              {/* <div
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
                 style={{
                   background: manualModeActive ? "#fff7ed" : "#f0fdf4",
@@ -262,7 +262,6 @@ const Header = ({
                 >
                   {manualModeActive ? "Manual" : "AI"}
                 </span>
-                {/* Toggle track */}
                 <span
                   className="relative inline-flex flex-shrink-0 rounded-full transition-colors duration-200"
                   style={{
@@ -281,7 +280,7 @@ const Header = ({
                     }}
                   />
                 </span>
-              </div>
+              </div> */}
             </div>
 
             {menuOpen && (
@@ -392,62 +391,47 @@ const Header = ({
                         </span>
                       </TouchFeedbackButton>
 
-                      {/* Step Counter */}
-                      {onShowStepCounter && (
+                      {/* Step Counter — FEATURE DISABLED */}
+                      {/* {onShowStepCounter && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowStepCounter();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowStepCounter(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Step Counter"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-teal-100 flex items-center justify-center">
                             <Footprints className="h-5 w-5 text-teal-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Step Counter
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Step Counter</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
-                      {/* Screen Time */}
-                      {onShowScreenTime && (
+                      {/* Screen Time — FEATURE DISABLED */}
+                      {/* {onShowScreenTime && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowScreenTime();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowScreenTime(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Screen Time"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
                             <Smartphone className="h-5 w-5 text-blue-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Screen Time
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
-                      {/* Reminders */}
-                      {onShowReminders && (
+                      {/* Reminders — FEATURE DISABLED */}
+                      {/* {onShowReminders && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowReminders();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowReminders(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Reminders"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-green-100 flex items-center justify-center">
                             <Bell className="h-5 w-5 text-green-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Reminders
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Reminders</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
                       {/* AI Token Monitor */}
                       {onShowAdminDashboard && (

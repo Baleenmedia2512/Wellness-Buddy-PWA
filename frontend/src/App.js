@@ -103,9 +103,9 @@ const WellnessUniversityReport = lazy(() =>
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounselling"),
 );
-const StepCounter = lazy(() => import("./components/StepCounter"));
-const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
-const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
+// const StepCounter = lazy(() => import("./components/StepCounter")); // FEATURE DISABLED
+// const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
+// const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage")); // FEATURE DISABLED
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -126,7 +126,7 @@ function WellnessValleyApp() {
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
-  const [showStepCounter, setShowStepCounter] = useState(false);
+  // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
   const [user, setUser] = useState(null);
   // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
   // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
@@ -236,22 +236,20 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
-  // Step Counter state
-  const showStepCounterPage = useCallback(() => {
-    setShowStepCounter(true);
-  }, []);
+  // Step Counter state — FEATURE DISABLED
+  // const [showStepCounter, setShowStepCounter] = useState(false);
+  const [showStepCounter] = useState(false);
+  // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
 
-  // Screen Time state
-  const [showScreenTime, setShowScreenTime] = useState(false);
-  const showScreenTimePage = useCallback(() => {
-    setShowScreenTime(true);
-  }, []);
+  // Screen Time state — FEATURE DISABLED
+  const [showScreenTime] = useState(false);
+  // const [showScreenTime, setShowScreenTime] = useState(false);
+  // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
-  // Reminders state
-  const [showReminders, setShowReminders] = useState(false);
-  const showRemindersPage = useCallback(() => {
-    setShowReminders(true);
-  }, []);
+  // Reminders state — FEATURE DISABLED
+  const [showReminders] = useState(false);
+  // const [showReminders, setShowReminders] = useState(false);
+  // const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
@@ -656,29 +654,30 @@ function WellnessValleyApp() {
       await Geolocation.requestPermissions();
 
       // On Android, also prompt for exact-alarm permission so reminders fire on time
-      if (Capacitor.getPlatform() === "android") {
-        try {
-          const { canScheduleExact } = await checkExactAlarmPermission();
-          if (!canScheduleExact) {
-            await openExactAlarmSettings();
-          }
-        } catch (e) {
-          console.warn("⚠️ Exact alarm permission check failed:", e);
-        }
-      }
+      // FEATURE DISABLED — Reminders commented out
+      // if (Capacitor.getPlatform() === "android") {
+      //   try {
+      //     const { canScheduleExact } = await checkExactAlarmPermission();
+      //     if (!canScheduleExact) {
+      //       await openExactAlarmSettings();
+      //     }
+      //   } catch (e) {
+      //     console.warn("⚠️ Exact alarm permission check failed:", e);
+      //   }
+      // }
 
       // Request ACTIVITY_RECOGNITION so the background step sensor works from day 1
-      // without requiring the user to visit the StepCounter page first.
-      try {
-        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
-        const av = await StepCounterPlugin.isAvailable();
-        if (av?.available) {
-          await StepCounterPlugin.requestPermission();
-          console.log('✅ Activity recognition permission requested');
-        }
-      } catch (stepErr) {
-        console.warn('⚠️ Step counter permission request failed:', stepErr?.message || stepErr);
-      }
+      // FEATURE DISABLED — Step Counter commented out
+      // try {
+      //   const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+      //   const av = await StepCounterPlugin.isAvailable();
+      //   if (av?.available) {
+      //     await StepCounterPlugin.requestPermission();
+      //     console.log('✅ Activity recognition permission requested');
+      //   }
+      // } catch (stepErr) {
+      //   console.warn('⚠️ Step counter permission request failed:', stepErr?.message || stepErr);
+      // }
 
       console.log("✅ All permissions requested");
     } catch (err) {
@@ -788,29 +787,23 @@ function WellnessValleyApp() {
     };
   }, [showDashboardPage]);
 
-  // ── Silent step tracking start — runs when user logs in / app opens ────────
-  // Starts the native step sensor in the background so steps are counted from
-  // day 1, even if the user never navigates to the StepCounter page.
-  // Permission is NEVER requested here — only resumes tracking if already granted.
-  useEffect(() => {
-    if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
-
-    const startStepTrackingIfPermitted = async () => {
-      try {
-        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
-        const availability = await StepCounterPlugin.isAvailable();
-        if (!availability?.available) return;
-        const permission = await StepCounterPlugin.getPermissionStatus();
-        if (!permission?.granted) return;
-        await StepCounterPlugin.startTracking();
-        console.log('✅ [App] Background step tracking started silently');
-      } catch (err) {
-        console.warn('[App] Silent step tracking start failed:', err?.message || err);
-      }
-    };
-
-    startStepTrackingIfPermitted();
-  }, [user, isUserActive]);
+  // ── Silent step tracking start — FEATURE DISABLED ────────────────────────
+  // useEffect(() => {
+  //   if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
+  //   const startStepTrackingIfPermitted = async () => {
+  //     try {
+  //       const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+  //       const availability = await StepCounterPlugin.isAvailable();
+  //       if (!availability?.available) return;
+  //       const permission = await StepCounterPlugin.getPermissionStatus();
+  //       if (!permission?.granted) return;
+  //       await StepCounterPlugin.startTracking();
+  //     } catch (err) {
+  //       console.warn('[App] Silent step tracking start failed:', err?.message || err);
+  //     }
+  //   };
+  //   startStepTrackingIfPermitted();
+  // }, [user, isUserActive]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -3978,48 +3971,32 @@ function WellnessValleyApp() {
     );
   }
 
-  // Step Counter page
-  if (showStepCounter) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
-        <StepCounter
-          user={user}
-          userId={user?.id}
-          userRole={userRole}
-          onBack={() => {
-            setShowStepCounter(false);
-          }}
-        />
-      </Suspense>
-    );
-  }
+  // Step Counter page — FEATURE DISABLED
+  // if (showStepCounter) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
+  //       <StepCounter user={user} userId={user?.id} userRole={userRole} onBack={() => setShowStepCounter(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
-  // Screen Time page
-  if (showScreenTime) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
-        <ScreenTimePage
-          user={user}
-          userRole={userRole}
-          userId={user?.id}
-          onBack={() => {
-            setShowScreenTime(false);
-          }}
-        />
-      </Suspense>
-    );
-  }
+  // Screen Time page — FEATURE DISABLED
+  // if (showScreenTime) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
+  //       <ScreenTimePage user={user} userRole={userRole} userId={user?.id} onBack={() => setShowScreenTime(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
-  // Reminders page
-  if (showReminders) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <ReminderSettingsPage
-          onBack={() => setShowReminders(false)}
-        />
-      </Suspense>
-    );
-  }
+  // Reminders page — FEATURE DISABLED
+  // if (showReminders) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+  //       <ReminderSettingsPage onBack={() => setShowReminders(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
   // Discipline Report for all users
   if (showDisciplineReport) {
@@ -4079,9 +4056,9 @@ function WellnessValleyApp() {
         user={user}
         userRole={userRole}
         onShowBackgroundHistory={showDashboardPage}
-        onShowStepCounter={showStepCounterPage}
-        onShowScreenTime={showScreenTimePage}
-        onShowReminders={showRemindersPage}
+        // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
+        // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
+        // onShowReminders={showRemindersPage}        // FEATURE DISABLED
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)
@@ -4109,8 +4086,8 @@ function WellnessValleyApp() {
         onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
-        manualModeActive={manualModeActive}
-        onToggleManualMode={toggleManualMode}
+        // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
+        // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
         onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
