@@ -357,9 +357,9 @@ const ReminderSettingsPage = ({ onBack }) => {
         : 'Reminder preferences saved!');
     } catch (err) {
       console.error('[ReminderSettingsPage] Save error:', err);
-      // Still save preferences to localStorage even if native scheduling failed
+      // Persist to localStorage so settings aren't lost
       saveReminderPreferences(prefs);
-      showToast('success', 'Preferences saved! (Scheduling may be limited by device settings)');
+      showToast('error', 'Failed to schedule reminders. Please check notification permissions in Settings.');
     } finally {
       setSaving(false);
     }

@@ -1,16 +1,15 @@
 import Foundation
 import Capacitor
 import UserNotifications
+import UIKit
 
 /**
- * ReminderPlugin — iOS equivalent of the Android ReminderPlugin (AlarmManager-based).
+ * ReminderPlugin — iOS Capacitor plugin for daily reminders.
  *
- * Uses UNUserNotificationCenter to schedule daily repeating local notifications.
- * Registered with Capacitor via ReminderPlugin.m (CAP_PLUGIN macro).
- *
- * Preferences are persisted in UserDefaults so the reminder configuration
- * survives app restarts (iOS re-fires UNUserNotificationCenter schedules
- * automatically; no boot receiver is needed on iOS).
+ * Key design decision: scheduleAll() is fully SYNCHRONOUS (no async completion handler).
+ * Notification permission is requested at login via PushNotifications.requestPermissions().
+ * Here we just schedule — iOS will silently skip if permission is denied.
+ * This avoids all call.keepAlive / Promise-rejection issues with Capacitor 8.
  */
 @objc(ReminderPlugin)
 public class ReminderPlugin: CAPPlugin {
@@ -19,98 +18,89 @@ public class ReminderPlugin: CAPPlugin {
     private let prefsKey = "wellnessReminderPrefs"
     private let idPrefix = "wellness_reminder_"
 
-    // MARK: - scheduleReminder
+    // MARK: - scheduleReminder (sync resolve)
     @objc func scheduleReminder(_ call: CAPPluginCall) {
         let activityType = call.getString("activityType") ?? ""
         let label        = call.getString("label")        ?? activityType.capitalized
         let hour         = call.getInt("hour")            ?? 7
         let minute       = call.getInt("minute")          ?? 0
 
-        requestAuthorizationIfNeeded { [weak self] granted in
-            guard let self = self else { return }
-            if !granted {
-                call.resolve(["success": false, "reason": "permission-denied"])
-                return
-            }
-            self.scheduleDaily(activityType: activityType, label: label, hour: hour, minute: minute)
-            call.resolve(["success": true])
-        }
+        scheduleDaily(activityType: activityType, label: label, hour: hour, minute: minute)
+        call.resolve(["success": true])
     }
 
-    // MARK: - cancelReminder
+    // MARK: - cancelReminder (sync resolve)
     @objc func cancelReminder(_ call: CAPPluginCall) {
         let activityType = call.getString("activityType") ?? ""
         center.removePendingNotificationRequests(withIdentifiers: [idPrefix + activityType])
         call.resolve(["success": true])
     }
 
-    // MARK: - cancelAllReminders
+    // MARK: - cancelAllReminders (sync resolve via dispatch group)
     @objc func cancelAllReminders(_ call: CAPPluginCall) {
+        // getPendingNotificationRequests is async but we can fire-and-forget the cancel
         center.getPendingNotificationRequests { [weak self] requests in
             guard let self = self else { return }
             let ids = requests.map { $0.identifier }.filter { $0.hasPrefix(self.idPrefix) }
             self.center.removePendingNotificationRequests(withIdentifiers: ids)
-            call.resolve(["success": true])
         }
+        // Resolve immediately — cancel is best-effort
+        call.resolve(["success": true])
     }
 
-    // MARK: - scheduleAll
+    // MARK: - scheduleAll (fully synchronous — NO async permission check)
+    // Permission is handled at login by PushNotifications.requestPermissions().
+    // We just schedule here; iOS silently skips requests if permission is denied.
     @objc func scheduleAll(_ call: CAPPluginCall) {
         let masterEnabled = call.getBool("masterEnabled") ?? true
         let reminders     = call.getArray("reminders")   ?? []
 
-        requestAuthorizationIfNeeded { [weak self] granted in
-            guard let self = self else { return }
+        var scheduledCount = 0
+        var prefsToSave: [[String: Any]] = []
 
-            var scheduledCount = 0
-            var prefsToSave: [[String: Any]] = []
+        for item in reminders {
+            guard let reminder = item as? [String: Any] else { continue }
 
-            for item in reminders {
-                guard let reminder = item as? [String: Any] else { continue }
-                let activityType = reminder["activityType"] as? String ?? ""
-                let label        = reminder["label"]        as? String ?? activityType.capitalized
-                let hour         = reminder["hour"]         as? Int    ?? 7
-                let minute       = reminder["minute"]       as? Int    ?? 0
-                let enabled      = reminder["enabled"]      as? Bool   ?? false
+            let activityType = reminder["activityType"] as? String ?? ""
+            let label        = reminder["label"]        as? String ?? activityType.capitalized
+            // JS numbers arrive as NSNumber on iOS — must NOT cast directly to Int/Bool
+            let hour         = (reminder["hour"]    as? NSNumber)?.intValue  ?? 7
+            let minute       = (reminder["minute"]  as? NSNumber)?.intValue  ?? 0
+            let enabled      = (reminder["enabled"] as? NSNumber)?.boolValue ?? false
 
-                // Always cancel first so we don't stack duplicate notifications
-                self.center.removePendingNotificationRequests(withIdentifiers: [self.idPrefix + activityType])
+            // Cancel existing to avoid duplicate notifications
+            center.removePendingNotificationRequests(withIdentifiers: [idPrefix + activityType])
 
-                if masterEnabled && enabled {
-                    // Schedule even if permission not yet granted — iOS will hold the request
-                    // and fire once user grants permission from Settings
-                    if granted {
-                        self.scheduleDaily(activityType: activityType, label: label, hour: hour, minute: minute)
-                        scheduledCount += 1
-                    }
-                }
-
-                prefsToSave.append([
-                    "activityType": activityType,
-                    "label":        label,
-                    "hour":         hour,
-                    "minute":       minute,
-                    "enabled":      enabled,
-                ])
+            if masterEnabled && enabled {
+                scheduleDaily(activityType: activityType, label: label, hour: hour, minute: minute)
+                scheduledCount += 1
             }
 
-            // Persist to UserDefaults (iOS equivalent of Android SharedPreferences)
-            UserDefaults.standard.set(masterEnabled, forKey: "\(self.prefsKey)_masterEnabled")
-            UserDefaults.standard.set(prefsToSave,   forKey: "\(self.prefsKey)_reminders")
-
-            // Always resolve successfully — preferences are saved even if permission denied
-            call.resolve(["success": true, "scheduledCount": scheduledCount])
+            prefsToSave.append([
+                "activityType": activityType,
+                "label":        label,
+                "hour":         hour,
+                "minute":       minute,
+                "enabled":      enabled,
+            ])
         }
+
+        // Persist to UserDefaults
+        UserDefaults.standard.set(masterEnabled, forKey: "\(prefsKey)_masterEnabled")
+        UserDefaults.standard.set(prefsToSave,   forKey: "\(prefsKey)_reminders")
+
+        print("[ReminderPlugin] scheduleAll — masterEnabled:\(masterEnabled) scheduled:\(scheduledCount)/\(reminders.count)")
+
+        // Resolve synchronously — no async work here, Promise will never reject
+        call.resolve(["success": true, "scheduledCount": scheduledCount])
     }
 
     // MARK: - canScheduleExactAlarms
-    // iOS doesn't have an "exact alarm" permission — always true.
     @objc func canScheduleExactAlarms(_ call: CAPPluginCall) {
         call.resolve(["canScheduleExact": true])
     }
 
     // MARK: - openExactAlarmSettings
-    // Opens iOS notification settings for this app.
     @objc func openExactAlarmSettings(_ call: CAPPluginCall) {
         DispatchQueue.main.async {
             if let url = URL(string: UIApplication.openSettingsURLString) {
@@ -122,42 +112,23 @@ public class ReminderPlugin: CAPPlugin {
 
     // MARK: - Private helpers
 
-    private func requestAuthorizationIfNeeded(completion: @escaping (Bool) -> Void) {
-        center.getNotificationSettings { [weak self] settings in
-            guard let self = self else { completion(false); return }
-            switch settings.authorizationStatus {
-            case .authorized, .provisional, .ephemeral:
-                completion(true)
-            case .notDetermined:
-                self.center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, _ in
-                    completion(granted)
-                }
-            default:
-                completion(false)
-            }
-        }
-    }
-
     private func scheduleDaily(activityType: String, label: String, hour: Int, minute: Int) {
-        let content       = UNMutableNotificationContent()
-        content.title     = "Wellness Valley"
-        content.body      = "Time for your \(label) activity! 💪"
-        content.sound     = .default
+        let content   = UNMutableNotificationContent()
+        content.title = "Wellness Valley"
+        content.body  = "Time for your \(label) activity! 💪"
+        content.sound = .default
 
-        var dc            = DateComponents()
-        dc.hour           = hour
-        dc.minute         = minute
+        var dc        = DateComponents()
+        dc.hour       = hour
+        dc.minute     = minute
 
-        let trigger   = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
-        let request   = UNNotificationRequest(
-            identifier: idPrefix + activityType,
-            content:    content,
-            trigger:    trigger
-        )
+        let trigger    = UNCalendarNotificationTrigger(dateMatching: dc, repeats: true)
+        let identifier = idPrefix + activityType
+        let request    = UNNotificationRequest(identifier: identifier, content: content, trigger: trigger)
 
         center.add(request) { error in
             if let error = error {
-                print("[ReminderPlugin] ❌ Failed to schedule \(activityType): \(error.localizedDescription)")
+                print("[ReminderPlugin] ❌ Failed \(activityType): \(error.localizedDescription)")
             } else {
                 print("[ReminderPlugin] ✅ Scheduled \(activityType) at \(hour):\(String(format: "%02d", minute))")
             }
