@@ -17,9 +17,9 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>2.6</string>
+	<string>2.7</string>
 	<key>CFBundleVersion</key>
-	<string>30</string>
+	<string>31</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UILaunchStoryboardName</key>
@@ -108,9 +108,9 @@
 
 	<!-- ✅ App version matching Android versionName 2.4 / versionCode 26 -->
 	<key>CFBundleShortVersionString</key>
-	<string>2.6</string>
+	<string>2.7</string>
 	<key>CFBundleVersion</key>
-	<string>30</string>
+	<string>31</string>
 
 	<!-- ✅ Supported orientations matching Android configChanges -->
 	<key>UISupportedInterfaceOrientations</key>

@@ -74,25 +74,25 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.6',
+  VERSION: '2.7',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 30,
+  VERSION_CODE: 31,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 30,
+  IOS_BUILD_NUMBER: 31,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Firebase & Stability Update',
+  RELEASE_NAME: 'Version 2.7 Update',
   
   // Build date
   BUILD_DATE: '2026-04-28',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 30, versionName: '2.6' },
-    IOS: { buildNumber: 30, versionName: '2.6' },
+    ANDROID: { versionCode: 31, versionName: '2.7' },
+    IOS: { buildNumber: 31, versionName: '2.7' },
   },
 };
 
