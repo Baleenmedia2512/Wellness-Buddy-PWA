@@ -41,12 +41,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [sortOrder, setSortOrder] = useState("desc"); // 'asc' or 'desc'
-  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
+  const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct ↔ Full switch
 
   // Load data
   const fetchData = async (isBackground = false) => {
@@ -94,6 +94,19 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             customRange,
           ),
         ]);
+
+      // Debug: Log partnership info in browser console
+      console.log('🔍 [DisciplineReport] Hierarchy data received:', {
+        hasCoCoachInfo: !!hierarchyResponse?.coCoachInfo,
+        coCoachInfoKeys: hierarchyResponse?.coCoachInfo ? Object.keys(hierarchyResponse.coCoachInfo) : [],
+        coCoachInfoUserId: hierarchyResponse?.coCoachInfo?.userId,
+        isCoach: hierarchyResponse?.isCoach,
+        isCoCoach: hierarchyResponse?.isCoCoach,
+        rootUserId: hierarchyResponse?.userId,
+        rootUserName: hierarchyResponse?.userName,
+        hasUplineCoachName: !!hierarchyResponse?.coachName,
+        hasUplineCoCoachName: !!hierarchyResponse?.coCoachName
+      });
 
       // Build discipline scores map
       const scores = {};
@@ -197,9 +210,19 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         };
         // Map field names for HierarchicalNode component
         enrichedNode.userEmail = node.email || node.userEmail;
-        enrichedNode.uplineCoachName = node.coachName || node.uplineCoachName;
-        enrichedNode.uplineCoCoachName =
-          node.coCoachName || node.uplineCoCoachName;
+        
+        // DON'T set upline properties if this is a root coach/co-coach with partnership
+        // Check if coCoachInfo exists and has content (not just empty object)
+        const hasPartnership = node.coCoachInfo && 
+          Object.keys(node.coCoachInfo).length > 0 && 
+          node.coCoachInfo.userId;
+        
+        if (!hasPartnership) {
+          enrichedNode.uplineCoachName = node.coachName || node.uplineCoachName;
+          enrichedNode.uplineCoCoachName =
+            node.coCoachName || node.uplineCoCoachName;
+        }
+        
         // Profile image fields (these would need to come from user profile data)
         enrichedNode.profileImage = node.profileImage;
         enrichedNode.photoURL = node.photoURL;
@@ -314,6 +337,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
         const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
         const regular = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
         regular.sort((a, b) => {
+          // A-Z / Z-A name sort
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           let sa, sb;
           if (sortBy === "direct") {
             sa = a.directTeamDiscipline?.percentage || 0;
@@ -363,6 +393,16 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       node.userEmail?.toLowerCase().includes(lowerQuery)
     ) {
       return true;
+    }
+
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
     }
 
     if (node.teamMembers && node.teamMembers.length > 0) {
@@ -776,7 +816,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   const handleSortChange = (newSortBy, newSortOrder) => {
-    setSortBy(newSortBy);
+    setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
   };
 

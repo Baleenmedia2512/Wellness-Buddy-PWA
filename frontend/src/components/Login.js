@@ -20,6 +20,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   const [errorMessage, setErrorMessage] = useState('');
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [googleUnavailable, setGoogleUnavailable] = useState(false);
 
   useEffect(() => {
     if (otpSent && countdown > 0) {
@@ -229,11 +230,18 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
 
               {/* Enhanced Google button - Primary */}
               <button
-                onClick={() => {
+                onClick={async () => {
                   // Set flag BEFORE calling onSignIn to prevent race condition
                   sessionStorage.setItem('freshGoogleSignIn', 'true');
                   console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
-                  onSignIn();
+                  try {
+                    await onSignIn();
+                  } catch (error) {
+                    if (error?.code === 'auth/unauthorized-domain') {
+                      setGoogleUnavailable(true);
+                      setShowEmailForm(true);
+                    }
+                  }
                 }}
                 disabled={loading}
                 className="w-full flex items-center justify-center px-4 xs:px-6 py-3 xs:py-3.5 bg-white border border-gray-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-400 disabled:opacity-50 mb-3 xs:mb-4 min-h-[48px]"
@@ -283,6 +291,19 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             </>
           ) : !otpSent ? (
             <div className="space-y-4">
+              {/* Google unavailable notice */}
+              {googleUnavailable && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <div className="flex items-start">
+                    <svg className="h-5 w-5 text-yellow-500 mt-0.5 mr-2 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                    </svg>
+                    <p className="text-xs text-yellow-700">
+                      <strong>Google sign-in is unavailable</strong> on this domain. Please sign in with your email below.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div>
                 <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
                   Email Address

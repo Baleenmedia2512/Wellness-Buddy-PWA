@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -11,6 +10,7 @@ import {
   TrendingUp,
   TrendingDown,
   Droplets,
+  Scale,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
@@ -23,12 +23,12 @@ import HierarchicalNode from "./common/HierarchicalNode";
 import { teamHierarchyService } from "../services/teamHierarchyService";
 import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ───Constants ────────────────────────────────────────────────────────────────
 
-const ACTIVITY_KEYS = ["weight", "breakfast", "lunch", "dinner", "education", "water", "caloriesBurned"];
+const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: Scale,    color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: Scale, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
@@ -314,6 +314,7 @@ function TimeReportDetails({ node, dateRange, filter }) {
   const entry = node.__timeData;
   const scrollRef = useRef(null);
 
+  // Auto-scroll to highlighted column when filter changes
   useEffect(() => {
     if (!filter || filter === "all" || !scrollRef.current) return;
     const th = scrollRef.current.querySelector(`[data-key="${filter}"]`);
@@ -325,7 +326,8 @@ function TimeReportDetails({ node, dateRange, filter }) {
 
   if (!entry) return null;
 
-  const visibleKeys = filter && filter !== "all" ? [filter] : ACTIVITY_KEYS;
+  const visibleKeys = ACTIVITY_KEYS;
+  const activeKey = filter && filter !== "all" ? filter : null;
 
   return (
     <div className="border-t border-gray-100 bg-gray-50/40">
@@ -336,10 +338,22 @@ function TimeReportDetails({ node, dateRange, filter }) {
             <tr className="bg-green-50">
               {visibleKeys.map((key) => {
                 const { Icon, short } = ACTIVITY_META[key];
+                const isActive = key === activeKey;
                 return (
-                  <th key={key} data-key={key} title={ACTIVITY_META[key].label} className="px-1 py-1 font-semibold transition-colors text-center text-gray-600 whitespace-nowrap">
+                  <th
+                    key={key}
+                    data-key={key}
+                    title={ACTIVITY_META[key].label}
+                    className={`px-1 py-1 font-semibold transition-colors text-center whitespace-nowrap ${
+                      isActive
+                        ? "bg-green-200 text-green-800 rounded-t"
+                        : activeKey
+                          ? "text-gray-400 opacity-40"
+                          : "text-gray-600"
+                    }`}
+                  >
                     <div className="flex items-center justify-center gap-0.5">
-                      <Icon className="w-2.5 h-2.5 shrink-0" />
+                      <Icon className={`w-2.5 h-2.5 shrink-0 ${isActive ? "text-green-700" : ""}`} />
                       <span className="text-[9px]">{short}</span>
                     </div>
                   </th>
@@ -356,9 +370,11 @@ function TimeReportDetails({ node, dateRange, filter }) {
                   const s    = resolveStatus(key, rawS);
                   const st   = STATUS_TEXT[s] ?? STATUS_TEXT["no-data"];
                   const dotOnly = BINARY_ACTIVITY_KEYS.has(key);
+                  const isActive = key === activeKey;
+                  const isDimmed = activeKey && !isActive;
                   return (
-                    <td key={key} className="px-0.5 py-0.5 text-center">
-                      <div className={`inline-flex flex-col items-center justify-center gap-0 px-0.5 py-0.5 rounded border w-full ${st.bg} ${st.border}`}>
+                    <td key={key} className={`px-0.5 py-0.5 text-center ${isActive ? "bg-green-50/60" : isDimmed ? "opacity-40" : ""}`}>
+                      <div className={`inline-flex flex-col items-center justify-center gap-0 px-0.5 py-0.5 rounded border w-full ${st.bg} ${isActive ? "border-green-400 ring-1 ring-green-300" : st.border}`}>
                         <div className="flex items-center justify-center gap-0.5">
                           <StatusDot status={s} />
                           {!dotOnly && (
@@ -401,12 +417,13 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [customEndDate, setCustomEndDate] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
-  const [sortOrder, setSortOrder] = useState("desc"); // member sort: asc | desc
+  const [sortOrder, setSortOrder] = useState("asc"); // member sort: asc | desc  (asc = A-Z)
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [hierarchyData, setHierarchyData] = useState(null);
   const [flatData, setFlatData] = useState([]);
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
@@ -491,11 +508,21 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             ...node,
             userId:             uid,
             userName:           node.userName || node.name,
-            uplineCoachName:    node.coachName   ?? node.uplineCoachName   ?? null,
-            uplineCoCoachName:  node.coCoachName ?? node.uplineCoCoachName ?? null,
             __timeData:         dataMap.get(uid) || null,
             __score:            scoreMap.get(uid) ?? 0,
           };
+          
+          // DON'T set upline properties if this is a root coach/co-coach with partnership
+          // Check if coCoachInfo exists and has content (not just empty object)
+          const hasPartnership = node.coCoachInfo && 
+            Object.keys(node.coCoachInfo).length > 0 && 
+            node.coCoachInfo.userId;
+          
+          if (!hasPartnership) {
+            enriched.uplineCoachName = node.coachName ?? node.uplineCoachName ?? null;
+            enriched.uplineCoCoachName = node.coCoachName ?? node.uplineCoCoachName ?? null;
+          }
+          
           enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
           const directScores = enriched.teamMembers.map((m) => m.__score);
           enriched.__directAvg = directScores.length
@@ -536,6 +563,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           const ka = computeActivitySortKey(a, filter);
           const kb = computeActivitySortKey(b, filter);
           return sortOrder === "desc" ? kb - ka : ka - kb;
@@ -543,7 +576,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         .map(sortNode),
     });
     return sortNode(hierarchyData);
-  }, [hierarchyData, filter, sortOrder]);
+  }, [hierarchyData, filter, sortOrder, sortBy]);
 
   // ── Filter / search / style helpers ───────────────────────────────────────
 
@@ -571,10 +604,26 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const matchesSearch = useCallback((node, query) => {
     if (!query) return true;
     const q = query.toLowerCase();
-    return (
+    
+    // Check current node
+    if (
       String(node.userName || "").toLowerCase().includes(q) ||
       String(node.email    || "").toLowerCase().includes(q)
-    );
+    ) {
+      return true;
+    }
+    
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        String(node.coCoachInfo.userName || "").toLowerCase().includes(q) ||
+        String(node.coCoachInfo.email    || "").toLowerCase().includes(q)
+      ) {
+        return true;
+      }
+    }
+    
+    return false;
   }, []);
 
   const getStatusStyle = useCallback((node) => {
@@ -897,8 +946,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           setFilterBehavior("all");
         }}
       summaryStats={null}
+      sortBy={sortBy}
       sortOrder={sortOrder}
-      onSortOrderChange={(dir) => setSortOrder(dir)}
+      onSortChange={(newSortBy, newSortOrder) => {
+        setSortBy("name"); // A-Z / Z-A always sorts by name
+        setSortOrder(newSortOrder);
+      }}
       allowedDateRanges={["today", "yesterday"]}
       singleDayCustom={true}
       onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
@@ -949,9 +1002,9 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-full w-fit">
             {[
               { value: "all",     label: "All" },
-              { value: "correct", label: "Correct" },
+              { value: "correct", label: "On Time" },
               { value: "late",    label: "Late" },
-              { value: "missed",  label: "Not Taken" },
+              { value: "missed",  label: "Missed" },
             ].map((b) => (
               <button
                 key={b.value}

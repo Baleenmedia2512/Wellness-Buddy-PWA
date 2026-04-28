@@ -16,7 +16,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { recipient, contactType = 'phone' } = req.body;
+  const { recipient: rawRecipient, contactType = 'phone' } = req.body;
+  const recipient = rawRecipient ? rawRecipient.toLowerCase().trim() : rawRecipient;
 
   if (!recipient) {
     res.status(400).json({ message: 'Recipient is required' });

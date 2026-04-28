@@ -27,12 +27,12 @@ const firebaseConfig = isIOS
     }
   : {
       // ✅ Android / Web config
-      apiKey: 'AIzaSyArJQHNTFraEOp3ENdd67T6aV49hCCxoUo',
-      authDomain: 'wellness-buddy-5de14.firebaseapp.com',
-      projectId: 'wellness-buddy-5de14',
-      storageBucket: 'wellness-buddy-5de14.appspot.com',
-      messagingSenderId: '610941252952',
-      appId: '1:610941252952:android:a04c921f5a95815857e12d',
+      apiKey: 'AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps',
+      authDomain: 'wellness-valley.firebaseapp.com',
+      projectId: 'wellness-valley',
+      storageBucket: 'wellness-valley.firebasestorage.app',
+      messagingSenderId: '499376291787',
+      appId: '1:499376291787:android:7f587d91cbb40b5be9404e',
     };
 
 // 🔥 Initialize Firebase
@@ -103,7 +103,7 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       // This is required after disconnect() was called on iOS sign-out
       await GoogleAuth.initialize({
         scopes: ['profile', 'email'],
-        serverClientId: '610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com',
+        serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',
         forceCodeForRefreshToken: true
       });
 
@@ -181,6 +181,14 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       throw new Error('Sign-in was cancelled. Please try again.');
     }
 
+    // Handle unauthorized domain - suggest email sign-in
+    if (error.code === 'auth/unauthorized-domain') {
+      console.error('🚫 Unauthorized domain for Google Sign-in. Domain must be added to Firebase Console → Authentication → Authorized domains.');
+      const err = new Error('Google sign-in is not available on this domain. Please use email sign-in instead.');
+      err.code = 'auth/unauthorized-domain';
+      throw err;
+    }
+
     // Handle native Google Auth errors
     if (error.message?.includes('User cancelled the flow')) {
       throw new Error('Sign-in was cancelled. Please try again.');
@@ -202,6 +210,11 @@ export const signInWithGooglePopup = async () => {
     }
     if (error.code === 'auth/popup-closed-by-user') {
       throw new Error('Sign-in was cancelled. Please try again.');
+    }
+    if (error.code === 'auth/unauthorized-domain') {
+      const err = new Error('Google sign-in is not available on this domain. Please use email sign-in instead.');
+      err.code = 'auth/unauthorized-domain';
+      throw err;
     }
     throw error;
   }

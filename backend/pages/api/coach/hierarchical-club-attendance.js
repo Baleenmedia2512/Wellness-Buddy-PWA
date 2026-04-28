@@ -1,7 +1,157 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
-import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
-import { buildHierarchyWithMetricCounts, calculateHierarchyStats } from '../../../utils/hierarchyHelpers.js';
+
+/**
+ * Helper function to get team hierarchy from team-hierarchy API
+ */
+async function getTeamHierarchyFromAPI(userId) {
+  const supabase = getSupabaseClient();
+  
+  // Query team_table to get all users
+  let query = supabase
+    .from("team_table")
+    .select("UserId, UserName, Email, Role, CoachId, CoachTeamId, Status, ProfileImage")
+    .eq("Status", "Active");
+
+  const { data: allUsers } = await query.order("UserName");
+  
+  // Derive CoCoachId from coach_teams_table
+  const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
+  const coachTeamsMap = {};
+  
+  if (coachTeamIds.length > 0) {
+    const { data: coachTeams } = await supabase
+      .from("coach_teams_table")
+      .select("Id, TeamId, CoachId, CoCoachId")
+      .in("TeamId", coachTeamIds)
+      .eq("Status", "active");
+    
+    if (coachTeams) {
+      coachTeams.forEach(team => {
+        coachTeamsMap[team.TeamId] = {
+          coachId: team.CoachId,
+          coCoachId: team.CoCoachId
+        };
+      });
+    }
+  }
+  
+  // Build user map with derived coCoachId
+  const userMap = new Map();
+  const coachNameMap = {}; // Map CoachId -> CoachName
+  
+  // First pass: build coach name map
+  allUsers.forEach((user) => {
+    coachNameMap[user.UserId] = user.UserName;
+  });
+  
+  // Second pass: build user map with all needed fields
+  allUsers.forEach((user) => {
+    const team = coachTeamsMap[user.CoachTeamId];
+    let coCoachId = null;
+    
+    if (team) {
+      if (user.CoachId === team.coachId) {
+        coCoachId = team.coCoachId;
+      } else if (user.CoachId === team.coCoachId) {
+        coCoachId = team.coachId;
+      }
+    }
+    
+    userMap.set(user.UserId, {
+      UserId: user.UserId,
+      UserName: user.UserName,
+      Email: user.Email,
+      Role: user.Role,
+      CoachId: user.CoachId,
+      CoCoachId: coCoachId,
+      CoachName: user.CoachId ? (coachNameMap[user.CoachId] || null) : null,
+      CoCoachName: coCoachId ? (coachNameMap[coCoachId] || null) : null,
+      CoachTeamId: user.CoachTeamId,
+      Status: user.Status,
+      ProfileImage: user.ProfileImage
+    });
+  });
+  
+  // Check if user is part of a coach partnership
+  const { data: managedTeam } = await supabase
+    .from('coach_teams_table')
+    .select('TeamId, CoachId, CoCoachId')
+    .or(`CoachId.eq.${userId},CoCoachId.eq.${userId}`)
+    .eq('Status', 'active')
+    .maybeSingle();
+  
+  // Collect all team members (including nested hierarchy)
+  const teamMembers = [];
+  const addedIds = new Set();
+  
+  // Helper function to recursively collect all downline members
+  const collectDownline = (coachId, visited = new Set()) => {
+    if (visited.has(coachId)) return; // Prevent circular references
+    visited.add(coachId);
+    
+    allUsers.forEach(user => {
+      if (addedIds.has(user.UserId)) return; // Already added
+      
+      const userData = userMap.get(user.UserId);
+      
+      // Check if this user reports to the given coachId (via CoachId or CoCoachId)
+      const reportsToCoach = (
+        user.CoachId === coachId || 
+        userData.CoCoachId === coachId
+      );
+      
+      if (reportsToCoach) {
+        teamMembers.push(userData);
+        addedIds.add(user.UserId);
+        
+        // Recursively collect this user's downline
+        collectDownline(user.UserId, visited);
+      }
+    });
+  };
+  
+  if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
+    // Partnership exists - collect ALL members in downline of EITHER partner
+    const coachId = managedTeam.CoachId;
+    const coCoachId = managedTeam.CoCoachId;
+    
+    console.log(`👥 [hierarchical-club-attendance] Partnership detected: Coach ${coachId}, Co-Coach ${coCoachId}`);
+    
+    // Add both coaches to the team members list
+    const coachData = userMap.get(coachId);
+    const coCoachData = userMap.get(coCoachId);
+    
+    if (coachData) {
+      teamMembers.push(coachData);
+      addedIds.add(coachId);
+    }
+    
+    if (coCoachData) {
+      teamMembers.push(coCoachData);
+      addedIds.add(coCoachId);
+    }
+    
+    // Recursively collect downline of BOTH partners
+    collectDownline(coachId);
+    collectDownline(coCoachId);
+    
+    console.log(`👥 [hierarchical-club-attendance] Total team members (including full downline): ${teamMembers.length}`);
+    console.log(`👥 [hierarchical-club-attendance] Member IDs:`, teamMembers.map(m => m.UserId));
+  } else {
+    // No partnership - collect logged-in user and their full downline
+    const loggedInUser = userMap.get(userId);
+    if (loggedInUser) {
+      teamMembers.push(loggedInUser);
+      addedIds.add(userId);
+    }
+    
+    // Recursively collect downline
+    collectDownline(userId);
+  }
+  
+  return teamMembers;
+}
 
 /**
  * API: Hierarchical Club Attendance Report
@@ -29,9 +179,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, date, clubId, type } = req.query;
+  const { userId, date, clubId } = req.query;
 
-  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId, type });
+  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId });
 
   if (!userId) {
     res.status(400).json({
@@ -71,8 +221,8 @@ export default async function handler(req, res) {
     const ownedClubs = userClubs || [];
     console.log('🏢 [hierarchical-club-attendance] User owns', ownedClubs.length, 'clubs');
 
-    // Step 1: Get team hierarchy using dual-coaching model
-    const teamHierarchy = await getDualCoachingTeamHierarchy(userIdNum, false);
+    // Step 1: Get team hierarchy using partnership-aware logic
+    const teamHierarchy = await getTeamHierarchyFromAPI(userIdNum);
     
     if (!teamHierarchy || teamHierarchy.length === 0) {
       console.log('⚠️ [hierarchical-club-attendance] No team members found');
@@ -270,9 +420,13 @@ export default async function handler(req, res) {
       });
     }
 
-    // Step 6: Build hierarchical structure with attendance data and team counts
-    // Using reusable generic utility functions from hierarchyHelpers.js
-    const transformAttendanceFn = (userId, dataMap, attendance) => {
+    // Step 6: Build hierarchical structure with attendance data
+    // Create a map of userId -> node for quick lookup
+    const nodeMap = new Map();
+    
+    // Transform attendance function
+    const getAttendanceMetrics = (userId) => {
+      const attendance = attendanceMap.get(userId);
       return attendance ? {
         attended: true,
         clubs: attendance.clubs,
@@ -287,118 +441,172 @@ export default async function handler(req, res) {
         lastAttendance: null,
       };
     };
-
-    // Condition function to check if someone has attended
-    // When type=remote, only count members who did remote sessions
-    const attendedConditionFn = type === 'remote'
-      ? (child) => (child.metrics?.remoteCount || 0) > 0
-      : (child) => child.metrics?.attended === true;
-
-    const hierarchyWithAttendance = buildHierarchyWithMetricCounts(
-      teamHierarchy,
-      attendanceMap,
-      transformAttendanceFn,
-      attendedConditionFn
-    );
-
-    // Step 6b: Add co-coach partnership info if exists
+    
+    // Check if logged-in user is part of a partnership
     const { data: managedTeam } = await supabase
       .from('coach_teams_table')
       .select('TeamId, CoachId, CoCoachId')
       .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
       .eq('Status', 'active')
       .maybeSingle();
+    
+    // Create array of partner IDs to exclude from nested hierarchy
+    const coachPartnerIds = (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId)
+      ? [managedTeam.CoachId, managedTeam.CoCoachId]
+      : [userIdNum];
+    
+    console.log('🔍 [hierarchical-club-attendance] Building hierarchy with partner exclusion:', coachPartnerIds);
+    
+    // Build nodes for all team members
+    teamHierarchy.forEach(member => {
+      nodeMap.set(member.UserId, {
+        userId: member.UserId,
+        userName: member.UserName,
+        email: member.Email,
+        role: member.Role,
+        coachId: member.CoachId,
+        coCoachId: member.CoCoachId,
+        coachName: member.CoachName,
+        coCoachName: member.CoCoachName,
+        status: member.Status,
+        profileImage: member.ProfileImage || null,
+        hierarchyLevel: 0,
+        metrics: getAttendanceMetrics(member.UserId),
+        teamMembers: [],
+      });
+    });
+    
+    // Build parent-child relationships
+    // Members report via EITHER CoachId OR CoCoachId
+    teamHierarchy.forEach(member => {
+      // Skip if member is one of the partners (they go at root level)
+      if (coachPartnerIds.includes(member.UserId)) {
+        return;
+      }
+      
+      // Check CoachId relationship
+      if (member.CoachId && nodeMap.has(member.CoachId)) {
+        const parent = nodeMap.get(member.CoachId);
+        const child = nodeMap.get(member.UserId);
+        if (parent && child) {
+          // Only add if not already added
+          if (!parent.teamMembers.some(m => m.userId === child.userId)) {
+            parent.teamMembers.push(child);
+            child.hierarchyLevel = (parent.hierarchyLevel || 0) + 1;
+          }
+        }
+      }
+      
+      // Check CoCoachId relationship (if different from CoachId)
+      if (member.CoCoachId && 
+          member.CoCoachId !== member.CoachId && 
+          nodeMap.has(member.CoCoachId)) {
+        const parent = nodeMap.get(member.CoCoachId);
+        const child = nodeMap.get(member.UserId);
+        if (parent && child) {
+          // Only add if not already added
+          if (!parent.teamMembers.some(m => m.userId === child.userId)) {
+            parent.teamMembers.push(child);
+            child.hierarchyLevel = (parent.hierarchyLevel || 0) + 1;
+          }
+        }
+      }
+    });
+    
+    // Find root node (logged-in user)
+    let hierarchyWithAttendance = nodeMap.get(userIdNum);
+    
+    if (!hierarchyWithAttendance) {
+      console.error('❌ [hierarchical-club-attendance] Root user not found in nodeMap');
+      throw new Error('Failed to build hierarchy - root user not found');
+    }
+    
+    // Calculate team counts recursively
+    const calculateTeamCounts = (node) => {
+      if (!node.teamMembers || node.teamMembers.length === 0) {
+        node.directTeamCount = { total: 0, qualified: 0, totalClubs: 0 };
+        node.fullTeamCount = { total: 0, qualified: 0, totalClubs: 0 };
+        return;
+      }
+      
+      // Recursively calculate for children first
+      node.teamMembers.forEach(calculateTeamCounts);
+      
+      // Direct team counts
+      const directAttended = node.teamMembers.filter(m => m.metrics?.attended).length;
+      const directClubs = node.teamMembers.reduce((sum, m) => sum + (m.metrics?.count || 0), 0);
+      
+      node.directTeamCount = {
+        total: node.teamMembers.length,
+        qualified: directAttended,
+        totalClubs: directClubs,
+      };
+      
+      // Full team counts (recursive)
+      let fullTotal = 0;
+      let fullQualified = 0;
+      let fullClubs = 0;
+      
+      const traverse = (n) => {
+        fullTotal++;
+        if (n.metrics?.attended) fullQualified++;
+        fullClubs += (n.metrics?.count || 0);
+        if (n.teamMembers) {
+          n.teamMembers.forEach(traverse);
+        }
+      };
+      
+      node.teamMembers.forEach(traverse);
+      
+      node.fullTeamCount = {
+        total: fullTotal,
+        qualified: fullQualified,
+        totalClubs: fullClubs,
+      };
+    };
+    
+    calculateTeamCounts(hierarchyWithAttendance);
 
+    // Step 6b: Add co-coach partnership info if exists (managedTeam already fetched earlier)
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
       const partnerId = managedTeam.CoachId === userIdNum
         ? managedTeam.CoCoachId
         : managedTeam.CoachId;
 
-      // Find co-coach in team hierarchy
-      const coCoachData = teamHierarchy.find(m => m.UserId === partnerId);
+      // Find co-coach node
+      const coCoachNode = nodeMap.get(partnerId);
       
-      if (coCoachData) {
-        // Remove co-coach from teamMembers array if present
-        const originalTeamMembers = hierarchyWithAttendance.teamMembers || [];
-        const filteredTeamMembers = originalTeamMembers.filter(m => m.userId !== partnerId);
-        hierarchyWithAttendance.teamMembers = filteredTeamMembers;
-
-        // Recalculate team counts after removing co-coach
-        const recalculateTeamCounts = (members, conditionFn) => {
-          const directTotal = members.length;
-          const directQualified = members.filter(conditionFn).length;
-          
-          let fullTotal = 0;
-          let fullQualified = 0;
-          const traverse = (node) => {
-            fullTotal++;
-            if (conditionFn(node)) fullQualified++;
-            if (node.teamMembers && node.teamMembers.length > 0) {
-              node.teamMembers.forEach(traverse);
-            }
-          };
-          members.forEach(traverse);
-          
-          return {
-            direct: { total: directTotal, qualified: directQualified },
-            full: { total: fullTotal, qualified: fullQualified }
-          };
-        };
-
-        const counts = recalculateTeamCounts(filteredTeamMembers, attendedConditionFn);
+      if (coCoachNode) {
+        // Double-check co-coach is not in teamMembers (should already be excluded)
+        hierarchyWithAttendance.teamMembers = hierarchyWithAttendance.teamMembers.filter(m => m.userId !== partnerId);
         
-        hierarchyWithAttendance.directTeamCount = {
-          total: counts.direct.total,
-          qualified: counts.direct.qualified,
-          totalClubs: hierarchyWithAttendance.directTeamCount?.totalClubs || 0,
-        };
-        
-        hierarchyWithAttendance.fullTeamCount = {
-          total: counts.full.total,
-          qualified: counts.full.qualified,
-          totalClubs: hierarchyWithAttendance.fullTeamCount?.totalClubs || 0,
-        };
-
-        const coCoachAttendance = attendanceMap.get(partnerId);
-        const coCoachMetrics = transformAttendanceFn(partnerId, attendanceMap, coCoachAttendance);
-
-        // Build co-coach info object with same structure as coach
+        // Set up coCoachInfo
         hierarchyWithAttendance.coCoachInfo = {
-          userId: coCoachData.UserId,
-          userName: coCoachData.UserName,
-          email: coCoachData.Email,
-          role: coCoachData.Role,
-          coachId: coCoachData.CoachId,
-          coCoachId: coCoachData.CoCoachId,
-          coachName: coCoachData.CoachName,
-          coCoachName: coCoachData.CoCoachName,
-          profileImage: coCoachData.ProfileImage || null,
-          photoURL: coCoachData.ProfileImage || null,
+          ...coCoachNode,
           isCoCoach: true,
-          hierarchyLevel: 0,
-          metrics: coCoachMetrics,
+          isCoach: false,
           directTeamCount: hierarchyWithAttendance.directTeamCount,
           fullTeamCount: hierarchyWithAttendance.fullTeamCount,
           teamMembers: [],
         };
+        
+        // Mark logged-in user's role
+        hierarchyWithAttendance.isCoach = (userIdNum === managedTeam.CoachId);
+        hierarchyWithAttendance.isCoCoach = (userIdNum === managedTeam.CoCoachId);
 
-        console.log(`👥 [hierarchical-club-attendance] Added co-coach partnership info for ${coCoachData.UserName}`);
-        console.log(`📊 [hierarchical-club-attendance] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
+        console.log(`👥 [hierarchical-club-attendance] Added co-coach partnership info for ${coCoachNode.userName}`);
       }
     }
 
-    // Step 7: Calculate statistics using reusable utility function
-    const stats = calculateHierarchyStats(
-      hierarchyWithAttendance,
-      (root) => root.metrics?.attended === true
-    );
-    const totalTeamMembers = stats.totalMembers;
-    const totalAttendees = stats.qualifiedMembers; // qualified = attended in this context
-    const attendanceRate = stats.qualificationRate; // qualificationRate = attendanceRate in this context
+    // Step 7: Calculate statistics
+    const totalTeamMembers = hierarchyWithAttendance.fullTeamCount?.total || 0;
+    const totalAttendees = hierarchyWithAttendance.fullTeamCount?.qualified || 0;
+    const attendanceRate = totalTeamMembers > 0 
+      ? ((totalAttendees / totalTeamMembers) * 100).toFixed(1)
+      : '0.0';
 
-    // Count by hierarchy level
-    const directTeamMembers = teamHierarchy.filter(m => m.HierarchyLevel === 1);
-    const directTeamAttendees = directTeamMembers.filter(m => attendanceMap.has(m.UserId)).length;
+    const directTeamMembers = hierarchyWithAttendance.directTeamCount?.total || 0;
+    const directTeamAttendees = hierarchyWithAttendance.directTeamCount?.qualified || 0;
 
     console.log('✅ [hierarchical-club-attendance] Generated hierarchical report:', {
       date: targetDate,
@@ -406,7 +614,7 @@ export default async function handler(req, res) {
       totalTeamMembers,
       totalAttendees,
       attendanceRate: attendanceRate + '%',
-      directTeamMembers: directTeamMembers.length,
+      directTeamMembers,
       directTeamAttendees,
       externalAttendees: externalAttendees.length,
     });

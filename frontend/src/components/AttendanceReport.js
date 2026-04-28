@@ -5,6 +5,7 @@ import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
 import HierarchicalNode from "./common/HierarchicalNode";
+import CustomAlertModal from "./CustomAlertModal";
 
 const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
@@ -16,13 +17,36 @@ const AttendanceReport = ({ user, onBack }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
-  const [sortOrder, setSortOrder] = useState("desc");
-  const [sortBy, setSortBy] = useState("all"); // 'all' | 'self' | 'direct' | 'full'
+  const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info',
+    confirmText: 'OK',
+    cancelText: null,
+    onConfirm: null,
+    onCancel: null,
+  });
 
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+
+  const showAlert = (message, title = 'Alert', type = 'info') => {
+    setAlertModal({
+      isOpen: true,
+      title,
+      message,
+      type,
+      confirmText: 'OK',
+      cancelText: null,
+      onConfirm: null,
+      onCancel: null,
+    });
+  };
 
   const formatDate = (date) => {
     const year = date.getFullYear();
@@ -89,12 +113,32 @@ const AttendanceReport = ({ user, onBack }) => {
         throw new Error(result.message || "Failed to fetch attendance data");
       }
 
+      // Debug: Log partnership info in browser console
+      console.log('🔍 [AttendanceReport] Hierarchy data received:', {
+        hasCoCoachInfo: !!result.data?.hierarchy?.coCoachInfo,
+        coCoachInfoKeys: result.data?.hierarchy?.coCoachInfo ? Object.keys(result.data.hierarchy.coCoachInfo) : [],
+        isCoach: result.data?.hierarchy?.isCoach,
+        isCoCoach: result.data?.hierarchy?.isCoCoach,
+        rootUserId: result.data?.hierarchy?.userId,
+        rootUserName: result.data?.hierarchy?.userName
+      });
+
       // Map field names for HierarchicalNode component
       const mapFields = (node) => {
         const mapped = { ...node };
         mapped.userEmail = node.email || node.userEmail;
-        mapped.uplineCoachName = node.coachName || node.uplineCoachName;
-        mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        
+        // DON'T set upline properties if this is a root coach/co-coach with partnership
+        // Check if coCoachInfo exists and has content (not just empty object)
+        const hasPartnership = node.coCoachInfo && 
+          Object.keys(node.coCoachInfo).length > 0 && 
+          node.coCoachInfo.userId;
+        
+        if (!hasPartnership) {
+          mapped.uplineCoachName = node.coachName || node.uplineCoachName;
+          mapped.uplineCoCoachName = node.coCoachName || node.uplineCoCoachName;
+        }
+        
         if (mapped.teamMembers && mapped.teamMembers.length > 0) {
           mapped.teamMembers = mapped.teamMembers.map(mapFields);
         }
@@ -145,6 +189,16 @@ const AttendanceReport = ({ user, onBack }) => {
       node.userEmail?.toLowerCase().includes(lowerQuery)
     ) {
       return true;
+    }
+
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
     }
 
     // Check descendants
@@ -426,6 +480,13 @@ const AttendanceReport = ({ user, onBack }) => {
         const coaches = members.filter((m) => m.role === "coach" || m.isCoach || m.isCoCoach);
         const regularMembers = members.filter((m) => m.role !== "coach" && !m.isCoach && !m.isCoCoach);
         regularMembers.sort((a, b) => {
+          // A-Z / Z-A name sort
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           let scoreA, scoreB;
           if (sortBy === "direct") {
             const totalA = a.directTeamCount?.total || 0;
@@ -503,13 +564,82 @@ const AttendanceReport = ({ user, onBack }) => {
     fetchData(true);
   };
 
-  const handleDownload = () => {
-    console.log("Download attendance report");
-    // Implement download logic here
+  const handleDownload = async () => {
+    try {
+      console.log("📥 Downloading attendance report...");
+      
+      const userId = await getUserId(user.email);
+      const date = getTargetDate();
+      
+      // Fetch attendance data for Excel export
+      const response = await fetch(
+        `${apiBaseUrl}/api/coach/download-attendance-excel?userId=${userId}&date=${date}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to fetch attendance data");
+      }
+      
+      const attendanceData = result.data || [];
+      
+      if (attendanceData.length === 0) {
+        showAlert("No attendance records found for the selected date.", "No Data", "info");
+        return;
+      }
+      
+      // Generate CSV content
+      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Attended Time", "Club Name"];
+      const csvRows = [
+        headers.join(","),
+        ...attendanceData.map(record => [
+          record.sno,
+          `"${(record.userName || '').replace(/"/g, '""')}"`,
+          `"${(record.city || '').replace(/"/g, '""')}"`,
+          `"${(record.village || '').replace(/"/g, '""')}"`,
+          `"${(record.phone || '').replace(/"/g, '""')}"`,
+          `"${(record.coach || '').replace(/"/g, '""')}"`,
+          `"${(record.attendedTime || '').replace(/"/g, '""')}"`,
+          `"${(record.clubName || '').replace(/"/g, '""')}"`
+        ].join(","))
+      ];
+      
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      
+      // Generate filename in format: dd-mm(monthName)-yyyy-username-attendance.csv
+      const dateObj = new Date(date);
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthName = monthNames[dateObj.getMonth()];
+      const year = dateObj.getFullYear();
+      const username = hierarchyData?.userName || 'user';
+      const filename = `${day}-${month}(${monthName})-${year}-${username}-attendance.csv`;
+      
+      // Create download link
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", filename);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      console.log("✅ Attendance report downloaded successfully");
+      
+    } catch (error) {
+      console.error("❌ Error downloading attendance report:", error);
+      showAlert("Failed to download attendance report. Please try again.", "Download Error", "error");
+    }
   };
 
   const handleSortChange = (newSortBy, newSortOrder) => {
-    setSortBy(newSortBy);
+    setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
   };
 
@@ -518,7 +648,8 @@ const AttendanceReport = ({ user, onBack }) => {
   }
 
   return (
-    <HierarchicalReportLayout
+    <>
+      <HierarchicalReportLayout
       title="Attendance Report"
       subtitle={`${
         teamCounts.coaches + teamCounts.members
@@ -594,6 +725,20 @@ const AttendanceReport = ({ user, onBack }) => {
         </div>
       )}
     </HierarchicalReportLayout>
+    
+    {/* Custom Alert Modal */}
+    <CustomAlertModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal({ ...alertModal, isOpen: false })}
+      title={alertModal.title}
+      message={alertModal.message}
+      type={alertModal.type}
+      confirmText={alertModal.confirmText}
+      cancelText={alertModal.cancelText}
+      onConfirm={alertModal.onConfirm}
+      onCancel={alertModal.onCancel}
+    />
+    </>
   );
 };
 

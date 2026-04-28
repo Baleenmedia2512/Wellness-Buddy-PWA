@@ -22,7 +22,8 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { email } = req.query;
+  const { email: rawEmail } = req.query;
+  const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
   console.log('👤 [get-user-profile] Request received:', { email });
 
@@ -53,8 +54,8 @@ export default async function handler(req, res) {
     // Fetch user profile from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber"')
-      .eq('"Email"', email)
+      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze')
+      .ilike('Email', email)
       .maybeSingle();
 
     if (userError) {
@@ -73,12 +74,12 @@ export default async function handler(req, res) {
 
     console.log('✅ [get-user-profile] User found:', { userId: user.UserId, userName: user.UserName });
 
-    // Fetch latest weight and BMR from weight_records_table
+    // Fetch latest weight from weight_records_table (BMR now lives in team_table)
     const { data: weightRows, error: weightError } = await supabase
       .from('weight_records_table')
-      .select('"Weight", "Bmr", "CreatedAt"')
+      .select('"Weight", "CreatedAt"')
       .eq('"UserId"', user.UserId)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .or('"IsDeleted".is.null,"IsDeleted".eq.false')
       .order('"CreatedAt"', { ascending: false })
       .limit(1);
 
@@ -117,22 +118,21 @@ export default async function handler(req, res) {
       profileComplete,
       profileImage: user.ProfileImage || null,
       coachId: user.CoachId || null,
+      profilePicSnooze: user.profile_pic_snooze || null,
       latestWeight: null,
-      latestBmr: null,
+      latestBmr: user.Bmr ? parseFloat(user.Bmr) : null,  // BMR now from team_table
       weightRecordDate: null,
     };
 
     console.log('🎓 [get-user-profile] Coach info:', { coachId: user.CoachId });
+    console.log('🔍 [DEBUG] BMR from team_table:', user.Bmr);
 
     if (weightError) {
       console.warn('⚠️ [get-user-profile] Weight query error:', weightError);
     } else if (weightRows && weightRows.length > 0) {
       const latestWeight = weightRows[0];
-      console.log('🔍 [DEBUG] Raw BMR from database:', latestWeight.Bmr, 'Type:', typeof latestWeight.Bmr);
       profileData.latestWeight = latestWeight.Weight ? parseFloat(latestWeight.Weight) : null;
-      profileData.latestBmr = latestWeight.Bmr ? parseFloat(latestWeight.Bmr) : null;
       profileData.weightRecordDate = latestWeight.CreatedAt;
-      console.log('🔍 [DEBUG] Parsed BMR:', profileData.latestBmr);
     }
     
     console.log('📦 [get-user-profile] Compiled profile data:', {

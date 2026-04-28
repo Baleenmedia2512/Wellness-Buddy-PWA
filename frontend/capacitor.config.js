@@ -26,7 +26,10 @@ const config = {
     androidScheme: 'https',
     hostname: 'localhost',
     allowNavigation: [
+      
       'wellness-buddy-pwa-eta.vercel.app',
+      'wellness-buddy-pwa-backend-test.vercel.app'
+    ,
       'wellness-buddy-pwa-backend-test.vercel.app',
       '*.vercel.app',
       '*.googleapis.com',
@@ -49,7 +52,7 @@ const config = {
   plugins: {
     GoogleAuth: {
       scopes: ['profile', 'email'],
-      serverClientId: '610941252952-u9h8srgfr879aucl4sbc8h3f6i68cq7n.apps.googleusercontent.com',
+      serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',
       forceCodeForRefreshToken: true
     },
     GalleryMonitor: {},

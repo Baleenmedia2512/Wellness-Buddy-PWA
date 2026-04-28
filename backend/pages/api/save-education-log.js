@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName, imageTimestamp } = req.body;
+  const { userId, imageBase64, platform, topic, confidence, participantCount, deviceInfo, latitude, longitude, attendanceType, nutritionCenterId, centerName, imageTimestamp, city, village } = req.body;
   console.log('📝 [save-education-log] Request data:', { 
     userId, 
     platform, 
@@ -36,7 +36,9 @@ export default async function handler(req, res) {
     hasLocation: !!(latitude && longitude),
     nutritionCenterId,
     centerName,
-    imageTimestamp: imageTimestamp || 'NOT PROVIDED (will use server time)'
+    imageTimestamp: imageTimestamp || 'NOT PROVIDED (will use server time)',
+    city: city || 'Not provided',
+    village: village || 'Not provided'
   });
 
   // Validation
@@ -111,6 +113,8 @@ export default async function handler(req, res) {
         nutrition_center_id: nutritionCenterId || null,
         participant_count: participantCount || null,
         center_name: centerName || null,
+        City: city || null,
+        Village: village || null,
         IsDeleted: false,
         CreatedAt: logTimestampIST, // Always stored in IST
         UpdatedAt: logTimestampIST

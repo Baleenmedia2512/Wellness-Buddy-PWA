@@ -255,6 +255,8 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
             style={{
               animationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
               animationPlayState: isPaused ? "paused" : "running",
+              WebkitAnimationDuration: `${Math.max(20, leaderboardData.length * 3)}s`,
+              WebkitAnimationPlayState: isPaused ? "paused" : "running",
             }}
           >
             {/* First set of items */}

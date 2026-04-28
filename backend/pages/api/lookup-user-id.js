@@ -23,7 +23,8 @@ export default async function handler(req, res) {
   }
 
   // Extract email from query params (GET) or body (POST)
-  const email = req.method === 'GET' ? req.query.email : req.body?.email;
+  const rawEmail = req.method === 'GET' ? req.query.email : req.body?.email;
+  const email = rawEmail ? rawEmail.toLowerCase().trim() : rawEmail;
 
   console.log('🔍 [lookup-user-id] Request received:', { email, method: req.method });
 
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
     const { data, error } = await supabase
       .from('team_table')
       .select('"UserId", "UserName", "Email", "Status", "Role"')
-      .eq('Email', email)
+      .ilike('Email', email)
       .maybeSingle();
 
     if (error) {

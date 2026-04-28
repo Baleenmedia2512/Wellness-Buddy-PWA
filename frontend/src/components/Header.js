@@ -20,7 +20,6 @@ import UserProfileModal from "./UserProfileModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 
-// const Header = ({ user, userRole = 'user', onSignOut, onShowBackgroundHistory, onShowAdminDashboard, onShowDisciplineReport, onShowWellnessEnrollment, onShowWellnessReport, onShowAttendanceReport, onShowClubAttendanceReport, onShowNutritionCentersMap, onShowRegisterCenter, onLeaderboardRefresh, onProfileSaved }) => {
 const Header = ({
   user,
   userRole = "user",
@@ -36,11 +35,12 @@ const Header = ({
   onShowWellnessCounselling,
   onShowWellnessReport,
   onShowAttendanceReport,
-  onShowClubAttendanceReport,
   onShowNutritionCentersMap,
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
+  manualModeActive = false,
+  onToggleManualMode,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
@@ -211,8 +211,8 @@ const Header = ({
                   <span className="text-green-600">{APP_VERSION.VERSION.split('.')[2]}</span> */}
                 </span>
               </h1>
-              <p className="text-xs text-green-600 truncate hidden xs:block">
-                Track your meals effortlessly
+              <p className="text-xs sm:text-sm text-green-600 truncate">
+                Tracking Wellness with Ease
               </p>
             </div>
           </div>
@@ -221,29 +221,68 @@ const Header = ({
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* User Profile Menu */}
           <div className="relative">
-            <TouchFeedbackButton
-              onClick={toggleMenu}
-              className="focus:outline-none rounded-full"
-              title="User Menu"
-              ariaLabel="User Menu"
-            >
-              {savedProfileImage ? (
-                <img
-                  src={savedProfileImage}
-                  alt="User Avatar"
-                  className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div
-                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+            <div className="flex flex-col items-center gap-1">
+              <TouchFeedbackButton
+                onClick={toggleMenu}
+                className="focus:outline-none rounded-full"
+                title="User Menu"
+                ariaLabel="User Menu"
+              >
+                {savedProfileImage ? (
+                  <img
+                    src={savedProfileImage}
+                    alt="User Avatar"
+                    className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+                  >
+                    {getInitial()}
+                  </div>
+                )}
+              </TouchFeedbackButton>
+
+              {/* AI/Manual mode indicator (read-only) */}
+              <div
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
+                style={{
+                  background: manualModeActive ? "#fff7ed" : "#f0fdf4",
+                  borderColor: manualModeActive ? "#f97316" : "#16a34a",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="text-[9px] font-bold leading-none"
+                  style={{ color: manualModeActive ? "#ea580c" : "#15803d" }}
                 >
-                  {getInitial()}
-                </div>
-              )}
-            </TouchFeedbackButton>
+                  {manualModeActive ? "Manual" : "AI"}
+                </span>
+                {/* Toggle track */}
+                <span
+                  className="relative inline-flex flex-shrink-0 rounded-full transition-colors duration-200"
+                  style={{
+                    background: manualModeActive ? "#f97316" : "#16a34a",
+                    height: "12px",
+                    width: "22px",
+                  }}
+                >
+                  <span
+                    className="absolute rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      top: "2px",
+                      height: "8px",
+                      width: "8px",
+                      transform: manualModeActive ? "translateX(12px)" : "translateX(2px)",
+                    }}
+                  />
+                </span>
+              </div>
+            </div>
 
             {menuOpen && (
               <>
@@ -539,25 +578,6 @@ const Header = ({
                           </div>
                           <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
                             My Attendance
-                          </span>
-                        </TouchFeedbackButton>
-                      )}
-
-                      {/* Club Attendance Report */}
-                      {onShowClubAttendanceReport && (
-                        <TouchFeedbackButton
-                          onClick={() => {
-                            onShowClubAttendanceReport();
-                            closeMenu();
-                          }}
-                          className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
-                          ariaLabel="Club Attendance Report"
-                        >
-                          <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
-                            <FileBarChart className="h-5 w-5 text-blue-700" />
-                          </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Virtual Club
                           </span>
                         </TouchFeedbackButton>
                       )}

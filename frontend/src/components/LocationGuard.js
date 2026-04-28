@@ -104,7 +104,7 @@ export default function LocationGuard({ children }) {
                 margin: '0 0 28px',
               }}
             >
-              This app needs location for outdoor tracking
+              This app needs location for steps tracking & attendance
             </p>
 
             <button

@@ -178,14 +178,13 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     .gte('"CreatedAt"', `${startDateStr}T00:00:00`)
     .lte('"CreatedAt"', `${endDateStr}T23:59:59`);
 
-  // Get user's latest body weight AND BMR from ANY date (no date restriction)
-  // Uses most recent weight ever recorded — no need to upload weight today
-  // Falls back to DEFAULT_WATER_REQUIRED_ML (2500ml) ONLY if zero weight records exist
+  // Get user's latest body weight from weight_records_table (for water intake calculation)
+  // BMR is now stored in team_table directly
   const { data: latestWeightRows } = await supabase
     .from('weight_records_table')
-    .select('UserId, Weight, Bmr')
+    .select('UserId, Weight')
     .eq('UserId', userId)
-    .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+    .or('IsDeleted.is.null,IsDeleted.eq.false')
     .order('CreatedAt', { ascending: false })
     .limit(1);
   const latestBodyWeight = latestWeightRows && latestWeightRows.length > 0
@@ -194,10 +193,14 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
   const requiredWaterMl = (latestBodyWeight && latestBodyWeight > 0)
     ? Math.round((latestBodyWeight / 20) * 1000)
     : DEFAULT_WATER_REQUIRED_ML;
-  // BMR (calorie target) for calories-discipline check. null means no target set — fall back to any-steps logic.
-  const userBmrTarget = latestWeightRows && latestWeightRows.length > 0
-    ? parseFloat(latestWeightRows[0].Bmr) || null
-    : null;
+
+  // BMR (calorie target) — now read from team_table
+  const { data: teamRow } = await supabase
+    .from('team_table')
+    .select('Bmr')
+    .eq('UserId', userId)
+    .maybeSingle();
+  const userBmrTarget = teamRow?.Bmr ? parseFloat(teamRow.Bmr) : null;
   
   // Get education logs
   const { data: educationLogs } = await supabase

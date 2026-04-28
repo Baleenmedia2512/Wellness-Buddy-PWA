@@ -21,10 +21,10 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [filter, setFilter] = useState("all");
   const [refreshing, setRefreshing] = useState(false);
   const [teamView, setTeamView] = useState("direct");
-  const [sortBy, setSortBy] = useState("self"); // 'self' | 'direct' | 'full'
-  const [sortOrder, setSortOrder] = useState("desc");
+  const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
+  const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
   
-  const [expandOverride, setExpandOverride] = useState(null); // "expanded" | "collapsed" | null
+  const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
 
   // Form states
@@ -211,10 +211,26 @@ const WellnessCounselling = ({ user, onBack }) => {
   const matchesSearch = (node, query) => {
     if (!query) return true;
     const lowerQuery = query.toLowerCase();
-    return (
+    
+    // Check current node
+    if (
       node.userName?.toLowerCase().includes(lowerQuery) ||
       node.userEmail?.toLowerCase().includes(lowerQuery)
-    );
+    ) {
+      return true;
+    }
+    
+    // Check co-coach if it exists (for co-coach partnership)
+    if (node.coCoachInfo) {
+      if (
+        node.coCoachInfo.userName?.toLowerCase().includes(lowerQuery) ||
+        node.coCoachInfo.email?.toLowerCase().includes(lowerQuery)
+      ) {
+        return true;
+      }
+    }
+    
+    return false;
   };
 
   // Render status badge
@@ -465,6 +481,13 @@ const WellnessCounselling = ({ user, onBack }) => {
       ...node,
       teamMembers: [...(node.teamMembers || [])]
         .sort((a, b) => {
+          // A-Z / Z-A name sort
+          if (sortBy === "name") {
+            const nameA = (a.userName || a.name || "").toLowerCase();
+            const nameB = (b.userName || b.name || "").toLowerCase();
+            const cmp = nameA.localeCompare(nameB);
+            return sortOrder === "desc" ? -cmp : cmp;
+          }
           const ka = computeScore(a, sortBy);
           const kb = computeScore(b, sortBy);
           return sortOrder === "desc" ? kb - ka : ka - kb;
@@ -500,7 +523,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         summaryStats={summaryStats}
         sortBy={sortBy}
         sortOrder={sortOrder}
-        onSortChange={(newSortBy, newSortOrder) => { setSortBy(newSortBy); setSortOrder(newSortOrder); }}
+        onSortChange={(newSortBy, newSortOrder) => { setSortBy("name"); setSortOrder(newSortOrder); }}
         onExpandAll={() => { lastExpandState.current = "expanded"; setExpandOverride("expanded"); }}
         onCollapseAll={() => { lastExpandState.current = "collapsed"; setExpandOverride("collapsed"); }}
         expandedState={expandOverride}

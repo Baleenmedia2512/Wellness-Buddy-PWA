@@ -11,6 +11,7 @@ const DuplicateFoodModal = ({
   weightValue,
   unit,
   timeDifference,
+  existingTime,
 }) => {
   // Edge case: Prevent multiple rapid clicks (MUST be before any early returns)
   const [isProcessing, setIsProcessing] = React.useState(false);
@@ -109,7 +110,7 @@ const DuplicateFoodModal = ({
             id="duplicate-modal-title"
             className="text-2xl font-bold text-center"
           >
-            {isWeight ? "Weight Detected" : "Food Detected"}
+            {isWeight ? "Weight Alert" : "Food Detected"}
           </h2>
         </div>
 
@@ -123,11 +124,12 @@ const DuplicateFoodModal = ({
           >
             {isWeight ? (
               <p className="text-gray-800 text-center leading-relaxed">
-                This weight{" "}
+                A weight of{" "}
                 <span className="font-semibold text-blue-900">
-                  ({weightValue} {unit})
+                  {weightValue} {unit}
                 </span>{" "}
-                is already added in your weight list.
+                is already posted by you{" "}
+                {existingTime ? <>at <span className="font-semibold text-blue-900">{existingTime}</span></> : timeDifference}.
               </p>
             ) : (
               <p className="text-gray-800 text-center leading-relaxed">
@@ -149,6 +151,7 @@ const DuplicateFoodModal = ({
           <p className="text-gray-600 text-center text-sm">
             Do you want to add it again?
           </p>
+
 
           <div className="flex gap-3 pt-2">
             <button

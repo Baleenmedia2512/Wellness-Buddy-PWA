@@ -47,9 +47,23 @@ export default async function handler(req, res) {
     let teamUserIds = [];
     
     if (teamFilter === 'self') {
-      // Only show the logged-in user's own clubs
-      console.log('👤 [get-nutrition-centers] Fetching SELF only...');
-      teamUserIds = [userIdNum];
+      // Show logged-in user's own clubs + co-coach partner's clubs (if any)
+      console.log('👤 [get-nutrition-centers] Fetching SELF (with co-coach partner)...');
+
+      const { data: coachTeam } = await supabase
+        .from('coach_teams_table')
+        .select('CoachId, CoCoachId')
+        .or(`CoachId.eq.${userIdNum},CoCoachId.eq.${userIdNum}`)
+        .eq('Status', 'active')
+        .maybeSingle();
+
+      if (coachTeam && coachTeam.CoachId && coachTeam.CoCoachId) {
+        // Coach + CoCoach share clubs
+        teamUserIds = [coachTeam.CoachId, coachTeam.CoCoachId];
+        console.log('👥 [get-nutrition-centers] Co-coach partnership found, showing clubs for both:', teamUserIds);
+      } else {
+        teamUserIds = [userIdNum];
+      }
     } else if (teamFilter === 'full') {
       // Get full team hierarchy with dual-coaching support
       console.log('📊 [get-nutrition-centers] Fetching FULL team hierarchy...');

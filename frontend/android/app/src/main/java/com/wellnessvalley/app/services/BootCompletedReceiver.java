@@ -1,5 +1,6 @@
 package com.wellnessvalley.app.services;
 
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
@@ -52,27 +53,62 @@ public class BootCompletedReceiver extends BroadcastReceiver {
     }
     
     /**
-     * Schedule HYBRID heartbeat system (WorkManager + AlarmManager)
+     * Schedule heartbeat system (WorkManager only)
      * 
-     * Two-layer defense:
-     * 1. WorkManager (battery-efficient, may be cleared by force-stop)
-     * 2. AlarmManager (aggressive, survives force-stop better)
-     * 
-     * This ensures the service automatically restarts if killed by the system.
+     * WorkManager is battery-efficient and sufficient for keeping the service alive.
+     * Previously used a dual AlarmManager layer which caused restart thrashing
+     * and ForegroundServiceStartNotAllowedException on Android 12+.
      * 
      * @param context Application context
      */
     public static void scheduleHeartbeat(Context context) {
-        // ✅ Background service enabled — schedule heartbeat for auto-restart
-        Log.d(TAG, "⏰ Scheduling heartbeat system for service auto-restart");
+        Log.d(TAG, "⏰ Scheduling WorkManager heartbeat for service auto-restart");
+        
+        // Cancel any previously-scheduled AlarmManager heartbeat to stop
+        // the self-perpetuating alarm loop that causes restart thrashing
+        cancelAlarmManagerHeartbeat(context);
         
         // Schedule WorkManager heartbeat (every 15 minutes)
         scheduleWorkManagerHeartbeat(context);
         
-        // Schedule AlarmManager heartbeat (every 20 minutes, survives force-stop better)
-        scheduleAlarmManagerHeartbeat(context);
-        
-        Log.d(TAG, "✅ Hybrid heartbeat system scheduled");
+        Log.d(TAG, "✅ Heartbeat system scheduled");
+    }
+    
+    /**
+     * Public entry point: cancel the legacy AlarmManager heartbeat.
+     * Called from MainActivity.onCreate() and GalleryMonitorService.onCreate()
+     * so that existing users who update without force-stopping get the old
+     * self-perpetuating alarm killed at the earliest possible moment.
+     */
+    public static void cancelLegacyAlarm(Context context) {
+        cancelAlarmManagerHeartbeat(context);
+    }
+
+    /**
+     * Cancel any existing AlarmManager heartbeat to prevent restart thrashing.
+     * Previously a dual AlarmManager+WorkManager system was used, but the
+     * self-perpetuating alarm caused ForegroundServiceStartNotAllowedException
+     * crash loops on Android 12+.
+     */
+    private static void cancelAlarmManagerHeartbeat(Context context) {
+        try {
+            android.app.AlarmManager alarmManager = (android.app.AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
+            if (alarmManager == null) return;
+            
+            Intent intent = new Intent(context, ServiceAlarmReceiver.class);
+            intent.setAction("com.wellnessvalley.app.ACTION_SERVICE_HEARTBEAT");
+            PendingIntent pendingIntent = PendingIntent.getBroadcast(
+                context, 1001, intent,
+                PendingIntent.FLAG_NO_CREATE | PendingIntent.FLAG_IMMUTABLE
+            );
+            if (pendingIntent != null) {
+                alarmManager.cancel(pendingIntent);
+                pendingIntent.cancel();
+                Log.d(TAG, "✅ Cancelled legacy AlarmManager heartbeat");
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "⚠️ Failed to cancel AlarmManager heartbeat", e);
+        }
     }
     
     /**
@@ -115,12 +151,4 @@ public class BootCompletedReceiver extends BroadcastReceiver {
         }
     }
     
-    /**
-     * Schedule AlarmManager heartbeat (Layer 2 - Aggressive Persistence)
-     * Uses AlarmManager for more reliable execution that survives force-stop better
-     * Delegates to existing ServiceAlarmReceiver for 15-minute heartbeat
-     */
-    private static void scheduleAlarmManagerHeartbeat(Context context) {
-        ServiceAlarmReceiver.scheduleAlarmHeartbeat(context);
-    }
 }
