@@ -5,7 +5,7 @@ export async function fetchDailyActivity(userId, days = 7, activityType = null, 
   // Always pass the client's local date so the backend uses the device's calendar
   // date instead of the server's UTC date. Without this, IST users (UTC+5:30)
   // get wrong data between 00:00–05:30 IST because the server still thinks it's
-  // the previous day.
+  // the previous day./
   const today = targetDate || (() => {
     const d = new Date();
     const y = d.getFullYear();
