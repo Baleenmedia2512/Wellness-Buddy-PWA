@@ -28,7 +28,7 @@ import axios from 'axios';
 
 // ── Native plugin bridge ────────────────────────────────────────────────────
 const ReminderPluginNative = registerPlugin('ReminderPlugin', {
-  // Web/iOS fallback (no-ops so the app doesn't crash)
+  // Web fallback (no-ops so the app doesn't crash in browser)
   web: () => ({
     scheduleReminder:       async () => ({ success: false, reason: 'not-native' }),
     cancelReminder:         async () => ({ success: false }),

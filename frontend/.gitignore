@@ -1,0 +1,7 @@
+
+# iOS build artifacts
+ios/*.xcarchive
+ios/**/*.xcarchive
+ios/IPA-AppStore/
+ios/IPA-Output/
+ios/App/App/public/

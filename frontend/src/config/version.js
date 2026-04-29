@@ -6,7 +6,9 @@
  * 
  * ⚠️ IMPORTANT: After changing version here, also update:
  * 1. frontend/android/app/build.gradle (versionCode & versionName)
- * 2. frontend/package.json (version field)
+ * 2. frontend/ios/App/App/Info.plist (CFBundleShortVersionString & CFBundleVersion)
+ *    → Run: cd frontend/ios/App && agvtool new-marketing-version X.X && agvtool new-version -all XX
+ * 3. frontend/package.json (version field)
  * 
  * 📋 VERSION NUMBERING GUIDE (Semantic Versioning):
  * 
@@ -72,20 +74,38 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.6',
+  VERSION: '2.7',
   
   // Version code (for Android builds - must match build.gradle)
-  VERSION_CODE: 30,
+  // Also used as CFBundleVersion for iOS builds - must match Info.plist
+  VERSION_CODE: 33,
   
-  // Release name (for Play Store)
-  RELEASE_NAME: 'Firebase & Stability Update',
+  // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
+  IOS_BUILD_NUMBER: 31,
+  
+  // Release name (for Play Store / App Store)
+  RELEASE_NAME: 'Version 2.7 Update',
   
   // Build date
-  BUILD_DATE: '2026-04-21',
+  BUILD_DATE: '2026-04-28',
+  
+  // Platform release notes
+  PLATFORMS: {
+    ANDROID: { versionCode: 32, versionName: '2.7' },
+    IOS: { buildNumber: 31, versionName: '2.7' },
+  },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.6 (Code 30) - 2026-04-28 [iOS RELEASE]
+ *   🍎 iOS App Store - First iOS build prepared and exported for App Store Connect
+ *   📦 ExportOptions-AppStore.plist - Added App Store export configuration for iOS
+ *   🔢 iOS Version Sync - iOS version aligned with Android (2.6 / build 30)
+ *   🔐 iOS Signing - Automatic signing with Team ID VXAC9D3CKR
+ *   🚫 Login UI - Removed "← Back to other options" button from OTP login screen
+ *   🗂️ .gitignore - xcarchive and IPA build artifacts excluded from git
  * 
  * Version 2.6 (Code 30) - 2026-04-21
  *   🔥 Firebase Update - Updated Firebase configuration and client IDs for Wellness Valley project
@@ -295,19 +315,30 @@ export const APP_VERSION = {
  *   - Update BUILD_DATE
  *   - Add entry to CHANGE LOG
  * 
- * Step 2: Update build.gradle
+ * Step 2: Update build.gradle (Android)
  *   File: frontend/android/app/build.gradle
  *   Change:
  *     versionCode 3        → versionCode 4 (or next number)
  *     versionName "1.2.0"  → versionName "1.3.0" (or next version)
  * 
- * Step 3: Update package.json
+ * Step 3: Update iOS Info.plist
+ *   Run these commands:
+ *     cd frontend/ios/App
+ *     agvtool new-marketing-version 1.3.0   (version name)
+ *     agvtool new-version -all 4            (build number / version code)
+ *   OR manually edit: frontend/ios/App/App/Info.plist
+ *     CFBundleShortVersionString → new version name (e.g. 1.3.0)
+ *     CFBundleVersion            → new build number (e.g. 4)
+ * 
+ * Step 4: Update package.json
  *   File: frontend/package.json
  *   Change:
  *     "version": "1.2.0"   → "version": "1.3.0" (or next version)
  * 
- * Step 4: Rebuild
- *   Run: ./gradlew clean bundleRelease
+ * Step 5: Rebuild
+ *   Android: ./gradlew clean bundleRelease
+ *   iOS:     npm run build && npx cap copy ios
+ *            then archive in Xcode or via xcodebuild
  * 
  * ✅ That's it! The version will automatically appear in the app.
  */
@@ -322,9 +353,11 @@ export const getFullVersionInfo = () => {
   return {
     version: APP_VERSION.VERSION,
     versionCode: APP_VERSION.VERSION_CODE,
+    iosBuildNumber: APP_VERSION.IOS_BUILD_NUMBER,
     releaseName: APP_VERSION.RELEASE_NAME,
     buildDate: APP_VERSION.BUILD_DATE,
     displayText: getVersionString(),
+    platforms: APP_VERSION.PLATFORMS,
   };
 };
 

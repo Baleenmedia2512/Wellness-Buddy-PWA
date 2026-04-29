@@ -39,6 +39,8 @@ const Header = ({
   onShowRegisterCenter,
   onLeaderboardRefresh,
   onProfileSaved,
+  manualModeActive = false,
+  onToggleManualMode,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
@@ -174,8 +176,8 @@ const Header = ({
   };
 
   return (
-    <header className="bg-white shadow-lg border-b-4 border-green-500">
-      <div className="max-w-md mx-auto px-2 py-2 flex justify-between items-center">
+    <header className="bg-white shadow-lg border-b-4 border-green-500" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}>
+      <div className="max-w-lg mx-auto px-3 xs:px-4 py-2 flex justify-between items-center">
         <div className="flex-1 min-w-0">
           <div className="flex items-center space-x-1">
             <img
@@ -195,7 +197,7 @@ const Header = ({
               }}
             />
             <div className="flex-1 min-w-0 -ml-1">
-              <h1 className="text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
+              <h1 className="text-lg xs:text-xl sm:text-2xl font-extrabold text-green-700 truncate flex items-baseline gap-1">
                 Wellness Valley
                 <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-3xl border border-gray-200 text-[10px] font-medium text-gray-500 bg-transparent relative top-[1px] w-12 h-4">
                   <span className="text-gray-500">
@@ -219,29 +221,67 @@ const Header = ({
         <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
           {/* User Profile Menu */}
           <div className="relative">
-            <TouchFeedbackButton
-              onClick={toggleMenu}
-              className="focus:outline-none rounded-full"
-              title="User Menu"
-              ariaLabel="User Menu"
-            >
-              {savedProfileImage ? (
-                <img
-                  src={savedProfileImage}
-                  alt="User Avatar"
-                  className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
-                  loading="lazy"
-                  decoding="async"
-                  referrerPolicy="no-referrer"
-                />
-              ) : (
-                <div
-                  className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+            <div className="flex flex-col items-center gap-1">
+              <TouchFeedbackButton
+                onClick={toggleMenu}
+                className="focus:outline-none rounded-full"
+                title="User Menu"
+                ariaLabel="User Menu"
+              >
+                {savedProfileImage ? (
+                  <img
+                    src={savedProfileImage}
+                    alt="User Avatar"
+                    className="h-9 w-9 sm:h-10 sm:w-10 rounded-full border border-gray-300 shadow-sm"
+                    loading="lazy"
+                    decoding="async"
+                    referrerPolicy="no-referrer"
+                  />
+                ) : (
+                  <div
+                    className={`h-9 w-9 sm:h-10 sm:w-10 rounded-full ${getAvatarColor()} flex items-center justify-center text-white font-bold text-base shadow-sm`}
+                  >
+                    {getInitial()}
+                  </div>
+                )}
+              </TouchFeedbackButton>
+
+              {/* AI/Manual mode indicator — FEATURE DISABLED */}
+              {/* <div
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
+                style={{
+                  background: manualModeActive ? "#fff7ed" : "#f0fdf4",
+                  borderColor: manualModeActive ? "#f97316" : "#16a34a",
+                  boxShadow: "0 1px 3px rgba(0,0,0,0.08)",
+                  minWidth: 0,
+                }}
+              >
+                <span
+                  className="text-[9px] font-bold leading-none"
+                  style={{ color: manualModeActive ? "#ea580c" : "#15803d" }}
                 >
-                  {getInitial()}
-                </div>
-              )}
-            </TouchFeedbackButton>
+                  {manualModeActive ? "Manual" : "AI"}
+                </span>
+                <span
+                  className="relative inline-flex flex-shrink-0 rounded-full transition-colors duration-200"
+                  style={{
+                    background: manualModeActive ? "#f97316" : "#16a34a",
+                    height: "12px",
+                    width: "22px",
+                  }}
+                >
+                  <span
+                    className="absolute rounded-full bg-white shadow-sm transition-transform duration-200"
+                    style={{
+                      top: "2px",
+                      height: "8px",
+                      width: "8px",
+                      transform: manualModeActive ? "translateX(12px)" : "translateX(2px)",
+                    }}
+                  />
+                </span>
+              </div> */}
+            </div>
 
             {menuOpen && (
               <>
@@ -252,7 +292,7 @@ const Header = ({
                 />
 
                 {/* Google-style fixed centered panel — no scroll */}
-                <div ref={menuPanelRef} className="fixed top-[68px] left-1/2 w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
+                <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] left-1/2 w-[min(320px,calc(100vw-20px))] xs:w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
                   {/* ── PROFILE CARD ── */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
                     {/* Close button */}
@@ -351,62 +391,47 @@ const Header = ({
                         </span>
                       </TouchFeedbackButton>
 
-                      {/* Step Counter */}
-                      {onShowStepCounter && (
+                      {/* Step Counter — FEATURE DISABLED */}
+                      {/* {onShowStepCounter && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowStepCounter();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowStepCounter(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Step Counter"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-teal-100 flex items-center justify-center">
                             <Footprints className="h-5 w-5 text-teal-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Step Counter
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Step Counter</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
-                      {/* Screen Time */}
-                      {onShowScreenTime && (
+                      {/* Screen Time — FEATURE DISABLED */}
+                      {/* {onShowScreenTime && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowScreenTime();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowScreenTime(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Screen Time"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-blue-100 flex items-center justify-center">
                             <Smartphone className="h-5 w-5 text-blue-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Screen Time
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Screen Time</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
-                      {/* Reminders */}
-                      {onShowReminders && (
+                      {/* Reminders — FEATURE DISABLED */}
+                      {/* {onShowReminders && (
                         <TouchFeedbackButton
-                          onClick={() => {
-                            onShowReminders();
-                            closeMenu();
-                          }}
+                          onClick={() => { onShowReminders(); closeMenu(); }}
                           className="flex flex-col items-center py-2 px-1 rounded-xl hover:bg-gray-100 transition-colors gap-1"
                           ariaLabel="Reminders"
                         >
                           <div className="h-10 w-10 rounded-2xl bg-green-100 flex items-center justify-center">
                             <Bell className="h-5 w-5 text-green-700" />
                           </div>
-                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">
-                            Reminders
-                          </span>
+                          <span className="text-[10px] font-medium text-gray-700 text-center leading-tight">Reminders</span>
                         </TouchFeedbackButton>
-                      )}
+                      )} */}
 
                       {/* AI Token Monitor */}
                       {onShowAdminDashboard && (

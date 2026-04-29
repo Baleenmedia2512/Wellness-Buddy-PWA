@@ -3273,12 +3273,17 @@ const MealCard = ({
   const [dragging, setDragging] = React.useState(false);
   const [animating, setAnimating] = React.useState(false);
   const [armed, setArmed] = React.useState(false);
-  const [leaving, setLeaving] = React.useState(false); // NEW: card is exiting
-  const [deletedOnce, setDeletedOnce] = React.useState(false); // NEW: guard
+  const [leaving, setLeaving] = React.useState(false);
+  const [deletedOnce, setDeletedOnce] = React.useState(false);
 
   const startXRef = React.useRef(0);
+  const startYRef = React.useRef(0);
+  const dxRef = React.useRef(0); // live dx without re-render lag
   const rafRef = React.useRef(null);
   const elRef = React.useRef(null);
+  const draggingRef = React.useRef(false);
+  const armedRef = React.useRef(false);
+  const touchBlockedRef = React.useRef(false); // vertical scroll — ignore this card
 
   const cancelRAF = () => {
     if (rafRef.current) {
@@ -3287,78 +3292,112 @@ const MealCard = ({
     }
   };
 
-  const onPointerDown = (e) => {
-    if (!e.isPrimary || leaving) return;
-    cancelRAF();
-    setDragging(true);
-    setAnimating(false);
-    startXRef.current = e.clientX;
-    elRef.current?.setPointerCapture?.(e.pointerId);
-  };
-
-  const onPointerMove = (e) => {
-    if (!dragging || !e.isPrimary || leaving) return;
-    const delta = e.clientX - startXRef.current;
+  const applyDelta = (clientX) => {
+    const delta = clientX - startXRef.current;
     const nextDx = Math.max(Math.min(delta, 0), -SWIPE_MAX);
+    dxRef.current = nextDx;
     if (!rafRef.current) {
       rafRef.current = requestAnimationFrame(() => {
-        setDx(nextDx);
+        setDx(dxRef.current);
         rafRef.current = null;
-        const isNowArmed = Math.abs(nextDx) >= SWIPE_DELETE_THRESHOLD;
-        if (isNowArmed !== armed) {
+        const isNowArmed = Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD;
+        if (isNowArmed !== armedRef.current) {
+          armedRef.current = isNowArmed;
           setArmed(isNowArmed);
-          if (
-            isNowArmed &&
-            typeof navigator !== "undefined" &&
-            "vibrate" in navigator
-          ) {
-            try {
-              navigator.vibrate(10);
-            } catch {}
+          if (isNowArmed && typeof navigator !== "undefined" && "vibrate" in navigator) {
+            try { navigator.vibrate(10); } catch {}
           }
         }
       });
     }
   };
 
-  const finishInteraction = (e) => {
-    if (!dragging) return;
+  const finishGesture = () => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
     setDragging(false);
     cancelRAF();
-    elRef.current?.releasePointerCapture?.(e?.pointerId);
 
-    if (Math.abs(dx) >= SWIPE_DELETE_THRESHOLD) {
-      if (deletedOnce) return; // guard against double fire
+    if (Math.abs(dxRef.current) >= SWIPE_DELETE_THRESHOLD) {
+      if (deletedOnce) return;
       setDeletedOnce(true);
-      setLeaving(true); // lock input & visuals
+      setLeaving(true);
       setAnimating(true);
-
-      // Slide out and let parent replace with placeholder immediately
       requestAnimationFrame(() => {
         setDx(-window.innerWidth);
-        setTimeout(() => {
-          onDelete(meal); // optimistic replace (in-place)
-          // Do NOT reset dx or animating; this component will unmount next render.
-        }, 180); // exit timing tuned for snap-free feel
+        dxRef.current = -window.innerWidth;
+        setTimeout(() => { onDelete(meal); }, 180);
       });
-
       return;
     }
 
-    // Not past threshold: snap back
+    // Snap back
     setAnimating(true);
     requestAnimationFrame(() => {
       setDx(0);
-      setTimeout(() => {
-        setAnimating(false);
-        setArmed(false);
-      }, 220);
+      dxRef.current = 0;
+      setTimeout(() => { setAnimating(false); setArmed(false); armedRef.current = false; }, 220);
     });
   };
 
-  const onPointerUp = (e) => finishInteraction(e);
-  const onPointerCancel = (e) => finishInteraction(e);
-  const onPointerLeave = (e) => finishInteraction(e);
+  // ── Touch Events (iOS primary path) ──────────────────────────────────────
+  const onTouchStart = (e) => {
+    if (leaving) return;
+    touchBlockedRef.current = false;
+    const t = e.touches[0];
+    startXRef.current = t.clientX;
+    startYRef.current = t.clientY;
+    dxRef.current = 0;
+    draggingRef.current = true;
+    setDragging(true);
+    setAnimating(false);
+  };
+
+  const onTouchMove = (e) => {
+    if (!draggingRef.current || leaving) return;
+    const t = e.touches[0];
+    const deltaX = t.clientX - startXRef.current;
+    const deltaY = t.clientY - startYRef.current;
+
+    // If movement is more vertical than horizontal, treat as scroll — cancel swipe
+    if (!touchBlockedRef.current && Math.abs(deltaY) > Math.abs(deltaX) + 5) {
+      touchBlockedRef.current = true;
+      draggingRef.current = false;
+      setDragging(false);
+      cancelRAF();
+      setAnimating(true);
+      requestAnimationFrame(() => { setDx(0); dxRef.current = 0; setTimeout(() => setAnimating(false), 220); });
+      return;
+    }
+
+    if (touchBlockedRef.current) return;
+    if (deltaX < 0) e.preventDefault(); // prevent page-scroll while swiping left
+    applyDelta(t.clientX);
+  };
+
+  const onTouchEnd = () => { finishGesture(); };
+  const onTouchCancel = () => { finishGesture(); };
+
+  // ── Pointer Events (Android / desktop fallback) ───────────────────────────
+  const onPointerDown = (e) => {
+    if (!e.isPrimary || leaving || e.pointerType === "touch") return;
+    cancelRAF();
+    draggingRef.current = true;
+    setDragging(true);
+    setAnimating(false);
+    startXRef.current = e.clientX;
+    dxRef.current = 0;
+    try { elRef.current?.setPointerCapture?.(e.pointerId); } catch {}
+  };
+
+  const onPointerMove = (e) => {
+    if (!draggingRef.current || !e.isPrimary || leaving || e.pointerType === "touch") return;
+    applyDelta(e.clientX);
+  };
+
+  const onPointerUp = (e) => { if (e.pointerType !== "touch") finishGesture(); };
+  const onPointerCancel = (e) => { if (e.pointerType !== "touch") finishGesture(); };
+  const onPointerLeave = (e) => { if (e.pointerType !== "touch") finishGesture(); };
 
   React.useEffect(() => () => cancelRAF(), []);
 
@@ -3369,7 +3408,7 @@ const MealCard = ({
     // Keep a fixed height so layout doesn’t jump while swapping for placeholder
     <div
       className="relative w-full"
-      style={{ touchAction: "pan-y", height: 84 }}
+      style={{ touchAction: dragging ? "none" : "pan-y", height: 84 }}
     >
       {/* Background delete reveal (only visible while dragging, never after unmount) */}
       <div
@@ -3414,9 +3453,13 @@ const MealCard = ({
         tabIndex={0}
         onKeyDown={(e) => {
           if (leaving) return;
-          if (e.key === "Backspace" || e.key === "Delete") finishInteraction(e); // go through same flow
+          if (e.key === "Backspace" || e.key === "Delete") finishGesture();
           if (e.key === "Enter") onClick(meal);
         }}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        onTouchCancel={onTouchCancel}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}

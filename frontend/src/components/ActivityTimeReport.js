@@ -508,11 +508,21 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             ...node,
             userId:             uid,
             userName:           node.userName || node.name,
-            uplineCoachName:    node.coachName   ?? node.uplineCoachName   ?? null,
-            uplineCoCoachName:  node.coCoachName ?? node.uplineCoCoachName ?? null,
             __timeData:         dataMap.get(uid) || null,
             __score:            scoreMap.get(uid) ?? 0,
           };
+          
+          // DON'T set upline properties if this is a root coach/co-coach with partnership
+          // Check if coCoachInfo exists and has content (not just empty object)
+          const hasPartnership = node.coCoachInfo && 
+            Object.keys(node.coCoachInfo).length > 0 && 
+            node.coCoachInfo.userId;
+          
+          if (!hasPartnership) {
+            enriched.uplineCoachName = node.coachName ?? node.uplineCoachName ?? null;
+            enriched.uplineCoCoachName = node.coCoachName ?? node.uplineCoCoachName ?? null;
+          }
+          
           enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
           const directScores = enriched.teamMembers.map((m) => m.__score);
           enriched.__directAvg = directScores.length

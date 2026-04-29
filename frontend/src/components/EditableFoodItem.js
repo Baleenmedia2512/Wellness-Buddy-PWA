@@ -1754,6 +1754,7 @@ const EditableFoodItem = forwardRef(
                   <Trash2 className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">Delete</span>
                 </TouchFeedbackButton>
+                
 
                 <TouchFeedbackButton
                   onClick={handleEdit}

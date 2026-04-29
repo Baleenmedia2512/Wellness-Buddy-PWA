@@ -12,15 +12,28 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@southdevs/capacitor-google-auth';
 
-//  Firebase config
-const firebaseConfig = {
-  apiKey: 'AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps',
-  authDomain: 'wellness-valley.firebaseapp.com',
-  projectId: 'wellness-valley',
-  storageBucket: 'wellness-valley.firebasestorage.app',
-  messagingSenderId: '499376291787',
-  appId: '1:499376291787:android:7f587d91cbb40b5be9404e',
-};
+//  Firebase config — platform-aware
+const isIOS = Capacitor.getPlatform() === 'ios';
+
+const firebaseConfig = isIOS
+  ? {
+      // ✅ iOS config (from GoogleService-Info.plist)
+      apiKey: 'AIzaSyAMxCgoyyy8im3F8BQCjWK3xmEA9qYP8rc',
+      authDomain: 'wellness-buddy-5de14.firebaseapp.com',
+      projectId: 'wellness-buddy-5de14',
+      storageBucket: 'wellness-buddy-5de14.firebasestorage.app',
+      messagingSenderId: '610941252952',
+      appId: '1:610941252952:ios:2606191e4b774dd457e12d',
+    }
+  : {
+      // ✅ Android / Web config
+      apiKey: 'AIzaSyBy_z0qbRVyCz2UkHR-PAYorEYXTWDzCps',
+      authDomain: 'wellness-valley.firebaseapp.com',
+      projectId: 'wellness-valley',
+      storageBucket: 'wellness-valley.firebasestorage.app',
+      messagingSenderId: '499376291787',
+      appId: '1:499376291787:android:7f587d91cbb40b5be9404e',
+    };
 
 // 🔥 Initialize Firebase
 const app = initializeApp(firebaseConfig);
@@ -83,10 +96,11 @@ const clearRedirectPending = () => {
 // 🚀 Enhanced Google Sign-In for Web and Android
 export const signInWithGoogle = async (forceRedirect = false) => {
   try {
-    // Check if running in Capacitor (Android app)
+    // Check if running in Capacitor (Android/iOS app)
     if (Capacitor.isNativePlatform()) {
-      
-      // Initialize Google Auth for Capacitor
+
+      // ✅ Always re-initialize Google Auth before signing in
+      // This is required after disconnect() was called on iOS sign-out
       await GoogleAuth.initialize({
         scopes: ['profile', 'email'],
         serverClientId: '499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com',
@@ -246,25 +260,38 @@ export const handleRedirectResult = async () => {
   }
 };
 
-// 🚪 Enhanced Sign out for Web and Android
+// 🚪 Enhanced Sign out for Web, Android and iOS
 export const signOutUser = async () => {
   try {
     clearRedirectPending();
-    
-    // Sign out from Firebase
+
+    // ✅ Set a persistent sign-out flag BEFORE any async calls
+    // This stops onAuthStateChanged from re-logging in on iOS
+    localStorage.setItem('userSignedOut', 'true');
+
+    // Sign out from Firebase first
     await auth.signOut();
-    
-    // If running on native platform, also sign out from native Google Auth
+
+    // If running on native platform, fully revoke Google token
     if (Capacitor.isNativePlatform()) {
       try {
+        // Step 1: signOut() clears in-memory session
         await GoogleAuth.signOut();
-      } catch (error) {
-        console.warn('⚠️ Native Google Sign-Out warning:', error);
-        // Don't throw - Firebase sign-out was successful
+      } catch (e) {
+        console.warn('⚠️ GoogleAuth.signOut() warning:', e);
+      }
+      try {
+        // Step 2: disconnect() removes token from iOS Keychain — prevents silent re-auth
+        await GoogleAuth.disconnect();
+      } catch (disconnectError) {
+        console.warn('⚠️ GoogleAuth.disconnect() warning (non-fatal):', disconnectError);
+        // Non-fatal — Firebase sign-out already succeeded
       }
     }
-    
+
   } catch (error) {
+    // Even if Firebase signOut fails, set the flag so UI clears
+    localStorage.setItem('userSignedOut', 'true');
     console.error('Sign out error:', error);
     throw error;
   }

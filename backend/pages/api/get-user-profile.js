@@ -54,7 +54,7 @@ export default async function handler(req, res) {
     // Fetch user profile from team_table using Supabase
     const { data: user, error: userError } = await supabase
       .from('team_table')
-      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr"')
+      .select('"UserId", "UserName", "Email", "Height", "DietType", "ProfileImage", "CoachId", "PhoneNumber", "Bmr", profile_pic_snooze')
       .ilike('Email', email)
       .maybeSingle();
 
@@ -118,6 +118,7 @@ export default async function handler(req, res) {
       profileComplete,
       profileImage: user.ProfileImage || null,
       coachId: user.CoachId || null,
+      profilePicSnooze: user.profile_pic_snooze || null,
       latestWeight: null,
       latestBmr: user.Bmr ? parseFloat(user.Bmr) : null,  // BMR now from team_table
       weightRecordDate: null,

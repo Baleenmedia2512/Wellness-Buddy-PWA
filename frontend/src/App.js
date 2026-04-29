@@ -47,18 +47,23 @@ import { duplicateDetectionService } from "./services/duplicateDetectionService"
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
+import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/reminderService";
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
+import SmartFoodSearchModal from "./components/SmartFoodSearchModal";
+import ManualEducationEntryModal from "./components/ManualEducationEntryModal";
+import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
-import WeightLossLeaderboard from "./components/WeightLossLeaderboard";
-import DisciplineLeaderboard from "./components/DisciplineLeaderboard";
+// ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
+const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
+const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
+const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 import CoachScoreSummary from "./components/CoachScoreSummary";
-import PersonalDisciplineScore from "./components/PersonalDisciplineScore";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 
 import GalleryMonitor from "./services/galleryMonitor";
@@ -99,9 +104,9 @@ const WellnessUniversityReport = lazy(() =>
 const WellnessCounselling = lazy(() =>
   import("./pages/WellnessCounselling"),
 );
-const StepCounter = lazy(() => import("./components/StepCounter"));
-const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage"));
-const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage"));
+// const StepCounter = lazy(() => import("./components/StepCounter")); // FEATURE DISABLED
+// const ScreenTimePage = lazy(() => import("./pages/ScreenTimePage")); // FEATURE DISABLED
+// const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage")); // FEATURE DISABLED
 
 function WellnessValleyApp() {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
@@ -122,8 +127,13 @@ function WellnessValleyApp() {
   );
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
-  const [showStepCounter, setShowStepCounter] = useState(false);
+  // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
   const [user, setUser] = useState(null);
+  // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
+  // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
+  const [forceLoggedOut, setForceLoggedOut] = useState(
+    localStorage.getItem("userSignedOut") === "true"
+  );
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
     localStorage.getItem("isOtpVerified") === "true",
@@ -131,7 +141,15 @@ function WellnessValleyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
+  const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
+  const [showManualFoodModal, setShowManualFoodModal] = useState(false);
+  const [showManualEducationModal, setShowManualEducationModal] = useState(false);
+  const [showManualWatchModal, setShowManualWatchModal] = useState(false);
+  const [manualMealType, setManualMealType] = useState(""); // meal type passed to SmartFoodSearchModal
+  const [lastWeight, setLastWeight] = useState(null); // { value, unit, date } from get-weight-history
+  const [weightWindow, setWeightWindow] = useState(null); // { start, end } for weight time window
   const [currentWeightImage, setCurrentWeightImage] = useState(null);
   const [imageType, setImageType] = useState(null); // 'food' | 'weight' | 'education'
   const [imageTimestamp, setImageTimestamp] = useState(null); // EXIF timestamp from image
@@ -153,6 +171,7 @@ function WellnessValleyApp() {
   const [watchBurnedCalories, setWatchBurnedCalories] = useState(0); // Latest kcal from watch upload → pushed to NutritionDashboard
   const [sharePhotoBase64, setSharePhotoBase64] = useState(null); // CORS-safe base64 photo for share card
   const [savedProfileImage, setSavedProfileImage] = useState(null); // Custom profile image for share card.here 
+  const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
 
@@ -185,6 +204,8 @@ function WellnessValleyApp() {
 
   // Mandatory profile picture modal state - show when user has no valid profile picture
   const [showMandatoryProfilePictureModal, setShowMandatoryProfilePictureModal] = useState(false);
+  // Snooze data from DB: { count, max, until } or null
+  const [profilePicSnoozeData, setProfilePicSnoozeData] = useState(null);
 
   // Ref to prevent race conditions re-showing the gate after a successful save.
   // Initialised from localStorage so it persists across page refreshes.
@@ -216,22 +237,20 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
-  // Step Counter state
-  const showStepCounterPage = useCallback(() => {
-    setShowStepCounter(true);
-  }, []);
+  // Step Counter state — FEATURE DISABLED
+  // const [showStepCounter, setShowStepCounter] = useState(false);
+  const [showStepCounter] = useState(false);
+  // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
 
-  // Screen Time state
-  const [showScreenTime, setShowScreenTime] = useState(false);
-  const showScreenTimePage = useCallback(() => {
-    setShowScreenTime(true);
-  }, []);
+  // Screen Time state — FEATURE DISABLED
+  const [showScreenTime] = useState(false);
+  // const [showScreenTime, setShowScreenTime] = useState(false);
+  // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
-  // Reminders state
-  const [showReminders, setShowReminders] = useState(false);
-  const showRemindersPage = useCallback(() => {
-    setShowReminders(true);
-  }, []);
+  // Reminders state — FEATURE DISABLED
+  const [showReminders] = useState(false);
+  // const [showReminders, setShowReminders] = useState(false);
+  // const showRemindersPage = useCallback(() => { setShowReminders(true); }, []);
 
   // Attendance report state (for coaches)
   const [showAttendanceReport, setShowAttendanceReport] = useState(false);
@@ -366,6 +385,14 @@ function WellnessValleyApp() {
   }, [showCorrectionModal]);
 
   // ✅ CRITICAL FIX: Force splash screen dismissal on app load
+
+  // ✅ Auth loading timeout — force dismiss loading screen after 5 seconds
+  useEffect(() => {
+    const authTimeout = setTimeout(() => {
+      setAuthLoading(false);
+    }, 5000);
+    return () => clearTimeout(authTimeout);
+  }, []);
 
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
@@ -558,6 +585,17 @@ function WellnessValleyApp() {
       // Clear nutrition data and image preview when switching to dashboard
       if (nutritionData) setNutritionData(null);
       if (imagePreview) setImagePreview(null);
+      if (watchResult) setWatchResult(null);
+      if (educationResult) setEducationResult(null);
+      if (weightResult) {
+        setWeightResult(null);
+        setPendingWeightImage(null);
+        setWeightEntrySaved(false);
+        setSavedWeightId(null);
+        savedWeightIdRef.current = null;
+      }
+      if (selectedImage) setSelectedImage(null);
+      if (imageType) setImageType(null);
 
       // Use explicitly requested tab when provided (e.g., profile menu shortcuts).
       if (
@@ -579,7 +617,7 @@ function WellnessValleyApp() {
       setShowDashboard(true);
       localStorage.setItem("currentPage", "dashboard");
     },
-    [user, checkUserStatus, nutritionData, imagePreview, imageType],
+    [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
   );
 
   const showMainPage = () => {
@@ -626,6 +664,32 @@ function WellnessValleyApp() {
 
       // Request location permissions for attendance tracking
       await Geolocation.requestPermissions();
+
+      // On Android, also prompt for exact-alarm permission so reminders fire on time
+      // FEATURE DISABLED — Reminders commented out
+      // if (Capacitor.getPlatform() === "android") {
+      //   try {
+      //     const { canScheduleExact } = await checkExactAlarmPermission();
+      //     if (!canScheduleExact) {
+      //       await openExactAlarmSettings();
+      //     }
+      //   } catch (e) {
+      //     console.warn("⚠️ Exact alarm permission check failed:", e);
+      //   }
+      // }
+
+      // Request ACTIVITY_RECOGNITION so the background step sensor works from day 1
+      // FEATURE DISABLED — Step Counter commented out
+      // try {
+      //   const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+      //   const av = await StepCounterPlugin.isAvailable();
+      //   if (av?.available) {
+      //     await StepCounterPlugin.requestPermission();
+      //     console.log('✅ Activity recognition permission requested');
+      //   }
+      // } catch (stepErr) {
+      //   console.warn('⚠️ Step counter permission request failed:', stepErr?.message || stepErr);
+      // }
 
       console.log("✅ All permissions requested");
     } catch (err) {
@@ -735,29 +799,23 @@ function WellnessValleyApp() {
     };
   }, [showDashboardPage]);
 
-  // ── Silent step tracking start — runs when user logs in / app opens ────────
-  // Starts the native step sensor in the background so steps are counted from
-  // day 1, even if the user never navigates to the StepCounter page.
-  // Permission is NEVER requested here — only resumes tracking if already granted.
-  useEffect(() => {
-    if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
-
-    const startStepTrackingIfPermitted = async () => {
-      try {
-        const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
-        const availability = await StepCounterPlugin.isAvailable();
-        if (!availability?.available) return;
-        const permission = await StepCounterPlugin.getPermissionStatus();
-        if (!permission?.granted) return;
-        await StepCounterPlugin.startTracking();
-        console.log('✅ [App] Background step tracking started silently');
-      } catch (err) {
-        console.warn('[App] Silent step tracking start failed:', err?.message || err);
-      }
-    };
-
-    startStepTrackingIfPermitted();
-  }, [user, isUserActive]);
+  // ── Silent step tracking start — FEATURE DISABLED ────────────────────────
+  // useEffect(() => {
+  //   if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
+  //   const startStepTrackingIfPermitted = async () => {
+  //     try {
+  //       const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+  //       const availability = await StepCounterPlugin.isAvailable();
+  //       if (!availability?.available) return;
+  //       const permission = await StepCounterPlugin.getPermissionStatus();
+  //       if (!permission?.granted) return;
+  //       await StepCounterPlugin.startTracking();
+  //     } catch (err) {
+  //       console.warn('[App] Silent step tracking start failed:', err?.message || err);
+  //     }
+  //   };
+  //   startStepTrackingIfPermitted();
+  // }, [user, isUserActive]);
 
   // Handle redirect result on app load
   useEffect(() => {
@@ -791,11 +849,9 @@ function WellnessValleyApp() {
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail) => {
+    async (userEmail, userObj) => {
       if (!userEmail) return;
-      // Skip if user already completed profile in this session (prevents race conditions)
-      if (profileCompletedRef.current) return;
-      // Mark check in-flight so the gate doesn’t render while we’re fetching
+      // Mark check in-flight so the gate does not render while we are fetching
       setProfileChecking(true);
       try {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -820,6 +876,8 @@ function WellnessValleyApp() {
             localStorage.setItem("profileComplete_v2_" + userEmail, "true");
             setProfileChecking(false);
             setShowCompleteProfile(false);
+            // Profile fields complete — check picture gate separately
+            if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
             return;
           }
 
@@ -836,6 +894,8 @@ function WellnessValleyApp() {
             phoneNumber: latestData?.phoneNumber ?? null,
           },
         );
+        // Store snooze data so merged screen can use it
+        setProfilePicSnoozeData(latestData?.profilePicSnooze || null);
         setProfileChecking(false);
         setShowCompleteProfile(true);
       } catch (err) {
@@ -900,7 +960,20 @@ function WellnessValleyApp() {
           }
         }
 
-        // No valid profile picture found - show mandatory upload modal
+        // No valid profile picture found - check snooze from DB before showing modal
+        const snooze = profile.profilePicSnooze;
+        if (snooze) {
+          const snoozeUntil = new Date(snooze.until).getTime();
+          const snoozeCount = snooze.count ?? 0;
+          const snoozeMax = snooze.max ?? 5;
+          if (snoozeCount > 0 && snoozeCount < snoozeMax && Date.now() < snoozeUntil) {
+            console.log("⏰ [Profile Picture] Snoozed (DB) until", new Date(snoozeUntil).toLocaleString());
+            return;
+          }
+        }
+        // Store snooze data in state so modal can use count/max
+        setProfilePicSnoozeData(snooze || null);
+
         console.log("⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
         // Clear localStorage flag in case it was set incorrectly
         localStorage.removeItem(profilePictureKey);
@@ -919,6 +992,24 @@ function WellnessValleyApp() {
     const unsubscribe = onAuthStateChange(async (user) => {
       // If sign-out is in progress, ignore auth state changes
       if (signOutInProgress.current) {
+        return;
+      }
+      // ✅ Also ignore if userEmail was cleared (sign-out completed)
+      const storedEmail = localStorage.getItem("userEmail");
+      if (!user && !storedEmail) {
+        // Normal sign-out state — do nothing, UI already reset
+        return;
+      }
+      // ✅ Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
+      if (user && localStorage.getItem("userSignedOut") === "true") {
+        console.warn("🚫 [Auth State] Blocked silent re-auth — user signed out");
+        signOutUser().catch(() => {});
+        return;
+      }
+      // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
+      if (forceLoggedOut) {
+        console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
+        signOutUser().catch(() => {});
         return;
       }
 
@@ -1030,9 +1121,9 @@ function WellnessValleyApp() {
                 } else {
                   console.log("✅ [Auth State] Setup already complete");
                   // Check if mandatory profile fields are filled
-                  await checkProfileCompletion(userEmail);
-                  // After profile completion check, check for profile picture
-                  setTimeout(() => checkProfilePicture(user), 800);
+                  // checkProfilePicture is only called inside checkProfileCompletion
+                  // when profile IS complete (to avoid double gate)
+                  await checkProfileCompletion(userEmail, user);
                 }
               } else {
                 console.warn(
@@ -1089,7 +1180,7 @@ function WellnessValleyApp() {
     });
 
     return unsubscribe;
-  }, [user?.id]);
+  }, [user?.id, forceLoggedOut]);
 
   // Setup for authenticated users.
   useEffect(() => {
@@ -1115,6 +1206,9 @@ function WellnessValleyApp() {
           setEducationWindow(eduWindow);
         } else {
           console.warn("⚠️ Education window not found in response:", data);
+        }
+        if (data.success && data.windows?.weight) {
+          setWeightWindow(data.windows.weight);
         }
       } catch (err) {
         console.warn("⚠️ Failed to fetch education window from DB:", err.message);
@@ -1267,10 +1361,10 @@ function WellnessValleyApp() {
             }
           } else {
             console.log("✅ [Setup Check] Setup already complete");
-            // Profile completion + picture are already checked by the onAuthStateChange
-            // listener above. Running them again here would fire 3-5 duplicate API calls
-            // within 1 second of login. The onAuthStateChange path is the single
-            // authoritative source for profile gate checks.
+            // Check profile completion and profile picture
+            // (Firebase auth may not fire these when suspended/offline, so we run them here too)
+            await checkProfileCompletion(userEmail);
+            setTimeout(() => checkProfilePicture(user), 800);
           }
         } else {
           console.warn(
@@ -1351,15 +1445,16 @@ function WellnessValleyApp() {
   // Fetch saved custom profile image for share card
   useEffect(() => {
     if (!user?.email || !apiBaseUrl) { setSavedProfileImage(null); return; }
-    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`, {
-      cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' }
-    })
+    // Use standard caching — no need to bust cache on every render
+    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
+        if (data?.success && data?.data?.userName) setSavedUserName(data.data.userName);
+        else setSavedUserName(null);
       })
-      .catch(() => setSavedProfileImage(null));
+      .catch(() => { setSavedProfileImage(null); setSavedUserName(null); });
   }, [user?.email, apiBaseUrl]);
 
   // Cleanup on unmount
@@ -1529,6 +1624,25 @@ function WellnessValleyApp() {
         originalWeight: data.correction?.originalWeight || weightData.weightValue,
         loggedAt: captureTimestamp || new Date().toISOString(),
       });
+
+      // Fetch previous weight to show "vs Previous entry" diff immediately
+      try {
+        const histRes = await fetch(
+          `${apiBaseUrl}/api/get-weight-history?userId=${userId}&includeImage=false&_t=${Date.now()}`
+        );
+        const histData = await histRes.json();
+        if (histData.success && histData.stats?.previousWeight) {
+          const prevWeight = parseFloat(histData.stats.previousWeight.value);
+          const weightChange = parseFloat(finalSavedWeight) - prevWeight;
+          setWeightDiff({
+            previous: Math.round(prevWeight * 100) / 100,
+            previousDate: histData.stats.previousWeight.date,
+            change: Math.round(weightChange * 100) / 100,
+          });
+        } else {
+          setWeightDiff(null);
+        }
+      } catch (_) { /* non-critical */ }
 
       // Check if weight was auto-corrected
       if (data.correction && data.correction.wasCorrected) {
@@ -1770,6 +1884,228 @@ function WellnessValleyApp() {
     }
   };
 
+  /** Determine meal type label from a Date object based on hour */
+  const getMealTypeFromTime = (date) => {
+    const h = (date || new Date()).getHours();
+    if (h < 10) return "Breakfast";
+    if (h < 14) return "Lunch";
+    if (h < 18) return "Dinner";
+    return "Snack";
+  };
+
+  /**
+   * Returns the two alt-switch buttons for a given modal type (the other two options).
+   * Used to render "No, it's X" inside each auto-opened modal.
+   */
+  const getAltSwitchButtons = (currentType) => {
+    const now = new Date();
+    return [
+      currentType !== "food" && {
+        label: "Food",
+        icon: "🍽",
+        sub: `It's ${getMealTypeFromTime(now).toLowerCase()} time`,
+        onClick: () => {
+          setShowManualWeightModal(false);
+          setShowManualEducationModal(false);
+          setManualMealType(getMealTypeFromTime(now));
+          setShowManualFoodModal(true);
+        },
+      },
+      currentType !== "weight" && {
+        label: "Weight",
+        icon: "⚖️",
+        sub: weightWindow ? `${weightWindow.start?.slice(0,5)}–${weightWindow.end?.slice(0,5)}` : null,
+        onClick: () => {
+          setShowManualFoodModal(false);
+          setShowManualEducationModal(false);
+          fetchLastWeight();
+          setCurrentWeightImage(null);
+          setShowManualWeightModal(true);
+        },
+      },
+      currentType !== "education" && {
+        label: "Education",
+        icon: "🎓",
+        sub: educationWindow ? `${educationWindow.start?.slice(0,5)}–${educationWindow.end?.slice(0,5)}` : null,
+        onClick: () => {
+          setShowManualFoodModal(false);
+          setShowManualWeightModal(false);
+          setShowManualEducationModal(true);
+        },
+      },
+    ].filter(Boolean);
+  };
+
+  /** Toggle manual mode on/off and persist to localStorage */
+  const toggleManualMode = () => {
+    setManualModeActive((prev) => {
+      const next = !prev;
+      localStorage.setItem("manualModeActive", String(next));
+      setManualModeToast(next ? "enabled" : "disabled");
+      setTimeout(() => setManualModeToast(""), 2500);
+      return next;
+    });
+  };
+
+  /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
+  const openBestManualModal = () => {
+    setError(null); // clear AI Unavailable card — modal handles the UI
+    const now = imageTimestamp ? new Date(imageTimestamp) : new Date();
+    const mins = now.getHours() * 60 + now.getMinutes();
+
+    const inWindow = (win) => {
+      if (!win?.start || !win?.end) return false;
+      const [sh, sm] = win.start.split(":").map(Number);
+      const [eh, em] = win.end.split(":").map(Number);
+      return mins >= sh * 60 + sm && mins <= eh * 60 + em;
+    };
+
+    if (inWindow(weightWindow)) {
+      fetchLastWeight();
+      setCurrentWeightImage(null);
+      setShowManualWeightModal(true);
+    } else if (inWindow(educationWindow)) {
+      setShowManualEducationModal(true);
+    } else {
+      // Default → food
+      setManualMealType(getMealTypeFromTime(now));
+      setShowManualFoodModal(true);
+    }
+  };
+
+  /** Fetch the user's most recent weight entry for the hint card */
+  const fetchLastWeight = async () => {
+    try {
+      let uid = user?.id;
+      if (!uid) uid = await getUserId(user);
+      if (!uid) return;
+      const res = await fetch(
+        `${apiBaseUrl}/api/get-weight-history?userId=${uid}&includeImage=false&_t=${Date.now()}`
+      );
+      const data = await res.json();
+      if (data.success && data.stats?.latestWeight) {
+        setLastWeight({
+          value: data.stats.latestWeight.value,
+          unit: "kg",
+          date: data.stats.latestWeight.date,
+        });
+      }
+    } catch {
+      /* non-critical */
+    }
+  };
+
+  /**
+   * Handle manual food entry from modal (used when AI is unavailable)
+   */
+  const handleManualFoodSave = async (manualData) => {
+    try {
+      setShowManualFoodModal(false);
+      setError(null);
+      setImageType("food");
+      setLoadingState("saving");
+      setSaveLoading(true);
+
+      // Build detailedItems — either a full plate (multiple) or a single food
+      let detailedItems;
+      let totalNutrition;
+      let categoryName;
+
+      if (manualData.isPlate && Array.isArray(manualData.items)) {
+        detailedItems = manualData.items.map((f) => ({
+          name: f.name,
+          portionDescription: "1 serving",
+          estimatedWeight: "Unknown",
+          calories: f.calories ?? 0,
+          protein: f.protein ?? 0,
+          carbs: f.carbs ?? 0,
+          fat: f.fat ?? 0,
+          fiber: f.fiber ?? 0,
+          nutrition: {
+            calories: f.calories ?? 0,
+            protein: f.protein ?? 0,
+            carbs: f.carbs ?? 0,
+            fat: f.fat ?? 0,
+            fiber: f.fiber ?? 0,
+          },
+        }));
+        totalNutrition = manualData.total || detailedItems.reduce(
+          (acc, f) => ({
+            calories: acc.calories + f.calories,
+            protein: acc.protein + f.protein,
+            carbs: acc.carbs + f.carbs,
+            fat: acc.fat + f.fat,
+            fiber: acc.fiber + f.fiber,
+          }),
+          { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 }
+        );
+        categoryName = manualData.plateName || "Mixed Plate";
+      } else {
+        detailedItems = [
+          {
+            name: manualData.foodName,
+            portionDescription: manualData.portion,
+            estimatedWeight: "Unknown",
+            calories: manualData.calories,
+            protein: manualData.protein,
+            carbs: manualData.carbs,
+            fat: manualData.fat,
+            fiber: manualData.fiber,
+            nutrition: {
+              calories: manualData.calories,
+              protein: manualData.protein,
+              carbs: manualData.carbs,
+              fat: manualData.fat,
+              fiber: manualData.fiber,
+            },
+          },
+        ];
+        totalNutrition = {
+          calories: manualData.calories,
+          protein: manualData.protein,
+          carbs: manualData.carbs,
+          fat: manualData.fat,
+          fiber: manualData.fiber,
+        };
+        categoryName = manualData.foodName;
+      }
+
+      const result = {
+        nutrition: totalNutrition,
+        category: { name: categoryName },
+        source: "Manual Entry",
+        isRealData: true,
+        isManualEntry: true,
+        itemCount: detailedItems.length,
+        confidence: "high",
+        detailedItems,
+        loggedAt: new Date().toISOString(),
+      };
+
+      setNutritionData(result);
+
+      let actualUserId = user?.id;
+      if (!actualUserId) {
+        actualUserId = await getUserId(user);
+      }
+
+      await performNutritionSave({
+        userId: actualUserId,
+        imagePath: "manual-entry",
+        imageBase64: null,
+        analysisResult: result,
+        deviceInfo: window.navigator.userAgent,
+        userEmail: user?.email || user?.Email || "unknown",
+        captureTimestamp: null,
+      });
+    } catch (err) {
+      console.error("❌ Manual food save error:", err);
+      throw err;
+    } finally {
+      setSaveLoading(false);
+    }
+  };
+
   /**
    * Save education meeting log to database (AUTO-SAVE)
    * @param {Object} educationData - { platform, topic, confidence, participantCount }
@@ -1850,6 +2186,54 @@ function WellnessValleyApp() {
         return; // Wait for user to select club
       }
 
+      // Get address from GPS coordinates using reverse geocoding
+      let userCity = null;
+      let userVillage = null;
+      
+      if (attendance.latitude && attendance.longitude) {
+        try {
+          console.log("📍 Fetching address from GPS:", {
+            lat: attendance.latitude,
+            lon: attendance.longitude
+          });
+          
+          const geoResponse = await fetch(
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1`,
+            {
+              headers: {
+                'User-Agent': 'WellnessBuddy/1.0'
+              }
+            }
+          );
+          
+          if (geoResponse.ok) {
+            const geoData = await geoResponse.json();
+            if (geoData && geoData.address) {
+              const addr = geoData.address;
+              
+              // Extract city (main city/town)
+              userCity = addr.city || addr.town || addr.village || addr.county || null;
+              
+              // Extract village (neighbourhood, suburb, hamlet - smaller areas)
+              const villageParts = [];
+              if (addr.neighbourhood) villageParts.push(addr.neighbourhood);
+              if (addr.suburb && addr.suburb !== addr.neighbourhood) villageParts.push(addr.suburb);
+              if (addr.hamlet) villageParts.push(addr.hamlet);
+              
+              userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
+              
+              console.log("✅ Address extracted:", {
+                city: userCity,
+                village: userVillage,
+                fullAddress: geoData.display_name
+              });
+            }
+          }
+        } catch (err) {
+          console.warn("⚠️ Failed to fetch address from GPS:", err);
+        }
+      }
+
       // Determine final values
       const finalCenterId = selectedClub?.id || attendance.nutritionCenterId;
       const finalCenterName =
@@ -1885,6 +2269,8 @@ function WellnessValleyApp() {
           nutritionCenterId: finalCenterId,
           centerName: finalCenterName,
           imageTimestamp: logTimestamp, // Pass EXIF timestamp to backend
+          city: userCity,
+          village: userVillage,
         }),
       });
 
@@ -2140,6 +2526,13 @@ function WellnessValleyApp() {
         "📸 Image file is too large. Please choose a smaller image (max 10MB).",
       );
       imageProcessingInProgress.current = false;
+      return;
+    }
+
+    // ✋ MANUAL MODE: skip AI entirely, open best manual modal
+    if (manualModeActive) {
+      imageProcessingInProgress.current = false;
+      openBestManualModal();
       return;
     }
 
@@ -2753,8 +3146,7 @@ function WellnessValleyApp() {
           if (isApiError) {
             errorMessage =
               "🤖 The AI model is temporarily unavailable. Please try again later.";
-          } else if (isNetworkError) {
-            errorMessage =
+          } else if (isNetworkError) {            errorMessage =
               "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
           } else if (isNonFoodImage) {
             errorMessage =
@@ -2767,6 +3159,10 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
+          if (isApiError) {
+            // AI failed for this upload — open manual modal without permanently enabling manual mode
+            openBestManualModal();
+          }
           setLoading(false);
           return;
         }
@@ -3063,6 +3459,10 @@ function WellnessValleyApp() {
       setLoading(true);
       setError(null);
 
+      // ✅ User is intentionally signing in — clear the sign-out block flags
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
+
       // Flag should already be set by Login component
       // But set it here too for redirect flow safety
       if (!sessionStorage.getItem("freshGoogleSignIn")) {
@@ -3197,6 +3597,10 @@ function WellnessValleyApp() {
     try {
       setLoading(true);
       setError(null);
+
+      // ✅ User is intentionally signing in — clear the sign-out block flags
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
 
       // Flag is already set by Login component before this function is called
       // Safety timeout to clear flag if something goes wrong (30 seconds for slow sign-in)
@@ -3370,10 +3774,18 @@ function WellnessValleyApp() {
 
   const handleSignOut = async () => {
     try {
-      setLoading(true);
+      // Do NOT set loading=true here — it would pass loading=true to Login
+      // which immediately shows "Signing in..." on the Google button after sign-out.
 
       // Set sign-out in progress flag to prevent concurrent sign-in
       signOutInProgress.current = true;
+
+      // ✅ Ensure loading is false BEFORE showing Login screen
+      setLoading(false);
+
+      // ✅ Set React gate FIRST — this immediately shows Login screen
+      // and blocks any Firebase re-auth callbacks from re-logging in
+      setForceLoggedOut(true);
 
       // Clear the fresh sign-in flag immediately to prevent re-login issues
       sessionStorage.removeItem("freshGoogleSignIn");
@@ -3405,16 +3817,32 @@ function WellnessValleyApp() {
         }
       }
       await signOutUser();
+      // ✅ Clear all auth-related localStorage keys
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isOtpVerified");
+      localStorage.removeItem("otpUser");
+      localStorage.removeItem("currentPage");
+      localStorage.removeItem("dbUserId");
+      // Keep "userSignedOut" flag — set by signOutUser() to block iOS silent re-auth
+      sessionStorage.clear();
       resetApp();
     } catch (error) {
       console.error("❌ Sign out error:", error);
-      setError("Failed to sign out. Please try again.");
+      // ✅ Even if signOut throws, force clear the UI so user isn't stuck
+      localStorage.removeItem("userEmail");
+      localStorage.removeItem("isOtpVerified");
+      localStorage.removeItem("otpUser");
+      localStorage.removeItem("currentPage");
+      localStorage.removeItem("dbUserId");
+      // Keep "userSignedOut" flag to block re-auth
+      sessionStorage.clear();
+      resetApp();
     } finally {
       setLoading(false);
-      // Reset the sign-out flag after a delay to allow cleanup
+      // Reset the sign-out flag after a longer delay on iOS to prevent re-auth
       setTimeout(() => {
         signOutInProgress.current = false;
-      }, 1000);
+      }, 3000);
     }
   };
 
@@ -3428,20 +3856,29 @@ function WellnessValleyApp() {
       try {
         const parsedUser = JSON.parse(otpUser);
 
-        // Check user status before allowing access
-        const isActive = await checkUserStatus(parsedUser);
+        // Check user status with timeout for iOS
+        let isActive = true;
+        try {
+          const statusPromise = checkUserStatus(parsedUser);
+          const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(true), 5000));
+          isActive = await Promise.race([statusPromise, timeoutPromise]);
+        } catch (statusError) {
+          console.warn("⚠️ [handleOtpVerified] Status check failed, proceeding:", statusError);
+          isActive = true; // Default to active on error
+        }
 
         if (!isActive) {
-          // Set user state so modal can show user email
           setUser(parsedUser);
-          // Set OTP verified to false to prevent login completion
           setIsOtpVerified(false);
-          // Don't set isOtpVerified to true - keep at login screen with modal
           return;
         }
 
         setIsOtpVerified(true);
         localStorage.setItem("isOtpVerified", "true");
+
+        // ✅ User is logging in via OTP — clear the sign-out gate
+        localStorage.removeItem("userSignedOut");
+        setForceLoggedOut(false);
 
         // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
@@ -3466,9 +3903,16 @@ function WellnessValleyApp() {
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
+        // On iOS, if everything fails, still try to log in
+        localStorage.removeItem("userSignedOut");
+        setForceLoggedOut(false);
+        setIsOtpVerified(true);
+        localStorage.setItem("isOtpVerified", "true");
       }
     } else {
       // No OTP user found, proceed with verification
+      localStorage.removeItem("userSignedOut");
+      setForceLoggedOut(false);
       setIsOtpVerified(true);
       localStorage.setItem("isOtpVerified", "true");
     }
@@ -3477,6 +3921,19 @@ function WellnessValleyApp() {
   // Loading state
   if (authLoading) {
     return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ iOS Sign-out gate: user explicitly signed out — always show Login
+  // This prevents Firebase silent re-auth from bypassing the logout
+  if (forceLoggedOut) {
+    return (
+      <Login
+        onSignIn={isMobileDevice() ? handleSignIn : handlePopupSignIn}
+        loading={loading}
+        error={error}
+        onOtpVerified={handleOtpVerified}
+      />
+    );
   }
 
   // Authentication flow
@@ -3549,48 +4006,32 @@ function WellnessValleyApp() {
     );
   }
 
-  // Step Counter page
-  if (showStepCounter) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
-        <StepCounter
-          user={user}
-          userId={user?.id}
-          userRole={userRole}
-          onBack={() => {
-            setShowStepCounter(false);
-          }}
-        />
-      </Suspense>
-    );
-  }
+  // Step Counter page — FEATURE DISABLED
+  // if (showStepCounter) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading step counter..." />}>
+  //       <StepCounter user={user} userId={user?.id} userRole={userRole} onBack={() => setShowStepCounter(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
-  // Screen Time page
-  if (showScreenTime) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
-        <ScreenTimePage
-          user={user}
-          userRole={userRole}
-          userId={user?.id}
-          onBack={() => {
-            setShowScreenTime(false);
-          }}
-        />
-      </Suspense>
-    );
-  }
+  // Screen Time page — FEATURE DISABLED
+  // if (showScreenTime) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading screen time..." />}>
+  //       <ScreenTimePage user={user} userRole={userRole} userId={user?.id} onBack={() => setShowScreenTime(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
-  // Reminders page
-  if (showReminders) {
-    return (
-      <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
-        <ReminderSettingsPage
-          onBack={() => setShowReminders(false)}
-        />
-      </Suspense>
-    );
-  }
+  // Reminders page — FEATURE DISABLED
+  // if (showReminders) {
+  //   return (
+  //     <Suspense fallback={<LoadingSpinner message="Loading reminders..." />}>
+  //       <ReminderSettingsPage onBack={() => setShowReminders(false)} />
+  //     </Suspense>
+  //   );
+  // }
 
   // Discipline Report for all users
   if (showDisciplineReport) {
@@ -3645,14 +4086,14 @@ function WellnessValleyApp() {
   // Main app interface
   return (
     <LocationGuard>
-    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden">
+    <div className="h-screen w-screen bg-gradient-to-br from-green-50 to-green-100 flex flex-col overflow-hidden" style={{ paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       <Header
         user={user}
         userRole={userRole}
         onShowBackgroundHistory={showDashboardPage}
-        onShowStepCounter={showStepCounterPage}
-        onShowScreenTime={showScreenTimePage}
-        onShowReminders={showRemindersPage}
+        // onShowStepCounter={showStepCounterPage}   // FEATURE DISABLED
+        // onShowScreenTime={showScreenTimePage}      // FEATURE DISABLED
+        // onShowReminders={showRemindersPage}        // FEATURE DISABLED
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
             ? () => setShowAdminDashboard(true)
@@ -3680,6 +4121,8 @@ function WellnessValleyApp() {
         onShowRegisterCenter={() => setShowRegisterCenter(true)}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
+        // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
+        // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
         onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
@@ -3714,11 +4157,11 @@ function WellnessValleyApp() {
         topN={10}
       />
 
-      <div className="flex-1 overflow-y-auto px-4 pt-16 pb-6">
-        <div className="max-w-md w-full mx-auto space-y-6">
+      <div className="flex-1 overflow-y-auto px-3 xs:px-4 pt-14 xs:pt-16" style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 24px)' }}>
+        <div className="max-w-lg w-full mx-auto space-y-4 xs:space-y-6 py-2 xs:py-3">
           {/* Back button toast message */}
           {toast.visible && (
-            <div className="fixed bottom-20 left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200">
+            <div className="fixed bottom-[calc(5rem+env(safe-area-inset-bottom,0px))] left-1/2 transform -translate-x-1/2 bg-white text-gray-800 px-4 py-2 rounded-lg shadow-xl z-[9999] text-sm border border-gray-200 whitespace-nowrap">
               {toast.message}
             </div>
           )}
@@ -3735,37 +4178,150 @@ function WellnessValleyApp() {
             educationWindow={educationWindow}
           />
 
-          {error && (
-            <div className="bg-white border border-red-200 text-red-600 px-4 py-3 rounded-xl shadow-sm">
-              <div className="flex items-start space-x-3">
-                <div className="text-xl">⚠️</div>
-                <div className="flex-1">
-                  <p className="font-semibold">Error</p>
-                  <p className="text-sm leading-relaxed whitespace-pre-line">{error}</p>
+          {error && (() => {
+            const isAiUnavailable = error.includes("AI model is temporarily unavailable");
+
+            if (isAiUnavailable) {
+              const now = new Date();  // always use current device time, not image EXIF
+              const mins = now.getHours() * 60 + now.getMinutes();
+              const inOrNear = (win) => {
+                if (!win?.start || !win?.end) return false;
+                const [sh, sm] = win.start.split(":").map(Number);
+                const [eh, em] = win.end.split(":").map(Number);
+                const start = sh * 60 + sm, end = eh * 60 + em;
+                return mins >= start && mins <= end;  // exact window only
+              };
+
+              // Primary type based on time
+              const primaryType = inOrNear(weightWindow) ? "weight"
+                : inOrNear(educationWindow) ? "education"
+                : "food";
+
+              const typeConfig = {
+                food: {
+                  icon: "🍽",
+                  label: "Log Food",
+                  sub: getMealTypeFromTime(now),
+                  bg: "bg-orange-500 hover:bg-orange-600 active:bg-orange-700",
+                  onClick: () => { setManualMealType(getMealTypeFromTime(now)); setShowManualFoodModal(true); },
+                },
+                weight: {
+                  icon: "⚖️",
+                  label: "Log Weight",
+                  sub: "Scale photo",
+                  bg: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800",
+                  onClick: () => { fetchLastWeight(); setCurrentWeightImage(null); setShowManualWeightModal(true); },
+                },
+                education: {
+                  icon: "🎓",
+                  label: "Log Education",
+                  sub: "Session / class",
+                  bg: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800",
+                  onClick: () => setShowManualEducationModal(true),
+                },
+              };
+
+              const primary = typeConfig[primaryType];
+              // Always show all other options so user can correct
+              const altButtons = ["food", "weight", "education"]
+                .filter(t => t !== primaryType)
+                .map(t => typeConfig[t]);
+
+              const timeLabel = {
+                weight: `It's weight time (${weightWindow?.start?.slice(0,5)}–${weightWindow?.end?.slice(0,5)})`,
+                education: `It's education time (${educationWindow?.start?.slice(0,5)}–${educationWindow?.end?.slice(0,5)})`,
+                food: `It's food time right now`,
+              }[primaryType];
+
+              return (
+                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                  {/* Header */}
+                  <div className="relative flex items-center justify-center px-4 pt-4 pb-2">
+                    <div className="flex flex-col items-center gap-0.5">
+                      <span className="text-base">🤖</span>
+                      <p className="text-sm font-bold text-gray-900 leading-tight">AI Unavailable</p>
+                      <p className="text-xs text-gray-400 leading-tight">Log manually below</p>
+                    </div>
+                    <button
+                      onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                      className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+
+                  {/* Primary time-based action */}
+                  <div className="px-4 pb-3">
+                    <TouchFeedbackButton
+                      onClick={primary.onClick}
+                      className={`w-full ${primary.bg} text-white rounded-2xl py-4 flex flex-col items-center justify-center gap-1 transition-colors`}
+                    >
+                      <span className="text-3xl leading-none">{primary.icon}</span>
+                      <span className="text-base font-bold">{primary.label}</span>
+                    </TouchFeedbackButton>
+                  </div>
+
+                  {/* Divider */}
+                  {altButtons.length > 0 && (
+                    <div className="flex items-center gap-3 px-4 pb-3">
+                      <div className="flex-1 h-px bg-gray-100" />
+                      <span className="text-xs text-gray-400 font-medium">not this?</span>
+                      <div className="flex-1 h-px bg-gray-100" />
+                    </div>
+                  )}
+
+                  {/* Alt options */}
+                  {altButtons.length > 0 && (
+                    <div className="flex gap-2 px-4 pb-4">
+                      {altButtons.map((btn) => (
+                        <TouchFeedbackButton
+                          key={btn.label}
+                          onClick={btn.onClick}
+                          className="flex-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-600 py-3 rounded-xl flex flex-col items-center gap-1 transition-colors"
+                        >
+                          <span className="text-xl leading-none">{btn.icon}</span>
+                          <span className="text-xs font-semibold">{btn.label.replace("Log ", "")}</span>
+                        </TouchFeedbackButton>
+                      ))}
+                    </div>
+                  )}
                 </div>
+              );
+            }
+
+            return (
+              <div className="bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
+                  <span className="text-lg leading-none flex-shrink-0">⚠️</span>
+                  <p className="font-semibold text-sm text-red-700 flex-1">Error</p>
+                  <button
+                    onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
+                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600"
+                    aria-label="Dismiss"
+                  >
+                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                <p className="text-sm text-red-600 px-4 pb-3 leading-relaxed break-words">
+                  {error.replace(/^[🤖⚠️🌐📸🍽️]\s*/, "")}
+                </p>
+                {lastImageFileRef.current && (
+                  <div className="px-4 pb-3">
+                    <TouchFeedbackButton
+                      onClick={handleRetryAnalysis}
+                      className="w-full bg-green-600 text-white px-3 py-2 rounded-lg text-xs font-semibold hover:bg-green-700 active:bg-green-800 transition-colors text-center"
+                    >
+                      Retry
+                    </TouchFeedbackButton>
+                  </div>
+                )}
               </div>
-              {lastImageFileRef.current && (
-                <div className="mt-2 flex gap-2 justify-end">
-                  <TouchFeedbackButton
-                    onClick={handleRetryAnalysis}
-                    className="bg-green-600 text-white px-3 py-1.5 rounded-md text-xs font-medium hover:bg-green-700 active:bg-green-800 transition-colors"
-                  >
-                    Retry
-                  </TouchFeedbackButton>
-                  <TouchFeedbackButton
-                    onClick={() => {
-                      setError(null);
-                      setImagePreview(null);
-                      lastImageFileRef.current = null;
-                    }}
-                    className="px-3 py-1.5 rounded-md text-xs font-medium border border-gray-300 text-gray-500 hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                  >
-                    Dismiss
-                  </TouchFeedbackButton>
-                </div>
-              )}
-            </div>
-          )}
+            );
+          })()}
 
           {imageType === "food" && nutritionData && (
             <NutritionCard
@@ -3897,9 +4453,9 @@ function WellnessValleyApp() {
                           margin: "0 0 6px 0",
                         }}
                       >
-                        {user?.displayName ||
+                        {savedUserName ||
+                          user?.displayName ||
                           user?.name ||
-                          user?.email?.split("@")[0] ||
                           "Wellness User"}
                       </p>
                       <p
@@ -4380,6 +4936,20 @@ function WellnessValleyApp() {
         />
       )}
 
+      {/* Manual Mode Toast */}
+      {manualModeToast && (
+        <div
+          key={manualModeToast}
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] pointer-events-none animate-manual-toast"
+        >
+          <span className={`text-xs font-semibold tracking-wide ${
+            manualModeToast === "enabled" ? "text-green-500" : "text-gray-400"
+          }`}>
+            {manualModeToast === "enabled" ? "✦ Manual mode enabled" : "✦ Manual mode disabled"}
+          </span>
+        </div>
+      )}
+
       {/* User Not Found Modal */}
       {showUserNotFoundModal && (
         <UserNotFoundModal
@@ -4387,6 +4957,71 @@ function WellnessValleyApp() {
           onClose={handleUserNotFoundModalClose}
         />
       )}
+
+      {/* Smart Food Search Modal (replaces ManualFoodEntryModal — shows history + global search) */}
+      <SmartFoodSearchModal
+        isOpen={showManualFoodModal}
+        onClose={() => { setShowManualFoodModal(false); setManualMealType(""); }}
+        onSave={handleManualFoodSave}
+        mealType={manualMealType}
+        apiBaseUrl={apiBaseUrl}
+        userId={user?.id}
+        timeLabel="It's food time! Do you want to add manually?"
+        altSwitchButtons={getAltSwitchButtons("food")}
+      />
+
+      {/* Manual Education Entry Modal */}
+      <ManualEducationEntryModal
+        isOpen={showManualEducationModal}
+        onClose={() => setShowManualEducationModal(false)}
+        onBack={() => {
+          setShowManualEducationModal(false);
+          if (manualModeActive) openBestManualModal();
+        }}
+        altSwitchButtons={getAltSwitchButtons("education")}
+        onSave={async (data) => {
+          setShowManualEducationModal(false);
+          setError(null);
+          // Clear uploaded image — it's unrelated to this education log
+          setImagePreview(null);
+          setSelectedImage(null);
+          setImageType("education");
+          setLoadingState("saving");
+          setSaveLoading(true);
+          await saveEducationLog(
+            { platform: data.platform, topic: data.topic, confidence: 0.9, participantCount: null },
+            null,
+            null,
+            null,
+          );
+        }}
+      />
+
+      {/* Manual Watch Entry Modal */}
+      <ManualWatchEntryModal
+        isOpen={showManualWatchModal}
+        onClose={() => setShowManualWatchModal(false)}
+        onBack={() => setShowManualWatchModal(false)}
+        onSave={async (data) => {
+          setShowManualWatchModal(false);
+          setError(null);
+          // Clear any uploaded image so the watch card doesn't show the wrong photo
+          setImagePreview(null);
+          setSelectedImage(null);
+          let resolvedUserId = user?.id;
+          if (!resolvedUserId) {
+            try { resolvedUserId = await getUserId(user); } catch (_) {}
+          }
+          setImageType("smartwatch");
+          setWatchResult({
+            caloriesBurned: data.caloriesBurned,
+            source: data.source,
+            loggedAt: new Date().toISOString(),
+            userId: resolvedUserId,
+            isManualEntry: true,
+          });
+        }}
+      />
 
       {/* Manual Weight Entry Modal */}
       <ManualWeightEntryModal
@@ -4396,8 +5031,15 @@ function WellnessValleyApp() {
           setCurrentWeightImage(null);
           setLoading(false);
         }}
+        onBack={() => {
+          setShowManualWeightModal(false);
+          setCurrentWeightImage(null);
+          if (manualModeActive) openBestManualModal();
+        }}
         onSave={handleManualWeightSave}
         imagePreview={currentWeightImage}
+        lastWeight={lastWeight}
+        altSwitchButtons={getAltSwitchButtons("weight")}
       />
 
       {/* Duplicate Food Modal */}
@@ -4475,22 +5117,32 @@ function WellnessValleyApp() {
         <CompleteProfilePage
           user={user}
           apiBaseUrl={apiBaseUrl}
-          onComplete={async () => {
+          showPictureSection={true}
+          snoozeData={profilePicSnoozeData}
+          userId={user.id || user.UserId || localStorage.getItem("dbUserId")}
+          onComplete={async (savedData) => {
             const email =
               user?.email ||
               user?.Email ||
               localStorage.getItem("userEmail") ||
               "";
-            profileCompletedRef.current = true; // Mark as complete to prevent re-showing
+            profileCompletedRef.current = true;
             localStorage.setItem("profileComplete_v2_" + email, "true");
-            setShowCompleteProfile(false); // Hide the profile completion page immediately
+            setShowCompleteProfile(false);
             setProfileChecking(false);
-            
-            // After profile completion, check for profile picture with delay for state update
-            setTimeout(() => {
-              console.log("🔄 [Profile Complete] Checking for profile picture...");
-              checkProfilePicture(user);
-            }, 800);
+
+            // If picture was saved, update user state immediately
+            if (savedData?.profileImage) {
+              setUser((prevUser) => ({
+                ...prevUser,
+                profileImage: savedData.profileImage,
+                ProfileImage: savedData.profileImage,
+                photoURL: savedData.profileImage,
+              }));
+            } else {
+              // Picture was snoozed — snooze data already saved to DB by handleRemindLater
+              setProfilePicSnoozeData(null);
+            }
           }}
         />
       )}
@@ -4499,10 +5151,31 @@ function WellnessValleyApp() {
            Shown after profile completion if user doesn't have a valid
            profile picture. Cannot be dismissed until picture is uploaded.
       ─────────────────────────────────────────────────────────────────── */}
-      {showMandatoryProfilePictureModal && user && (
+      {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
           apiBaseUrl={apiBaseUrl}
+          snoozeData={profilePicSnoozeData}
+          onRemindLater={async () => {
+            const userId = user.id || user.UserId || localStorage.getItem("dbUserId");
+            if (userId) {
+              try {
+                const res = await fetch(`${apiBaseUrl}/api/snooze-profile-pic`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ userId }),
+                });
+                const data = await res.json();
+                if (data.success) {
+                  setProfilePicSnoozeData(data.snooze);
+                  console.log("⏰ [Profile Picture] Snooze saved to DB:", data.snooze);
+                }
+              } catch (err) {
+                console.error("❌ [Profile Picture] Failed to save snooze to DB:", err);
+              }
+            }
+            setShowMandatoryProfilePictureModal(false);
+          }}
           onComplete={async (uploadedImage) => {
             console.log("✅ [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
@@ -4664,7 +5337,7 @@ function WellnessValleyApp() {
         <button
           onClick={() => setShowCorrectionModal(true)}
           disabled={correctionLogs.length === 0}
-          className={`fixed bottom-24 right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
+          className={`fixed bottom-24 right-4 xs:right-6 md:bottom-8 md:right-8 z-50 text-white p-4 rounded-full shadow-lg transition-all duration-200 ${
             correctionLogs.length > 0 
               ? 'bg-orange-500 hover:bg-orange-600 hover:shadow-xl active:scale-95 hover:scale-110 cursor-pointer' 
               : 'bg-gray-400 cursor-not-allowed opacity-50'

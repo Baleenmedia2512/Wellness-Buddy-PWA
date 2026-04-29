@@ -121,7 +121,9 @@ export default async function handler(req, res) {
       // Validate base64 image format
       if (profileImage.startsWith("data:image/")) {
         updateData.ProfileImage = profileImage;
-        console.log("✅ [update-user-profile] Profile image will be updated");
+        // Reset snooze when user uploads a profile picture
+        updateData.profile_pic_snooze = null;
+        console.log("✅ [update-user-profile] Profile image will be updated, snooze reset");
       } else {
         console.log("⚠️ [update-user-profile] Invalid profile image format");
       }

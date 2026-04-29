@@ -1,86 +1,150 @@
 // src/components/MandatoryProfilePictureModal.js
-import React, { useState, useRef } from "react";
-import { Camera, Upload, AlertCircle } from "lucide-react";
+import React, { useState, useRef, useCallback } from "react";
+import Cropper from "react-easy-crop";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { Camera, Upload, AlertCircle, Clock, CheckCircle, XCircle, Loader, Crop, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
+
+/** Crop a canvas region supporting rotation and flip */
+const getCroppedImg = (imageSrc, pixelCrop, rotation = 0, flip = { h: false, v: false }) => {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const size = Math.max(img.width, img.height) * 2;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      ctx.translate(size / 2, size / 2);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(flip.h ? -1 : 1, flip.v ? -1 : 1);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+      const out = document.createElement("canvas");
+      const outSize = Math.min(pixelCrop.width, pixelCrop.height);
+      out.width = outSize;
+      out.height = outSize;
+      const outCtx = out.getContext("2d");
+      outCtx.drawImage(
+        canvas,
+        pixelCrop.x + (size / 2 - img.width / 2),
+        pixelCrop.y + (size / 2 - img.height / 2),
+        pixelCrop.width,
+        pixelCrop.height,
+        0, 0, outSize, outSize
+      );
+      resolve(out.toDataURL("image/jpeg", 0.88));
+    };
+    img.onerror = reject;
+    img.src = imageSrc;
+  });
+};
 
 /**
  * MandatoryProfilePictureModal
  * Blocking modal that forces users to upload a profile picture
  * Cannot be closed until a valid image is uploaded
  */
-const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
+const MAX_SNOOZE_ATTEMPTS = 5;
+
+const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLater, snoozeData }) => {
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [error, setError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  // faceStatus: "idle" | "detecting" | "face_found" | "no_face" | "detection_error"
+  const [faceStatus, setFaceStatus] = useState("idle");
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
 
-  // Handle profile image selection
+  // Crop state
+  const [rawImageSrc, setRawImageSrc] = useState(null);
+  const [showCropper, setShowCropper] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [flip] = useState({ h: false, v: false });
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+
+  // Read snooze data from DB (passed as prop from App.js)
+  const snoozeCount = snoozeData?.count ?? 0;
+  const snoozeMax = snoozeData?.max ?? MAX_SNOOZE_ATTEMPTS;
+  const canSnooze = onRemindLater && snoozeCount < snoozeMax;
+
+  // Call Gemini directly (client-side) for face detection
+  const detectFace = useCallback(async (base64String) => {
+    setFaceStatus("detecting");
+    try {
+      const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.warn("⚠️ [Face Detection] REACT_APP_GEMINI_API_KEY not set, skipping");
+        setFaceStatus("detection_error");
+        return;
+      }
+
+      const mimeMatch = base64String.match(/^data:(image\/[a-zA-Z]+);base64,/);
+      const mimeType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+      const base64Data = base64String.replace(/^data:image\/[a-zA-Z]+;base64,/, "");
+
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash-lite" });
+
+      const result = await model.generateContent([
+        { inlineData: { mimeType, data: base64Data } },
+        "Look at this image carefully. Is it a real photograph of an actual human being taken with a camera or phone? Answer 'no' if the image is: a cartoon, an illustrated avatar, a drawing, a vector/clip art icon, anime, 3D CGI, AI-generated art, a painting, a sketch, or has any glowing/robotic/cybernetic elements. Answer 'no' if the face looks drawn or stylized rather than photographed. Only answer 'yes' if it is clearly a real photo of a real person. Answer with only 'yes' or 'no'.",
+      ]);
+
+      const text = result.response.text().trim().toLowerCase();
+      const hasFace = text.startsWith("yes");
+      console.log(`✅ [Face Detection] Result: ${hasFace ? "face found" : "no face"} (raw: "${text}")`);
+      setFaceStatus(hasFace ? "face_found" : "no_face");
+    } catch (err) {
+      console.error("❌ [Face Detection] Failed:", err.message);
+      setFaceStatus("detection_error");
+    }
+  }, []);
+
+  // Handle profile image selection — opens cropper
   const handleImageSelect = (file) => {
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith("image/")) {
       setError("Please select a valid image file");
       return;
     }
-
-    // Validate file size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
       setError("Image size must be less than 5MB");
       return;
     }
 
-    // Read and compress image
     const reader = new FileReader();
     reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        // Compress image to max 800x800 and reduce quality
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-        const maxSize = 800;
+      setRawImageSrc(event.target.result);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
+      setRotation(0);
 
-        if (width > height && width > maxSize) {
-          height = (height * maxSize) / width;
-          width = maxSize;
-        } else if (height > maxSize) {
-          width = (width * maxSize) / height;
-          height = maxSize;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Convert to base64 with reduced quality (0.7 = 70% quality)
-        const base64String = canvas.toDataURL("image/jpeg", 0.7);
-
-        // Check compressed size
-        const sizeInBytes = (base64String.length * 3) / 4;
-        const sizeInMB = sizeInBytes / (1024 * 1024);
-        console.log(
-          `📸 Image compressed: ${(file.size / (1024 * 1024)).toFixed(
-            2,
-          )}MB → ${sizeInMB.toFixed(2)}MB`,
-        );
-
-        setProfileImage(base64String);
-        setProfileImagePreview(base64String);
-        setError("");
-      };
-      img.onerror = () => {
-        setError("Failed to load image file");
-      };
-      img.src = event.target.result;
+      setShowCropper(true);
+      setError("");
     };
-    reader.onerror = () => {
-      setError("Failed to read image file");
-    };
+    reader.onerror = () => setError("Failed to read image file");
     reader.readAsDataURL(file);
   };
+
+  // Called when user confirms the crop
+  const handleCropConfirm = useCallback(async () => {
+    if (!rawImageSrc || !croppedAreaPixels) return;
+    try {
+      const cropped = await getCroppedImg(rawImageSrc, croppedAreaPixels, rotation, flip);
+      setProfileImage(cropped);
+      setProfileImagePreview(cropped);
+      setShowCropper(false);
+      setFaceStatus("idle");
+      setError("");
+      detectFace(cropped);
+    } catch (err) {
+      setError("Failed to crop image. Please try again.");
+    }
+  }, [rawImageSrc, croppedAreaPixels, rotation, flip, detectFace]);
 
   const handleFileChange = (e) => {
     const file = e.target.files[0];
@@ -90,6 +154,16 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
   const handleUpload = async () => {
     if (!profileImage) {
       setError("Please select an image first");
+      return;
+    }
+
+    if (faceStatus === "detecting") {
+      setError("Please wait while we verify your photo...");
+      return;
+    }
+
+    if (faceStatus === "no_face") {
+      setError("No face detected. Please upload a clear photo of your face.");
       return;
     }
 
@@ -143,6 +217,97 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
 
   return (
     <div className="fixed inset-0 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" style={{ zIndex: 350 }}>
+
+      {/* ── Professional Crop Overlay ──────────────────────────────── */}
+      {showCropper && rawImageSrc && (
+        <div className="absolute inset-0 flex flex-col bg-black" style={{ zIndex: 360 }}>
+
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-5 py-4 bg-black/90">
+            <button
+              onClick={() => { setShowCropper(false); setRawImageSrc(null); }}
+              className="text-white/70 hover:text-white text-sm font-medium px-3 py-1.5 rounded-lg border border-white/20"
+            >Cancel</button>
+            <span className="text-white font-semibold text-base tracking-wide">Crop Photo</span>
+            <button
+              onClick={handleCropConfirm}
+              className="text-white text-sm font-semibold px-4 py-1.5 rounded-lg bg-green-500 hover:bg-green-400"
+            >Done</button>
+          </div>
+
+          {/* Cropper canvas */}
+          <div className="relative flex-1">
+            <Cropper
+              image={rawImageSrc}
+              crop={crop}
+              zoom={zoom}
+              rotation={rotation}
+              aspect={1}
+              cropShape="round"
+              showGrid
+              onCropChange={setCrop}
+              onZoomChange={setZoom}
+              onRotationChange={setRotation}
+              onCropComplete={(_, pixels) => setCroppedAreaPixels(pixels)}
+              style={{ containerStyle: { background: "#111" } }}
+            />
+          </div>
+
+          {/* Controls panel */}
+          <div className="bg-black/90 px-4 pt-3 pb-safe-6 space-y-3" style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+
+            {/* Zoom row */}
+            <div className="flex items-center gap-2">
+              <ZoomOut className="w-4 h-4 text-white/60 flex-shrink-0" />
+              <input
+                type="range" min={1} max={3} step={0.02} value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="flex-1 h-2 accent-green-500"
+              />
+              <ZoomIn className="w-4 h-4 text-white/60 flex-shrink-0" />
+              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{zoom.toFixed(1)}x</span>
+            </div>
+
+            {/* Rotation row */}
+            <div className="flex items-center gap-2">
+              <RotateCcw className="w-4 h-4 text-white/60 flex-shrink-0" />
+              <input
+                type="range" min={-180} max={180} step={1} value={rotation}
+                onChange={(e) => setRotation(Number(e.target.value))}
+                className="flex-1 h-2 accent-green-500"
+              />
+              <RotateCw className="w-4 h-4 text-white/60 flex-shrink-0" />
+              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{rotation}°</span>
+            </div>
+
+            {/* Icon buttons row */}
+            <div className="flex justify-center gap-3">
+              <button
+                onClick={() => setRotation(r => r - 90)}
+                className="flex flex-col items-center gap-1 flex-1 py-3 rounded-xl bg-white/10 active:bg-white/30"
+              >
+                <RotateCcw className="w-5 h-5 text-white" />
+                <span className="text-white/60 text-xs">Rotate L</span>
+              </button>
+              <button
+                onClick={() => setRotation(r => r + 90)}
+                className="flex flex-col items-center gap-1 flex-1 py-3 rounded-xl bg-white/10 active:bg-white/30"
+              >
+                <RotateCw className="w-5 h-5 text-white" />
+                <span className="text-white/60 text-xs">Rotate R</span>
+              </button>
+              <button
+                onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); setRotation(0); }}
+                className="flex flex-col items-center gap-1 flex-1 py-3 rounded-xl bg-white/10 active:bg-white/30"
+              >
+                <Crop className="w-5 h-5 text-white" />
+                <span className="text-white/60 text-xs">Reset</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full">
         {/* Header */}
         <div className="p-6 bg-gradient-to-r from-green-500 to-green-600 rounded-t-2xl">
@@ -177,14 +342,29 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
 
           {/* Image Preview */}
           {profileImagePreview ? (
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center space-y-2">
               <div className="relative w-40 h-40 rounded-full border-4 border-green-500 overflow-hidden">
                 <img
                   src={profileImagePreview}
                   alt="Profile Preview"
                   className="w-full h-full object-cover"
                 />
+                {/* Face detection overlay badge */}
+                {faceStatus === "detecting" && (
+                  <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                    <Loader className="w-8 h-8 text-white animate-spin" />
+                  </div>
+                )}
               </div>
+              {/* Re-crop button */}
+              <button
+                onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); setShowCropper(true); }}
+                disabled={isSaving}
+                className="inline-flex items-center space-x-1 text-xs text-green-600 hover:text-green-800 font-medium disabled:opacity-50"
+              >
+                <Crop className="w-3.5 h-3.5" />
+                <span>Re-crop</span>
+              </button>
             </div>
           ) : (
             <div className="flex justify-center">
@@ -194,6 +374,30 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
                   <p className="text-xs text-gray-500">No image selected</p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Face Detection Status */}
+          {faceStatus !== "idle" && (
+            <div className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg text-sm font-medium ${
+              faceStatus === "detecting"
+                ? "bg-blue-50 border border-blue-200 text-blue-700"
+                : faceStatus === "face_found"
+                ? "bg-green-50 border border-green-200 text-green-700"
+                : faceStatus === "no_face"
+                ? "bg-red-50 border border-red-200 text-red-700"
+                : "bg-yellow-50 border border-yellow-200 text-yellow-700"
+            }`}>
+              {faceStatus === "detecting" && <Loader className="w-4 h-4 animate-spin flex-shrink-0" />}
+              {faceStatus === "face_found" && <CheckCircle className="w-4 h-4 flex-shrink-0" />}
+              {faceStatus === "no_face" && <XCircle className="w-4 h-4 flex-shrink-0" />}
+              {faceStatus === "detection_error" && <AlertCircle className="w-4 h-4 flex-shrink-0" />}
+              <span>
+                {faceStatus === "detecting" && "Verifying your photo..."}
+                {faceStatus === "face_found" && "Face detected — looks good!"}
+                {faceStatus === "no_face" && "No face detected. Please upload a clear photo of your face."}
+                {faceStatus === "detection_error" && "Could not verify photo. You may still try saving."}
+              </span>
             </div>
           )}
 
@@ -251,7 +455,7 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
           {/* Save Button */}
           <button
             onClick={handleUpload}
-            disabled={!profileImage || isSaving}
+            disabled={!profileImage || isSaving || faceStatus === "detecting" || faceStatus === "no_face"}
             className="w-full py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-semibold rounded-xl hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
           >
             {isSaving ? (
@@ -270,6 +474,33 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete }) => {
           <p className="text-xs text-center text-gray-500">
             You cannot proceed without uploading a profile picture
           </p>
+
+          {/* Remind Me Later */}
+          {onRemindLater && (
+            canSnooze ? (
+              <div className="text-center pt-1 px-3 sm:px-4 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">
+                <button
+                  onClick={() => {
+                    onRemindLater();
+                  }}
+                  disabled={isSaving}
+                  className="inline-flex items-center justify-center gap-2 w-full sm:w-auto px-4 py-2 text-sm font-semibold text-gray-600 bg-white border border-gray-300 rounded-xl shadow-sm hover:bg-gray-50 hover:text-gray-800 hover:border-gray-400 hover:shadow-md active:scale-95 active:shadow-inner transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
+                >
+                  <Clock className="w-4 h-4 flex-shrink-0 text-amber-500" />
+                  <span>Remind me later</span>
+                  <span className="inline-flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 text-xs font-bold text-white bg-amber-400 rounded-full leading-none">
+                    {snoozeMax - snoozeCount}
+                  </span>
+                </button>
+                <p className="text-xs text-gray-400 mt-2">Reminder in 24 hours &bull; {snoozeMax - snoozeCount} of {snoozeMax} left</p>
+              </div>
+            ) : (
+              <div className="px-3 sm:px-4 py-3 bg-gradient-to-br from-red-50 to-rose-50 border border-red-200 rounded-2xl shadow-sm text-center">
+                <p className="text-sm font-semibold text-red-700">Profile picture is now required</p>
+                <p className="text-xs text-red-400 mt-0.5">All {snoozeMax} reminders used. Please upload your photo to continue.</p>
+              </div>
+            )
+          )}
         </div>
       </div>
     </div>
