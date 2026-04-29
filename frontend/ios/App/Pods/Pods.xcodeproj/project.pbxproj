@@ -97,6 +97,9 @@
 		45C5623923741D47F7C2416E0AADC57B /* GTMKeychain.m in Sources */ = {isa = PBXBuildFile; fileRef = 62F724428B5E8CF894A2FE49E7EDDB79 /* GTMKeychain.m */; };
 		461E93E36A8243C4B4D9622DED6AF6AB /* CAPPluginMethod.h in Headers */ = {isa = PBXBuildFile; fileRef = 33285327D07646F190975DCD8C65FE89 /* CAPPluginMethod.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		463961357E6EF0D02D7FC5A98C985C3E /* th.lproj in Resources */ = {isa = PBXBuildFile; fileRef = 5E1570AEC0E8B0A0D2E1A7C948319638 /* th.lproj */; };
+		46EB2E00004720 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46EB2E00004710 /* PrivacyInfo.xcprivacy */; };
+		46EB2E00004750 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46EB2E00004740 /* PrivacyInfo.xcprivacy */; };
+		46EB2E00004780 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 46EB2E00004770 /* PrivacyInfo.xcprivacy */; };
 		46F18AAA50A0315D3DCA99F9A9117F05 /* OIDServiceConfiguration.h in Headers */ = {isa = PBXBuildFile; fileRef = 6EEC275E025A67F839FA8AE183F3DEDB /* OIDServiceConfiguration.h */; settings = {ATTRIBUTES = (Public, ); }; };
 		48700329761B540788185D91D9FF6C57 /* CapacitorHttp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6055D7772CB5E266A609D665B8AB7DEB /* CapacitorHttp.swift */; };
 		48F0EB145F89794793C67F70FD7BBAC4 /* GTMSessionFetcherLogging.m in Sources */ = {isa = PBXBuildFile; fileRef = F611F86104C2F84276637FA2A5FFA874 /* GTMSessionFetcherLogging.m */; };
@@ -750,6 +753,9 @@
 		453EF61259771656A892F18C3A508992 /* da.lproj */ = {isa = PBXFileReference; includeInIndex = 1; name = da.lproj; path = GoogleSignIn/Sources/Strings/da.lproj; sourceTree = "<group>"; };
 		457F3C90235759156D8AC5FDA590013F /* OIDTokenRequest.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = OIDTokenRequest.m; path = Sources/AppAuthCore/OIDTokenRequest.m; sourceTree = "<group>"; };
 		4621B0334A8B01CD5088FD309441EF6D /* CAPBridgedPlugin+getMethod.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = "CAPBridgedPlugin+getMethod.swift"; path = "Capacitor/Capacitor/CAPBridgedPlugin+getMethod.swift"; sourceTree = "<group>"; };
+		46EB2E00004710 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GTMAppAuth/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		46EB2E00004740 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GTMSessionFetcher/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		46EB2E00004770 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = GoogleSignIn/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		48640A1C604CA06D258815D20D5A26F4 /* GTMAppAuth.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GTMAppAuth.h; path = GTMAppAuth/Sources/Public/GTMAppAuth/GTMAppAuth.h; sourceTree = "<group>"; };
 		4891CC9AABD460FB82708D554940053C /* NotificationHandlerProtocol.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = NotificationHandlerProtocol.swift; path = Capacitor/Capacitor/NotificationHandlerProtocol.swift; sourceTree = "<group>"; };
 		48A1B62225C7608EEE42FEAC840BED73 /* GIDAuthentication_Private.h */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.h; name = GIDAuthentication_Private.h; path = GoogleSignIn/Sources/GIDAuthentication_Private.h; sourceTree = "<group>"; };
@@ -1529,6 +1535,30 @@
 			path = "../../../node_modules/@southdevs/capacitor-google-auth";
 			sourceTree = "<group>";
 		};
+		46EB2E00004700 /* GTMAppAuth */ = {
+			isa = PBXGroup;
+			children = (
+				46EB2E00004710 /* PrivacyInfo.xcprivacy */,
+			);
+			name = GTMAppAuth;
+			sourceTree = "<group>";
+		};
+		46EB2E00004730 /* GTMSessionFetcher */ = {
+			isa = PBXGroup;
+			children = (
+				46EB2E00004740 /* PrivacyInfo.xcprivacy */,
+			);
+			name = GTMSessionFetcher;
+			sourceTree = "<group>";
+		};
+		46EB2E00004760 /* GoogleSignIn */ = {
+			isa = PBXGroup;
+			children = (
+				46EB2E00004770 /* PrivacyInfo.xcprivacy */,
+			);
+			name = GoogleSignIn;
+			sourceTree = "<group>";
+		};
 		484B65622BD0B9F775BD800EC2922ECF /* AppAuth */ = {
 			isa = PBXGroup;
 			children = (
@@ -2156,6 +2186,9 @@
 				9D940727FF8FB9C785EB98E56350EF41 /* Podfile */,
 				E4A4ABC2AD9E86E69C26BB26B9A3206B /* Development Pods */,
 				F119B4A0ABE017AECEE69836596133B2 /* Frameworks */,
+				46EB2E00004760 /* GoogleSignIn */,
+				46EB2E00004700 /* GTMAppAuth */,
+				46EB2E00004730 /* GTMSessionFetcher */,
 				E9A4538CF0D3DC4EBF181A470CC24D88 /* Pods */,
 				A1BFDA47FDC2AABCDEDC167FE639EC6B /* Products */,
 				7C6D044F0CD972C5CAB37A7A0E4EE782 /* Targets Support Files */,
@@ -3040,6 +3073,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				E777D62452F134D9587A43FB623A75F7 /* GoogleSignIn-GoogleSignIn in Resources */,
+				46EB2E00004780 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3093,6 +3127,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				46EB2E00004750 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -3144,6 +3179,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				46EB2E00004720 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
