@@ -57,15 +57,10 @@ import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
-import ClubSelectionModal from "./components/ClubSelectionModal";
-import CustomAlertModal from "./components/CustomAlertModal";
-// ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
-const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
-const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
-const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 import CoachScoreSummary from "./components/CoachScoreSummary";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
-
+import ClubSelectionModal from "./components/ClubSelectionModal";
+import CustomAlertModal from "./components/CustomAlertModal";
 import GalleryMonitor from "./services/galleryMonitor";
 import {
   signInWithGoogle,
@@ -79,6 +74,10 @@ import {
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
 import LocationGuard from "./components/LocationGuard";
+// ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
+const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
+const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
+const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
@@ -237,15 +236,13 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
-  // Step Counter state — FEATURE DISABLED
-  // const [showStepCounter, setShowStepCounter] = useState(false);
-  const [showStepCounter] = useState(false);
+  // Step Counter state — FEATURE DISABLED (setter kept to satisfy references in back-button handler)
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
+  const [showStepCounter, setShowStepCounter] = useState(false);
 
-  // Screen Time state — FEATURE DISABLED
-  const [showScreenTime] = useState(false);
-  // const [showScreenTime, setShowScreenTime] = useState(false);
+  // Screen Time state — FEATURE DISABLED (setter kept to satisfy references in back-button handler)
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
+  const [showScreenTime, setShowScreenTime] = useState(false);
 
   // Reminders state — FEATURE DISABLED
   const [showReminders] = useState(false);
