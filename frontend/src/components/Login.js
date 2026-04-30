@@ -42,16 +42,6 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setSuccessMessage('');
     setErrorMessage('');
     setEmailLoading(true);
-
-    // Demo bypass for App Review
-    if (email === 'appreviewer@gmail.com') {
-      setOtpSent(true);
-      setCountdown(60);
-      setCanResend(false);
-      setEmailLoading(false);
-      return;
-    }
-
     try {
       const res = await fetch(`${apiBaseUrl}/api/send-otp`, {
         method: 'POST',
@@ -79,22 +69,6 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setErrorMessage('');
     setSuccessMessage('');
     setOtpVerified(false); // Reset verified state at start
-
-    // Demo bypass for App Review
-      const DEMO_EMAIL = 'appreviewer@gmail.com';
-    const DEMO_OTP = '000000';
-    if (email === DEMO_EMAIL && otpValue === DEMO_OTP) {
-      setOtpVerified(true);
-      setSuccessMessage('OTP verified successfully!');
-      const demoUser = { email: 'appreviewer@gmail.com', name: 'App Reviewer', isNewUser: false };
-      localStorage.setItem('otpUser', JSON.stringify(demoUser));
-      setTimeout(async () => {
-        setSuccessMessage('');
-        await onOtpVerified(false);
-      }, 1500);
-      setEmailLoading(false);
-      return;
-    }
 
     try {
       const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {

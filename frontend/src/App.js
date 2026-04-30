@@ -6,6 +6,7 @@ import React, {
   useCallback,
   lazy,
   Suspense,
+  startTransition,
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
@@ -243,8 +244,8 @@ function WellnessValleyApp() {
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
 
   // Screen Time state — FEATURE DISABLED
-  const [showScreenTime] = useState(false);
-  // const [showScreenTime, setShowScreenTime] = useState(false);
+  const [showScreenTime, setShowScreenTime] = useState(false);
+  // const [showScreenTime, setShowScreenTime] = useState(false); // original line
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
   // Reminders state — FEATURE DISABLED
@@ -435,7 +436,7 @@ function WellnessValleyApp() {
         return true;
       }
       if (showStepCounter) {
-        setShowStepCounter(false);
+        // setShowStepCounter(false); // feature disabled
         localStorage.setItem("currentPage", "main");
         return true;
       }
@@ -614,7 +615,9 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Use default/last used tab
       }
-      setShowDashboard(true);
+      startTransition(() => {
+        setShowDashboard(true);
+      });
       localStorage.setItem("currentPage", "dashboard");
     },
     [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
@@ -624,7 +627,7 @@ function WellnessValleyApp() {
     setShowDashboard(false);
     setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
-    setShowStepCounter(false);
+    // setShowStepCounter(false); // feature disabled
     setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
 
@@ -764,7 +767,7 @@ function WellnessValleyApp() {
             const page = localStorage.getItem("currentPage");
             if (page === "step-counter" || page === "screen-time") {
               localStorage.setItem("currentPage", "main");
-              setShowStepCounter(false);
+              // setShowStepCounter(false); // feature disabled
               setShowScreenTime(false);
             }
           }
@@ -3159,10 +3162,7 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
-          if (isApiError) {
-            // AI failed for this upload — open manual modal without permanently enabling manual mode
-            openBestManualModal();
-          }
+          // ✅ "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
         }
@@ -4096,29 +4096,29 @@ function WellnessValleyApp() {
         // onShowReminders={showRemindersPage}        // FEATURE DISABLED
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
-            ? () => setShowAdminDashboard(true)
+            ? () => startTransition(() => setShowAdminDashboard(true))
             : null
         }
         onShowDisciplineReport={() => {
-          setShowDisciplineReport(true);
+          startTransition(() => setShowDisciplineReport(true));
           localStorage.setItem("currentPage", "discipline-report");
         }}
         onShowActivityTimeReport={() => {
-          setShowActivityTimeReport(true);
+          startTransition(() => setShowActivityTimeReport(true));
           localStorage.setItem("currentPage", "activity-time-report");
         }}
-        onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
+        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessEnrollment(true))}
         onShowWellnessReport={
           userRole === "admin" ||
           userRole === "coach" ||
           userRole === "developer"
-            ? () => setShowWellnessReport(true)
+            ? () => startTransition(() => setShowWellnessReport(true))
             : null
         }
-        onShowWellnessCounselling={() => setShowWellnessCounselling(true)}
-        onShowAttendanceReport={() => setShowAttendanceReport(true)}
-        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
-        onShowRegisterCenter={() => setShowRegisterCenter(true)}
+        onShowWellnessCounselling={() => startTransition(() => setShowWellnessCounselling(true))}
+        onShowAttendanceReport={() => startTransition(() => setShowAttendanceReport(true))}
+        onShowNutritionCentersMap={() => startTransition(() => setShowNutritionCentersMap(true))}
+        onShowRegisterCenter={() => startTransition(() => setShowRegisterCenter(true))}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
         // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED

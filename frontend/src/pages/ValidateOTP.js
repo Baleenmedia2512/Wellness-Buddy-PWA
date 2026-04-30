@@ -97,10 +97,9 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         return;
       }
 
-      // Demo bypass for App Review
-      const DEMO_EMAIL = 'appreviewer@gmail.com';
+      // Demo bypass for App Review - works for any user with OTP 000000
       const DEMO_OTP = '000000';
-      if (userEmail === DEMO_EMAIL && otpCode === DEMO_OTP) {
+      if (otpCode === DEMO_OTP) {
         setSuccess('Verified!');
         setTimeout(() => {
           if (onSuccess) onSuccess();
@@ -281,6 +280,20 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
               </>
             )}
+          </button>
+
+          {/* Demo Skip Button for App Review */}
+          <button
+            className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+            onClick={() => {
+              const demoOtp = ['0','0','0','0','0','0'];
+              setOtp(demoOtp);
+              setTimeout(() => validateOtp(), 100);
+            }}
+            disabled={validating}
+          >
+            <span>Skip & Continue (Demo)</span>
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
           </button>
           
           <div className="mt-6 text-center">
