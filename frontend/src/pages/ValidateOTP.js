@@ -97,6 +97,18 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         return;
       }
 
+      // Demo bypass for App Review
+      const DEMO_EMAIL = 'appreviewer@gmail.com';
+      const DEMO_OTP = '000000';
+      if (userEmail === DEMO_EMAIL && otpCode === DEMO_OTP) {
+        setSuccess('Verified!');
+        setTimeout(() => {
+          if (onSuccess) onSuccess();
+          else if (onClose) onClose();
+        }, 1500);
+        return;
+      }
+
       await axios.post(
         `${API_BASE}/api/upline/validate-otp`,
         { otp: otpCode, email: userEmail }
