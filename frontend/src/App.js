@@ -7,6 +7,7 @@ import React, {
   lazy,
   Suspense,
   startTransition,
+  useDeferredValue,
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
@@ -120,12 +121,7 @@ function WellnessValleyApp() {
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(
-    localStorage.getItem("currentPage") === "dashboard" ||
-      localStorage.getItem("currentPage") === "nutrition-dashboard" ||
-      localStorage.getItem("currentPage") === "weight-tracking" ||
-      localStorage.getItem("currentPage") === "weight-insights",
-  );
+  const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
@@ -419,6 +415,19 @@ function WellnessValleyApp() {
   //     return () => clearTimeout(timer);
   //   }
   // }, []);
+
+  // Restore showDashboard from localStorage using startTransition — avoids suspending lazy <Dashboard> on mount
+  useEffect(() => {
+    const page = localStorage.getItem("currentPage");
+    if (
+      page === "dashboard" ||
+      page === "nutrition-dashboard" ||
+      page === "weight-tracking" ||
+      page === "weight-insights"
+    ) {
+      startTransition(() => setShowDashboard(true));
+    }
+  }, []);
 
   // Initialize back button handler
   useEffect(() => {
@@ -1109,11 +1118,16 @@ function WellnessValleyApp() {
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {
                   if (statusData.pendingRequest) {
-                    // User has pending OTP validation
-                    console.log(
-                      "📧 [Auth State] Pending OTP detected, showing OTP modal",
-                    );
-                    setShowValidateOTP(true);
+                    // Skip OTP modal if already verified this session
+                    if (localStorage.getItem('coachOtpVerified') === 'true') {
+                      console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
+                      await checkProfileCompletion(userEmail, user);
+                    } else {
+                      console.log(
+                        "📧 [Auth State] Pending OTP detected, showing OTP modal",
+                      );
+                      setShowValidateOTP(true);
+                    }
                   } else {
                     // User needs to complete setup wizard
                     console.log(
@@ -1350,11 +1364,17 @@ function WellnessValleyApp() {
           // Show setup wizard if not complete
           if (!statusData.setupComplete) {
             if (statusData.pendingRequest) {
-              // User has pending OTP validation
-              console.log(
-                "📧 [Setup Check] Pending OTP detected, showing OTP modal",
-              );
-              setShowValidateOTP(true);
+              // Skip OTP modal if already verified this session
+              if (localStorage.getItem('coachOtpVerified') === 'true') {
+                console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
+                await checkProfileCompletion(userEmail);
+                setTimeout(() => checkProfilePicture(user), 800);
+              } else {
+                console.log(
+                  "📧 [Setup Check] Pending OTP detected, showing OTP modal",
+                );
+                setShowValidateOTP(true);
+              }
             } else {
               // User needs to complete setup wizard
               console.log(
@@ -3918,6 +3938,12 @@ function WellnessValleyApp() {
     }
   };
 
+  // useDeferredValue for lazy pages — must be declared BEFORE any early returns (Rules of Hooks)
+  const deferredShowDashboard = useDeferredValue(showDashboard);
+  const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
+  const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
+  const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
+
   // Loading state
   if (authLoading) {
     return <LoadingSpinner context="normal" />;
@@ -3989,7 +4015,7 @@ function WellnessValleyApp() {
   }
 
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (showDashboard) {
+  if (deferredShowDashboard) {
     return (
       <Suspense fallback={<LoadingSpinner context="normal" />}>
         <Dashboard
@@ -4034,7 +4060,7 @@ function WellnessValleyApp() {
   // }
 
   // Discipline Report for all users
-  if (showDisciplineReport) {
+  if (deferredShowDisciplineReport) {
     return (
       <Suspense
         fallback={<LoadingSpinner message="Loading discipline report..." />}
@@ -4053,7 +4079,7 @@ function WellnessValleyApp() {
   }
 
   // Activity Time Report
-  if (showActivityTimeReport) {
+  if (deferredShowActivityTimeReport) {
     return (
       <Suspense
         fallback={<LoadingSpinner message="Loading activity time report..." />}
@@ -4072,7 +4098,7 @@ function WellnessValleyApp() {
   }
 
   // Wellness Counselling - Full page view
-  if (showWellnessCounselling) {
+  if (deferredShowWellnessCounselling) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading wellness counselling..." />}>
         <WellnessCounselling

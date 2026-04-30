@@ -101,6 +101,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
       const DEMO_OTP = '000000';
       if (otpCode === DEMO_OTP) {
         setSuccess('Verified!');
+        localStorage.setItem('coachOtpVerified', 'true');
         setTimeout(() => {
           if (onSuccess) onSuccess();
           else if (onClose) onClose();
@@ -114,6 +115,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
       );
 
       setSuccess('Verified!');
+      localStorage.setItem('coachOtpVerified', 'true');
       
       setTimeout(() => {
         if (onSuccess) {
