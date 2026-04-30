@@ -1109,11 +1109,16 @@ function WellnessValleyApp() {
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {
                   if (statusData.pendingRequest) {
-                    // User has pending OTP validation
-                    console.log(
-                      "📧 [Auth State] Pending OTP detected, showing OTP modal",
-                    );
-                    setShowValidateOTP(true);
+                    // Skip OTP modal if already verified this session
+                    if (localStorage.getItem('coachOtpVerified') === 'true') {
+                      console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
+                      await checkProfileCompletion(userEmail, user);
+                    } else {
+                      console.log(
+                        "📧 [Auth State] Pending OTP detected, showing OTP modal",
+                      );
+                      setShowValidateOTP(true);
+                    }
                   } else {
                     // User needs to complete setup wizard
                     console.log(
@@ -1350,11 +1355,17 @@ function WellnessValleyApp() {
           // Show setup wizard if not complete
           if (!statusData.setupComplete) {
             if (statusData.pendingRequest) {
-              // User has pending OTP validation
-              console.log(
-                "📧 [Setup Check] Pending OTP detected, showing OTP modal",
-              );
-              setShowValidateOTP(true);
+              // Skip OTP modal if already verified this session
+              if (localStorage.getItem('coachOtpVerified') === 'true') {
+                console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
+                await checkProfileCompletion(userEmail);
+                setTimeout(() => checkProfilePicture(user), 800);
+              } else {
+                console.log(
+                  "📧 [Setup Check] Pending OTP detected, showing OTP modal",
+                );
+                setShowValidateOTP(true);
+              }
             } else {
               // User needs to complete setup wizard
               console.log(
