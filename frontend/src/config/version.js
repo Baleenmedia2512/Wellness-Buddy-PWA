@@ -74,7 +74,7 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.7',
+  VERSION: '2.8',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
