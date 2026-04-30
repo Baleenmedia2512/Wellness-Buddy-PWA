@@ -344,16 +344,10 @@ function TimeReportDetails({ node, dateRange, filter }) {
                     key={key}
                     data-key={key}
                     title={ACTIVITY_META[key].label}
-                    className={`px-1 py-1 font-semibold transition-colors text-center whitespace-nowrap ${
-                      isActive
-                        ? "bg-green-200 text-green-800 rounded-t"
-                        : activeKey
-                          ? "text-gray-400 opacity-40"
-                          : "text-gray-600"
-                    }`}
+                    className={`px-1 py-1 font-semibold transition-colors text-center whitespace-nowrap text-gray-600`}
                   >
                     <div className="flex items-center justify-center gap-0.5">
-                      <Icon className={`w-2.5 h-2.5 shrink-0 ${isActive ? "text-green-700" : ""}`} />
+                      <Icon className={`w-2.5 h-2.5 shrink-0`} />
                       <span className="text-[9px]">{short}</span>
                     </div>
                   </th>
@@ -373,8 +367,8 @@ function TimeReportDetails({ node, dateRange, filter }) {
                   const isActive = key === activeKey;
                   const isDimmed = activeKey && !isActive;
                   return (
-                    <td key={key} className={`px-0.5 py-0.5 text-center ${isActive ? "bg-green-50/60" : isDimmed ? "opacity-40" : ""}`}>
-                      <div className={`inline-flex flex-col items-center justify-center gap-0 px-0.5 py-0.5 rounded border w-full ${st.bg} ${isActive ? "border-green-400 ring-1 ring-green-300" : st.border}`}>
+                    <td key={key} className={`px-0.5 py-0.5 text-center`}>
+                      <div className={`inline-flex flex-col items-center justify-center gap-0 px-0.5 py-0.5 rounded border w-full ${st.bg} ${st.border}`}>
                         <div className="flex items-center justify-center gap-0.5">
                           <StatusDot status={s} />
                           {!dotOnly && (

@@ -471,9 +471,9 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
             )}
           </button>
 
-          <p className="text-xs text-center text-gray-500">
+          {/* <p className="text-xs text-center text-gray-500">
             You cannot proceed without uploading a profile picture
-          </p>
+          </p> */}
 
           {/* Remind Me Later — DISABLED */}
           {/* {onRemindLater && (

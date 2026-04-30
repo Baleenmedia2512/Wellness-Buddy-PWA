@@ -239,8 +239,8 @@ function WellnessValleyApp() {
   const [showStepCounter, setShowStepCounter] = useState(false);
 
   // Screen Time state — FEATURE DISABLED
-  // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
   const [showScreenTime, setShowScreenTime] = useState(false);
+  // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
 
   // Reminders state — FEATURE DISABLED
   const [showReminders] = useState(false);
@@ -5171,10 +5171,7 @@ function WellnessValleyApp() {
         />
       )}
 
-      {/* ── Mandatory Profile Picture Upload Gate ────────────────────────
-           Shown after profile completion if user doesn't have a valid
-           profile picture. Cannot be dismissed until picture is uploaded.
-      ─────────────────────────────────────────────────────────────────── */}
+      {/* ── Mandatory Profile Picture Upload Gate — DISABLED ─────────────
       {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
@@ -5248,6 +5245,7 @@ function WellnessValleyApp() {
           }}
         />
       )}
+      ─────────────────────────────────────────────────────────────────── */}
 
       {/* Admin Dashboard */}
       {showAdminDashboard && (
