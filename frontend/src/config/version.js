@@ -78,26 +78,34 @@ export const APP_VERSION = {
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 33,
+  VERSION_CODE: 34,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 31,
+  IOS_BUILD_NUMBER: 36,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version 2.7 Update',
+  RELEASE_NAME: 'Version 2.8 - Play Store Policy Fix',
   
   // Build date
-  BUILD_DATE: '2026-04-28',
+  BUILD_DATE: '2026-04-30',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 32, versionName: '2.7' },
-    IOS: { buildNumber: 31, versionName: '2.7' },
+    ANDROID: { versionCode: 34, versionName: '2.8' },
+    IOS: { buildNumber: 36, versionName: '2.8' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 2.8 (Code 34) - 2026-04-30 [ANDROID + iOS RELEASE]
+ *   🔒 Play Store Policy Fix - Removed USE_EXACT_ALARM and SCHEDULE_EXACT_ALARM permissions
+ *   ⏰ Alarm System - Replaced setExactAndAllowWhileIdle with setAndAllowWhileIdle (inexact alarms)
+ *   🍎 iOS App Store - New IPA build (v2.8 build 32) submitted to App Store Connect
+ *   📱 App Store Listing - Screenshots, description, privacy policy and metadata completed
+ *   🔧 ReminderPlugin - openExactAlarmSettings() neutered for policy compliance
+ *   🐛 Bug Fixes - General stability improvements
  * 
  * Version 2.6 (Code 30) - 2026-04-28 [iOS RELEASE]
  *   🍎 iOS App Store - First iOS build prepared and exported for App Store Connect
