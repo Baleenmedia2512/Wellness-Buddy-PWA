@@ -399,10 +399,40 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       console.log(`   "${key}" → "${correction.correctedName}" (${correction.isGlobal ? '🌍 Global' : '👤 User'})`);
     });
 
+    // Keywords that identify liquid/shake foods eligible for autocorrection
+    const liquidKeywords = [
+      "shake", "juice", "milk", "lassi", "coffee", "tea", "water", "smoothie",
+      "soup", "drink", "beverage", "cola", "soda", "beer", "wine", "cocktail",
+      "latte", "cappuccino", "espresso", "formula 1", "herbalife",
+    ];
+
+    /**
+     * Returns true if a food item is a liquid or shake (eligible for autocorrection).
+     * Solid foods are skipped.
+     */
+    const isFoodLiquidOrShake = (food) => {
+      if (food.isLiquid === true) return true;
+      if (food.volume_ml !== null && food.volume_ml !== undefined) return true;
+      if (food.unit && food.unit.toLowerCase().trim() === 'ml') return true;
+      const nameLower = (food.name || "").toLowerCase();
+      return liquidKeywords.some((kw) => nameLower.includes(kw));
+    };
+
     // Apply corrections with DIRECT LOOKUP FIRST, then FUZZY MATCH
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
+
+      // 🚫 Skip autocorrection for solid foods — only liquids & shakes are autocorrected
+      if (!isFoodLiquidOrShake(food)) {
+        console.log(`⏭️ [SOLID-FOOD] Skipping autocorrection for "${originalName}" (solid food)`);
+        return {
+          ...food,
+          originalAiName: food.originalAiName || originalName,
+          wasAutoCorrected: false,
+          correctionSource: null,
+        };
+      }
       
       // 🔴 CRITICAL: Preserve the very first AI detected name
       // If food already has originalAiName, keep it; otherwise use current name

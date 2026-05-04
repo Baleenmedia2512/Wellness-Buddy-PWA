@@ -241,7 +241,6 @@ function WellnessValleyApp() {
   // Screen Time state — FEATURE DISABLED
   const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
-  const [showScreenTime, setShowScreenTime] = useState(false);
 
   // Reminders state — FEATURE DISABLED
   const [showReminders] = useState(false);
