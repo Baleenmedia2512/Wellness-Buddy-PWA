@@ -24,6 +24,14 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass for App Store review ──────────────────────────────
+  // Skip sending a real OTP email; reviewer uses fixed OTP 123456.
+  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+  if (DEMO_ACCOUNTS.includes(recipient)) {
+    return res.json({ success: true });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const supabase = getSupabaseClient();
 

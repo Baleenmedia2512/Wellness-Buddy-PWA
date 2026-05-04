@@ -36,6 +36,26 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass for App Store review ──────────────────────────────
+  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+  if (DEMO_ACCOUNTS.includes(email)) {
+    return res.status(200).json({
+      success: true,
+      profile: {
+        UserId: 9999,
+        UserName: 'App Reviewer',
+        Email: email,
+        Height: null,
+        DietType: null,
+        ProfileImage: null,
+        CoachId: null,
+        PhoneNumber: null,
+        Bmr: null,
+      },
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     // DISABLED: Backend cache disabled for profile data to ensure fresh data after updates
     // User profiles change frequently and cache causes stale data issues
