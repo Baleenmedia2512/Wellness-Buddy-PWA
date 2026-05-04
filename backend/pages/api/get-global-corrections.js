@@ -20,22 +20,17 @@ function normalizeFoodName(name) {
 }
 
 /**
- * Check if a food name is Herbalife Formula 1 (should be global correction)
+ * Check if a food name is ANY Herbalife product (should be global correction)
+ * Any correction where the corrected name contains "herbalife" is treated as global
+ * so all users see the same correction for that AI detection.
  * @param {string} foodName - Food name to check
- * @returns {boolean} True if it's Herbalife Formula 1
+ * @returns {boolean} True if it's any Herbalife product
  */
-function isHerbalifeFormula1(foodName) {
+function isHerbalife(foodName) {
   if (!foodName) return false;
-  
-  const normalized = foodName.toLowerCase().trim();
-  
-  // Match various Herbalife Formula 1 patterns
-  return normalized.includes('herbalife formula 1') || 
-         normalized.includes('herbalife formula1') ||
-         normalized.includes('formula 1') ||
-         normalized.includes('formula1') ||
-         normalized.match(/\bhf[-\s]?1\b/i) ||
-         normalized.includes('herbalife f1');
+  // Normalize: lowercase and collapse all whitespace so "herbal life" and "herbalife" both match
+  const normalized = foodName.toLowerCase().replace(/\s+/g, '');
+  return normalized.includes('herbalife');
 }
 
 /**
@@ -43,18 +38,18 @@ function isHerbalifeFormula1(foodName) {
  * Returns corrections that should be applied automatically
  * 
  * NEW LOGIC (Hybrid Mode):
- * 1. Herbalife Formula 1 corrections → GLOBAL (apply to all users)
+ * 1. ANY Herbalife product correction → GLOBAL (apply to all users)
  * 2. Other food corrections → USER-SPECIFIC (only for that user)
  * 
  * Example flows:
  * - Balaji: "water" → "coconut water"
  *   Result: Only Balaji sees auto-correction for water
  * 
- * - Balaji: "milk" → "Herbalife Formula 1 Vanilla"
- *   Result: ALL users see auto-correction (global)
+ * - Balaji: "milk" → "Herbalife Afresh Energy Drink Mix"
+ *   Result: ALL users see auto-correction (global) — any Herbalife product is global
  * 
  * - Kiruba scans water → sees "water" (not auto-corrected)
- * - Kiruba scans milk → sees "Herbalife Formula 1 Vanilla" (global)
+ * - Kiruba scans milk → sees "Herbalife Afresh Energy Drink Mix" (global)
  * 
  * Query param: userId (optional) - if provided, returns user-specific corrections too
  */
@@ -135,7 +130,7 @@ export default async function handler(req, res) {
 
     // For each AI detection, find the MOST RECENT correction
     // Split into: GLOBAL (Herbalife F1) and USER-SPECIFIC (other foods)
-    const globalCorrectionMap = new Map();  // Herbalife Formula 1 only
+    const globalCorrectionMap = new Map();  // Any Herbalife product (global)
     const userCorrectionMap = new Map();    // User's personal corrections
     
     aiDetectionMap.forEach((corrections, normalizedAi) => {
@@ -144,12 +139,13 @@ export default async function handler(req, res) {
         new Date(b.lastCorrected) - new Date(a.lastCorrected)
       );
       
-      // Check if this is Herbalife Formula 1 correction
-      const isHerbalife = sortedCorrections.some(c => isHerbalifeFormula1(c.userCorrected));
+      // GLOBAL: Any correction where the corrected name contains "Herbalife" → applies to ALL users
+      // The most recent Herbalife correction for this AI word wins.
+      const hasHerbalife = sortedCorrections.some(c => isHerbalife(c.userCorrected));
       
-      if (isHerbalife) {
-        // GLOBAL: Find latest Herbalife Formula 1 correction
-        const herbalifeCorrection = sortedCorrections.find(c => isHerbalifeFormula1(c.userCorrected));
+      if (hasHerbalife) {
+        // Find the most recent Herbalife correction (sortedCorrections is already newest-first)
+        const herbalifeCorrection = sortedCorrections.find(c => isHerbalife(c.userCorrected));
         
         if (herbalifeCorrection) {
           const uniqueUsers = new Set(
@@ -175,10 +171,10 @@ export default async function handler(req, res) {
             correctedFiber: herbalifeCorrection.correctedFiber,
           });
           
-          console.log(`   🌍 GLOBAL: "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife F1)`);
+          console.log(`   🌍 GLOBAL: "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife product)`);
         }
       } else if (requestingUserId) {
-        // USER-SPECIFIC: Find user's own correction
+        // USER-SPECIFIC: Non-Herbalife corrections only apply to the user who made them
         const userCorrection = sortedCorrections.find(c => String(c.userId) === String(requestingUserId));
         
         if (userCorrection) {

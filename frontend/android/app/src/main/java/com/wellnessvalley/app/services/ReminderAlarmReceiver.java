@@ -221,23 +221,9 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
             AlarmManager am = (AlarmManager) context.getSystemService(Context.ALARM_SERVICE);
             if (am == null) return;
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (am.canScheduleExactAlarms()) {
-                    try {
-                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                        Log.d(TAG, "✅ Rescheduled (exact) for " + activityType + " at " + nextDay.getTime());
-                    } catch (SecurityException se) {
-                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                        Log.w(TAG, "⚠️ Rescheduled (inexact) fallback for " + activityType);
-                    }
-                } else {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                    Log.w(TAG, "⚠️ Rescheduled (inexact) for " + activityType);
-                }
-            } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
-                Log.d(TAG, "✅ Rescheduled for " + activityType + " at " + nextDay.getTime());
-            }
+            // Use inexact alarms — no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM permission needed
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerMs, pi);
+            Log.d(TAG, "✅ Rescheduled (inexact) for " + activityType + " at " + nextDay.getTime());
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to reschedule for " + activityType, e);
@@ -292,30 +278,10 @@ public class ReminderAlarmReceiver extends BroadcastReceiver {
                 return;
             }
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                if (am.canScheduleExactAlarms()) {
-                    try {
-                        am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                                trigger.getTimeInMillis(), pi);
-                        Log.d(TAG, "✅ Scheduled (exact) " + activityType
-                                + " at " + trigger.getTime());
-                    } catch (SecurityException se) {
-                        // Fallback: permission revoked between check and call
-                        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                                trigger.getTimeInMillis(), pi);
-                        Log.w(TAG, "⚠️ Fell back to inexact for " + activityType + ": " + se.getMessage());
-                    }
-                } else {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                            trigger.getTimeInMillis(), pi);
-                    Log.w(TAG, "⚠️ Scheduled (inexact) " + activityType
-                            + " — exact alarm permission not granted");
-                }
-            } else {
-                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
-                        trigger.getTimeInMillis(), pi);
-                Log.d(TAG, "✅ Scheduled " + activityType + " at " + trigger.getTime());
-            }
+            // Use inexact alarms — no SCHEDULE_EXACT_ALARM or USE_EXACT_ALARM permission needed
+            am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP,
+                    trigger.getTimeInMillis(), pi);
+            Log.d(TAG, "✅ Scheduled (inexact) " + activityType + " at " + trigger.getTime());
 
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to schedule reminder for " + activityType, e);

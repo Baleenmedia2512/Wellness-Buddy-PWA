@@ -695,11 +695,7 @@ const HierarchicalReportLayout = ({
                     <div className="relative flex-1 min-w-0" ref={filterRef}>
                       <TouchFeedbackButton
                         onClick={() => setIsFilterOpen(!isFilterOpen)}
-                        className={`h-9 w-full px-3 rounded-full border transition-all flex items-center justify-center gap-3 ${
-                          filter !== filterOptions[0]?.value
-                            ? "bg-green-700 text-white border-green-700"
-                            : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
-                        }`}
+                        className={`h-9 w-full px-3 rounded-full border transition-all flex items-center justify-center gap-3 bg-white text-gray-700 border-gray-200 hover:bg-gray-50`}
                       >
                         <Filter className="h-4 w-4 shrink-0" />
                         <span className="text-xs font-medium whitespace-nowrap">

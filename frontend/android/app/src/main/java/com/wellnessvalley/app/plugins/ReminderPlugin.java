@@ -233,27 +233,14 @@ public class ReminderPlugin extends Plugin {
     // ── openExactAlarmSettings ───────────────────────────────────────────
 
     /**
-     * Open the system Settings page where the user can grant exact alarm permission.
-     * Only relevant on Android 12+ (API 31+).
+     * Stub — exact alarm settings no longer needed (using inexact alarms).
+     * Kept for backwards compatibility with JS calls.
      */
     @PluginMethod
     public void openExactAlarmSettings(PluginCall call) {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                android.content.Intent intent = new android.content.Intent(
-                        android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM
-                );
-                intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK);
-                getContext().startActivity(intent);
-            }
-
-            JSObject result = new JSObject();
-            result.put("success", true);
-            call.resolve(result);
-
-        } catch (Exception e) {
-            Log.e(TAG, "❌ openExactAlarmSettings failed", e);
-            call.reject("Failed to open settings: " + e.getMessage());
-        }
+        // Exact alarm permission removed — app uses inexact alarms (setAndAllowWhileIdle)
+        JSObject result = new JSObject();
+        result.put("success", true);
+        call.resolve(result);
     }
 }

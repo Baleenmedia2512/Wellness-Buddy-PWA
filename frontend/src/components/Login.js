@@ -69,6 +69,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setErrorMessage('');
     setSuccessMessage('');
     setOtpVerified(false); // Reset verified state at start
+
     try {
       const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {
         method: 'POST',

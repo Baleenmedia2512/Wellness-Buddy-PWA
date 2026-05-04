@@ -6,6 +6,8 @@ import React, {
   useCallback,
   lazy,
   Suspense,
+  startTransition,
+  useDeferredValue,
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
@@ -57,10 +59,10 @@ import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
-import CoachScoreSummary from "./components/CoachScoreSummary";
-import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
+import CoachScoreSummary from "./components/CoachScoreSummary";
+import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./services/galleryMonitor";
 import {
   signInWithGoogle,
@@ -74,6 +76,7 @@ import {
 } from "./services/firebase";
 import TouchFeedbackButton from "./components/TouchFeedbackButton";
 import LocationGuard from "./components/LocationGuard";
+
 // ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
 const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
@@ -118,12 +121,7 @@ function WellnessValleyApp() {
   const [detectedFoodNames, setDetectedFoodNames] = useState([]); // AI-detected food names
   const [error, setError] = useState(null);
   const [showTestGuide, setShowTestGuide] = useState(false);
-  const [showDashboard, setShowDashboard] = useState(
-    localStorage.getItem("currentPage") === "dashboard" ||
-      localStorage.getItem("currentPage") === "nutrition-dashboard" ||
-      localStorage.getItem("currentPage") === "weight-tracking" ||
-      localStorage.getItem("currentPage") === "weight-insights",
-  );
+  const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
@@ -236,11 +234,12 @@ function WellnessValleyApp() {
   const [showDisciplineReport, setShowDisciplineReport] = useState(false);
   const [showActivityTimeReport, setShowActivityTimeReport] = useState(false);
 
-  // Step Counter state — FEATURE DISABLED (setter kept to satisfy references in back-button handler)
+  // Step Counter state — FEATURE DISABLED
   // const showStepCounterPage = useCallback(() => { setShowStepCounter(true); }, []);
   const [showStepCounter, setShowStepCounter] = useState(false);
 
-  // Screen Time state — FEATURE DISABLED (setter kept to satisfy references in back-button handler)
+  // Screen Time state — FEATURE DISABLED
+  const [showScreenTime, setShowScreenTime] = useState(false);
   // const showScreenTimePage = useCallback(() => { setShowScreenTime(true); }, []);
   const [showScreenTime, setShowScreenTime] = useState(false);
 
@@ -416,6 +415,19 @@ function WellnessValleyApp() {
   //   }
   // }, []);
 
+  // Restore showDashboard from localStorage using startTransition — avoids suspending lazy <Dashboard> on mount
+  useEffect(() => {
+    const page = localStorage.getItem("currentPage");
+    if (
+      page === "dashboard" ||
+      page === "nutrition-dashboard" ||
+      page === "weight-tracking" ||
+      page === "weight-insights"
+    ) {
+      startTransition(() => setShowDashboard(true));
+    }
+  }, []);
+
   // Initialize back button handler
   useEffect(() => {
     const goBack = () => {
@@ -432,7 +444,7 @@ function WellnessValleyApp() {
         return true;
       }
       if (showStepCounter) {
-        setShowStepCounter(false);
+        // setShowStepCounter(false); // feature disabled
         localStorage.setItem("currentPage", "main");
         return true;
       }
@@ -611,7 +623,9 @@ function WellnessValleyApp() {
       } else {
         setDashboardInitialTab(null); // Use default/last used tab
       }
-      setShowDashboard(true);
+      startTransition(() => {
+        setShowDashboard(true);
+      });
       localStorage.setItem("currentPage", "dashboard");
     },
     [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
@@ -621,7 +635,7 @@ function WellnessValleyApp() {
     setShowDashboard(false);
     setShowActivityTimeReport(false);
     setShowDisciplineReport(false);
-    setShowStepCounter(false);
+    // setShowStepCounter(false); // feature disabled
     setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
 
@@ -761,7 +775,7 @@ function WellnessValleyApp() {
             const page = localStorage.getItem("currentPage");
             if (page === "step-counter" || page === "screen-time") {
               localStorage.setItem("currentPage", "main");
-              setShowStepCounter(false);
+              // setShowStepCounter(false); // feature disabled
               setShowScreenTime(false);
             }
           }
@@ -1103,11 +1117,16 @@ function WellnessValleyApp() {
                 // Show setup wizard if not complete
                 if (!statusData.setupComplete) {
                   if (statusData.pendingRequest) {
-                    // User has pending OTP validation
-                    console.log(
-                      "📧 [Auth State] Pending OTP detected, showing OTP modal",
-                    );
-                    setShowValidateOTP(true);
+                    // Skip OTP modal if already verified this session
+                    if (localStorage.getItem('coachOtpVerified') === 'true') {
+                      console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
+                      await checkProfileCompletion(userEmail, user);
+                    } else {
+                      console.log(
+                        "📧 [Auth State] Pending OTP detected, showing OTP modal",
+                      );
+                      setShowValidateOTP(true);
+                    }
                   } else {
                     // User needs to complete setup wizard
                     console.log(
@@ -1344,11 +1363,17 @@ function WellnessValleyApp() {
           // Show setup wizard if not complete
           if (!statusData.setupComplete) {
             if (statusData.pendingRequest) {
-              // User has pending OTP validation
-              console.log(
-                "📧 [Setup Check] Pending OTP detected, showing OTP modal",
-              );
-              setShowValidateOTP(true);
+              // Skip OTP modal if already verified this session
+              if (localStorage.getItem('coachOtpVerified') === 'true') {
+                console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
+                await checkProfileCompletion(userEmail);
+                setTimeout(() => checkProfilePicture(user), 800);
+              } else {
+                console.log(
+                  "📧 [Setup Check] Pending OTP detected, showing OTP modal",
+                );
+                setShowValidateOTP(true);
+              }
             } else {
               // User needs to complete setup wizard
               console.log(
@@ -3156,10 +3181,7 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
-          if (isApiError) {
-            // AI failed for this upload — open manual modal without permanently enabling manual mode
-            openBestManualModal();
-          }
+          // ✅ "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
         }
@@ -3915,6 +3937,12 @@ function WellnessValleyApp() {
     }
   };
 
+  // useDeferredValue for lazy pages — must be declared BEFORE any early returns (Rules of Hooks)
+  const deferredShowDashboard = useDeferredValue(showDashboard);
+  const deferredShowDisciplineReport = useDeferredValue(showDisciplineReport);
+  const deferredShowActivityTimeReport = useDeferredValue(showActivityTimeReport);
+  const deferredShowWellnessCounselling = useDeferredValue(showWellnessCounselling);
+
   // Loading state
   if (authLoading) {
     return <LoadingSpinner context="normal" />;
@@ -3986,7 +4014,7 @@ function WellnessValleyApp() {
   }
 
   // Full page dashboard with lazy loading (replaces Nutrition Dashboard, Weight Tracking, Weight Insights)
-  if (showDashboard) {
+  if (deferredShowDashboard) {
     return (
       <Suspense fallback={<LoadingSpinner context="normal" />}>
         <Dashboard
@@ -4031,7 +4059,7 @@ function WellnessValleyApp() {
   // }
 
   // Discipline Report for all users
-  if (showDisciplineReport) {
+  if (deferredShowDisciplineReport) {
     return (
       <Suspense
         fallback={<LoadingSpinner message="Loading discipline report..." />}
@@ -4050,7 +4078,7 @@ function WellnessValleyApp() {
   }
 
   // Activity Time Report
-  if (showActivityTimeReport) {
+  if (deferredShowActivityTimeReport) {
     return (
       <Suspense
         fallback={<LoadingSpinner message="Loading activity time report..." />}
@@ -4069,7 +4097,7 @@ function WellnessValleyApp() {
   }
 
   // Wellness Counselling - Full page view
-  if (showWellnessCounselling) {
+  if (deferredShowWellnessCounselling) {
     return (
       <Suspense fallback={<LoadingSpinner message="Loading wellness counselling..." />}>
         <WellnessCounselling
@@ -4093,29 +4121,29 @@ function WellnessValleyApp() {
         // onShowReminders={showRemindersPage}        // FEATURE DISABLED
         onShowAdminDashboard={
           userRole === "admin" || userRole === "developer"
-            ? () => setShowAdminDashboard(true)
+            ? () => startTransition(() => setShowAdminDashboard(true))
             : null
         }
         onShowDisciplineReport={() => {
-          setShowDisciplineReport(true);
+          startTransition(() => setShowDisciplineReport(true));
           localStorage.setItem("currentPage", "discipline-report");
         }}
         onShowActivityTimeReport={() => {
-          setShowActivityTimeReport(true);
+          startTransition(() => setShowActivityTimeReport(true));
           localStorage.setItem("currentPage", "activity-time-report");
         }}
-        onShowWellnessEnrollment={() => setShowWellnessEnrollment(true)}
+        onShowWellnessEnrollment={() => startTransition(() => setShowWellnessEnrollment(true))}
         onShowWellnessReport={
           userRole === "admin" ||
           userRole === "coach" ||
           userRole === "developer"
-            ? () => setShowWellnessReport(true)
+            ? () => startTransition(() => setShowWellnessReport(true))
             : null
         }
-        onShowWellnessCounselling={() => setShowWellnessCounselling(true)}
-        onShowAttendanceReport={() => setShowAttendanceReport(true)}
-        onShowNutritionCentersMap={() => setShowNutritionCentersMap(true)}
-        onShowRegisterCenter={() => setShowRegisterCenter(true)}
+        onShowWellnessCounselling={() => startTransition(() => setShowWellnessCounselling(true))}
+        onShowAttendanceReport={() => startTransition(() => setShowAttendanceReport(true))}
+        onShowNutritionCentersMap={() => startTransition(() => setShowNutritionCentersMap(true))}
+        onShowRegisterCenter={() => startTransition(() => setShowRegisterCenter(true))}
         onSignOut={handleSignOut}
         onLeaderboardRefresh={handleLeaderboardRefresh}
         // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
@@ -5144,10 +5172,7 @@ function WellnessValleyApp() {
         />
       )}
 
-      {/* ── Mandatory Profile Picture Upload Gate ────────────────────────
-           Shown after profile completion if user doesn't have a valid
-           profile picture. Cannot be dismissed until picture is uploaded.
-      ─────────────────────────────────────────────────────────────────── */}
+      {/* ── Mandatory Profile Picture Upload Gate — DISABLED ─────────────
       {showMandatoryProfilePictureModal && !showCompleteProfile && user && (
         <MandatoryProfilePictureModal
           user={user}
@@ -5221,6 +5246,7 @@ function WellnessValleyApp() {
           }}
         />
       )}
+      ─────────────────────────────────────────────────────────────────── */}
 
       {/* Admin Dashboard */}
       {showAdminDashboard && (
@@ -5245,8 +5271,6 @@ function WellnessValleyApp() {
           />
         </Suspense>
       )}
-
-
 
       {/* Nutrition Centers Map */}
       {showNutritionCentersMap && (

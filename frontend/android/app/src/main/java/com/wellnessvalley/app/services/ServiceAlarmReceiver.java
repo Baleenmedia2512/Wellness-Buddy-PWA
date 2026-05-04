@@ -118,33 +118,13 @@ public class ServiceAlarmReceiver extends BroadcastReceiver {
 
             long triggerAtMillis = SystemClock.elapsedRealtime() + HEARTBEAT_INTERVAL_MS;
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12+ - Use exact alarm (requires permission)
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    );
-                    Log.d(TAG, "✅ Exact alarm scheduled for 15 minutes (Android 12+)");
-                } else {
-                    // Fallback to inexact if permission denied
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    );
-                    Log.w(TAG, "⚠️ Inexact alarm scheduled (exact alarm permission denied)");
-                }
-            } else {
-                // Android 11 and below - Exact alarms don't require permission
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                );
-                Log.d(TAG, "✅ Exact alarm scheduled for 15 minutes");
-            }
+            // Use inexact alarms — no exact alarm permission needed
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            );
+            Log.d(TAG, "✅ Inexact alarm scheduled for 15 minutes");
         } catch (Exception e) {
             Log.e(TAG, "❌ Failed to schedule alarm", e);
         }
@@ -177,32 +157,13 @@ public class ServiceAlarmReceiver extends BroadcastReceiver {
             // First alarm fires in 15 minutes
             long triggerAtMillis = SystemClock.elapsedRealtime() + HEARTBEAT_INTERVAL_MS;
 
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                // Android 12+ - Check permission
-                if (alarmManager.canScheduleExactAlarms()) {
-                    alarmManager.setExactAndAllowWhileIdle(
-                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    );
-                    Log.d(TAG, "✅ AlarmManager heartbeat scheduled (15-min interval, exact)");
-                } else {
-                    alarmManager.setAndAllowWhileIdle(
-                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                        triggerAtMillis,
-                        pendingIntent
-                    );
-                    Log.w(TAG, "⚠️ AlarmManager heartbeat scheduled (inexact - may be delayed)");
-                    Log.w(TAG, "   Tip: Grant 'Alarms & reminders' permission in Settings for exact timing");
-                }
-            } else {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerAtMillis,
-                    pendingIntent
-                );
-                Log.d(TAG, "✅ AlarmManager heartbeat scheduled (15-min interval)");
-            }
+            // Use inexact alarms — no exact alarm permission needed
+            alarmManager.setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                triggerAtMillis,
+                pendingIntent
+            );
+            Log.d(TAG, "✅ AlarmManager heartbeat scheduled (15-min interval, inexact)");
             
             Log.d(TAG, "   Next check at: " + new java.util.Date(System.currentTimeMillis() + HEARTBEAT_INTERVAL_MS));
         } catch (Exception e) {

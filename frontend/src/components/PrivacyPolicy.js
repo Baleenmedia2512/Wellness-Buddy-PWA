@@ -204,7 +204,7 @@ const PrivacyPolicy = ({ onClose }) => {
               </p>
               <div className="bg-gray-50 p-4 rounded-lg">
                 <p><strong>Email:</strong> easy2work.india@gmail.com</p>
-                <p><strong>Address:</strong> Easy2Work: No.32, 3rd Cross St, Kasturba Nagar, Adyar, Chennai, Tamil Nadu 600020</p>
+                <p><strong>Address:</strong> Easy2Work: 2nd Floor, West Wing, 2, Gokul Arcade, Sardar Patel Rd, Adyar, Chennai, Tamil Nadu 600020</p>
                 <p><strong>Business Hours:</strong> Monday - Friday, 9:00 AM - 6:00 PM IST</p>
                 <p><strong>Response Time:</strong> We aim to respond to privacy inquiries within 72 hours</p>
               </div>

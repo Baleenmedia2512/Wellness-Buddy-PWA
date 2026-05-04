@@ -29,10 +29,8 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <!-- Exact alarms: API 31-32 requires SCHEDULE_EXACT_ALARM with runtime check -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
-    <!-- Exact alarms: API 33+ use USE_EXACT_ALARM — granted automatically, no runtime prompt needed -->
-    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <!-- Reminders use inexact alarms (setAndAllowWhileIdle) — no exact alarm permission needed -->
+    <!-- USE_EXACT_ALARM and SCHEDULE_EXACT_ALARM removed: not eligible for non-alarm/calendar apps -->
 
     <!-- ── Daily Activity Reminders ─────────────────────────────────── -->
     <!-- Exact alarms: SCHEDULE_EXACT_ALARM for Android 12 (API 31-32), requires runtime check -->

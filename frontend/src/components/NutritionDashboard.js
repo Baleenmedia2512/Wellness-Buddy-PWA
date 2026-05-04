@@ -2551,25 +2551,27 @@ const NutritionDashboard = ({
                   </div>
                 </div>
 
-                <div className="pb-3 md:pb-4 flex items-center justify-center gap-2">
+                <div className="pb-3 md:pb-4 flex items-center justify-center gap-1.5">
                   <button
                     type="button"
                     aria-label="Go to summary slide"
                     onClick={() => setActiveOverviewPanel("summary")}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                    style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
+                    className={`rounded-full transition-all duration-300 ${
                       activeOverviewPanel === "summary"
-                        ? "w-6 bg-emerald-500"
-                        : "w-2.5 bg-gray-300 hover:bg-gray-400"
+                        ? "bg-emerald-500"
+                        : "bg-gray-300 hover:bg-gray-400"
                     }`}
                   />
                   <button
                     type="button"
                     aria-label="Go to trend slide"
                     onClick={() => setActiveOverviewPanel("trend")}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${
+                    style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
+                    className={`rounded-full transition-all duration-300 ${
                       activeOverviewPanel === "trend"
-                        ? "w-6 bg-emerald-500"
-                        : "w-2.5 bg-gray-300 hover:bg-gray-400"
+                        ? "bg-emerald-500"
+                        : "bg-gray-300 hover:bg-gray-400"
                     }`}
                   />
                 </div>
