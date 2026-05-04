@@ -98,6 +98,14 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const coachIdInt = parseInt(coachId);
 
+    // ── Demo account redirect for App Store review ─────────────────────────
+    // The old build stored userId=9999 (fake). Silently remap to real user 554.
+    if (coachIdInt === 9999) {
+      req.query.coachId = '554';
+      return handler(req, res);
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     // Step 1: Get the coach first
     const { data: coach, error: coachError } = await supabase
       .from("team_table")

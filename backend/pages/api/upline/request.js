@@ -91,6 +91,18 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── Demo account bypass for App Store review ──────────────────────────────
+    // testereasywork@gmail.com is not in DB — skip all DB calls, return success.
+    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim())) {
+      return res.status(200).json({
+        success: true,
+        message: "Request sent! Enter OTP 123456 to complete setup.",
+        requestId: 99999,
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
@@ -166,6 +178,7 @@ export default async function handler(req, res) {
     // Generate 6-digit OTP
     const otp = generateOTP();
     const otpHash = await bcrypt.hash(otp, 10);
+    // ─────────────────────────────────────────────────────────────────
 
     // Calculate 24-hour expiry
     const requestedAt = new Date();

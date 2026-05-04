@@ -471,12 +471,12 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
             )}
           </button>
 
-          <p className="text-xs text-center text-gray-500">
+          {/* <p className="text-xs text-center text-gray-500">
             You cannot proceed without uploading a profile picture
-          </p>
+          </p> */}
 
-          {/* Remind Me Later */}
-          {onRemindLater && (
+          {/* Remind Me Later — DISABLED */}
+          {/* {onRemindLater && (
             canSnooze ? (
               <div className="text-center pt-1 px-3 sm:px-4 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">
                 <button
@@ -500,7 +500,7 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
                 <p className="text-xs text-red-400 mt-0.5">All {snoozeMax} reminders used. Please upload your photo to continue.</p>
               </div>
             )
-          )}
+          )} */}
         </div>
       </div>
     </div>

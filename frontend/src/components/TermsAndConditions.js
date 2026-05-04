@@ -168,8 +168,8 @@ const TermsAndConditions = ({ onClose }) => {
                 <div>
                   <p><strong>Mailing Address:</strong></p>
                   <p>Easy2Work<br/>
-                  No.32, 3rd Cross St<br/>
-                  Kasturba Nagar, Adyar<br/>
+                  2nd Floor, West Wing, 2, Gokul Arcade<br/>
+                  Sardar Patel Rd, Adyar<br/>
                   Chennai, Tamil Nadu 600020<br/>
                   India</p>
                 </div>

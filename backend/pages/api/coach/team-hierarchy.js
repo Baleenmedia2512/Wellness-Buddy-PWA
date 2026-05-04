@@ -72,6 +72,10 @@ export default async function handler(req, res) {
       console.log("✅ [team-hierarchy] Found coach ID:", coachIdInt);
     } else if (coachId) {
       coachIdInt = parseInt(coachId);
+      // ── Demo account redirect for App Store review ───────────────────────
+      // The old build stored userId=9999 (fake). Silently remap to real user 554.
+      if (coachIdInt === 9999) coachIdInt = 554;
+      // ─────────────────────────────────────────────────────────────────────
       console.log("✅ [team-hierarchy] Using provided coach ID:", coachIdInt);
     } else {
       console.error("❌ [team-hierarchy] No coach ID or email provided");

@@ -73,6 +73,14 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
     const userIdInt = parseInt(userId);
 
+    // ── Demo account redirect for App Store review ─────────────────────────
+    // The old build stored userId=9999 (fake). Silently remap to real user 554.
+    if (userIdInt === 9999) {
+      req.query.userId = '554';
+      return handler(req, res);
+    }
+    // ──────────────────────────────────────────────────────────────────────
+
     // Step 1: Verify user exists (removed role restriction - all coaches can access)
     const { data: currentUser, error: userError } = await supabase
       .from("team_table")

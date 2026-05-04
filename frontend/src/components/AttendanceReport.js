@@ -564,80 +564,6 @@ const AttendanceReport = ({ user, onBack }) => {
     fetchData(true);
   };
 
-  const handleDownload = async () => {
-    try {
-      console.log("📥 Downloading attendance report...");
-      
-      const userId = await getUserId(user.email);
-      const date = getTargetDate();
-      
-      // Fetch attendance data for Excel export
-      const response = await fetch(
-        `${apiBaseUrl}/api/coach/download-attendance-excel?userId=${userId}&date=${date}`,
-        { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
-      );
-      
-      const result = await response.json();
-      
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Failed to fetch attendance data");
-      }
-      
-      const attendanceData = result.data || [];
-      
-      if (attendanceData.length === 0) {
-        showAlert("No attendance records found for the selected date.", "No Data", "info");
-        return;
-      }
-      
-      // Generate CSV content
-      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Attended Time", "Club Name"];
-      const csvRows = [
-        headers.join(","),
-        ...attendanceData.map(record => [
-          record.sno,
-          `"${(record.userName || '').replace(/"/g, '""')}"`,
-          `"${(record.city || '').replace(/"/g, '""')}"`,
-          `"${(record.village || '').replace(/"/g, '""')}"`,
-          `"${(record.phone || '').replace(/"/g, '""')}"`,
-          `"${(record.coach || '').replace(/"/g, '""')}"`,
-          `"${(record.attendedTime || '').replace(/"/g, '""')}"`,
-          `"${(record.clubName || '').replace(/"/g, '""')}"`
-        ].join(","))
-      ];
-      
-      const csvContent = csvRows.join("\n");
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      
-      // Generate filename in format: dd-mm(monthName)-yyyy-username-attendance.csv
-      const dateObj = new Date(date);
-      const day = String(dateObj.getDate()).padStart(2, '0');
-      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                          'July', 'August', 'September', 'October', 'November', 'December'];
-      const monthName = monthNames[dateObj.getMonth()];
-      const year = dateObj.getFullYear();
-      const username = hierarchyData?.userName || 'user';
-      const filename = `${day}-${month}(${monthName})-${year}-${username}-attendance.csv`;
-      
-      // Create download link
-      const link = document.createElement("a");
-      const url = URL.createObjectURL(blob);
-      link.setAttribute("href", url);
-      link.setAttribute("download", filename);
-      link.style.visibility = "hidden";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      
-      console.log("✅ Attendance report downloaded successfully");
-      
-    } catch (error) {
-      console.error("❌ Error downloading attendance report:", error);
-      showAlert("Failed to download attendance report. Please try again.", "Download Error", "error");
-    }
-  };
-
   const handleSortChange = (newSortBy, newSortOrder) => {
     setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
@@ -661,7 +587,6 @@ const AttendanceReport = ({ user, onBack }) => {
       })}`}
       onBack={onBack}
       onRefresh={handleManualRefresh}
-      onDownload={handleDownload}
       sortBy={sortBy}
       sortOrder={sortOrder}
       onSortChange={handleSortChange}

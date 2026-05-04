@@ -64,6 +64,19 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
+    // ── Demo account bypass for App Store review ──────────────────────
+    // Fixed OTP 123456 always works for the demo account.
+    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    const DEMO_OTP = '123456';
+    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim()) && otp === DEMO_OTP) {
+      return res.status(200).json({
+        success: true,
+        message: 'Setup complete! Welcome to Wellness Valley.',
+        redirectTo: '/dashboard',
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────
+
     // Get requester's UserId
     const { data: userRows, error: userError } = await supabase
       .from("team_table")

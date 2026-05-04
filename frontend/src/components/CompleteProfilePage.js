@@ -623,8 +623,8 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
           )}
         </button>
 
-        {/* Remind Me Later for picture */}
-        {showPictureSection && !profileImage && (
+        {/* Remind Me Later for picture — DISABLED */}
+        {/* {showPictureSection && !profileImage && (
           canSnooze ? (
             <div className="text-center pt-1 px-3 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">
               <button
@@ -646,7 +646,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
               <p className="text-xs text-red-400 mt-0.5">All {snoozeMax} reminders used. Please upload your photo to continue.</p>
             </div>
           )
-        )}
+        )} */}
 
         <p className="text-xs text-gray-400 text-center">
           You can update these details anytime from your profile settings.
