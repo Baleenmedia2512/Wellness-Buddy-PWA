@@ -67,8 +67,9 @@ export default async function handler(req, res) {
     }
 
     // ── Demo account bypass for App Store review ────────────────────────
-    // test@example.com doesn't exist in DB — return mock status so app doesn't 404.
-    // setupComplete: false → shows SetupWizard (coach selection) as intended.
+    // test@example.com doesn't exist in DB — return mock pending request so
+    // the app shows the OTP validation modal (enter 123456) instead of the
+    // setup wizard. This avoids the wizard looping after coach selection.
     const DEMO_ACCOUNTS = ['test@example.com'];
     if (DEMO_ACCOUNTS.includes(email)) {
       return res.status(200).json({
@@ -80,9 +81,9 @@ export default async function handler(req, res) {
         teamId: null,
         uplineCoachId: null,
         role: 'member',
-        pendingRequest: null,
-        redirectTo: '/setup/upline',
-        message: 'Demo account - please select a coach',
+        pendingRequest: { id: 99999, status: 'pending', coachId: 339 },
+        redirectTo: '/setup/validate-otp',
+        message: 'Demo account - enter OTP 123456 to complete setup',
       });
     }
     // ───────────────────────────────────────────────────────────────────
