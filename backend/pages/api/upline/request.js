@@ -167,6 +167,14 @@ export default async function handler(req, res) {
     const otp = generateOTP();
     const otpHash = await bcrypt.hash(otp, 10);
 
+    // ── Demo account bypass for App Store review ──────────────────────
+    // For demo account, use fixed OTP '123456' and skip email to coach
+    const DEMO_ACCOUNTS = ['test@example.com'];
+    const isDemoAccount = DEMO_ACCOUNTS.includes(email.toLowerCase().trim());
+    const finalOtp = isDemoAccount ? '123456' : otp;
+    const finalOtpHash = isDemoAccount ? await bcrypt.hash('123456', 10) : otpHash;
+    // ─────────────────────────────────────────────────────────────────
+
     // Calculate 24-hour expiry
     const requestedAt = new Date();
     const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
@@ -180,7 +188,7 @@ export default async function handler(req, res) {
           RequesterId: requesterId,
           UplineCoachId: coachId,
           Status: "pending",
-          OtpHash: otpHash,
+          OtpHash: finalOtpHash,
           OtpExpiresAt: otpExpiresAt.toISOString(),
           OtpSentAt: requestedAt.toISOString(),
           OtpAttempts: 0,
@@ -192,6 +200,15 @@ export default async function handler(req, res) {
     if (insertError) throw insertError;
 
     const requestId = insertResult[0].Id;
+
+    // Skip email for demo account — reviewer uses fixed OTP '123456'
+    if (isDemoAccount) {
+      return res.status(200).json({
+        success: true,
+        message: "Request sent! Use OTP 123456 to complete setup.",
+        requestId,
+      });
+    }
 
     // Send OTP email to coach with professional template
     const emailSubject = `🤝 Team Approval Request - Wellness Valley`;

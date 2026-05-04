@@ -67,22 +67,8 @@ export default async function handler(req, res) {
     }
 
     // ── Demo account bypass for App Store review ────────────────────────
-    const DEMO_ACCOUNTS = ['test@example.com'];
-    if (DEMO_ACCOUNTS.includes(email)) {
-      return res.status(200).json({
-        success: true,
-        setupComplete: true,
-        hasTeamId: false,
-        hasUpline: false,
-        setupSkipped: true,
-        teamId: null,
-        uplineCoachId: null,
-        role: 'member',
-        pendingRequest: null,
-        redirectTo: '/dashboard',
-        message: 'Demo account - setup not required',
-      });
-    }
+    // No bypass here — demo user goes through the full flow (coach selection is visible)
+    // The bypass is in upline/request.js and upline/validate-otp.js instead.
     // ───────────────────────────────────────────────────────────────────
 
     const supabase = getSupabaseClient();
