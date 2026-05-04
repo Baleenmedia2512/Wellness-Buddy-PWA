@@ -61,19 +61,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Demo account bypass for App Store review ──────────────────────
-    // For demo account, OTP 123456 is always valid — skip DB lookup entirely
-    const DEMO_ACCOUNTS = ['test@example.com'];
-    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim()) && otp === '123456') {
-      return res.status(200).json({
-        success: true,
-        message: "Setup complete! You are now part of your coach's team.",
-        coach: { name: "Demo Coach", email: "demo@wellness.com" },
-        redirectTo: "/dashboard",
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────
-
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
