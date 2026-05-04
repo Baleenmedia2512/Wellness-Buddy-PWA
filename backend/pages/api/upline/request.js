@@ -91,19 +91,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Demo account bypass for App Store review ──────────────────────
-    // test@example.com doesn't exist in DB — skip ALL DB calls, return success.
-    // OTP is always 123456. validate-otp.js also bypasses DB for this account.
-    const DEMO_ACCOUNTS = ['test@example.com'];
-    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim())) {
-      return res.status(200).json({
-        success: true,
-        message: "Request sent! Enter OTP 123456 to complete setup.",
-        requestId: 99999,
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────
-
     // Connect to Supabase
     const supabase = getSupabaseClient();
 

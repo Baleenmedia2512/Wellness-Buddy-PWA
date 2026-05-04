@@ -24,16 +24,17 @@ export default async function handler(req, res) {
   }
 
   // ── Demo account bypass for App Store review ──────────────────────────────
-  // Apple reviewers cannot receive live OTPs, so we allow a fixed demo OTP.
-  const DEMO_ACCOUNTS = ['test@example.com'];
+  // Fixed OTP 123456 always works for the demo account (real email, real DB user).
+  // Return id:null so the app calls lookup-user-id to fetch the real DB user id.
+  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
   const DEMO_OTP = '123456';
   if (DEMO_ACCOUNTS.includes(recipient) && otp === DEMO_OTP) {
     return res.json({
       success: true,
       message: 'OTP verified successfully',
       user: {
-        id: 9999,
-        username: 'testuser',
+        id: null,
+        username: 'App Reviewer',
         email: recipient,
         status: 'Active',
       },
