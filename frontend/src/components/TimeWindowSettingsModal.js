@@ -434,8 +434,31 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
         changeReason: formData.changeReason,
       });
 
-      // Reload time windows
-      await loadTimeWindows(true);
+      // Immediately update local state so the new time shows right away
+      const today = new Date();
+      const todayStr =
+        today.getFullYear() +
+        "-" +
+        String(today.getMonth() + 1).padStart(2, "0") +
+        "-" +
+        String(today.getDate()).padStart(2, "0");
+
+      setTimeWindows((prev) =>
+        prev.map((tw) =>
+          tw.ActivityType === selectedActivity
+            ? {
+                ...tw,
+                WindowStartTime: formData.windowStartTime + ":00",
+                WindowEndTime: formData.windowEndTime + ":00",
+                LastUpdated: new Date().toISOString(),
+                EffectiveFromDate: todayStr,
+              }
+            : tw,
+        ),
+      );
+
+      // Also reload in background to sync with server
+      loadTimeWindows(true);
 
       // Reset form
       handleCancelEdit();
@@ -546,20 +569,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
                         {successMessage}
                       </p>
                     </motion.div>
-                  ) : (
-                    <motion.div
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      exit={{ opacity: 0 }}
-                      className="flex items-start gap-3 p-3 bg-amber-50/50 border border-amber-100 rounded-xl"
-                    >
-                      <AlertCircle className="h-4 w-4 text-amber-500 mt-0.5 shrink-0" />
-                      <p className="text-xs text-amber-700 leading-relaxed">
-                        Changes apply to future calculations only. Historical
-                        data remains unchanged.
-                      </p>
-                    </motion.div>
-                  )}
+                  ) : null}
                 </AnimatePresence>
               </div>
 
