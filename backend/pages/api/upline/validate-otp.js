@@ -66,7 +66,7 @@ export default async function handler(req, res) {
 
     // ── Demo account bypass for App Store review ──────────────────────
     // Fixed OTP 123456 always works for the demo account.
-    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    const DEMO_ACCOUNTS = ['reviewer@gmail.com'];
     const DEMO_OTP = '123456';
     if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim()) && otp === DEMO_OTP) {
       return res.status(200).json({
