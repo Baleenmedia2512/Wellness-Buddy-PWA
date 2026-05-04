@@ -39,8 +39,8 @@ export default async function handler(req, res) {
   if (DEMO_ACCOUNTS.includes(email)) {
     return res.status(200).json({
       success: true,
-      userId: 9999,
-      userName: 'App Reviewer',
+      userId: 554,
+      userName: 'test',
       email: email,
       status: 'Active',
       isActive: true,
