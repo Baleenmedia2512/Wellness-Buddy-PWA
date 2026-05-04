@@ -66,6 +66,25 @@ export default async function handler(req, res) {
       return;
     }
 
+    // ── Demo account bypass for App Store review ────────────────────────
+    const DEMO_ACCOUNTS = ['reviewer@gmail.com', 'appreviewer@wellness.com'];
+    if (DEMO_ACCOUNTS.includes(email)) {
+      return res.status(200).json({
+        success: true,
+        setupComplete: true,
+        hasTeamId: false,
+        hasUpline: false,
+        setupSkipped: true,
+        teamId: null,
+        uplineCoachId: null,
+        role: 'member',
+        pendingRequest: null,
+        redirectTo: '/dashboard',
+        message: 'Demo account - setup not required',
+      });
+    }
+    // ───────────────────────────────────────────────────────────────────
+
     const supabase = getSupabaseClient();
 
     // Get user's details from team_table using Supabase

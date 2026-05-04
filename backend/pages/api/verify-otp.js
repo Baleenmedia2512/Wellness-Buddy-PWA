@@ -23,6 +23,24 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass for App Store review ──────────────────────────────
+  // Apple reviewers cannot receive live OTPs, so we allow a fixed demo OTP.
+  const DEMO_ACCOUNTS = ['reviewer@gmail.com', 'appreviewer@wellness.com'];
+  const DEMO_OTP = '123456';
+  if (DEMO_ACCOUNTS.includes(recipient) && otp === DEMO_OTP) {
+    return res.json({
+      success: true,
+      message: 'OTP verified successfully',
+      user: {
+        id: 9999,
+        username: 'AppReviewer',
+        email: recipient,
+        status: 'Active',
+      },
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const supabase = getSupabaseClient();
 
