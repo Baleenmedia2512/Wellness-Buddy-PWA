@@ -67,7 +67,7 @@ export default async function handler(req, res) {
     }
 
     // ── Demo account bypass for App Store review ────────────────────────
-    const DEMO_ACCOUNTS = ['reviewer@gmail.com', 'appreviewer@wellness.com'];
+    const DEMO_ACCOUNTS = ['test@example.com'];
     if (DEMO_ACCOUNTS.includes(email)) {
       return res.status(200).json({
         success: true,
