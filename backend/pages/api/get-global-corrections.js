@@ -143,47 +143,25 @@ export default async function handler(req, res) {
       // The most recent Herbalife correction for this AI word wins.
       const hasHerbalife = sortedCorrections.some(c => isHerbalife(c.userCorrected));
       
-      if (hasHerbalife) {
-        // Find the most recent Herbalife correction (sortedCorrections is already newest-first)
-        const herbalifeCorrection = sortedCorrections.find(c => isHerbalife(c.userCorrected));
-        
-        if (herbalifeCorrection) {
-          const uniqueUsers = new Set(
-            corrections
-              .filter(c => normalizeFoodName(c.userCorrected) === normalizeFoodName(herbalifeCorrection.userCorrected))
-              .map(c => c.userId)
-          );
-          
-          globalCorrectionMap.set(normalizedAi, {
-            aiDetected: herbalifeCorrection.aiDetected,
-            userCorrected: herbalifeCorrection.userCorrected,
-            users: uniqueUsers,
-            totalCorrections: herbalifeCorrection.timesCorrected,
-            lastCorrected: herbalifeCorrection.lastCorrected,
-            lastCorrectedByUserId: herbalifeCorrection.userId,
-            correctedQuantity: herbalifeCorrection.correctedQuantity,
-            correctedUnit: herbalifeCorrection.correctedUnit,
-            correctedFoodType: herbalifeCorrection.correctedFoodType,
-            correctedCalories: herbalifeCorrection.correctedCalories,
-            correctedCarbs: herbalifeCorrection.correctedCarbs,
-            correctedProtein: herbalifeCorrection.correctedProtein,
-            correctedFat: herbalifeCorrection.correctedFat,
-            correctedFiber: herbalifeCorrection.correctedFiber,
-          });
-          
-          console.log(`   🌍 GLOBAL: "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife product)`);
-        }
-      } else if (requestingUserId) {
-        // USER-SPECIFIC: Non-Herbalife corrections only apply to the user who made them
-        const userCorrection = sortedCorrections.find(c => String(c.userId) === String(requestingUserId));
-        
+      // ── PRIORITY 1: Current user's latest correction (always checked first) ──
+      // Runs regardless of whether a global correction also exists for the same food.
+      // sortedCorrections is already newest-first, so .find() returns the latest entry.
+      if (requestingUserId) {
+        const userCorrection = sortedCorrections.find(
+          (c) => String(c.userId) === String(requestingUserId)
+        );
+
         if (userCorrection) {
           const uniqueUsers = new Set(
             corrections
-              .filter(c => normalizeFoodName(c.userCorrected) === normalizeFoodName(userCorrection.userCorrected))
-              .map(c => c.userId)
+              .filter(
+                (c) =>
+                  normalizeFoodName(c.userCorrected) ===
+                  normalizeFoodName(userCorrection.userCorrected)
+              )
+              .map((c) => c.userId)
           );
-          
+
           userCorrectionMap.set(normalizedAi, {
             aiDetected: userCorrection.aiDetected,
             userCorrected: userCorrection.userCorrected,
@@ -200,8 +178,52 @@ export default async function handler(req, res) {
             correctedFat: userCorrection.correctedFat,
             correctedFiber: userCorrection.correctedFiber,
           });
-          
-          console.log(`   👤 USER-SPECIFIC: "${normalizedAi}" → "${userCorrection.userCorrected}" (User ${requestingUserId})`);
+
+          console.log(
+            `   👤 USER (latest): "${normalizedAi}" → "${userCorrection.userCorrected}" (User ${requestingUserId}, ${userCorrection.lastCorrected})`
+          );
+        }
+      }
+
+      // ── PRIORITY 2: Latest global (Herbalife) correction — fallback only ──
+      // Still collected for every key so the merge can use it when no user correction exists.
+      if (hasHerbalife) {
+        // sortedCorrections is newest-first; find the most recent Herbalife correction.
+        const herbalifeCorrection = sortedCorrections.find((c) =>
+          isHerbalife(c.userCorrected)
+        );
+
+        if (herbalifeCorrection) {
+          const uniqueUsers = new Set(
+            corrections
+              .filter(
+                (c) =>
+                  normalizeFoodName(c.userCorrected) ===
+                  normalizeFoodName(herbalifeCorrection.userCorrected)
+              )
+              .map((c) => c.userId)
+          );
+
+          globalCorrectionMap.set(normalizedAi, {
+            aiDetected: herbalifeCorrection.aiDetected,
+            userCorrected: herbalifeCorrection.userCorrected,
+            users: uniqueUsers,
+            totalCorrections: herbalifeCorrection.timesCorrected,
+            lastCorrected: herbalifeCorrection.lastCorrected,
+            lastCorrectedByUserId: herbalifeCorrection.userId,
+            correctedQuantity: herbalifeCorrection.correctedQuantity,
+            correctedUnit: herbalifeCorrection.correctedUnit,
+            correctedFoodType: herbalifeCorrection.correctedFoodType,
+            correctedCalories: herbalifeCorrection.correctedCalories,
+            correctedCarbs: herbalifeCorrection.correctedCarbs,
+            correctedProtein: herbalifeCorrection.correctedProtein,
+            correctedFat: herbalifeCorrection.correctedFat,
+            correctedFiber: herbalifeCorrection.correctedFiber,
+          });
+
+          console.log(
+            `   🌍 GLOBAL (latest): "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife, ${herbalifeCorrection.lastCorrected})`
+          );
         }
       }
     });
