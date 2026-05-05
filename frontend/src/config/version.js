@@ -74,25 +74,25 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.8',
+  VERSION: '2.9',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 34,
+  VERSION_CODE: 35,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 36,
+  IOS_BUILD_NUMBER: 37,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version 2.8 - Play Store Policy Fix',
+  RELEASE_NAME: 'Version 2.9',
   
   // Build date
-  BUILD_DATE: '2026-04-30',
+  BUILD_DATE: '2026-05-05',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 34, versionName: '2.8' },
-    IOS: { buildNumber: 36, versionName: '2.8' },
+    ANDROID: { versionCode: 35, versionName: '2.9' },
+    IOS: { buildNumber: 37, versionName: '2.9' },
   },
 };
 
