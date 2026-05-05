@@ -723,7 +723,7 @@ const AttendanceReport = ({ user, onBack }) => {
       }
       
       // Generate CSV content
-      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Attended Time", "Club Name"];
+      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Date", "Time", "Club Name"];
       const csvRows = [
         headers.join(","),
         ...attendanceData.map(record => [
@@ -733,7 +733,8 @@ const AttendanceReport = ({ user, onBack }) => {
           `"${(record.village || '').replace(/"/g, '""')}"`,
           `"${(record.phone || '').replace(/"/g, '""')}"`,
           `"${(record.coach || '').replace(/"/g, '""')}"`,
-          `"${(record.attendedTime || '').replace(/"/g, '""')}"`,
+          record.date || '',
+          record.time || '',
           `"${(record.clubName || '').replace(/"/g, '""')}"`
         ].join(","))
       ];
@@ -851,6 +852,7 @@ const AttendanceReport = ({ user, onBack }) => {
           renderExpandedDetails={renderExpandedDetails}
           isCurrentUser={true}
           showTeamCount={true}
+          showIndividualReports={false}
           getStatusStyle={getStatusStyle}
           searchQuery={searchQuery}
           filter={filter}

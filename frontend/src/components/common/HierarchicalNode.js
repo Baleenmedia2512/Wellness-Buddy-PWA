@@ -17,6 +17,7 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * @param {boolean} props.isCurrentUser - Is this node the logged-in user
  * @param {boolean} props.showTeamCount - Show team member count
  * @param {boolean} props.showFullTeam - Show full hierarchy (true) or only direct reports (false)
+ * @param {boolean} props.showIndividualReports - Show individual report cards section (default: true)
  * @param {Function} props.getStatusStyle - Function to get status-based styling
  * @param {string} props.searchQuery - Search query for filtering
  * @param {string} props.filter - Current filter value
@@ -35,6 +36,7 @@ const HierarchicalNode = ({
   isCurrentUser,
   showTeamCount = true,
   showFullTeam = true,
+  showIndividualReports = true,
   defaultShowDetails = false,
   getStatusStyle,
   searchQuery,
@@ -46,6 +48,7 @@ const HierarchicalNode = ({
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
+  const [showIndividualReportsExpanded, setShowIndividualReportsExpanded] = useState(false);
   const [showCoachDetails, setShowCoachDetails] = useState(false);
   const [showCoCoachDetails, setShowCoCoachDetails] = useState(false);
 
@@ -295,6 +298,7 @@ const HierarchicalNode = ({
                     isCurrentUser={false}
                     showTeamCount={showTeamCount}
                     showFullTeam={showFullTeam}
+                    showIndividualReports={showIndividualReports}
                     getStatusStyle={getStatusStyle}
                     searchQuery={searchQuery}
                     filter={filter}
@@ -305,6 +309,70 @@ const HierarchicalNode = ({
                     defaultShowDetails={defaultShowDetails}
                   />
                 ))}
+            </div>
+          )}
+
+          {/* Individual Reports Section (optional) */}
+          {showIndividualReports && hasChildren && (
+            <div className="border-t border-amber-100 mt-2">
+              <TouchFeedbackButton
+                onClick={() => setShowIndividualReportsExpanded(!showIndividualReportsExpanded)}
+                className="w-full py-2 flex items-center justify-center gap-2 hover:bg-amber-100/50 transition-colors"
+              >
+                <span className="text-xs font-medium text-amber-700">
+                  {showIndividualReportsExpanded ? "Hide" : "Show"} Individual Reports
+                </span>
+                {showIndividualReportsExpanded ? (
+                  <ChevronUp className="h-3.5 w-3.5 text-amber-700" />
+                ) : (
+                  <ChevronDown className="h-3.5 w-3.5 text-amber-700" />
+                )}
+              </TouchFeedbackButton>
+
+              {showIndividualReportsExpanded && (
+                <div className="p-3 space-y-2 bg-gray-50">
+                  {node.teamMembers
+                    .filter(() => showFullTeam || level === 0)
+                    .map((child) => (
+                      <div
+                        key={child.userId || child.id}
+                        className="bg-white rounded-lg p-3 shadow-sm border border-gray-200"
+                      >
+                        {/* Member Header */}
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            {child.profileImage ? (
+                              <img
+                                src={child.profileImage}
+                                alt={child.userName || child.name}
+                                className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                              />
+                            ) : (
+                              <div className="h-8 w-8 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center">
+                                <span className="text-white font-semibold text-xs">
+                                  {(child.userName || child.name || "?")[0].toUpperCase()}
+                                </span>
+                              </div>
+                            )}
+                            <span className="text-sm font-medium text-gray-900">
+                              {child.userName || child.name}
+                            </span>
+                          </div>
+                          {renderStatus && (
+                            <div>{renderStatus(child, false)}</div>
+                          )}
+                        </div>
+
+                        {/* Member Stats */}
+                        {renderStats && (
+                          <div className="flex items-center divide-x border-t border-gray-100 pt-2 divide-gray-100">
+                            {renderStats(child, level + 1, false)}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -534,6 +602,7 @@ const HierarchicalNode = ({
                   isCurrentUser={false}
                   showTeamCount={showTeamCount}
                   showFullTeam={showFullTeam}
+                  showIndividualReports={showIndividualReports}
                   getStatusStyle={getStatusStyle}
                   searchQuery={searchQuery}
                   filter={filter}
@@ -544,6 +613,70 @@ const HierarchicalNode = ({
                   defaultShowDetails={defaultShowDetails}
                 />
               ))}
+          </div>
+        )}
+
+        {/* Individual Reports Section (optional) */}
+        {showIndividualReports && hasChildren && (
+          <div className="border-t border-gray-100 mt-2">
+            <TouchFeedbackButton
+              onClick={() => setShowIndividualReportsExpanded(!showIndividualReportsExpanded)}
+              className="w-full py-2 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-xs font-medium text-gray-600">
+                {showIndividualReportsExpanded ? "Hide" : "Show"} Individual Reports
+              </span>
+              {showIndividualReportsExpanded ? (
+                <ChevronUp className="h-3.5 w-3.5 text-gray-600" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 text-gray-600" />
+              )}
+            </TouchFeedbackButton>
+
+            {showIndividualReportsExpanded && (
+              <div className="p-3 space-y-2 bg-gray-50">
+                {node.teamMembers
+                  .filter(() => showFullTeam || level === 0)
+                  .map((child) => (
+                    <div
+                      key={child.userId || child.id}
+                      className="bg-white rounded-lg p-3 shadow-sm border border-gray-200"
+                    >
+                      {/* Member Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {child.profileImage ? (
+                            <img
+                              src={child.profileImage}
+                              alt={child.userName || child.name}
+                              className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                              <span className="text-white font-semibold text-xs">
+                                {(child.userName || child.name || "?")[0].toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                          <span className="text-sm font-medium text-gray-900">
+                            {child.userName || child.name}
+                          </span>
+                        </div>
+                        {renderStatus && (
+                          <div>{renderStatus(child, false)}</div>
+                        )}
+                      </div>
+
+                      {/* Member Stats */}
+                      {renderStats && (
+                        <div className="flex items-center divide-x border-t border-gray-100 pt-2 divide-gray-100">
+                          {renderStats(child, level + 1, false)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>
