@@ -385,29 +385,39 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* OTP Display Cells (system keyboard suppressed; inline keypad below) */}
+              {/* OTP Display Cells — native keyboard on web, inline custom keypad on native apps */}
               <div className="flex justify-center gap-2 xs:gap-3">
-                {otp.map((digit, index) => (
-                  <input
-                    key={index}
-                    ref={el => inputRefs.current[index] = el}
-                    type="text"
-                    inputMode="none"
-                    readOnly
-                    maxLength={1}
-                    value={digit}
-                    onFocus={(e) => e.target.blur()}
-                    onContextMenu={(e) => e.preventDefault()}
-                    className="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300 caret-transparent"
-                  />
-                ))}
+                {otp.map((digit, index) => {
+                  const isNative = Capacitor.isNativePlatform();
+                  return (
+                    <input
+                      key={index}
+                      ref={el => inputRefs.current[index] = el}
+                      type={isNative ? 'text' : 'tel'}
+                      inputMode={isNative ? 'none' : 'numeric'}
+                      pattern="[0-9]*"
+                      autoComplete={index === 0 ? 'one-time-code' : 'off'}
+                      readOnly={isNative}
+                      maxLength={1}
+                      value={digit}
+                      onChange={(e) => !isNative && handleOTPChange(e.target, index)}
+                      onKeyDown={(e) => !isNative && handleKeyDown(e, index)}
+                      onPaste={(e) => !isNative && handlePaste(e)}
+                      onFocus={isNative ? (e) => e.target.blur() : undefined}
+                      onContextMenu={isNative ? (e) => e.preventDefault() : undefined}
+                      className={`w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300 ${isNative ? 'caret-transparent' : ''}`}
+                    />
+                  );
+                })}
               </div>
 
-              {/* Inline numeric keypad (always visible, never overlaps) */}
-              <InlineNumericKeypad
-                onDigit={handleKeypadDigit}
-                onBackspace={handleKeypadBackspace}
-              />
+              {/* Inline numeric keypad (native apps only) */}
+              {Capacitor.isNativePlatform() && (
+                <InlineNumericKeypad
+                  onDigit={handleKeypadDigit}
+                  onBackspace={handleKeypadBackspace}
+                />
+              )}
 
               {/* Verify Button */}
               <button
