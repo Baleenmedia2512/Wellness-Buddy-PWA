@@ -3,6 +3,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import TermsAndConditions from './TermsAndConditions';
 import PrivacyPolicy from './PrivacyPolicy';
+import NumericKeypad from './NumericKeypad';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
@@ -10,6 +11,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   const [showEmailForm, setShowEmailForm] = useState(false);
   const [email, setEmail] = useState('');
   const [otp, setOtp] = useState(new Array(6).fill(''));
+  const [keypadOpen, setKeypadOpen] = useState(false);
   const [emailLoading, setEmailLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
   const [countdown, setCountdown] = useState(60);
@@ -136,6 +138,31 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   const handleKeyDown = (e, index) => {
     if (e.key === 'Backspace' && otp[index] === '' && index > 0) {
       inputRefs.current[index - 1].focus();
+    }
+  };
+
+  // In-app keypad handlers (suppresses system keyboard)
+  const handleKeypadDigit = (digit) => {
+    const firstEmpty = otp.findIndex((d) => d === '');
+    if (firstEmpty === -1) return; // already full
+    const newOtp = [...otp];
+    newOtp[firstEmpty] = digit;
+    setOtp(newOtp);
+    if (newOtp.every((d) => d !== '')) {
+      setKeypadOpen(false);
+      handleVerifyOTP(newOtp.join(''));
+    }
+  };
+
+  const handleKeypadBackspace = () => {
+    const newOtp = [...otp];
+    // Find last filled index
+    for (let i = newOtp.length - 1; i >= 0; i--) {
+      if (newOtp[i] !== '') {
+        newOtp[i] = '';
+        setOtp(newOtp);
+        return;
+      }
     }
   };
 
@@ -357,24 +384,34 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* OTP Input Fields */}
-              <div className="flex justify-center gap-2 xs:gap-3">
+              {/* OTP Display Cells (read-only, system keyboard suppressed) */}
+              <div
+                className="flex justify-center gap-2 xs:gap-3 cursor-pointer"
+                onClick={() => setKeypadOpen(true)}
+              >
                 {otp.map((digit, index) => (
                   <input
                     key={index}
                     ref={el => inputRefs.current[index] = el}
                     type="text"
-                    maxLength="1"
+                    inputMode="none"
+                    readOnly
                     value={digit}
-                    onChange={(e) => handleOTPChange(e.target, index)}
-                    onKeyDown={(e) => handleKeyDown(e, index)}
-                    onPaste={handlePaste}
+                    onFocus={(e) => e.target.blur()}
+                    onClick={() => setKeypadOpen(true)}
                     onContextMenu={(e) => e.preventDefault()}
-                    className="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300"
-                    autoComplete="off"
+                    className="w-11 h-12 xs:w-12 xs:h-12 text-center text-xl xs:text-2xl font-bold border-2 border-gray-200 rounded-lg focus:border-green-400 focus:outline-none transition-all duration-300 hover:border-green-300 caret-transparent"
                   />
                 ))}
               </div>
+
+              {/* Popup numeric keypad */}
+              <NumericKeypad
+                open={keypadOpen}
+                onClose={() => setKeypadOpen(false)}
+                onDigit={handleKeypadDigit}
+                onBackspace={handleKeypadBackspace}
+              />
 
               {/* Verify Button */}
               <button
