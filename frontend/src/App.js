@@ -4287,8 +4287,8 @@ function WellnessValleyApp() {
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* Divider */}
-                  {altButtons.length > 0 && (
+                  {/* Divider — alt buttons (Food/Education) commented out */}
+                  {false && altButtons.length > 0 && (
                     <div className="flex items-center gap-3 px-4 pb-3">
                       <div className="flex-1 h-px bg-gray-100" />
                       <span className="text-xs text-gray-400 font-medium">not this?</span>
@@ -4296,8 +4296,8 @@ function WellnessValleyApp() {
                     </div>
                   )}
 
-                  {/* Alt options */}
-                  {altButtons.length > 0 && (
+                  {/* Alt options — commented out */}
+                  {false && altButtons.length > 0 && (
                     <div className="flex gap-2 px-4 pb-4">
                       {altButtons.map((btn) => (
                         <TouchFeedbackButton
