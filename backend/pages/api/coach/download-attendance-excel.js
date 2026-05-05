@@ -2,6 +2,26 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
 
 /**
+ * Extract main area name from city string
+ * Example: "CMWSSB Division 175, Zone 13 Adyar" → "Adyar"
+ */
+function extractMainAreaName(cityString) {
+  if (!cityString) return '';
+  
+  // Split by comma and take the last part
+  const parts = cityString.split(',').map(part => part.trim());
+  let mainArea = parts[parts.length - 1];
+  
+  // Remove common prefixes like "Division", "Zone" and their numbers
+  mainArea = mainArea
+    .replace(/^(CMWSSB|Division|Zone)\s+\d+\s*/gi, '') // Remove "Division 175", "Zone 13", etc.
+    .replace(/^(CMWSSB|Division|Zone)\s+/gi, '') // Remove just "Division", "Zone" without numbers
+    .trim();
+  
+  return mainArea;
+}
+
+/**
  * Helper function to get team hierarchy with partnership support
  * Same logic as hierarchical-club-attendance.js
  */
@@ -280,7 +300,7 @@ export default async function handler(req, res) {
         attendanceRecords.push({
           userId: user.UserId,
           userName: user.UserName || 'Unknown',
-          city: log.City || '',
+          city: extractMainAreaName(log.City),
           village: log.Village || '',
           phone: user.PhoneNumber || '',
           coach: user.CoachName || 'No Coach',

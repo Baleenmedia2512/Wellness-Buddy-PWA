@@ -1,5 +1,8 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
@@ -627,6 +630,168 @@ const AttendanceReport = ({ user, onBack }) => {
     fetchData(true);
   };
 
+  const saveOrShareFile = useCallback(async ({ content, fileName, mimeType, title }) => {
+    const isNative = Capacitor.isNativePlatform();
+
+    if (isNative) {
+      try {
+        // Save to Cache temporarily, then share so user can choose where to save
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: content,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+
+        console.log("✅ File created:", result.uri);
+        
+        // Open share sheet - user can save to Downloads, Drive, WhatsApp, etc.
+        await Share.share({
+          title: title || "Attendance Report",
+          text: "Choose where to save or share your attendance report",
+          files: [result.uri],
+          dialogTitle: "Save or Share Report",
+        });
+        
+        console.log("📤 Share sheet opened successfully");
+        
+        return {
+          success: true,
+          path: result.uri,
+          location: "Shared - user can choose location"
+        };
+      } catch (error) {
+        console.error("❌ Error saving/sharing file:", error);
+        throw new Error("Failed to save or share file: " + error.message);
+      }
+    }
+
+    // Web Share API — works on Android Chrome PWA and iOS Safari PWA
+    const blob = new Blob([content], { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mimeType })] })) {
+      try {
+        await navigator.share({
+          title: title || "Attendance Report",
+          files: [new File([blob], fileName, { type: mimeType })],
+        });
+        return { success: true, location: "Shared via browser", isWeb: true };
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return { success: false, cancelled: true };
+        }
+        // fall through to anchor download
+      }
+    }
+
+    // Desktop / fallback: anchor click download
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true, location: "browser download", isWeb: true };
+  }, []);
+
+  const handleDownload = async () => {
+    try {
+      console.log("📥 Downloading attendance report...");
+      
+      const userId = await getUserId(user.email);
+      const date = getTargetDate();
+      
+      // Fetch attendance data for Excel export
+      const response = await fetch(
+        `${apiBaseUrl}/api/coach/download-attendance-excel?userId=${userId}&date=${date}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to fetch attendance data");
+      }
+      
+      const attendanceData = result.data || [];
+      
+      if (attendanceData.length === 0) {
+        showAlert("No attendance records found for the selected date.", "No Data", "info");
+        return;
+      }
+      
+      // Generate CSV content
+      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Attended Time", "Club Name"];
+      const csvRows = [
+        headers.join(","),
+        ...attendanceData.map(record => [
+          record.sno,
+          `"${(record.userName || '').replace(/"/g, '""')}"`,
+          `"${(record.city || '').replace(/"/g, '""')}"`,
+          `"${(record.village || '').replace(/"/g, '""')}"`,
+          `"${(record.phone || '').replace(/"/g, '""')}"`,
+          `"${(record.coach || '').replace(/"/g, '""')}"`,
+          `"${(record.attendedTime || '').replace(/"/g, '""')}"`,
+          `"${(record.clubName || '').replace(/"/g, '""')}"`
+        ].join(","))
+      ];
+      
+      const csvContent = csvRows.join("\n");
+      
+      // Generate filename in format: dd-mm(monthName)-yyyy-username-attendance.csv
+      const dateObj = new Date(date);
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthName = monthNames[dateObj.getMonth()];
+      const year = dateObj.getFullYear();
+      const username = hierarchyData?.userName || 'user';
+      const filename = `${day}-${month}(${monthName})-${year}-${username}-attendance.csv`;
+      
+      // Use saveOrShareFile for cross-platform support
+      const saveResult = await saveOrShareFile({
+        content: csvContent,
+        fileName: filename,
+        mimeType: "text/csv;charset=utf-8;",
+        title: "Attendance Report (CSV)",
+      });
+      
+      // Check if user cancelled (Web Share API)
+      if (saveResult.cancelled) {
+        return;
+      }
+      
+      console.log("✅ Attendance report downloaded successfully");
+      
+      // For web browsers, don't show success dialog since we can't detect if user actually saved
+      // The browser's own download UI is sufficient
+      if (saveResult.isWeb) {
+        console.log("📥 Download initiated via browser");
+        return; // Don't show success dialog for web downloads
+      }
+      
+      // Show success dialog with file location (mobile only)
+      const locationMessage = `\n\n📁 Saved to: ${saveResult.location}\n\nYou can find this file in your device's Files app.`;
+      
+      showAlert(
+        `Attendance report has been saved successfully!${locationMessage}\n\nFile: ${filename}\nRecords: ${attendanceData.length}`,
+        "Download Successful",
+        "success"
+      );
+      
+    } catch (error) {
+      console.error("❌ Error downloading attendance report:", error);
+      showAlert(
+        `Failed to download attendance report.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`,
+        "Download Failed",
+        "error"
+      );
+    }
+  };
+
   const handleSortChange = (newSortBy, newSortOrder) => {
     setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
@@ -673,6 +838,7 @@ const AttendanceReport = ({ user, onBack }) => {
       expandedState={expandOverride}
       teamView={teamView}
       onTeamViewChange={setTeamView}
+      onDownload={handleDownload}
     >
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
