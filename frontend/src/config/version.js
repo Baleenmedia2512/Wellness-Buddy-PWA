@@ -99,6 +99,16 @@ export const APP_VERSION = {
 /**
  * 📋 CHANGE LOG
  * 
+ * Version 2.9 (Code 35) - 2026-05-05 [ANDROID + iOS RELEASE]
+ *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
+ *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
+ *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
+ *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
+ *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
+ *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler
+ *   🐛 Bug Fixes - Fixed enrolledPrograms.map error when EnrolledPrograms returned as object
+ * 
  * Version 2.8 (Code 34) - 2026-04-30 [ANDROID + iOS RELEASE]
  *   🔒 Play Store Policy Fix - Removed USE_EXACT_ALARM and SCHEDULE_EXACT_ALARM permissions
  *   ⏰ Alarm System - Replaced setExactAndAllowWhileIdle with setAndAllowWhileIdle (inexact alarms)
