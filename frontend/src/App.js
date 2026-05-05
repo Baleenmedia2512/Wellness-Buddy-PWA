@@ -4206,86 +4206,9 @@ function WellnessValleyApp() {
             const isAiUnavailable = error.includes("AI model is temporarily unavailable");
 
             if (isAiUnavailable) {
-              const now = new Date();  // always use current device time, not image EXIF
-              const mins = now.getHours() * 60 + now.getMinutes();
-              const inOrNear = (win) => {
-                if (!win?.start || !win?.end) return false;
-                const [sh, sm] = win.start.split(":").map(Number);
-                const [eh, em] = win.end.split(":").map(Number);
-                const start = sh * 60 + sm, end = eh * 60 + em;
-                return mins >= start && mins <= end;  // exact window only
-              };
-
-              // Primary type based on time
-              const primaryType = inOrNear(weightWindow) ? "weight"
-                : inOrNear(educationWindow) ? "education"
-                : "food";
-
-              const typeConfig = {
-                food: {
-                  icon: "🍽",
-                  label: "Log Food",
-                  sub: getMealTypeFromTime(now),
-                  bg: "bg-orange-500 hover:bg-orange-600 active:bg-orange-700",
-                  onClick: () => { setManualMealType(getMealTypeFromTime(now)); setShowManualFoodModal(true); },
-                },
-                weight: {
-                  icon: "⚖️",
-                  label: "Log Weight",
-                  sub: "Scale photo",
-                  bg: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800",
-                  onClick: () => { fetchLastWeight(); setCurrentWeightImage(null); setShowManualWeightModal(true); },
-                },
-                education: {
-                  icon: "🎓",
-                  label: "Log Education",
-                  sub: "Session / class",
-                  bg: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800",
-                  onClick: () => setShowManualEducationModal(true),
-                },
-              };
-
-              const primary = typeConfig[primaryType];
-
-              const timeLabel = {
-                weight: `It's weight time (${weightWindow?.start?.slice(0,5)}–${weightWindow?.end?.slice(0,5)})`,
-                education: `It's education time (${educationWindow?.start?.slice(0,5)}–${educationWindow?.end?.slice(0,5)})`,
-                food: `It's food time right now`,
-              }[primaryType];
-
-              return (
-                <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                  {/* Header */}
-                  <div className="relative flex items-center justify-center px-4 pt-4 pb-2">
-                    <div className="flex flex-col items-center gap-0.5">
-                      <span className="text-base">🤖</span>
-                      <p className="text-sm font-bold text-gray-900 leading-tight">AI Unavailable</p>
-                      <p className="text-xs text-gray-400 leading-tight">Log manually below</p>
-                    </div>
-                    <button
-                      onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
-                      className="absolute right-3 top-3 p-1.5 rounded-xl hover:bg-gray-100 transition-colors text-gray-400"
-                    >
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                      </svg>
-                    </button>
-                  </div>
-
-                  {/* Primary time-based action */}
-                  <div className="px-4 pb-3">
-                    <TouchFeedbackButton
-                      onClick={primary.onClick}
-                      className={`w-full ${primary.bg} text-white rounded-2xl py-4 flex flex-col items-center justify-center gap-1 transition-colors`}
-                    >
-                      <span className="text-3xl leading-none">{primary.icon}</span>
-                      <span className="text-base font-bold">{primary.label}</span>
-                    </TouchFeedbackButton>
-                  </div>
-
-
-                </div>
-              );
+              // Silently clear the error — no modal shown
+              setTimeout(() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }, 0);
+              return null;
             }
 
             return (
@@ -5044,8 +4967,8 @@ function WellnessValleyApp() {
         }}
       />
 
-      {/* Manual Weight Entry Modal */}
-      <ManualWeightEntryModal
+      {/* Manual Weight Entry Modal — disabled */}
+      {false && <ManualWeightEntryModal
         isOpen={showManualWeightModal}
         onClose={() => {
           setShowManualWeightModal(false);
@@ -5061,7 +4984,7 @@ function WellnessValleyApp() {
         imagePreview={currentWeightImage}
         lastWeight={lastWeight}
         altSwitchButtons={getAltSwitchButtons("weight")}
-      />
+      />}
 
       {/* Duplicate Food Modal */}
       {showDuplicateModal && duplicateInfo && (

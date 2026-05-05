@@ -158,34 +158,6 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
               </button>
             </div>
 
-            {/* Divider */}
-            {altSwitchButtons?.length > 0 && (
-              <div className="flex items-center gap-3 px-4 pb-2">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">Log something else</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-            )}
-
-            {/* Alt cards */}
-            {altSwitchButtons?.length > 0 && (
-              <div className="flex gap-2 px-4 pb-4">
-                {altSwitchButtons.map((btn) => (
-                  <button
-                    key={btn.label}
-                    onClick={btn.onClick}
-                    className="flex-1 bg-white py-3 px-2 rounded-[14px] flex flex-col items-center justify-center gap-0.5 transition-all active:scale-[0.97]"
-                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.07)", minHeight: "72px" }}
-                  >
-                    <span className="text-xl leading-none mb-0.5">{btn.icon}</span>
-                    <span className="text-xs text-gray-700 font-semibold whitespace-nowrap">No, it&apos;s {btn.label}</span>
-                    {btn.sub && (
-                      <span className="text-[10px] text-gray-400">{btn.sub}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
           </>
         )}
 
@@ -225,16 +197,13 @@ const ManualWeightEntryModal = ({ isOpen, onClose, onSave, imagePreview, onBack,
         {/* Content */}
         <div className="px-4 pt-3 pb-2 space-y-3">
           {/* Image Preview (if available) */}
-          {imagePreview && (
-            <div className="relative rounded-lg overflow-hidden bg-gray-100">
+          {imagePreview && (typeof imagePreview === "string") && (imagePreview.startsWith("data:image") || imagePreview.startsWith("blob:")) && (
+            <div className="relative rounded-xl overflow-hidden bg-gray-100" style={{ height: "180px" }}>
               <img
                 src={imagePreview}
                 alt="Weight scale"
-                className="w-full h-48 object-contain"
+                style={{ width: "100%", height: "100%", objectFit: "contain", display: "block" }}
               />
-              <div className="absolute top-2 right-2 bg-green-500 text-white text-xs font-bold px-2 py-1 rounded-full">
-                Auto-detect failed
-              </div>
             </div>
           )}
 
