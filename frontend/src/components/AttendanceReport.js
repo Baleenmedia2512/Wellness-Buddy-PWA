@@ -285,7 +285,7 @@ const AttendanceReport = ({ user, onBack }) => {
   };
 
   // Render stats strip
-  const renderStats = (node, level, isCurrentUser) => {
+  const renderStats = (node, level, isCurrentUser, coCoach = null) => {
     const attended = node.metrics?.attended === true;
     const clubs = node.metrics?.clubs || [];
     const remoteCount = node.metrics?.remoteCount || 0;
@@ -293,6 +293,11 @@ const AttendanceReport = ({ user, onBack }) => {
     const directTotal = node.directTeamCount?.total || 0;
     const fullQualified = node.fullTeamCount?.qualified || 0;
     const fullTotal = node.fullTeamCount?.total || 0;
+
+    // Co-coach partner data
+    const coCoachAttended = coCoach?.metrics?.attended === true;
+    const coCoachClubs = coCoach?.metrics?.clubs || [];
+    const coCoachRemoteCount = coCoach?.metrics?.remoteCount || 0;
 
     const isSingle = sortBy !== "all";
 
@@ -350,29 +355,87 @@ const AttendanceReport = ({ user, onBack }) => {
     // ── All columns (default) ─────────────────────────────────────────────────
     return (
       <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <SelfLogo className="w-4 h-4 text-blue-600" />
-          <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
-          {attended ? (
-            <div className="flex flex-wrap gap-1 justify-center mt-0.5">
-              {clubs.length > 0 && (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
-                  <MapPin className="h-2.5 w-2.5 text-green-700" />
-                  <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
+        {/* Self - Show TWO entries for co-coach partnerships */}
+        {coCoach ? (
+          <>
+            {/* Coach SELF */}
+            <div className="flex-1 flex flex-col items-center pr-1">
+              <SelfLogo className="w-4 h-4 text-blue-600" />
+              <span className="text-[9px] font-semibold tracking-wide text-blue-600">{node.userName || node.name}</span>
+              {attended ? (
+                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                  {clubs.length > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <MapPin className="h-2 w-2 text-green-700" />
+                      <span className="text-[8px] font-semibold text-green-700">{clubs.length}</span>
+                    </div>
+                  )}
+                  {remoteCount > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                      <Wifi className="h-2 w-2 text-blue-700" />
+                      <span className="text-[8px] font-semibold text-blue-700">{remoteCount}</span>
+                    </div>
+                  )}
+                  {clubs.length === 0 && remoteCount === 0 && (
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                  )}
                 </div>
-              )}
-              {remoteCount > 0 && (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
-                  <Wifi className="h-2.5 w-2.5 text-blue-700" />
-                  <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
-                </div>
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5" />
               )}
             </div>
-          ) : (
-            <span className="text-lg font-bold text-red-500">0</span>
-          )}
-        </div>
+            {/* Co-Coach SELF */}
+            <div className="flex-1 flex flex-col items-center pr-2">
+              <SelfLogo className="w-4 h-4 text-purple-600" />
+              <span className="text-[9px] font-semibold tracking-wide text-purple-600">{coCoach.userName || coCoach.name}</span>
+              {coCoachAttended ? (
+                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                  {coCoachClubs.length > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <MapPin className="h-2 w-2 text-green-700" />
+                      <span className="text-[8px] font-semibold text-green-700">{coCoachClubs.length}</span>
+                    </div>
+                  )}
+                  {coCoachRemoteCount > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                      <Wifi className="h-2 w-2 text-blue-700" />
+                      <span className="text-[8px] font-semibold text-blue-700">{coCoachRemoteCount}</span>
+                    </div>
+                  )}
+                  {coCoachClubs.length === 0 && coCoachRemoteCount === 0 && (
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                  )}
+                </div>
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5" />
+              )}
+            </div>
+          </>
+        ) : (
+          /* Single coach - normal SELF display */
+          <div className="flex-1 flex flex-col items-center pr-2">
+            <SelfLogo className="w-4 h-4 text-blue-600" />
+            <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
+            {attended ? (
+              <div className="flex flex-wrap gap-1 justify-center mt-0.5">
+                {clubs.length > 0 && (
+                  <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                    <MapPin className="h-2.5 w-2.5 text-green-700" />
+                    <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
+                  </div>
+                )}
+                {remoteCount > 0 && (
+                  <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                    <Wifi className="h-2.5 w-2.5 text-blue-700" />
+                    <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="text-lg font-bold text-red-500">0</span>
+            )}
+          </div>
+        )}
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
           <DirectLogo className="w-4 h-4 text-green-600" />

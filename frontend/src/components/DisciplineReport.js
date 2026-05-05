@@ -459,10 +459,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   // Render stats strip
-  const renderStats = (node, level, isCurrentUser) => {
+  const renderStats = (node, level, isCurrentUser, coCoach = null) => {
     const selfScore = node.periodDiscipline?.percentage || 0;
     const directScore = node.directTeamDiscipline?.percentage || 0;
     const fullScore = node.fullTeamDiscipline?.percentage || 0;
+
+    // Co-coach partner data
+    const coCoachSelfScore = coCoach?.periodDiscipline?.percentage || 0;
 
     const ALL_COLS = [
       { key: "self",   score: selfScore,   Logo: SelfLogo,     color: "text-blue-500",   label: "Self",   padding: "pr-2" },
@@ -475,28 +478,62 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
     return (
       <>
-        {cols.map((col) => (
-          <div
-            key={col.key}
-            className={`flex-1 flex flex-col items-center gap-0.5 ${
-              isSingle ? "" : col.padding
-            }`}
-          >
-            <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
-            <span
-              className={`text-[8px] font-semibold ${col.color} uppercase tracking-wide leading-none`}
+        {!isSingle && coCoach ? (
+          /* Co-coach partnership - show TWO SELF entries */
+          <>
+            {/* Coach SELF */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 pr-1">
+              <SelfLogo className="w-4 h-4 text-blue-500" />
+              <span className="text-[8px] font-semibold text-blue-500 uppercase tracking-wide leading-none">
+                {node.userName || node.name}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{selfScore}%</span>
+            </div>
+            {/* Co-Coach SELF */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
+              <SelfLogo className="w-4 h-4 text-purple-500" />
+              <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">
+                {coCoach.userName || coCoach.name}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{coCoachSelfScore}%</span>
+            </div>
+            {/* DIRECT and FULL */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
+              <DirectLogo className="w-4 h-4 text-green-500" />
+              <span className="text-[8px] font-semibold text-green-500 uppercase tracking-wide leading-none">Direct</span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{directScore}%</span>
+            </div>
+            <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
+              <FullTeamLogo className="w-4 h-4 text-purple-500" />
+              <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">Full</span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{fullScore}%</span>
+            </div>
+          </>
+        ) : (
+          /* Normal display - single coach or focused view */
+          cols.map((col) => (
+            <div
+              key={col.key}
+              className={`flex-1 flex flex-col items-center gap-0.5 ${
+                isSingle ? "" : col.padding
+              }`}
             >
-              {col.label}
-            </span>
-            <span
-              className={`${
-                isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
-              } font-bold text-gray-900`}
-            >
-              {col.score}%
-            </span>
-          </div>
-        ))}
+              <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
+              <span
+                className={`text-[8px] font-semibold ${col.color} uppercase tracking-wide leading-none`}
+              >
+                {col.label}
+              </span>
+              <span
+                className={`${
+                  isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
+                } font-bold text-gray-900`}
+              >
+                {col.score}%
+              </span>
+            </div>
+          ))
+        )}
       </>
     );
   };

@@ -247,80 +247,12 @@ const HierarchicalNode = ({
               )}
             </div>
 
-            {/* Combined Team Stats Strip - Same for both since they manage same team */}
+            {/* Combined Team Stats Strip - Shows TWO SELF entries for co-coach partnership */}
             {renderStats && (
               <div className="flex items-center divide-x px-3 py-2 border-t border-amber-100 divide-amber-100">
-                {renderStats(node, level, isCurrentUser)}
+                {renderStats(node, level, isCurrentUser, coCoach)}
               </div>
             )}
-
-            {/* Expandable Individual Reports */}
-            <div className="border-t border-amber-100">
-              <TouchFeedbackButton
-                onClick={() => {
-                  setShowCoachDetails(!showCoachDetails);
-                  setShowCoCoachDetails(!showCoCoachDetails);
-                }}
-                className="w-full py-2 flex items-center justify-center gap-2 hover:bg-amber-100/50 transition-colors"
-              >
-                <span className="text-xs font-medium text-amber-700">
-                  {showCoachDetails ? "Hide" : "Show"} Individual Reports
-                </span>
-                {showCoachDetails ? (
-                  <ChevronUp className="h-3.5 w-3.5 text-amber-700" />
-                ) : (
-                  <ChevronDown className="h-3.5 w-3.5 text-amber-700" />
-                )}
-              </TouchFeedbackButton>
-              
-              {/* Individual Report Cards */}
-              <AnimatePresence>
-                {showCoachDetails && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-3 pb-3 space-y-2">
-                      {/* First Partner Individual Report */}
-                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
-                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-900">
-                              {node.userName || node.name}
-                            </span>
-                            <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              ({node.isCoCoach ? "Co-Coach" : "Coach"})
-                            </span>
-                            {isCurrentUser && (
-                              <span className="text-[8px] bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
-                                YOU
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {renderExpandedDetails && renderExpandedDetails(node, level, isCurrentUser)}
-                      </div>
-
-                      {/* Second Partner Individual Report */}
-                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
-                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-900">
-                              {coCoach.userName || coCoach.name}
-                            </span>
-                            <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              ({coCoach.isCoCoach ? "Co-Coach" : "Coach"})\n                            </span>
-                          </div>
-                        </div>
-                        {renderExpandedDetails && renderExpandedDetails(coCoach, level, false)}
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
 
             {/* Expand/Collapse Team Members Button */}
             {hasChildren && (
