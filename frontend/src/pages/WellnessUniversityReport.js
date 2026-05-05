@@ -201,7 +201,8 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       // Filter enrollments for this program
       const programEnrollments = enrollments.filter((enrollment) => {
-        const programs = JSON.parse(enrollment.EnrolledPrograms || "[]");
+        const raw = JSON.parse(enrollment.EnrolledPrograms || "[]");
+        const programs = Array.isArray(raw) ? raw : Object.keys(raw);
         return programs.includes(programName);
       });
 
@@ -572,12 +573,27 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       )
     : { UserId: currentUserId, UserName: currentUserName, Email: user?.email || "" };
 
-  const searchedMemberEnrolledPrograms = searchedMember
-    ? (() => {
-        const rec = enrollments.find((e) => e.UserId === searchedMember.UserId);
-        return rec ? JSON.parse(rec.EnrolledPrograms || "[]") : [];
-      })()
-    : [];
+  const searchedMemberRec = searchedMember
+    ? enrollments.find((e) => e.UserId === searchedMember.UserId)
+    : null;
+
+  const searchedMemberEnrolledPrograms = (() => {
+    if (!searchedMemberRec) return [];
+    try {
+      const parsed = JSON.parse(searchedMemberRec.EnrolledPrograms || "[]");
+      return Array.isArray(parsed) ? parsed : Object.keys(parsed);
+    } catch { return []; }
+  })();
+
+  // Returns per-program date if map format, otherwise falls back to record-level date
+  const getSearchedMemberProgramDate = (programName) => {
+    if (!searchedMemberRec) return null;
+    try {
+      const parsed = JSON.parse(searchedMemberRec.EnrolledPrograms || "[]");
+      if (!Array.isArray(parsed) && parsed[programName]) return parsed[programName];
+    } catch {}
+    return searchedMemberRec.EnrollmentDate || searchedMemberRec.LastUpdated || searchedMemberRec.CreatedAt || null;
+  };
 
   // When a name search is active, filter counts to only show that member's data
   const getFilteredStats = (stats) => {
@@ -1243,9 +1259,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                               <div className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl sm:text-3xl">
                                 {program.icon}
                               </div>
-                              <h3 className="font-semibold text-gray-800 text-sm sm:text-base truncate">
-                                {program.name}
-                              </h3>
+                              <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-gray-800 text-sm sm:text-base truncate">
+                                  {program.name}
+                                </h3>
+                                {isEnrolled && (() => { const d = getSearchedMemberProgramDate(program.name); return d ? (
+                                  <p className="text-xs text-gray-400 mt-0.5">
+                                    {new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" })}
+                                    {" · "}
+                                    {new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
+                                  </p>
+                                ) : null; })()}
+                              </div>
                             </div>
                             <div className={`flex flex-col items-center px-4 py-2 rounded-xl border ${
                               isEnrolled
