@@ -4246,10 +4246,6 @@ function WellnessValleyApp() {
               };
 
               const primary = typeConfig[primaryType];
-              // Always show all other options so user can correct
-              const altButtons = ["food", "weight", "education"]
-                .filter(t => t !== primaryType)
-                .map(t => typeConfig[t]);
 
               const timeLabel = {
                 weight: `It's weight time (${weightWindow?.start?.slice(0,5)}–${weightWindow?.end?.slice(0,5)})`,
@@ -4287,30 +4283,7 @@ function WellnessValleyApp() {
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* Divider — alt buttons (Food/Education) commented out */}
-                  {false && altButtons.length > 0 && (
-                    <div className="flex items-center gap-3 px-4 pb-3">
-                      <div className="flex-1 h-px bg-gray-100" />
-                      <span className="text-xs text-gray-400 font-medium">not this?</span>
-                      <div className="flex-1 h-px bg-gray-100" />
-                    </div>
-                  )}
 
-                  {/* Alt options — commented out */}
-                  {false && altButtons.length > 0 && (
-                    <div className="flex gap-2 px-4 pb-4">
-                      {altButtons.map((btn) => (
-                        <TouchFeedbackButton
-                          key={btn.label}
-                          onClick={btn.onClick}
-                          className="flex-1 border border-gray-200 bg-gray-50 hover:bg-gray-100 active:bg-gray-200 text-gray-600 py-3 rounded-xl flex flex-col items-center gap-1 transition-colors"
-                        >
-                          <span className="text-xl leading-none">{btn.icon}</span>
-                          <span className="text-xs font-semibold">{btn.label.replace("Log ", "")}</span>
-                        </TouchFeedbackButton>
-                      ))}
-                    </div>
-                  )}
                 </div>
               );
             }
