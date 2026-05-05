@@ -161,36 +161,35 @@ export default async function handler(req, res) {
         unit
       );
 
-      if (!validation.valid) {
-        // Weight change is too large even after correction - reject
-        console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
-          entryType: entryId ? 'Edit' : 'New',
-          entryId: entryId || 'N/A',
-          detectedWeight: weight,
-          previousWeight: lastWeightEntry.Weight,
-          correctedWeight: validation.finalWeight,
-          wasCorrected: validation.wasCorrected,
-          message: validation.message
-        });
+      // if (!validation.valid) {
+      //   // Weight change is too large even after correction - reject
+      //   console.log(`❌ [Weight Validation Failed] User ${userId}:`, {
+      //     entryType: entryId ? 'Edit' : 'New',
+      //     entryId: entryId || 'N/A',
+      //     detectedWeight: weight,
+      //     previousWeight: lastWeightEntry.Weight,
+      //     correctedWeight: validation.finalWeight,
+      //     wasCorrected: validation.wasCorrected,
+      //     message: validation.message
+      //   });
 
-        return res.status(400).json({
-          success: false,
-          message: validation.message,
-          bmrSaved: bmrValue ? true : false,  // ✅ BMR was already synced above even though weight failed
-          validation: {
-            previousWeight: parseFloat(lastWeightEntry.Weight),
-            detectedWeight: weight,
-            correctedWeight: validation.finalWeight,
-            difference: validation.difference,
-            hoursSinceLastEntry: validation.hoursSinceLastEntry,
-            maxAllowed: validation.maxAllowed
-          }
-        });
-      }
+      //   return res.status(400).json({
+      //     success: false,
+      //     message: validation.message,
+      //     bmrSaved: bmrValue ? true : false,  // ✅ BMR was already synced above even though weight failed
+      //     validation: {
+      //       previousWeight: parseFloat(lastWeightEntry.Weight),
+      //       detectedWeight: weight,
+      //       correctedWeight: validation.finalWeight,
+      //       difference: validation.difference,
+      //       hoursSinceLastEntry: validation.hoursSinceLastEntry,
+      //       maxAllowed: validation.maxAllowed
+      //     }
+      //   });
+      // }
 
-      // Use corrected weight for saving (only for AI uploads, not manual edits)
-      // For manual edits, user explicitly chose this value, so don't auto-correct
-      finalWeight = entryId ? weight : validation.finalWeight;
+      // Always use the raw entered weight — no auto-correction or rejection
+      finalWeight = weight;
 
       if (validation.wasCorrected || validation.message) {
         correctionInfo = {
