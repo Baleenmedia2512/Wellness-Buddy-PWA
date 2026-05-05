@@ -30,6 +30,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [showNotEnrolled, setShowNotEnrolled] = useState(true); // Toggle for showing non-enrolled members
   const [expandedNodes, setExpandedNodes] = useState(new Set()); // For hierarchy expansion
   const [searchQuery, setSearchQuery] = useState(""); // Search bar
+  const [showSuggestions, setShowSuggestions] = useState(false); // Dropdown
   const [currentUserName, setCurrentUserName] = useState(""); // Logged-in user's name
 
   const fetchEnrollments = useCallback(async () => {
@@ -557,7 +558,54 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
   const programStats = calculateProgramStats();
 
-  // Recursively collect all node IDs for auto-expansion
+  // Always show individual view — for self when empty, for searched member when typed
+  const q = searchQuery.toLowerCase().trim();
+  const isSearchingAnyone = true;
+  const isSearchingOther = q.length > 0 && !currentUserName.toLowerCase().includes(q);
+
+  // Find the member to show — logged-in user by default, searched member if typed
+  const searchedMember = isSearchingOther
+    ? allTeamMembers.find(
+        (m) =>
+          (m.UserName || "").toLowerCase().includes(q) ||
+          (m.Email || "").toLowerCase().includes(q)
+      )
+    : { UserId: currentUserId, UserName: currentUserName, Email: user?.email || "" };
+
+  const searchedMemberEnrolledPrograms = searchedMember
+    ? (() => {
+        const rec = enrollments.find((e) => e.UserId === searchedMember.UserId);
+        return rec ? JSON.parse(rec.EnrolledPrograms || "[]") : [];
+      })()
+    : [];
+
+  // When a name search is active, filter counts to only show that member's data
+  const getFilteredStats = (stats) => {
+    if (!searchQuery.trim()) return stats;
+    const q = searchQuery.toLowerCase();
+
+    // Always filter team members by search
+    const filteredDirect = (stats.directTeamMembers || []).filter((m) =>
+      (m.UserName || m.name || "").toLowerCase().includes(q) ||
+      (m.Email || m.email || "").toLowerCase().includes(q)
+    );
+    const filteredFull = (stats.fullTeamMembers || []).filter((m) =>
+      (m.UserName || m.name || "").toLowerCase().includes(q) ||
+      (m.Email || m.email || "").toLowerCase().includes(q)
+    );
+
+    // Keep "mine" tick only if the logged-in user's own name matches the search
+    const selfMatches = currentUserName.toLowerCase().includes(q);
+
+    return {
+      ...stats,
+      mine: selfMatches ? stats.mine : 0,
+      directTeam: filteredDirect.filter((m) => m.isEnrolled).length,
+      fullTeam: filteredFull.filter((m) => m.isEnrolled).length,
+      directTeamMembers: filteredDirect,
+      fullTeamMembers: filteredFull,
+    };
+  };
   const collectAllNodeIds = (nodes) => {
     const ids = [];
     const traverse = (nodeList) => {
@@ -1046,8 +1094,8 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
         {/* Search Bar */}
-        <div className="mb-4">
-          <div className="relative flex items-center bg-white border border-gray-200 rounded-2xl shadow-sm px-3 py-2.5">
+        <div className="mb-4 relative">
+          <div className={`relative flex items-center bg-white border shadow-sm px-3 py-2.5 ${showSuggestions && searchQuery.trim() ? "rounded-t-2xl border-green-400 border-b-0" : "rounded-2xl border-gray-200"}`}>
             {/* Person icon - left */}
             <svg
               className="w-5 h-5 text-gray-400 flex-shrink-0 mr-2"
@@ -1065,14 +1113,18 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
               placeholder="Search by name or email..."
               className="flex-1 text-sm text-gray-700 placeholder-gray-400 bg-transparent focus:outline-none"
             />
-            {/* Search icon or clear - right */}
             {searchQuery ? (
               <button
-                onClick={() => setSearchQuery("")}
+                onClick={() => { setSearchQuery(""); setShowSuggestions(false); }}
                 className="ml-2 text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1080,16 +1132,70 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                 </svg>
               </button>
             ) : (
-              <svg
-                className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
+              <svg className="w-4 h-4 text-gray-400 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z" />
               </svg>
             )}
           </div>
+
+          {/* Suggestions Dropdown */}
+          {showSuggestions && (() => {
+            const q = searchQuery.toLowerCase().trim();
+            const suggestions = [
+              // Always include logged-in user at top if name matches (or no query)
+              ...(!q || currentUserName.toLowerCase().includes(q) ? [{
+                userId: currentUserId,
+                name: currentUserName,
+                email: user?.email || "",
+                isSelf: true,
+              }] : []),
+              // Team members matching the query
+              ...allTeamMembers
+                .filter((m) =>
+                  (!q ||
+                    (m.UserName || "").toLowerCase().includes(q) ||
+                    (m.Email || "").toLowerCase().includes(q))
+                )
+                .map((m) => ({
+                  userId: m.UserId,
+                  name: m.UserName || m.Email,
+                  email: m.Email || "",
+                  isSelf: false,
+                }))
+            ];
+
+            if (suggestions.length === 0) return null;
+
+            return (
+              <div className="absolute left-0 right-0 bg-white border border-green-400 border-t-0 rounded-b-2xl shadow-lg z-50 max-h-56 overflow-y-auto">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={s.userId || i}
+                    onMouseDown={() => {
+                      setSearchQuery(s.name);
+                      setShowSuggestions(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-green-50 transition-colors text-left"
+                  >
+                    <div className="w-9 h-9 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
+                      <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8} d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-gray-800 truncate flex items-center gap-2">
+                        {s.name}
+                        {s.isSelf && (
+                          <span className="text-xs font-semibold text-green-600 bg-green-100 px-1.5 py-0.5 rounded-full">Me</span>
+                        )}
+                      </p>
+                      {s.email && <p className="text-xs text-gray-400 truncate">{s.email}</p>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
         </div>
         {loading ? (
           <div className="flex flex-col items-center justify-center py-12 sm:py-20">
@@ -1112,32 +1218,63 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           <>
             {/* Programs List */}
             <div className="space-y-3 sm:space-y-4">
+              {/* ── INDIVIDUAL VIEW: any name is searched ── */}
+              {isSearchingAnyone ? (
+                !searchedMember ? (
+                  <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
+                    <div className="text-5xl sm:text-6xl mb-4">🔍</div>
+                    <p className="text-gray-600 text-base sm:text-lg">No member found</p>
+                    <p className="text-gray-500 text-xs sm:text-sm mt-2">Try searching by a different name or email.</p>
+                  </div>
+                ) : (
+                  <>
+                    {[...PROGRAMS]
+                      .sort((a, b) => {
+                        const aEnrolled = searchedMemberEnrolledPrograms.includes(a.name) ? 1 : 0;
+                        const bEnrolled = searchedMemberEnrolledPrograms.includes(b.name) ? 1 : 0;
+                        return bEnrolled - aEnrolled; // enrolled first
+                      })
+                      .map((program) => {
+                      const isEnrolled = searchedMemberEnrolledPrograms.includes(program.name);
+                      return (
+                        <div key={program.id} className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                          <div className="p-3 sm:p-4 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                              <div className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 bg-gradient-to-br from-green-50 to-green-100 border-2 border-green-200 rounded-xl flex items-center justify-center text-2xl sm:text-3xl">
+                                {program.icon}
+                              </div>
+                              <h3 className="font-semibold text-gray-800 text-sm sm:text-base truncate">
+                                {program.name}
+                              </h3>
+                            </div>
+                            <div className={`flex flex-col items-center px-4 py-2 rounded-xl border ${
+                              isEnrolled
+                                ? "bg-blue-50 border-blue-200"
+                                : "bg-gray-50 border-gray-200"
+                            }`}>
+                              <SelfLogo className={`w-4 h-4 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`} />
+                              <div className={`text-[10px] font-bold mt-0.5 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>Individual</div>
+                              <div className={`text-xl font-bold ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>
+                                {isEnrolled ? "✓" : "✗"}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                )
+              ) : (
+              /* ── NORMAL HIERARCHICAL VIEW ── */
+              <>
               {PROGRAMS.filter((program) => {
-                const stats = programStats[program.name] || {
-                  mine: 0,
-                  directTeam: 0,
-                  fullTeam: 0,
-                  directTeamMembers: [],
-                  fullTeamMembers: [],
+                const rawStats = programStats[program.name] || {
+                  mine: 0, directTeam: 0, fullTeam: 0,
+                  directTeamMembers: [], fullTeamMembers: [],
                 };
+                const stats = getFilteredStats(rawStats);
                 const hasEnrollments = stats.mine > 0 || stats.directTeam > 0 || stats.fullTeam > 0;
-                if (!hasEnrollments) return false;
-                if (!searchQuery.trim()) return true;
-                const q = searchQuery.toLowerCase();
-                // Match by program name OR by any member's name or email
-                const matchesProgram = program.name.toLowerCase().includes(q);
-                const matchesMember =
-                  (stats.directTeamMembers || []).some((m) =>
-                    (m.name || m.UserName || "").toLowerCase().includes(q) ||
-                    (m.email || m.Email || "").toLowerCase().includes(q)
-                  ) ||
-                  (stats.fullTeamMembers || []).some((m) =>
-                    (m.name || m.UserName || "").toLowerCase().includes(q) ||
-                    (m.email || m.Email || "").toLowerCase().includes(q)
-                  ) ||
-                  // Also match logged-in user's own enrollment (mine > 0)
-                  (stats.mine > 0 && currentUserName.toLowerCase().includes(q));
-                return matchesProgram || matchesMember;
+                return hasEnrollments;
               }).length === 0 ? (
                 <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
                   <div className="text-5xl sm:text-6xl mb-4">📋</div>
@@ -1151,14 +1288,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               ) : (
                 <>
                   {PROGRAMS.map((program) => {
-                    const stats = programStats[program.name] || {
+                    const stats = getFilteredStats(programStats[program.name] || {
                       mine: 0,
                       directTeam: 0,
                       fullTeam: 0,
                       directTeamMembers: [],
                       fullTeamMembers: [],
-                    };
-
+                    });
                     // Hide programs with no enrollments
                     if (
                       stats.mine === 0 &&
@@ -1492,6 +1628,8 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   })}
                 </>
               )}
+              </> /* end normal hierarchical view */
+              )} {/* end isSearchingAnyone ternary */}
             </div>
           </>
         )}
