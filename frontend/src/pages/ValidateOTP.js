@@ -2,13 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { motion } from 'framer-motion';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
-import NumericKeypad from '../components/NumericKeypad';
+import InlineNumericKeypad from '../components/InlineNumericKeypad';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
 const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
-  const [keypadOpen, setKeypadOpen] = useState(false);
   const [validating, setValidating] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
@@ -65,16 +64,13 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
     }
   };
 
-  // In-app keypad handlers (suppresses system keyboard)
+  // Inline keypad handlers
   const handleKeypadDigit = (digit) => {
     const firstEmpty = otp.findIndex((d) => d === '');
     if (firstEmpty === -1) return;
     const newOtp = [...otp];
     newOtp[firstEmpty] = digit;
     setOtp(newOtp);
-    if (newOtp.every((d) => d !== '')) {
-      setKeypadOpen(false);
-    }
   };
 
   const handleKeypadBackspace = () => {
@@ -246,10 +242,7 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
         </div>
 
         <div className="px-8 pb-10 flex-1 overflow-y-auto custom-scrollbar">
-          <div
-            className="flex justify-center gap-2 sm:gap-3 mb-6 cursor-pointer"
-            onClick={() => !validating && setKeypadOpen(true)}
-          >
+          <div className="flex justify-center gap-2 sm:gap-3 mb-6">
             {otp.map((digit, index) => (
               <input
                 key={index}
@@ -257,27 +250,27 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
                 type="text"
                 inputMode="none"
                 readOnly
+                maxLength={1}
                 className={`w-12 h-14 sm:w-14 sm:h-16 text-center text-2xl font-bold bg-gray-50 border-2 rounded-2xl transition-all outline-none focus:bg-white caret-transparent ${
-                  error ? 'border-red-200 bg-red-50 text-red-600' : 
+                  error ? 'border-red-200 bg-red-50 text-red-600' :
                   success ? 'border-green-500 bg-green-50 text-green-600' :
                   digit ? 'border-green-500 bg-white' : 'border-transparent focus:border-green-500'
                 }`}
                 value={digit}
                 onFocus={(e) => e.target.blur()}
-                onClick={() => !validating && setKeypadOpen(true)}
                 onContextMenu={(e) => e.preventDefault()}
                 disabled={validating}
               />
             ))}
           </div>
 
-          {/* Popup numeric keypad */}
-          <NumericKeypad
-            open={keypadOpen}
-            onClose={() => setKeypadOpen(false)}
-            onDigit={handleKeypadDigit}
-            onBackspace={handleKeypadBackspace}
-          />
+          {/* Inline numeric keypad (always visible, never overlaps) */}
+          <div className="mb-6">
+            <InlineNumericKeypad
+              onDigit={handleKeypadDigit}
+              onBackspace={handleKeypadBackspace}
+            />
+          </div>
 
           <div className="text-center mb-8 min-h-[24px]">
             {error ? (
