@@ -1,7 +1,8 @@
 // src/components/TeamMemberSearch.js
 import React, { useState, useEffect, useRef } from 'react';
-import { X, User, Search } from 'lucide-react';
+import { X, User, Search, Info } from 'lucide-react';
 import { teamHierarchyService } from '../services/teamHierarchyService';
+import TeamMemberProfileModal from './TeamMemberProfileModal';
 
 /**
  * TeamMemberSearch Component
@@ -19,8 +20,9 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
   const [suggestions, setSuggestions] = useState([]);
   const [loading, setLoading] = useState(false);
   const [allTeamMembers, setAllTeamMembers] = useState([]);
-  const [hasCleared, setHasCleared] = useState(false); // Track if user manually cleared search
-  const [savedUserName, setSavedUserName] = useState(''); // Store the user's saved profile name
+  const [hasCleared, setHasCleared] = useState(false);
+  const [savedUserName, setSavedUserName] = useState('');
+  const [showProfileModal, setShowProfileModal] = useState(false);
   const searchRef = useRef(null);
   const dropdownRef = useRef(null);
 
@@ -196,6 +198,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
   });
 
   return (
+    <>
     <div className="relative w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-4 py-3 bg-white border-b border-gray-200">
       {/* Label */}
       {/* <p className="text-xs text-gray-400 font-medium mb-1.5 pl-1">Viewing member</p> */}
@@ -252,13 +255,23 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
             )}
           </div>
           {selectedMember && !selectedMember.isSelf && (
-            <button
-              onClick={handleClearSelection}
-              className="flex-shrink-0 text-xs text-green-600 hover:text-green-700 font-medium px-3 py-2 border border-green-200 rounded-lg bg-green-50 hover:bg-green-100 transition-colors"
-              title="View my dashboard"
-            >
-              View Mine
-            </button>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <button
+                onClick={() => setShowProfileModal(true)}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-2 border border-blue-200 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors flex items-center gap-1"
+                title="View member profile"
+              >
+                <Info className="h-3.5 w-3.5" />
+                Profile
+              </button>
+              <button
+                onClick={handleClearSelection}
+                className="flex-shrink-0 text-xs text-green-600 hover:text-green-700 font-medium px-3 py-2 border border-green-200 rounded-lg bg-green-50 hover:bg-green-100 transition-colors"
+                title="View my dashboard"
+              >
+                View Mine
+              </button>
+            </div>
           )}
         </div>
 
@@ -309,6 +322,15 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
         )}
       </div>
     </div>
+
+    {selectedMember && !selectedMember.isSelf && (
+      <TeamMemberProfileModal
+        isOpen={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        memberEmail={selectedMember.email}
+      />
+    )}
+    </>
   );
 };
 

@@ -3,6 +3,7 @@ import React, { useState, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
 import TeamMemberSearch from './TeamMemberSearch';
+import TeamMemberProfileModal from './TeamMemberProfileModal';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
@@ -75,6 +76,8 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
   // Team member selection state (for coaches)
   const [selectedMember, setSelectedMember] = useState(null);
+  // Profile viewer modal for a selected team member
+  const [showMemberProfile, setShowMemberProfile] = useState(false);
   
   // Unified date state shared between both tabs
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -96,6 +99,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   };
 
   return (
+    <>
     <div className="min-h-screen" style={{ backgroundColor: '#e8f5e9' }}>
       {/* Background decorations */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -126,11 +130,29 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <div className="text-center">
               <h1 className="text-lg md:text-xl font-semibold text-gray-900">
-                Dashboard{selectedMember && !selectedMember.isSelf ? ` - ${selectedMember.userName}` : ''}
+                Dashboard{selectedMember && !selectedMember.isSelf ? (
+                  <>
+                    {' - '}
+                    <button
+                      onClick={() => setShowMemberProfile(true)}
+                      className="text-green-600 hover:text-green-700 hover:underline transition-colors"
+                      title="View profile"
+                    >
+                      {selectedMember.userName}
+                    </button>
+                  </>
+                ) : ''}
               </h1>
               <p className="text-xs text-gray-500">
                 {selectedMember && !selectedMember.isSelf 
-                  ? `Viewing ${selectedMember.userName}'s data`
+                  ? (
+                    <button
+                      onClick={() => setShowMemberProfile(true)}
+                      className="text-green-600 hover:underline"
+                    >
+                      {`Viewing ${selectedMember.userName}'s data`}
+                    </button>
+                  )
                   : 'Track your wellness journey'
                 }
               </p>
@@ -456,6 +478,17 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
         </Suspense>
       </div>
     </div>
+
+    {/* Team Member Profile Viewer */}
+    {selectedMember && !selectedMember.isSelf && (
+      <TeamMemberProfileModal
+        isOpen={showMemberProfile}
+        onClose={() => setShowMemberProfile(false)}
+        memberEmail={selectedMember.email}
+        apiBaseUrl={apiBaseUrl}
+      />
+    )}
+    </>
   );
 };
 
