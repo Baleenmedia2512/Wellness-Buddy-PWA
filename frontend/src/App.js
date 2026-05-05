@@ -4351,6 +4351,9 @@ function WellnessValleyApp() {
             <NutritionCard
               data={nutritionData}
               user={user}
+              savedUserName={savedUserName}
+              savedProfileImage={savedProfileImage}
+              sharePhotoBase64={sharePhotoBase64}
               imagePreview={imagePreview}
               selectedImage={selectedImage}
               savedMealId={savedNutritionMealId}
@@ -4368,6 +4371,10 @@ function WellnessValleyApp() {
             <EducationLogCard
               educationData={educationResult}
               imagePreview={imagePreview}
+              user={user}
+              savedUserName={savedUserName}
+              savedProfileImage={savedProfileImage}
+              sharePhotoBase64={sharePhotoBase64}
               onClose={() => {
                 setEducationResult(null);
                 setImagePreview(null);
@@ -4492,9 +4499,26 @@ function WellnessValleyApp() {
                       >
                         {new Date().toLocaleDateString(undefined, {
                           dateStyle: "medium",
+                        })}{" "}
+                        {new Date().toLocaleTimeString(undefined, {
+                          hour: "2-digit",
+                          minute: "2-digit",
                         })}
                       </p>
                     </div>
+                    <p
+                      style={{
+                        color: "rgba(187,247,236,0.85)",
+                        fontSize: 16,
+                        margin: 0,
+                        lineHeight: 1,
+                        alignSelf: "flex-end",
+                        flexShrink: 0,
+                        fontWeight: 600,
+                      }}
+                    >
+                      v2.8
+                    </p>
                   
                   </div>
 
