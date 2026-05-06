@@ -43,6 +43,7 @@ const HierarchicalNode = ({
   matchesSearch,
   forceExpandedState = null,
   defaultExpanded = false,
+  onProfileClick,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
@@ -371,6 +372,7 @@ const HierarchicalNode = ({
                     forceExpandedState={forceExpandedState}
                     defaultExpanded={defaultExpanded}
                     defaultShowDetails={defaultShowDetails}
+                    onProfileClick={onProfileClick}
                   />
                 ))}
             </div>
@@ -414,13 +416,17 @@ const HierarchicalNode = ({
             {/* Top row: Avatar + Name/Info + Status Badge */}
             <div className="flex items-start gap-2">
               {/* Avatar */}
-              <div className="relative w-9 h-9 flex-shrink-0 mt-0.5">
+              <div
+                className={`relative w-9 h-9 flex-shrink-0 mt-0.5 ${onProfileClick && !isCurrentUser ? "cursor-pointer" : ""}`}
+                onClick={onProfileClick && !isCurrentUser ? (e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); } : undefined}
+                title={onProfileClick && !isCurrentUser ? "View profile" : undefined}
+              >
                 {node.profileImage || node.photoURL ? (
                   <>
                     <img
                       src={node.profileImage || node.photoURL}
                       alt={node.userName || node.name}
-                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass}`}
+                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
                       style={{ display: "block" }}
                       onError={(e) => {
                         e.target.style.display = "none";
@@ -440,7 +446,7 @@ const HierarchicalNode = ({
                   </>
                 ) : (
                   <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
                   >
                     {node.userName?.charAt(0).toUpperCase() ||
                       node.name?.charAt(0).toUpperCase() ||
@@ -456,9 +462,19 @@ const HierarchicalNode = ({
                   <div className="flex-1 min-w-0">
                     {/* Name and YOU badge */}
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                      <span className={`text-sm font-bold break-words ${nameClass}`}>
-                        {node.userName || node.name}
-                      </span>
+                      {onProfileClick && !isCurrentUser ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); }}
+                          className={`text-sm font-bold break-words text-left hover:underline hover:text-green-600 transition-colors ${nameClass}`}
+                          title="View profile"
+                        >
+                          {node.userName || node.name}
+                        </button>
+                      ) : (
+                        <span className={`text-sm font-bold break-words ${nameClass}`}>
+                          {node.userName || node.name}
+                        </span>
+                      )}
                       {isCurrentUser && (
                         <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
                           YOU
@@ -610,6 +626,7 @@ const HierarchicalNode = ({
                   forceExpandedState={forceExpandedState}
                   defaultExpanded={defaultExpanded}
                   defaultShowDetails={defaultShowDetails}
+                  onProfileClick={onProfileClick}
                 />
               ))}
           </div>

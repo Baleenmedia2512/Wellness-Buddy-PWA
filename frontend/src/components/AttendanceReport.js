@@ -6,6 +6,7 @@ import HierarchicalReportLayout, {
 } from "./common/HierarchicalReportLayout";
 import HierarchicalNode from "./common/HierarchicalNode";
 import CustomAlertModal from "./CustomAlertModal";
+import TeamMemberProfileModal from "./TeamMemberProfileModal";
 
 const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
@@ -22,6 +23,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const [profileModalEmail, setProfileModalEmail] = useState(null);
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
     title: '',
@@ -629,6 +631,7 @@ const AttendanceReport = ({ user, onBack }) => {
           matchesSearch={matchesSearch}
           forceExpandedState={expandOverride}
           defaultExpanded={expandOverride === "expanded"}
+          onProfileClick={setProfileModalEmail}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -662,6 +665,13 @@ const AttendanceReport = ({ user, onBack }) => {
       cancelText={alertModal.cancelText}
       onConfirm={alertModal.onConfirm}
       onCancel={alertModal.onCancel}
+    />
+
+    {/* Member Profile Viewer */}
+    <TeamMemberProfileModal
+      isOpen={!!profileModalEmail}
+      onClose={() => setProfileModalEmail(null)}
+      memberEmail={profileModalEmail}
     />
     </>
   );

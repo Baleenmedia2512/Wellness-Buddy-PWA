@@ -135,7 +135,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                     {' - '}
                     <button
                       onClick={() => setShowMemberProfile(true)}
-                      className="text-green-600 hover:text-green-700 hover:underline transition-colors"
+                      className="text-blue-600 active:text-green-600 hover:text-blue-700 hover:underline transition-colors"
                       title="View profile"
                     >
                       {selectedMember.userName}
@@ -148,7 +148,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                   ? (
                     <button
                       onClick={() => setShowMemberProfile(true)}
-                      className="text-green-600 hover:underline"
+                      className="text-blue-600 active:text-green-600 hover:underline"
                     >
                       {`Viewing ${selectedMember.userName}'s data`}
                     </button>

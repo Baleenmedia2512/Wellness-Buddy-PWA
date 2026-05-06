@@ -257,14 +257,6 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
           {selectedMember && !selectedMember.isSelf && (
             <div className="flex items-center gap-1.5 flex-shrink-0">
               <button
-                onClick={() => setShowProfileModal(true)}
-                className="text-xs text-blue-600 hover:text-blue-700 font-medium px-3 py-2 border border-blue-200 rounded-lg bg-blue-50 hover:bg-blue-100 transition-colors flex items-center gap-1"
-                title="View member profile"
-              >
-                <Info className="h-3.5 w-3.5" />
-                Profile
-              </button>
-              <button
                 onClick={handleClearSelection}
                 className="flex-shrink-0 text-xs text-green-600 hover:text-green-700 font-medium px-3 py-2 border border-green-200 rounded-lg bg-green-50 hover:bg-green-100 transition-colors"
                 title="View my dashboard"

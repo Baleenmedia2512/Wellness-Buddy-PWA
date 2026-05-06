@@ -57,34 +57,39 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-50 flex items-end justify-center"
       onClick={onClose}
+      style={{ WebkitTapHighlightColor: 'transparent' }}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/50" />
 
-      {/* Sheet / Card */}
+      {/* Bottom Sheet — always full-width sheet on all screens */}
       <div
-        className="relative w-full sm:max-w-sm bg-white rounded-t-3xl sm:rounded-2xl shadow-2xl overflow-hidden"
+        className="relative w-full bg-white rounded-t-3xl shadow-2xl"
+        style={{ maxHeight: '90vh', overflowY: 'auto' }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* Green header banner */}
         <div className="bg-gradient-to-br from-green-500 to-emerald-600 px-6 pt-6 pb-16 relative">
+          {/* X button — top right inside header */}
           <button
             onClick={onClose}
-            className="absolute top-4 right-4 p-1.5 rounded-full bg-white/20 hover:bg-white/30 transition-colors"
+            className="absolute top-4 right-4 w-8 h-8 rounded-full bg-white/20 flex items-center justify-center active:bg-white/40"
             aria-label="Close"
+            style={{ WebkitTapHighlightColor: 'transparent' }}
           >
             <X className="h-4 w-4 text-white" />
           </button>
+
           <p className="text-white/80 text-xs font-medium uppercase tracking-wider">Team Member</p>
-          <h2 className="text-white text-xl font-bold mt-0.5 truncate">
+          <h2 className="text-white text-xl font-bold mt-0.5 pr-10 truncate">
             {loading ? 'Loading…' : profile?.userName || memberEmail}
           </h2>
         </div>
 
         {/* Avatar overlapping banner */}
-        <div className="flex justify-center -mt-12 mb-3 relative z-10">
+        <div className="flex justify-center -mt-12 mb-4 relative z-10">
           {profile?.profileImage ? (
             <img
               src={profile.profileImage}
@@ -92,16 +97,19 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
               className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
             />
           ) : (
-            <div className="w-24 h-24 rounded-full border-4 border-white shadow-lg bg-green-100 flex items-center justify-center">
-              <User className="h-10 w-10 text-green-500" />
+            <div
+              className="w-24 h-24 rounded-full border-4 border-white shadow-lg flex items-center justify-center text-white text-3xl font-bold"
+              style={{ background: 'linear-gradient(135deg, #22c55e, #10b981)' }}
+            >
+              {profile?.userName?.charAt(0).toUpperCase() || memberEmail?.charAt(0).toUpperCase() || 'A'}
             </div>
           )}
         </div>
 
         {/* Body */}
-        <div className="px-6 pb-8">
+        <div className="px-4 pb-10">
           {loading && (
-            <div className="flex justify-center py-6">
+            <div className="flex justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-2 border-green-500 border-t-transparent" />
             </div>
           )}
@@ -112,28 +120,21 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
 
           {!loading && !error && profile && (
             <div className="space-y-3">
-              {/* Name */}
               <ProfileRow
                 icon={<User className="h-4 w-4 text-green-600" />}
                 label="Name"
                 value={profile.userName || '—'}
               />
-
-              {/* Email */}
               <ProfileRow
                 icon={<Mail className="h-4 w-4 text-green-600" />}
                 label="Email"
                 value={profile.email || '—'}
               />
-
-              {/* Height */}
               <ProfileRow
                 icon={<Ruler className="h-4 w-4 text-green-600" />}
                 label="Height"
                 value={profile.height ? `${profile.height} cm` : '—'}
               />
-
-              {/* BMR */}
               <ProfileRow
                 icon={<Flame className="h-4 w-4 text-orange-500" />}
                 label="BMR"
@@ -143,8 +144,6 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                     : '—'
                 }
               />
-
-              {/* Diet preference */}
               <ProfileRow
                 icon={<Salad className="h-4 w-4 text-green-600" />}
                 label="Diet Preference"
@@ -154,8 +153,6 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                     : '—'
                 }
               />
-
-              {/* Phone (optional – shown if available) */}
               {profile.phoneNumber && (
                 <ProfileRow
                   icon={<Phone className="h-4 w-4 text-green-600" />}
@@ -173,7 +170,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
 
 const ProfileRow = ({ icon, label, value }) => (
   <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-    <div className="flex-shrink-0 w-8 h-8 bg-white rounded-lg shadow-sm flex items-center justify-center">
+    <div className="flex-shrink-0 w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center">
       {icon}
     </div>
     <div className="flex-1 min-w-0">
