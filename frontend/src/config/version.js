@@ -74,30 +74,36 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.9',
+  VERSION: '3.0',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 36,
+  VERSION_CODE: 37,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 37,
+  IOS_BUILD_NUMBER: 38,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version 2.9',
+  RELEASE_NAME: 'Version 3.0',
   
   // Build date
-  BUILD_DATE: '2026-05-05',
+  BUILD_DATE: '2026-05-06',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 36, versionName: '2.9' },
-    IOS: { buildNumber: 37, versionName: '2.9' },
+    ANDROID: { versionCode: 37, versionName: '3.0' },
+    IOS: { buildNumber: 38, versionName: '3.0' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 3.0 (Code 37) - 2026-05-06 [ANDROID + iOS RELEASE]
+ *   🚀 Major Release - Version 3.0 milestone release
+ *   🏷️ WhatsApp Share Fix - Version number now dynamically read from version config (no more hardcoded v2.8)
+ *   📲 Share Cards - Weight, Food, and Education share cards all show correct version (v3.0)
+ *   🔧 Version Centralization - All version strings unified through version.js single source of truth
  * 
  * Version 2.9 (Code 35) - 2026-05-05 [ANDROID + iOS RELEASE]
  *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
