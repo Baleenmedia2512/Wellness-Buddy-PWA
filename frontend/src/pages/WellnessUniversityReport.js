@@ -201,8 +201,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       // Filter enrollments for this program
       const programEnrollments = enrollments.filter((enrollment) => {
-        const programs = JSON.parse(enrollment.EnrolledPrograms || "[]");
-        return programs.includes(programName);
+        try {
+          const parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
+          const programs = Array.isArray(parsed) ? parsed : [];
+          return programs.includes(programName);
+        } catch {
+          return false;
+        }
       });
 
       console.log(
