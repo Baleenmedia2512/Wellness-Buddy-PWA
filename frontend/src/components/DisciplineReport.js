@@ -51,7 +51,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   // Load data
   const fetchData = async (isBackground = false) => {
     if (!user?.id) {
-      setLoading(false);
+      // Keep loading=true (show skeleton) — wait for user.id to be populated
+      // useEffect will re-fire once user.id is available
       return;
     }
 
@@ -315,7 +316,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   useEffect(() => {
     fetchData();
-  }, [user, dateRange, customStartDate, customEndDate]);
+  }, [user?.id, dateRange, customStartDate, customEndDate]);
 
   // Sort hierarchy client-side so it reacts instantly to sortBy/sortOrder changes
   const sortedHierarchyData = useMemo(() => {
