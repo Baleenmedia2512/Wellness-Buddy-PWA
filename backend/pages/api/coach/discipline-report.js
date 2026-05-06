@@ -281,12 +281,12 @@ export default async function handler(req, res) {
       // Watch-burned calories from education_logs_table (Topic: "Calories Burned: NNN kcal")
       supabase
         .from("education_logs_table")
-        .select("UserId, CreatedAt, Topic")
-        .in("UserId", allUserIds)
-        .ilike("Topic", "Calories Burned:%")
-        .or('IsDeleted.is.null,IsDeleted.eq.0')
-        .gte("CreatedAt", startDateStr)
-        .lte("CreatedAt", endDateStr + "T23:59:59"),
+        .select('"UserId", "CreatedAt", "Topic"')
+        .in('"UserId"', allUserIds)
+        .ilike('"Topic"', "Calories Burned:%")
+        .eq('"IsDeleted"', 0)
+        .gte('"CreatedAt"', startDateStr)
+        .lte('"CreatedAt"', endDateStr + "T23:59:59"),
     ]);
 
     // Filter out records that contain ONLY exempted beverages (water, coffee, tea, afresh)
@@ -617,12 +617,15 @@ export default async function handler(req, res) {
         // Also add watch-burned calories from education_logs_table
         // Topic format: "Calories Burned: 2000 kcal"
         (watchBurnData.data || []).forEach((r) => {
-          if (r.UserId == userId) {
-            const match = (r.Topic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
+          const rowUserId = r.UserId ?? r.userId ?? r['UserId'];
+          const rowTopic  = r.Topic  ?? r.topic  ?? r['Topic'];
+          const rowDate   = r.CreatedAt ?? r.createdAt ?? r['CreatedAt'];
+          if (rowUserId == userId) {
+            const match = (rowTopic || '').match(/(\d+(?:\.\d+)?)\s*kcal/i);
             if (!match) return;
             const kcal = parseFloat(match[1]) || 0;
             if (kcal <= 0) return;
-            const dateStr = String(r.CreatedAt || '').slice(0, 10);
+            const dateStr = String(rowDate || '').slice(0, 10);
             if (!dateStr || dateStr.length !== 10) return;
             // ADD watch calories on top of step calories for the day
             caloriesBurnedByDate[dateStr] = (caloriesBurnedByDate[dateStr] || 0) + kcal;
