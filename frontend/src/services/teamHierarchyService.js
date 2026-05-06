@@ -1,4 +1,5 @@
 import axios from "axios";
+import { cacheManager } from "./cacheManager";
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
@@ -15,22 +16,26 @@ export const teamHierarchyService = {
    * @returns {Promise<Object>} - Hierarchical team data
    */
   async getTeamHierarchy(coachId, includeInactive = false) {
-    try {
-      const response = await axios.get(
-        `${API_BASE_URL}/api/coach/team-hierarchy`,
-        {
-          params: {
-            coachId,
-            includeInactive: includeInactive ? "true" : "false",
+    const cacheKey = cacheManager.generateKey("teamHierarchy", coachId, includeInactive);
+    return cacheManager.execute(
+      cacheKey,
+      async () => {
+        const response = await axios.get(
+          `${API_BASE_URL}/api/coach/team-hierarchy`,
+          {
+            params: {
+              coachId,
+              includeInactive: includeInactive ? "true" : "false",
+            },
           },
-        },
-      );
-
-      return response.data;
-    } catch (error) {
+        );
+        return response.data;
+      },
+      cacheManager.ttls.teamHierarchy,
+    ).catch((error) => {
       console.error("Team hierarchy fetch error:", error);
       throw error;
-    }
+    });
   },
 
   /**

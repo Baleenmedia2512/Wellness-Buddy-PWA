@@ -11,7 +11,10 @@ import {
   Droplet,
   RotateCcw,
   Bug,
+  AlertCircle,
+  UtensilsCrossed,
 } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
 import "../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
@@ -43,6 +46,7 @@ const NutritionDashboard = ({
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
   const [localSelectedDate, setLocalSelectedDate] = useState(new Date());
   const selectedDate = propSelectedDate || localSelectedDate;
@@ -839,31 +843,7 @@ const NutritionDashboard = ({
       };
 
       try {
-        let actualUserId = user.id;
-        if (!actualUserId && user.uid) {
-          try {
-            const lookupResponse = await fetch(
-              `${apiBaseUrl}/api/lookup-user-id`,
-              {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ email: user.email }),
-              },
-            );
-            const lookupData = await lookupResponse.json();
-            if (lookupData.success && lookupData.userId)
-              actualUserId = lookupData.userId;
-            else {
-              setError(
-                "User account not found in database. Please contact support.",
-              );
-              return;
-            }
-          } catch {
-            setError("Failed to lookup user account. Please try again.");
-            return;
-          }
-        }
+        const actualUserId = await resolveUserId();
         if (!actualUserId) {
           setError(
             "Unable to determine user account. Please try logging in again.",
@@ -908,7 +888,7 @@ const NutritionDashboard = ({
         setLoading(false);
       }
     },
-    [user, apiBaseUrl],
+    [user, apiBaseUrl, resolveUserId],
   );
 
   useEffect(() => {
@@ -2176,8 +2156,14 @@ const NutritionDashboard = ({
         ) : error ? (
           /* error state ... (unchanged) */
           <div className="text-center py-12 md:py-20 px-4 md:px-6">
-            <div className="backdrop-blur-xl bg-white/30 rounded-2xl md:rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl">
-              <div className="text-5xl md:text-7xl mb-4 md:mb-6">😔</div>
+            <div className="backdrop-blur-xl bg-white/30 rounded-2xl md:rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl flex flex-col items-center">
+              {isIOS ? (
+                <div className="w-16 h-16 md:w-20 md:h-20 rounded-2xl bg-red-50 flex items-center justify-center mb-4 md:mb-6">
+                  <AlertCircle className="w-9 h-9 md:w-11 md:h-11 text-red-400" />
+                </div>
+              ) : (
+                <div className="text-5xl md:text-7xl mb-4 md:mb-6">😔</div>
+              )}
               <div className="text-red-600 mb-3 md:mb-4 text-lg md:text-xl font-semibold">
                 {error}
               </div>
@@ -2595,7 +2581,15 @@ const NutritionDashboard = ({
                 if (!hasRealMeals && !hasUndoPlaceholders) {
                   return (
                     <div className="text-center py-16 px-6 backdrop-blur-xl bg-white/30 rounded-2xl shadow-lg border border-white/40">
-                      <div className="text-6xl mb-4">🥗</div>
+                      {isIOS ? (
+                        <div className="flex justify-center mb-4">
+                          <div className="w-16 h-16 rounded-2xl bg-green-50 flex items-center justify-center">
+                            <UtensilsCrossed className="w-9 h-9 text-green-400" />
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-6xl mb-4">🥗</div>
+                      )}
                       <h3 className="text-xl font-semibold text-gray-800 mb-2">
                         No Meals Logged
                       </h3>

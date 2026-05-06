@@ -50,7 +50,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
   // Load data
   const fetchData = async (isBackground = false) => {
-    if (!user?.id) return;
+    if (!user?.id) {
+      setLoading(false);
+      return;
+    }
 
     if (!isBackground) {
       setLoading(true);
@@ -94,19 +97,6 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             customRange,
           ),
         ]);
-
-      // Debug: Log partnership info in browser console
-      console.log('🔍 [DisciplineReport] Hierarchy data received:', {
-        hasCoCoachInfo: !!hierarchyResponse?.coCoachInfo,
-        coCoachInfoKeys: hierarchyResponse?.coCoachInfo ? Object.keys(hierarchyResponse.coCoachInfo) : [],
-        coCoachInfoUserId: hierarchyResponse?.coCoachInfo?.userId,
-        isCoach: hierarchyResponse?.isCoach,
-        isCoCoach: hierarchyResponse?.isCoCoach,
-        rootUserId: hierarchyResponse?.userId,
-        rootUserName: hierarchyResponse?.userName,
-        hasUplineCoachName: !!hierarchyResponse?.coachName,
-        hasUplineCoCoachName: !!hierarchyResponse?.coCoachName
-      });
 
       // Build discipline scores map
       const scores = {};
