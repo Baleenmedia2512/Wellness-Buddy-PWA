@@ -107,9 +107,8 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         const enrollment = data.enrollments[0];
         setExistingEnrollment(enrollment);
         // Load existing programs for editing
-        const enrolledPrograms = JSON.parse(
-          enrollment.EnrolledPrograms || "[]",
-        );
+        const _parsed = JSON.parse(enrollment.EnrolledPrograms || "[]");
+        const enrolledPrograms = Array.isArray(_parsed) ? _parsed : Object.keys(_parsed);
         setSelectedPrograms(enrolledPrograms);
       }
     } catch (err) {
@@ -198,9 +197,8 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
 
   // Show existing enrollment (view or edit mode)
   if (existingEnrollment && !isEditMode) {
-    const enrolledPrograms = JSON.parse(
-      existingEnrollment.EnrolledPrograms || "[]",
-    );
+    const _rawPrograms = JSON.parse(existingEnrollment.EnrolledPrograms || "[]");
+    const enrolledPrograms = Array.isArray(_rawPrograms) ? _rawPrograms : Object.keys(_rawPrograms);
     const enrollmentDate = new Date(
       existingEnrollment.EnrollmentDate,
     ).toLocaleDateString("en-US", {

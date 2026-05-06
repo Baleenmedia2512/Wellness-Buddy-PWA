@@ -74,30 +74,46 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '2.8',
+  VERSION: '3.0',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 34,
+  VERSION_CODE: 37,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 36,
+  IOS_BUILD_NUMBER: 38,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version 2.8 - Play Store Policy Fix',
+  RELEASE_NAME: 'Version 3.0',
   
   // Build date
-  BUILD_DATE: '2026-04-30',
+  BUILD_DATE: '2026-05-06',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 34, versionName: '2.8' },
-    IOS: { buildNumber: 36, versionName: '2.8' },
+    ANDROID: { versionCode: 37, versionName: '3.0' },
+    IOS: { buildNumber: 38, versionName: '3.0' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 3.0 (Code 37) - 2026-05-06 [ANDROID + iOS RELEASE]
+ *   🚀 Major Release - Version 3.0 milestone release
+ *   🏷️ WhatsApp Share Fix - Version number now dynamically read from version config (no more hardcoded v2.8)
+ *   📲 Share Cards - Weight, Food, and Education share cards all show correct version (v3.0)
+ *   🔧 Version Centralization - All version strings unified through version.js single source of truth
+ * 
+ * Version 2.9 (Code 35) - 2026-05-05 [ANDROID + iOS RELEASE]
+ *   🎓 Wellness University - Per-program enrollment date/time stored and displayed in IST
+ *   🗺️ Enrollment Map Format - EnrolledPrograms now stored as { programName: isoDate } map for individual timestamps
+ *   🔒 Date Preservation - Re-saving enrollments preserves original enrollment dates per program
+ *   🔧 JSONB Fix - Fixed Supabase JSONB auto-parse causing enrollment dates to reset on update
+ *   🚫 AI Unavailable Modal - Removed "LOG SOMETHING ELSE" alt buttons (Food/Education) from all modals
+ *   🚫 Manual Weight Modal - Disabled ManualWeightEntryModal to prevent unwanted popups
+ *   🧹 Code Cleanup - Removed unused altButtons logic from AI Unavailable handler
+ *   🐛 Bug Fixes - Fixed enrolledPrograms.map error when EnrolledPrograms returned as object
  * 
  * Version 2.8 (Code 34) - 2026-04-30 [ANDROID + iOS RELEASE]
  *   🔒 Play Store Policy Fix - Removed USE_EXACT_ALARM and SCHEDULE_EXACT_ALARM permissions

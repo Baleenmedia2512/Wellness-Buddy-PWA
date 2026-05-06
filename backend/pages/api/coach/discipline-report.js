@@ -284,7 +284,7 @@ export default async function handler(req, res) {
         .select("UserId, CreatedAt, Topic")
         .in("UserId", allUserIds)
         .ilike("Topic", "Calories Burned:%")
-        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .neq("IsDeleted", true)
         .gte("CreatedAt", startDateStr)
         .lte("CreatedAt", endDateStr + "T23:59:59"),
     ]);
@@ -312,7 +312,7 @@ export default async function handler(req, res) {
       .from('weight_records_table')
       .select('UserId, Weight, Bmr, CreatedAt')
       .in('UserId', allUserIds)
-      .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
+      .neq('IsDeleted', true)
       .order('CreatedAt', { ascending: false });
     // Build map: userId → latest body weight kg
     const userBodyWeightMap = {};
@@ -337,12 +337,17 @@ export default async function handler(req, res) {
       waterRecords: waterFoodData.data?.length || 0,
       stepRecords: stepData.data?.length || 0,
       watchBurnRecords: watchBurnData.data?.length || 0,
+      watchBurnError: watchBurnData.error?.message || null,
+      watchBurnSample: watchBurnData.data?.[0] || null,
       dateRange: `${startDateStr} to ${endDateStr}`,
       userIds: allUserIds,
       sampleWeightRecord: weightData.data?.[0],
       sampleEducationRecord: educationData.data?.[0],
       sampleFoodRecord: foodData.data?.[0]
     });
+    // 🔍 DEBUG: Log BMR map
+    console.log('🧮 BMR Map:', userBmrMap);
+    console.log('⚖️ Body Weight Map:', userBodyWeightMap);
     
     // 🔍 DEBUG: Check for query errors
     if (weightData.error) console.error('❌ Weight query error:', weightData.error);

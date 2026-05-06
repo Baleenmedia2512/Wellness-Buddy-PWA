@@ -33,17 +33,19 @@ export default async function handler(req, res) {
 
     // Fetch all education log entries for this user on this date
     // where Topic starts with "Calories Burned:" (case-insensitive)
-    const startOfDay = `${targetDate} 00:00:00`;
-    const endOfDay   = `${targetDate} 23:59:59`;
+    // Use broad UTC range (+/- 1 day) to handle IST timezone offset (+5:30)
+    // e.g. IST 2026-05-06 starts at UTC 2026-05-05T18:30:00Z
+    const startOfDayUTC = `${targetDate}T00:00:00+05:30`; // IST midnight → correct UTC
+    const endOfDayUTC   = `${targetDate}T23:59:59+05:30`; // IST end of day → correct UTC
 
     const { data: rows, error } = await supabase
       .from('education_logs_table')
       .select('"Id", "Topic", "CreatedAt"')
       .eq('"UserId"', userId)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
+      .eq('"IsDeleted"', 0)
       .ilike('"Topic"', 'Calories Burned:%')
-      .gte('"CreatedAt"', startOfDay)
-      .lte('"CreatedAt"', endOfDay)
+      .gte('"CreatedAt"', startOfDayUTC)
+      .lte('"CreatedAt"', endOfDayUTC)
       .order('"CreatedAt"', { ascending: false });
 
     if (error) throw error;
