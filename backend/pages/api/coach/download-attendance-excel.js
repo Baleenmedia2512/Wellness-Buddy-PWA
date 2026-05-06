@@ -358,6 +358,13 @@ export default async function handler(req, res) {
 
     console.log('🔁 [download-attendance-excel] After dedup:', deduped.length, 'unique users (was', attendanceRecords.length, 'records)');
 
+    // Step 6c: Sort again by time (ascending order - earliest first)
+    deduped.sort((a, b) => {
+      const timeA = new Date(a.createdAt);
+      const timeB = new Date(b.createdAt);
+      return timeA - timeB; // Ascending: earliest attendance first
+    });
+
     // Step 7: Add serial numbers
     const finalData = deduped.map((record, index) => ({
       sno: index + 1,

@@ -2219,10 +2219,11 @@ function WellnessValleyApp() {
           });
           
           const geoResponse = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1`,
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1&accept-language=en`,
             {
               headers: {
-                'User-Agent': 'WellnessBuddy/1.0'
+                'User-Agent': 'WellnessBuddy/1.0',
+                'Accept-Language': 'en'
               }
             }
           );
