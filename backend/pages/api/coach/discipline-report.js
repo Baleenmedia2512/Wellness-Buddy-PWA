@@ -337,12 +337,17 @@ export default async function handler(req, res) {
       waterRecords: waterFoodData.data?.length || 0,
       stepRecords: stepData.data?.length || 0,
       watchBurnRecords: watchBurnData.data?.length || 0,
+      watchBurnError: watchBurnData.error?.message || null,
+      watchBurnSample: watchBurnData.data?.[0] || null,
       dateRange: `${startDateStr} to ${endDateStr}`,
       userIds: allUserIds,
       sampleWeightRecord: weightData.data?.[0],
       sampleEducationRecord: educationData.data?.[0],
       sampleFoodRecord: foodData.data?.[0]
     });
+    // 🔍 DEBUG: Log BMR map
+    console.log('🧮 BMR Map:', userBmrMap);
+    console.log('⚖️ Body Weight Map:', userBodyWeightMap);
     
     // 🔍 DEBUG: Check for query errors
     if (weightData.error) console.error('❌ Weight query error:', weightData.error);
