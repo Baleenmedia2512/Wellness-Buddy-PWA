@@ -85,11 +85,12 @@ const NutritionDashboard = ({
   const [calorieTarget, setCalorieTarget] = useState(1500);
 
   // Burned calories split by source: steps (from DB) + watch (from DB via education_logs_table)
-  const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity
+  // const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity — STEP COUNTER DISABLED
+  const stepsBurned = 0; // Step counter disabled
   const [dbWatchBurned, setDbWatchBurned] = useState(0); // from education_logs_table (today's watch entries)
   // Use the highest of: DB watch value OR the just-uploaded prop (in case DB hasn't been committed yet)
   const watchBurned = Math.max(dbWatchBurned, watchBurnedCalories);
-  const burnedCalories = stepsBurned + watchBurned;      // combined total used in all calculations
+  const burnedCalories = stepsBurned + watchBurned;      // combined total used in all calculations (steps disabled)
   const [burnedLoading, setBurnedLoading] = useState(false);
   const watchUploadRef = useRef(null);
 
@@ -915,6 +916,8 @@ const NutritionDashboard = ({
   }, [user, selectedDate, fetchDayAnalyses]);
 
   // ─── Fetch burned calories from daily_step_activity for the selected date ────
+  // STEP COUNTER DISABLED — entire fetchBurnedCalories function commented out
+  /*
   const fetchBurnedCalories = useCallback(
     async (date) => {
       if (!user) return;
@@ -951,6 +954,7 @@ const NutritionDashboard = ({
   useEffect(() => {
     if (user) fetchBurnedCalories(selectedDate);
   }, [user, selectedDate, fetchBurnedCalories]);
+  */
 
   // ─── Fetch watch-burned calories from education_logs_table for the selected date ─
   const fetchWatchBurnedCalories = useCallback(
@@ -2320,6 +2324,7 @@ const NutritionDashboard = ({
                                 </p>
                               )}
                               {/* Show breakdown when both sources have data */}
+                              {/* STEP COUNTER DISABLED — steps breakdown hidden
                               {stepsBurned > 0 && watchBurned > 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
                                   👟 {stepsBurned} steps + ⌚ {watchBurned} watch
@@ -2330,6 +2335,7 @@ const NutritionDashboard = ({
                                   👟 From daily steps
                                 </p>
                               )}
+                              */}
                               {watchBurned > 0 && stepsBurned === 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
                                   ⌚ From smartwatch
