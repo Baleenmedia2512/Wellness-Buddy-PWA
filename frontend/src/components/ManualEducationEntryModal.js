@@ -92,34 +92,6 @@ const ManualEducationEntryModal = ({ isOpen, onClose, onSave, onBack, altSwitchB
               </button>
             </div>
 
-            {/* Divider */}
-            {altSwitchButtons?.length > 0 && (
-              <div className="flex items-center gap-3 px-4 pb-2">
-                <div className="flex-1 h-px bg-gray-100" />
-                <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">Log something else</span>
-                <div className="flex-1 h-px bg-gray-100" />
-              </div>
-            )}
-
-            {/* Alt cards */}
-            {altSwitchButtons?.length > 0 && (
-              <div className="flex gap-2 px-4 pb-4">
-                {altSwitchButtons.map((btn) => (
-                  <button
-                    key={btn.label}
-                    onClick={btn.onClick}
-                    className="flex-1 bg-white py-3 px-2 rounded-[14px] flex flex-col items-center justify-center gap-0.5 transition-all active:scale-[0.97]"
-                    style={{ boxShadow: "0 2px 8px rgba(0,0,0,0.07)", minHeight: "72px" }}
-                  >
-                    <span className="text-xl leading-none mb-0.5">{btn.icon}</span>
-                    <span className="text-xs text-gray-700 font-semibold whitespace-nowrap">No, it&apos;s {btn.label}</span>
-                    {btn.sub && (
-                      <span className="text-[10px] text-gray-400">{btn.sub}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
           </>
         )}
 

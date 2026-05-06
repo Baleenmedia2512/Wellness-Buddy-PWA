@@ -20,6 +20,8 @@ export default async function handler(req, res) {
 
   // GET: Fetch current time windows
   if (req.method === 'GET') {
+    // Prevent Vercel/CDN caching so we always get fresh data
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
     try {
       const { data: rows, error } = await supabase
         .from('activity_time_windows_table')

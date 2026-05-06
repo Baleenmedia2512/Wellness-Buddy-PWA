@@ -297,7 +297,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         key: "self",
         Logo: SelfLogo,
         color: "text-blue-600",
-        label: "SELF",
+        label: "Individual",
         padding: "pr-2",
         counselled: counts.self.counselled,
         total: counts.self.total,

@@ -74,9 +74,42 @@ export default async function handler(req, res) {
 
     console.log('✅ [update-enrollment] User found:', { userId: user.UserId, userName: user.UserName });
 
-    // Update enrollment record
-    const programsJson = JSON.stringify(programs);
+    // Update enrollment record — preserve existing per-program dates, add new ones
     const updateTime = getISTTimestamp();
+
+    // Fetch existing record to get current program dates
+    const { data: existing } = await supabase
+      .from('wellness_university_enrollments_table')
+      .select('"EnrolledPrograms"')
+      .eq('"UserId"', user.UserId)
+      .maybeSingle();
+
+    // Parse existing stored data (may be array, map object, or JSON string)
+    let existingMap = {};
+    if (existing?.EnrolledPrograms) {
+      try {
+        // Supabase may return JSONB as already-parsed object, or as a JSON string
+        const parsed = typeof existing.EnrolledPrograms === 'string'
+          ? JSON.parse(existing.EnrolledPrograms)
+          : existing.EnrolledPrograms;
+        if (Array.isArray(parsed)) {
+          // Legacy array format — convert to map using updateTime as placeholder
+          parsed.forEach((p) => { existingMap[p] = updateTime; });
+        } else if (parsed && typeof parsed === 'object') {
+          existingMap = parsed;
+        }
+      } catch (e) {
+        console.warn('⚠️ [update-enrollment] Failed to parse existing EnrolledPrograms:', e.message);
+      }
+    }
+
+    // Build new map: keep existing dates for old programs, add updateTime for new programs
+    const newMap = {};
+    programs.forEach((p) => {
+      newMap[p] = existingMap[p] || updateTime;
+    });
+
+    const programsJson = JSON.stringify(newMap);
 
     const { data: updatedEnrollment, error: updateError } = await supabase
       .from('wellness_university_enrollments_table')
@@ -100,7 +133,7 @@ export default async function handler(req, res) {
       message: 'Enrollment updated successfully',
       enrollment: {
         id: updatedEnrollment.Id,
-        programs: programs,
+        programs: Object.keys(newMap),
       },
     });
   } catch (error) {

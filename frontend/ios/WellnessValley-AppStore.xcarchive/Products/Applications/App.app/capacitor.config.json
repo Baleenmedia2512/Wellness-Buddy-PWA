@@ -1,0 +1,87 @@
+{
+	"appId": "com.wellnessvalley.app",
+	"appName": "Wellness Valley",
+	"webDir": "build",
+	"bundledWebRuntime": false,
+	"android": {
+		"allowMixedContent": true,
+		"captureInput": true,
+		"webContentsDebuggingEnabled": false,
+		"backgroundColor": "#ffffff",
+		"loggingBehavior": "none",
+		"preferences": {
+			"AndroidInsecureFileModeEnabled": "false",
+			"AndroidXAutoCompleteEnabled": "true",
+			"DisallowOverscroll": "true"
+		}
+	},
+	"server": {
+		"androidScheme": "https",
+		"hostname": "localhost",
+		"allowNavigation": [
+			"wellness-buddy-pwa-eta.vercel.app",
+			"wellness-buddy-pwa-backend-test.vercel.app",
+			"wellness-buddy-pwa-backend-test.vercel.app",
+			"*.vercel.app",
+			"*.googleapis.com",
+			"*.firebase.com",
+			"*.firebaseapp.com",
+			"*.firebaseio.com"
+		],
+		"cleartext": false
+	},
+	"ios": {
+		"contentInset": "automatic",
+		"allowsLinkPreview": false,
+		"scrollEnabled": true,
+		"backgroundColor": "#ffffff",
+		"limitsNavigationsToAppBoundDomains": false
+	},
+	"plugins": {
+		"GoogleAuth": {
+			"scopes": [
+				"profile",
+				"email"
+			],
+			"serverClientId": "499376291787-gkivhgcdsc3tep13m6a3khlgtgksfuq8.apps.googleusercontent.com",
+			"forceCodeForRefreshToken": true
+		},
+		"GalleryMonitor": {},
+		"CameraMonitor": {},
+		"Share": {
+			"enabledShareTypes": [
+				"image",
+				"text",
+				"url"
+			]
+		},
+		"Filesystem": {
+			"cacheDir": "cache"
+		},
+		"SplashScreen": {
+			"launchShowDuration": 0,
+			"launchAutoHide": true,
+			"launchFadeOutDuration": 200,
+			"backgroundColor": "#ffffff",
+			"androidScaleType": "CENTER",
+			"showSpinner": false
+		},
+		"Keyboard": {
+			"resize": "native",
+			"style": "light",
+			"resizeOnFullScreen": true
+		}
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPCameraPlugin",
+		"FilesystemPlugin",
+		"GeolocationPlugin",
+		"PushNotificationsPlugin",
+		"SharePlugin",
+		"SplashScreenPlugin",
+		"StatusBarPlugin",
+		"NavigationBarPlugin",
+		"GoogleAuth"
+	]
+}

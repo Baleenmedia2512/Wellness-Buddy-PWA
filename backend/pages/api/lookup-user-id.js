@@ -34,6 +34,21 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass for App Store review ──────────────────────────────
+  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+  if (DEMO_ACCOUNTS.includes(email)) {
+    return res.status(200).json({
+      success: true,
+      userId: 554,
+      userName: 'test',
+      email: email,
+      status: 'Active',
+      isActive: true,
+      role: 'member',
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     // ⚡ No cache — always query DB fresh so Status changes reflect immediately
     const cacheKey = `user:lookup:${email}`;

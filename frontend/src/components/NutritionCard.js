@@ -1,6 +1,7 @@
 //src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
+import { getVersionString } from "../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
 import { geminiService } from "../services/geminiService";
@@ -10,6 +11,9 @@ const NutritionCard = ({
   data,
   onDataUpdate,
   user,
+  savedUserName,
+  savedProfileImage,
+  sharePhotoBase64,
   imagePreview,
   selectedImage,
   savedMealId,
@@ -792,6 +796,60 @@ const NutritionCard = ({
           className="bg-white rounded-xl shadow-lg border-2 border-green-300 overflow-visible"
           style={{ height: "auto" }}
         >
+          {/* Profile header for sharing */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #059669 0%, #10b981 100%)",
+              padding: "32px 32px 28px 32px",
+              display: "flex",
+              alignItems: "center",
+              gap: "24px",
+            }}
+          >
+            {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
+              <div style={{
+                width: 80,
+                height: 80,
+                borderRadius: "50%",
+                border: "3px solid rgba(255,255,255,0.95)",
+                backgroundImage: `url(${savedProfileImage || sharePhotoBase64 || user?.photoURL})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                flexShrink: 0,
+                boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+              }} />
+            ) : (
+              <div
+                style={{
+                  width: 80,
+                  height: 80,
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.25)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ color: "white", fontWeight: 800, fontSize: 36, lineHeight: 1 }}>
+                  {(savedUserName || user?.displayName || user?.email || "U").charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: "white", fontWeight: 800, fontSize: 28, lineHeight: 1.2, margin: "0 0 8px 0" }}>
+                {savedUserName || user?.displayName || user?.name || "Wellness User"}
+              </p>
+              <p style={{ color: "rgba(187,247,236,0.95)", fontSize: 20, margin: 0, lineHeight: 1 }}>
+                {new Date().toLocaleDateString(undefined, { dateStyle: "medium" })}{" "}
+                {new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </div>
+            <p style={{ color: "rgba(187,247,236,0.85)", fontSize: 22, fontWeight: 600, margin: 0, lineHeight: 1, alignSelf: "flex-end", flexShrink: 0 }}>
+              {getVersionString()}
+            </p>
+          </div>
+
           {/* Food Image for sharing - ULTRA HIGH QUALITY (No Compression) */}
           {highResImageUrl && (
             <div

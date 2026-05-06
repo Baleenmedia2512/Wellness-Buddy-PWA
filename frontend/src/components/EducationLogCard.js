@@ -1,8 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
 import { captureAndShare } from '../utils/shareUtils';
+import { getVersionString } from '../config/version';
 
-const EducationLogCard = ({ educationData, imagePreview }) => {
+const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, savedProfileImage, sharePhotoBase64 }) => {
   const [isSharing, setIsSharing] = useState(false);
   const shareRef = useRef(null);
 
@@ -51,6 +52,60 @@ const EducationLogCard = ({ educationData, imagePreview }) => {
         style={{ position: "fixed", left: "-9999px" }}
       >
         <div className="bg-white rounded-2xl shadow-xl border-2 border-purple-300 overflow-hidden">
+          {/* Profile header for sharing */}
+          <div
+            style={{
+              background: "linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)",
+              padding: "20px 20px 16px 20px",
+              display: "flex",
+              alignItems: "center",
+              gap: "14px",
+            }}
+          >
+            {(savedProfileImage || sharePhotoBase64 || user?.photoURL) ? (
+              <div style={{
+                width: 52,
+                height: 52,
+                borderRadius: "50%",
+                border: "2px solid rgba(255,255,255,0.95)",
+                backgroundImage: `url(${savedProfileImage || sharePhotoBase64 || user?.photoURL})`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                flexShrink: 0,
+                boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+              }} />
+            ) : (
+              <div
+                style={{
+                  width: 52,
+                  height: 52,
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.25)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                <span style={{ color: "white", fontWeight: 800, fontSize: 22, lineHeight: 1 }}>
+                  {(savedUserName || user?.displayName || user?.email || "U").charAt(0).toUpperCase()}
+                </span>
+              </div>
+            )}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: "white", fontWeight: 800, fontSize: 16, lineHeight: 1.2, margin: "0 0 4px 0" }}>
+                {savedUserName || user?.displayName || user?.name || "Wellness User"}
+              </p>
+              <p style={{ color: "rgba(221,214,254,0.95)", fontSize: 12, margin: 0, lineHeight: 1 }}>
+                {new Date().toLocaleDateString(undefined, { dateStyle: "medium" })}{" "}
+                {new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
+              </p>
+            </div>
+            <p style={{ color: "rgba(221,214,254,0.85)", fontSize: 14, fontWeight: 600, margin: 0, lineHeight: 1, alignSelf: "flex-end", flexShrink: 0 }}>
+              {getVersionString()}
+            </p>
+          </div>
+
           {/* Education Image for sharing */}
           {imagePreview && (
             <div className="relative">

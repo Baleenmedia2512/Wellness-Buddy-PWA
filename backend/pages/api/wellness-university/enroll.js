@@ -93,9 +93,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // Create enrollment record
+    // Create enrollment record — store as map: { programName: isoDate }
     const enrollmentDate = getISTTimestamp();
-    const programsJson = JSON.stringify(programs);
+    const programsMap = {};
+    programs.forEach((p) => { programsMap[p] = enrollmentDate; });
+    const programsJson = JSON.stringify(programsMap);
 
     const { data: newEnrollment, error: insertError } = await supabase
       .from('wellness_university_enrollments_table')
@@ -127,7 +129,7 @@ export default async function handler(req, res) {
       message: 'Enrollment successful',
       enrollment: {
         id: newEnrollment.Id,
-        programs: programs,
+        programs: Object.keys(programsMap),
         enrollmentDate: enrollmentDate,
       },
     });

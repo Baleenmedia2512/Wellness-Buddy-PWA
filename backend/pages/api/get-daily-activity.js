@@ -34,7 +34,8 @@ function normalizeRow(row) {
     activityDate: derivedDate,
     steps: Number.parseInt(row.Steps ?? 0, 10) || 0,
     activityType: (row.ActivityType ?? 'walking').toLowerCase(),
-    caloriesBurned: Number(row.CaloriesBurned ?? 0) || 0,
+    // Support both PascalCase (DB) and camelCase column name variants
+    caloriesBurned: Number(row.CaloriesBurned ?? row.caloriesBurned ?? row.calories_burned ?? 0) || 0,
     createdAt,
     updatedAt,
     savedAt: updatedAt || createdAt
@@ -112,8 +113,8 @@ async function fetchRowsByStyle(supabase, userId, startDate, endDate, activityTy
     .from('daily_step_activity')
     .select('*')
     .eq('UserId', userId)
-    .gte('CreatedAt', `${startDate}T00:00:00`)
-    .lte('CreatedAt', `${endDate}T23:59:59`)
+    .gte('CreatedAt', `${startDate}T00:00:00+05:30`)
+    .lte('CreatedAt', `${endDate}T23:59:59+05:30`)
     .order('CreatedAt', { ascending: true });
 
   if (activityType) {

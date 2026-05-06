@@ -1019,7 +1019,10 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
       <TimeWindowSettingsModal
         isOpen={showSettings}
         onClose={() => setShowSettings(false)}
-        onUpdate={() => fetchData(true)}
+        onUpdate={() => {
+          clearDisciplineReportCache();
+          fetchData(true);
+        }}
         userEmail={user?.email}
       />
     </HierarchicalReportLayout>
