@@ -517,6 +517,16 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             enriched.uplineCoCoachName = node.coCoachName ?? node.uplineCoCoachName ?? null;
           }
           
+          // Enrich coCoachInfo with timeData if it exists
+          if (hasPartnership) {
+            const coCoachUid = node.coCoachInfo.userId;
+            enriched.coCoachInfo = {
+              ...node.coCoachInfo,
+              __timeData: dataMap.get(coCoachUid) || null,
+              __score: scoreMap.get(coCoachUid) ?? 0,
+            };
+          }
+          
           enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
           const directScores = enriched.teamMembers.map((m) => m.__score);
           enriched.__directAvg = directScores.length
