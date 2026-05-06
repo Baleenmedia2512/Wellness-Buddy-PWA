@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
 import { captureAndShare } from '../utils/shareUtils';
+import { getVersionString } from '../config/version';
 
 const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, savedProfileImage, sharePhotoBase64 }) => {
   const [isSharing, setIsSharing] = useState(false);
@@ -101,7 +102,7 @@ const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, sa
               </p>
             </div>
             <p style={{ color: "rgba(221,214,254,0.85)", fontSize: 14, fontWeight: 600, margin: 0, lineHeight: 1, alignSelf: "flex-end", flexShrink: 0 }}>
-              v2.8
+              {getVersionString()}
             </p>
           </div>
 

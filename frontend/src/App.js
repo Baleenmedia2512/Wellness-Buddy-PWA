@@ -4413,7 +4413,7 @@ function WellnessValleyApp() {
                         fontWeight: 600,
                       }}
                     >
-                      v2.8
+                      {getVersionString()}
                     </p>
                   
                   </div>

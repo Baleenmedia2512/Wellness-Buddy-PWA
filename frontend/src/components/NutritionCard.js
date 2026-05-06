@@ -1,6 +1,7 @@
 //src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
+import { getVersionString } from "../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
 import { geminiService } from "../services/geminiService";
@@ -845,7 +846,7 @@ const NutritionCard = ({
               </p>
             </div>
             <p style={{ color: "rgba(187,247,236,0.85)", fontSize: 22, fontWeight: 600, margin: 0, lineHeight: 1, alignSelf: "flex-end", flexShrink: 0 }}>
-              v2.8
+              {getVersionString()}
             </p>
           </div>
 
