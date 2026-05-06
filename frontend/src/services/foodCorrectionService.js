@@ -399,69 +399,109 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       console.log(`   "${key}" → "${correction.correctedName}" (${correction.isGlobal ? '🌍 Global' : '👤 User'})`);
     });
 
+    // Keywords that identify liquid/shake foods eligible for autocorrection
+    const liquidKeywords = [
+      "shake", "juice", "milk", "lassi", "coffee", "tea", "water", "smoothie",
+      "soup", "drink", "beverage", "cola", "soda", "beer", "wine", "cocktail",
+      "latte", "cappuccino", "espresso", "formula 1", "herbalife",
+    ];
+
+    /**
+     * Returns true if a food item is a liquid or shake (eligible for autocorrection).
+     * Solid foods are skipped.
+     */
+    const isFoodLiquidOrShake = (food) => {
+      if (food.isLiquid === true) return true;
+      if (food.volume_ml !== null && food.volume_ml !== undefined) return true;
+      if (food.unit && food.unit.toLowerCase().trim() === 'ml') return true;
+      const nameLower = (food.name || "").toLowerCase();
+      return liquidKeywords.some((kw) => nameLower.includes(kw));
+    };
+
     // Apply corrections with DIRECT LOOKUP FIRST, then FUZZY MATCH
     const correctedFoods = foods.map((food) => {
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
-      
-      // 🔴 CRITICAL: Preserve the very first AI detected name
+
+      // � CRITICAL: Preserve the very first AI detected name
       // If food already has originalAiName, keep it; otherwise use current name
       const trueOriginalAiName = food.originalAiName || originalName;
-      
+
+      // 🚫 Solid foods are completely excluded from autocorrection
+      if (!isFoodLiquidOrShake(food)) {
+        console.log(`⏭️ [SOLID-FOOD] Skipping autocorrection for "${originalName}" (solid food)`);
+        return {
+          ...food,
+          originalAiName: trueOriginalAiName,
+          wasAutoCorrected: false,
+          correctionSource: null,
+        };
+      }
+
       let correction = null;
       let matchType = null;
-      
-      // 🎯 STEP 1: Direct exact lookup (ALWAYS PREFERRED)
+
+      // ─────────────────────────────────────────────────────────────
+      // Exact lookup — backend already guarantees:
+      //   user's latest correction  >  global (Herbalife) latest correction
+      // So we just use whatever the map returns.
+      // ─────────────────────────────────────────────────────────────
       if (correctionMap.has(normalizedOriginal)) {
         correction = correctionMap.get(normalizedOriginal);
         matchType = 'exact';
-        console.log(`✅ [EXACT-MATCH] Found correction for "${originalName}"`);
-      } 
-      
-      // 🔍 STEP 2: Fuzzy/Partial matching (ONLY if no exact match)
-      // Handles cases where AI detects "coconut" one time and "coconut water" another time
-      // BUT: Only applies if there's NO more specific exact match
+        console.log(
+          `✅ [EXACT-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" → "${correction.correctedName}"`
+        );
+      }
+
+      // ─────────────────────────────────────────────────────────────
+      // Fuzzy / partial match — only if no exact match
+      // Longest key wins; backend priority already baked into map values.
+      // ─────────────────────────────────────────────────────────────
       if (!correction) {
         console.log(`🔍 [FUZZY-MATCH] Trying partial match for "${originalName}" (normalized: "${normalizedOriginal}")`);
-        
+
         let bestMatch = null;
         let bestMatchLength = 0;
-        
+
         for (const [correctionKey, correctionValue] of correctionMap.entries()) {
-          // RULE 1: Only do reverse fuzzy match (AI detected is SHORTER than correction key)
-          // Example: AI detects "coconut", correction exists for "coconut water"
-          // This means: "coconut" should match "coconut water" correction
+          // Reverse fuzzy: AI-detected token is a substring of the correction key
           if (correctionKey.includes(normalizedOriginal) && normalizedOriginal.length >= 3) {
-            // Choose the LONGEST match (most specific)
             if (correctionKey.length > bestMatchLength) {
-              bestMatch = { correction: correctionValue, key: correctionKey, type: 'fuzzy-contained-in' };
+              bestMatch = { correction: correctionValue, key: correctionKey };
               bestMatchLength = correctionKey.length;
             }
           }
-          
-          // RULE 2: DISABLED forward fuzzy match to prevent conflicts
-          // We do NOT want "coconut water" to match "coconut" correction
-          // because "coconut water" should have its own exact match
-          // Only enable if NO better match exists and the matched key is significantly long
-          // Disabled to prevent: "coconut water" matching "coconut" correction
         }
-        
+
         if (bestMatch) {
           correction = bestMatch.correction;
-          matchType = bestMatch.type;
-          console.log(`✅ [FUZZY-MATCH] "${originalName}" matches "${bestMatch.key}" → will apply correction to "${correction.correctedName}"`);
+          matchType = 'fuzzy-contained-in';
+          console.log(
+            `✅ [FUZZY-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" matches "${bestMatch.key}" → "${correction.correctedName}"`
+          );
         }
       }
-      
+
+      // No correction found
+      if (!correction) {
+        return {
+          ...food,
+          originalAiName: trueOriginalAiName,
+          wasAutoCorrected: false,
+          correctionSource: null,
+        };
+      }
+
       // Apply correction if found (exact or fuzzy)
       if (correction) {
-        
+
         // Determine if this is a global (Herbalife) or user-specific correction
         const correctionType = correction.isGlobal ? '🌍 Global' : '👤 User';
-        
+
         // Type safety check - only apply if food types match
-        const shouldApplyCorrection = !correction.correctedFoodType || 
-          !food.unit || 
+        const shouldApplyCorrection = !correction.correctedFoodType ||
+          !food.unit ||
           correction.correctedFoodType === 'unknown' ||
           getFoodTypeByUnit(food.unit) === correction.correctedFoodType;
         
