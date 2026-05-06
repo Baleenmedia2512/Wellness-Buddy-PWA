@@ -162,6 +162,7 @@ function WellnessValleyApp() {
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
+  const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
@@ -1549,6 +1550,38 @@ function WellnessValleyApp() {
   };
 
   /**
+   * Fetch the user's height (from profile) and compute their ideal weight
+   * using BMI 23 as the target (upper-mid of the WHO normal range 18.5–24.9).
+   * Formula: idealWeight (kg) = 23 × (heightInMeters)²
+   * Updates `idealWeight` state so the share card / visible card can show it.
+   */
+  const refreshIdealWeight = async () => {
+    try {
+      if (!user?.email) return;
+      const profileRes = await fetch(
+        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      if (!profileRes.ok) return;
+      const profileData = await profileRes.json();
+      const heightCm = parseFloat(profileData?.data?.height);
+      if (!heightCm || heightCm < 50 || heightCm > 250) {
+        setIdealWeight(null);
+        return;
+      }
+      const heightM = heightCm / 100;
+      const ideal = 23 * heightM * heightM;
+      setIdealWeight({
+        value: Math.round(ideal * 10) / 10, // 1 decimal
+        unit: "kg",
+        heightCm: Math.round(heightCm),
+      });
+    } catch (_) {
+      /* non-critical — share card just won't show ideal weight */
+    }
+  };
+
+  /**
    * Perform actual weight save to database (called after duplicate check)
    */
   const performWeightSave = async (
@@ -1664,6 +1697,9 @@ function WellnessValleyApp() {
           setWeightDiff(null);
         }
       } catch (_) { /* non-critical */ }
+
+      // Fetch user height → compute ideal weight for the share card
+      refreshIdealWeight();
 
       // Check if weight was auto-corrected
       if (data.correction && data.correction.wasCorrected) {
@@ -1812,6 +1848,8 @@ function WellnessValleyApp() {
       } catch (_) {
         /* non-critical */
       }
+      // Refresh ideal weight in case the user updated their height in profile
+      refreshIdealWeight();
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -2870,6 +2908,8 @@ function WellnessValleyApp() {
                   previousDate: diffData.stats.previousWeight.date,
                   change: Math.round(weightChange * 100) / 100,
                 });
+                // Compute ideal weight for the share card
+                refreshIdealWeight();
                 // ✅ Immediately inject into leaderboard strip — no API wait needed
                 if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                   leaderboardRef.current.injectEntry({
@@ -4496,6 +4536,57 @@ function WellnessValleyApp() {
                       </p>
                     </div>
 
+                    {/* Ideal Weight Strip (share card) */}
+                    {idealWeight && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          borderRadius: 16,
+                          padding: "14px 18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          background: "#eff6ff",
+                          border: "1px solid #bfdbfe",
+                        }}
+                      >
+                        <div>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#2563eb",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              margin: "0 0 4px 0",
+                            }}
+                          >
+                            Ideal Weight
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              color: "#6b7280",
+                              margin: 0,
+                            }}
+                          >
+                            Based on height {idealWeight.heightCm} cm
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right", color: "#1d4ed8" }}>
+                          <p
+                            style={{
+                              fontSize: 22,
+                              fontWeight: 700,
+                              margin: 0,
+                            }}
+                          >
+                            {idealWeight.value} {idealWeight.unit}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Weight Diff Strip */}
                     {weightDiff && (
                       <div
@@ -4696,6 +4787,23 @@ function WellnessValleyApp() {
                     { dateStyle: "medium", timeStyle: "short" },
                   )}
                 </div>
+
+                {/* Ideal weight (visible card) */}
+                {idealWeight && (
+                  <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
+                    <div>
+                      <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">
+                        Ideal Weight
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Based on height {idealWeight.heightCm} cm
+                      </p>
+                    </div>
+                    <div className="text-blue-700 font-bold text-lg">
+                      {idealWeight.value} {idealWeight.unit}
+                    </div>
+                  </div>
+                )}
 
                 {/* Weight diff vs previous entry */}
                 {weightDiff && (
