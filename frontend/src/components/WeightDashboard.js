@@ -6,8 +6,10 @@ import {
   Calendar,
   TrendingUp,
   TrendingDown, 
-  Minus 
+  Minus,
+  ScaleIcon,
 } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import { getUserId } from '../services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
 import '../LazyLoadStyles.css';
@@ -141,6 +143,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
  * Monthly view with month-wise categorization
  */
 const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
+  const isIOS = Capacitor.getPlatform() === 'ios';
   // Weight history states
   const [weightHistory, setWeightHistory] = useState([]);
   const [globalStats, setGlobalStats] = useState(null); // Global min/max from ALL data
@@ -1219,8 +1222,14 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
         {/* New user message - only show when no entries */}
         {monthlyGroups.length === 0 && (
-          <div className="text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
-            <div className="text-6xl mb-4">⚖️</div>
+          <div className="flex flex-col items-center justify-center text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
+            {isIOS ? (
+              <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
+                <Scale className="w-9 h-9 text-gray-400" />
+              </div>
+            ) : (
+              <div className="text-6xl mb-4">⚖️</div>
+            )}
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Weight Entries</h3>
             <p className="text-gray-500 text-sm max-w-xs mx-auto">
               Take a photo of your weighing scale to start tracking your weight.

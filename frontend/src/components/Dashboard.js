@@ -178,14 +178,14 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
           <div className="flex justify-center border-b border-gray-200">
             <TouchFeedbackButton
               onClick={() => handleTabChange('nutrition')}
-              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'nutrition'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
               <AppleIcon 
-                className="hidden md:block h-4 w-4" 
+                className="h-4 w-4 flex-shrink-0" 
                 strokeWidth={3}
                 style={{
                   stroke: activeTab === 'nutrition' ? '#16a34a' : 'currentColor',
@@ -197,25 +197,25 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('weight')}
-              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'weight'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <WeighingScaleIcon className="hidden md:block h-4 w-4" />
+              <WeighingScaleIcon className="h-4 w-4 flex-shrink-0" />
               <span>Weight</span>
             </TouchFeedbackButton>
 
             <TouchFeedbackButton
               onClick={() => handleTabChange('education')}
-              className={`flex items-center justify-center gap-1 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
+              className={`flex items-center justify-center gap-1.5 md:gap-2 py-3 px-6 md:px-10 text-[12px] md:text-sm whitespace-nowrap font-medium border-b-2 transition-colors rounded-t-lg ${
                 activeTab === 'education'
                   ? 'border-green-600 text-green-700'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
               }`}
             >
-              <EducationIcon className="hidden md:block h-4 w-4" />
+              <EducationIcon className="h-4 w-4 flex-shrink-0" />
               <span>Education</span>
             </TouchFeedbackButton>
 

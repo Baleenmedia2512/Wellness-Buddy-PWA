@@ -1,7 +1,29 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
+import { Capacitor } from "@capacitor/core";
+import {
+  Salad,
+  TrendingDown,
+  TrendingUp,
+  Baby,
+  Dumbbell,
+  Target,
+  Coins,
+  Briefcase,
+} from "lucide-react";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
+
+const PROGRAM_ICON_MAP = {
+  "family-breakfast":  { Icon: Salad,        color: "text-green-500",  bg: "bg-green-50"  },
+  "weight-loss":       { Icon: TrendingDown,  color: "text-red-500",    bg: "bg-red-50"    },
+  "weight-gain":       { Icon: TrendingUp,    color: "text-blue-500",   bg: "bg-blue-50"   },
+  "kids-nutrition":    { Icon: Baby,          color: "text-yellow-500", bg: "bg-yellow-50" },
+  "sports-nutrition":  { Icon: Dumbbell,      color: "text-orange-500", bg: "bg-orange-50" },
+  "targeted-nutrition":{ Icon: Target,        color: "text-purple-500", bg: "bg-purple-50" },
+  "earn-product-cost": { Icon: Coins,         color: "text-amber-500",  bg: "bg-amber-50"  },
+  "extra-income":      { Icon: Briefcase,     color: "text-teal-500",   bg: "bg-teal-50"   },
+};
 
 const PROGRAMS = [
   {
@@ -58,6 +80,9 @@ const PROGRAMS = [
 ];
 
 const WellnessUniversityEnrollment = ({ onClose, user }) => {
+  // Use SVG icons only on iOS (emoji renders as ? in iOS WebView)
+  const isIOS = Capacitor.getPlatform() === "ios";
+
   const [selectedPrograms, setSelectedPrograms] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -212,7 +237,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-4"
+          className="bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-4"
         >
           {/* Header */}
           <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
@@ -221,7 +246,6 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                 <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                   Your Enrollment
                 </h2>
-                {/* <p className="text-white text-sm mt-1">Wellness University Program</p> */}
               </div>
               <button
                 onClick={onClose}
@@ -269,14 +293,30 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
               <div className="space-y-2">
                 {enrolledPrograms.map((program, index) => {
                   const programData = PROGRAMS.find((p) => p.name === program);
+                  const iconInfo = programData ? PROGRAM_ICON_MAP[programData.id] : null;
+                  const IconComp = iconInfo?.Icon;
                   return (
                     <div
                       key={index}
                       className="flex items-center gap-2 sm:gap-3 bg-gradient-to-r from-green-50 to-teal-50 p-2.5 sm:p-3 rounded-lg border border-green-200"
                     >
-                      <span className="text-xl sm:text-2xl flex-shrink-0">
-                        {programData?.icon || "✓"}
-                      </span>
+                      {isIOS ? (
+                        IconComp ? (
+                          <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${iconInfo.bg}`}>
+                            <IconComp className={`w-5 h-5 ${iconInfo.color}`} />
+                          </div>
+                        ) : (
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 bg-green-100">
+                            <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          </div>
+                        )
+                      ) : (
+                        <span className="text-xl sm:text-2xl flex-shrink-0">
+                          {programData?.icon || "✓"}
+                        </span>
+                      )}
                       <span className="text-sm sm:text-base text-gray-800 font-medium break-words">
                         {program}
                       </span>
@@ -315,7 +355,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-8"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-md sm:max-w-lg md:max-w-xl lg:max-w-2xl max-h-[95vh] overflow-hidden flex flex-col my-2 sm:my-8"
       >
         {/* Header */}
         <div className="bg-gradient-to-r from-green-400 to-green-400 p-4 sm:p-6 rounded-t-2xl flex-shrink-0">
@@ -392,7 +432,10 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
             <h3 className="text-base sm:text-lg font-semibold text-gray-800 mb-2 sm:mb-3">
               I would like more information about:
             </h3>
-            {PROGRAMS.map((program) => (
+            {PROGRAMS.map((program) => {
+              const iconInfo = PROGRAM_ICON_MAP[program.id];
+              const IconComp = iconInfo?.Icon;
+              return (
               <div
                 key={program.id}
                 onClick={() => handleProgramToggle(program.name)}
@@ -425,7 +468,21 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                     </svg>
                   )}
                 </div>
-                <span className="text-xl sm:text-2xl flex-shrink-0">{program.icon}</span>
+                {isIOS ? (
+                  IconComp ? (
+                    <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${iconInfo.bg}`}>
+                      <IconComp className={`w-5 h-5 sm:w-6 sm:h-6 ${iconInfo.color}`} />
+                    </div>
+                  ) : (
+                    <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center flex-shrink-0 bg-green-50">
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                    </div>
+                  )
+                ) : (
+                  <span className="text-xl sm:text-2xl flex-shrink-0">{program.icon}</span>
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm sm:text-base text-gray-800 font-medium break-words">
                     {program.name}
@@ -437,7 +494,8 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
                   )}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* Error Message ,*/}

@@ -1,6 +1,19 @@
 import { getSupabaseClient } from "../../utils/supabaseClient.js";
 
 /**
+ * Helper to get value with multiple casing attempts
+ * Supabase might return columns as UserId, userid, user_id depending on DB schema
+ */
+function getRowValue(row, ...keys) {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null) {
+      return row[key];
+    }
+  }
+  return null;
+}
+
+/**
  * Normalize food name for comparison
  * Handles variations like "Formula 1 - Chocolate" vs "Formula 1 Chocolate"
  * @param {string} name - Food name to normalize
@@ -79,6 +92,8 @@ export default async function handler(req, res) {
     const requestingUserId = req.query.userId || null;
 
     console.log("🌍 [HYBRID-AUTO] Fetching hybrid correction patterns...");
+    console.log(`   📋 RAW userId from query: "${req.query.userId}" (type: ${typeof req.query.userId})`);
+    console.log(`   📋 PARSED requestingUserId: "${requestingUserId}" (type: ${typeof requestingUserId})`);
     if (requestingUserId) {
       console.log(`   👤 User ID: ${requestingUserId} (will include user-specific corrections)`);
     } else {
@@ -102,28 +117,53 @@ export default async function handler(req, res) {
     const aiDetectionMap = new Map();
 
     if (allCorrections && allCorrections.length > 0) {
+      console.log(`   📊 Total corrections from DB: ${allCorrections.length}`);
+      
+      // DEBUG: Check actual keys returned by Supabase
+      if (allCorrections[0]) {
+        console.log(`\n   🔑 DEBUG: Database row keys:`, Object.keys(allCorrections[0]));
+        console.log(`   🔑 DEBUG: Sample row:`, JSON.stringify(allCorrections[0], null, 2));
+      }
+      
+      // DEBUG: Check for userId 530 specifically - try different casing
+      const user530Corrections = allCorrections.filter(row => 
+        String(row.UserId) === "530" || 
+        String(row.userid) === "530" || 
+        String(row.userId) === "530" ||
+        String(row.user_id) === "530"
+      );
+      if (user530Corrections.length > 0) {
+        console.log(`\n   🔍 DEBUG: Found ${user530Corrections.length} corrections for userId 530:`);
+        user530Corrections.forEach(row => {
+          console.log(`      - "${row.AiDetected || row.aidetected}" → "${row.UserCorrected || row.usercorrected}"`);
+          console.log(`        UserId value: ${row.UserId || row.userid || row.userId || row.user_id}`);
+        });
+      } else {
+        console.log(`\n   ❌ DEBUG: NO corrections found for userId 530 in any casing!`);
+      }
+      
       allCorrections.forEach((row) => {
-        const normalizedAi = normalizeFoodName(row.AiDetected);
+        const normalizedAi = normalizeFoodName(getRowValue(row, 'AiDetected', 'aidetected', 'ai_detected'));
         
         if (!aiDetectionMap.has(normalizedAi)) {
           aiDetectionMap.set(normalizedAi, []);
         }
         
         aiDetectionMap.get(normalizedAi).push({
-          aiDetected: row.AiDetected,
-          userCorrected: row.UserCorrected,
-          userId: row.UserId,
-          timesCorrected: row.TimesCorrected || 1,
-          lastCorrected: row.LastCorrected,
+          aiDetected: getRowValue(row, 'AiDetected', 'aidetected', 'ai_detected'),
+          userCorrected: getRowValue(row, 'UserCorrected', 'usercorrected', 'user_corrected'),
+          userId: getRowValue(row, 'UserId', 'userid', 'user_id'),
+          timesCorrected: getRowValue(row, 'TimesCorrected', 'timescorrected', 'times_corrected') || 1,
+          lastCorrected: getRowValue(row, 'LastCorrected', 'lastcorrected', 'last_corrected'),
           // Corrected nutrition values
-          correctedQuantity: row.CorrectedQuantity,
-          correctedUnit: row.CorrectedUnit,
-          correctedFoodType: row.CorrectedFoodType,
-          correctedCalories: row.CorrectedCalories,
-          correctedCarbs: row.CorrectedCarbs,
-          correctedProtein: row.CorrectedProtein,
-          correctedFat: row.CorrectedFat,
-          correctedFiber: row.CorrectedFiber,
+          correctedQuantity: getRowValue(row, 'CorrectedQuantity', 'correctedquantity', 'corrected_quantity'),
+          correctedUnit: getRowValue(row, 'CorrectedUnit', 'correctedunit', 'corrected_unit'),
+          correctedFoodType: getRowValue(row, 'CorrectedFoodType', 'correctedfoodtype', 'corrected_food_type'),
+          correctedCalories: getRowValue(row, 'CorrectedCalories', 'correctedcalories', 'corrected_calories'),
+          correctedCarbs: getRowValue(row, 'CorrectedCarbs', 'correctedcarbs', 'corrected_carbs'),
+          correctedProtein: getRowValue(row, 'CorrectedProtein', 'correctedprotein', 'corrected_protein'),
+          correctedFat: getRowValue(row, 'CorrectedFat', 'correctedfat', 'corrected_fat'),
+          correctedFiber: getRowValue(row, 'CorrectedFiber', 'correctedfiber', 'corrected_fiber'),
         });
       });
     }
@@ -143,47 +183,34 @@ export default async function handler(req, res) {
       // The most recent Herbalife correction for this AI word wins.
       const hasHerbalife = sortedCorrections.some(c => isHerbalife(c.userCorrected));
       
-      if (hasHerbalife) {
-        // Find the most recent Herbalife correction (sortedCorrections is already newest-first)
-        const herbalifeCorrection = sortedCorrections.find(c => isHerbalife(c.userCorrected));
-        
-        if (herbalifeCorrection) {
-          const uniqueUsers = new Set(
-            corrections
-              .filter(c => normalizeFoodName(c.userCorrected) === normalizeFoodName(herbalifeCorrection.userCorrected))
-              .map(c => c.userId)
-          );
-          
-          globalCorrectionMap.set(normalizedAi, {
-            aiDetected: herbalifeCorrection.aiDetected,
-            userCorrected: herbalifeCorrection.userCorrected,
-            users: uniqueUsers,
-            totalCorrections: herbalifeCorrection.timesCorrected,
-            lastCorrected: herbalifeCorrection.lastCorrected,
-            lastCorrectedByUserId: herbalifeCorrection.userId,
-            correctedQuantity: herbalifeCorrection.correctedQuantity,
-            correctedUnit: herbalifeCorrection.correctedUnit,
-            correctedFoodType: herbalifeCorrection.correctedFoodType,
-            correctedCalories: herbalifeCorrection.correctedCalories,
-            correctedCarbs: herbalifeCorrection.correctedCarbs,
-            correctedProtein: herbalifeCorrection.correctedProtein,
-            correctedFat: herbalifeCorrection.correctedFat,
-            correctedFiber: herbalifeCorrection.correctedFiber,
+      // ── PRIORITY 1: Current user's latest correction (ALWAYS CHECKED FIRST) ──
+      // User's personal correction MUST take precedence over any global correction.
+      // This ensures: User A's "tomato ketchup → apple juice" beats global "tomato ketchup → Herbalife"
+      if (requestingUserId) {
+        // DEBUG: Log comparison for userId 530
+        if (String(requestingUserId) === "530") {
+          console.log(`\n   🔍 DEBUG userId 530 - Checking corrections for "${normalizedAi}":`);
+          sortedCorrections.forEach(c => {
+            console.log(`      - UserId: "${c.userId}" (type: ${typeof c.userId}), Match: ${String(c.userId) === String(requestingUserId)}`);
           });
-          
-          console.log(`   🌍 GLOBAL: "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife product)`);
         }
-      } else if (requestingUserId) {
-        // USER-SPECIFIC: Non-Herbalife corrections only apply to the user who made them
-        const userCorrection = sortedCorrections.find(c => String(c.userId) === String(requestingUserId));
         
+        const userCorrection = sortedCorrections.find(
+          (c) => String(c.userId) === String(requestingUserId)
+        );
+
         if (userCorrection) {
           const uniqueUsers = new Set(
             corrections
-              .filter(c => normalizeFoodName(c.userCorrected) === normalizeFoodName(userCorrection.userCorrected))
-              .map(c => c.userId)
+              .filter(
+                (c) =>
+                  normalizeFoodName(c.userCorrected) ===
+                  normalizeFoodName(userCorrection.userCorrected)
+              )
+              .map((c) => c.userId)
           );
-          
+
+          // Store user correction - this WILL override global in final merge
           userCorrectionMap.set(normalizedAi, {
             aiDetected: userCorrection.aiDetected,
             userCorrected: userCorrection.userCorrected,
@@ -200,8 +227,63 @@ export default async function handler(req, res) {
             correctedFat: userCorrection.correctedFat,
             correctedFiber: userCorrection.correctedFiber,
           });
-          
-          console.log(`   👤 USER-SPECIFIC: "${normalizedAi}" → "${userCorrection.userCorrected}" (User ${requestingUserId})`);
+
+          const isHerbalifeUser = isHerbalife(userCorrection.userCorrected);
+          console.log(
+            `   👤 USER (latest): "${normalizedAi}" → "${userCorrection.userCorrected}" (User ${requestingUserId}, ${isHerbalifeUser ? 'Herbalife, ' : ''}${userCorrection.lastCorrected})`
+          );
+        }
+      }
+
+      // ── PRIORITY 2: Latest global (Herbalife) correction — FALLBACK ONLY ──
+      // Only used when requesting user has NO personal correction for this AI detection.
+      // Global correction is applied to all users who haven't made their own correction.
+      if (hasHerbalife) {
+        // Only add global if user doesn't have their own correction
+        const userHasCorrection = requestingUserId && userCorrectionMap.has(normalizedAi);
+        
+        if (!userHasCorrection) {
+          // sortedCorrections is newest-first; find the most recent Herbalife correction.
+          const herbalifeCorrection = sortedCorrections.find((c) =>
+            isHerbalife(c.userCorrected)
+          );
+
+          if (herbalifeCorrection) {
+            const uniqueUsers = new Set(
+              corrections
+                .filter(
+                  (c) =>
+                    normalizeFoodName(c.userCorrected) ===
+                    normalizeFoodName(herbalifeCorrection.userCorrected)
+                )
+                .map((c) => c.userId)
+            );
+
+            globalCorrectionMap.set(normalizedAi, {
+              aiDetected: herbalifeCorrection.aiDetected,
+              userCorrected: herbalifeCorrection.userCorrected,
+              users: uniqueUsers,
+              totalCorrections: herbalifeCorrection.timesCorrected,
+              lastCorrected: herbalifeCorrection.lastCorrected,
+              lastCorrectedByUserId: herbalifeCorrection.userId,
+              correctedQuantity: herbalifeCorrection.correctedQuantity,
+              correctedUnit: herbalifeCorrection.correctedUnit,
+              correctedFoodType: herbalifeCorrection.correctedFoodType,
+              correctedCalories: herbalifeCorrection.correctedCalories,
+              correctedCarbs: herbalifeCorrection.correctedCarbs,
+              correctedProtein: herbalifeCorrection.correctedProtein,
+              correctedFat: herbalifeCorrection.correctedFat,
+              correctedFiber: herbalifeCorrection.correctedFiber,
+            });
+
+            console.log(
+              `   🌍 GLOBAL (latest): "${normalizedAi}" → "${herbalifeCorrection.userCorrected}" (Herbalife, ${herbalifeCorrection.lastCorrected})`
+            );
+          }
+        } else {
+          console.log(
+            `   ⏭️ SKIPPING GLOBAL: "${normalizedAi}" - User ${requestingUserId} has personal correction (priority)`
+          );
         }
       }
     });
@@ -210,20 +292,28 @@ export default async function handler(req, res) {
     console.log(`   🌍 Global (Herbalife F1): ${globalCorrectionMap.size} corrections`);
     console.log(`   👤 User-specific: ${userCorrectionMap.size} corrections`);
 
-    // Build final correction maps (merge global + user-specific)
+    // Build final correction maps with EXPLICIT PRIORITY
+    // Priority: User's personal correction ALWAYS wins over global correction
     const finalCorrectionMap = new Map();
     
-    // Add global corrections (Herbalife F1)
+    // Step 1: Add all global corrections first (baseline)
     globalCorrectionMap.forEach((pattern, normalizedAi) => {
       finalCorrectionMap.set(normalizedAi, { ...pattern, isGlobal: true });
-      console.log(`   ✅ GLOBAL: "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
+      console.log(`   📝 GLOBAL (baseline): "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
     });
     
-    // Add user-specific corrections (non-Herbalife, user's own)
+    // Step 2: Force-override with user-specific corrections (ALWAYS WINS)
+    // This explicitly ensures user corrections are never overridden by global corrections
     userCorrectionMap.forEach((pattern, normalizedAi) => {
-      // User-specific overrides global if same AI detection (edge case)
+      // CRITICAL: User correction MUST override any existing entry (global or otherwise)
+      const hadGlobal = finalCorrectionMap.has(normalizedAi);
       finalCorrectionMap.set(normalizedAi, { ...pattern, isGlobal: false });
-      console.log(`   ✅ USER: "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
+      
+      if (hadGlobal) {
+        console.log(`   🔄 USER OVERRIDE: "${pattern.aiDetected}" → "${pattern.userCorrected}" (overriding global)`);
+      } else {
+        console.log(`   ✅ USER: "${pattern.aiDetected}" → "${pattern.userCorrected}"`);
+      }
     });
 
     // Convert to array format

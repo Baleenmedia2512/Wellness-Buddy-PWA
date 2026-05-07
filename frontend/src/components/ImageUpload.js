@@ -12,6 +12,7 @@ import { Camera, CameraResultType, CameraSource } from "@capacitor/camera";
 import { Filesystem } from "@capacitor/filesystem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
+import { Camera as CameraIcon, Image as GalleryIcon } from "lucide-react";
 import {
   validateImageFreshness,
   validateImageForEducation,
@@ -56,6 +57,9 @@ const ImageUpload = forwardRef(
     const cameraInputRef = useRef(null);
     const galleryInputRef = useRef(null);
     const fallbackInputRef = useRef(null);
+
+    // Use SVG icons only on iOS (emoji renders as ? in iOS WebView)
+    const isIOS = Capacitor.getPlatform() === "ios";
 
     // Custom alert modal state
     const [alertModal, setAlertModal] = useState({
@@ -690,7 +694,11 @@ const ImageUpload = forwardRef(
                   className="bg-blue-100 text-blue-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-blue-200 transition-colors duration-200 border border-blue-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   ariaLabel="Take Photo"
                 >
-                  <span className="text-base sm:text-lg">📷</span>
+                  {isIOS ? (
+                    <CameraIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  ) : (
+                    <span className="text-base sm:text-lg">📷</span>
+                  )}
                   <span className="hidden xs:inline sm:inline">Take Photo</span>
                   <span className="xs:hidden sm:hidden">Photo</span>
                 </TouchFeedbackButton>
@@ -700,7 +708,11 @@ const ImageUpload = forwardRef(
                   className="bg-green-100 text-green-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-green-200 transition-colors duration-200 border border-green-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   ariaLabel="From Gallery"
                 >
-                  <span className="text-base sm:text-lg">🖼️</span>
+                  {isIOS ? (
+                    <GalleryIcon className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  ) : (
+                    <span className="text-base sm:text-lg">🖼️</span>
+                  )}
                   <span className="hidden xs:inline sm:inline">Gallery</span>
                   <span className="xs:hidden sm:hidden">Gallery</span>
                 </TouchFeedbackButton>
@@ -725,7 +737,11 @@ const ImageUpload = forwardRef(
                     className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0"
                     ariaLabel="Take Photo"
                   >
-                    <span className="text-xl sm:text-2xl">📷</span>
+                    {isIOS ? (
+                      <CameraIcon className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                    ) : (
+                      <span className="text-xl sm:text-2xl">📷</span>
+                    )}
                     <span className="text-xs sm:text-base leading-tight whitespace-nowrap">
                       Take Photo
                     </span>
@@ -735,7 +751,11 @@ const ImageUpload = forwardRef(
                     className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0"
                     ariaLabel="From Gallery"
                   >
-                    <span className="text-xl sm:text-2xl">🖼️</span>
+                    {isIOS ? (
+                      <GalleryIcon className="w-5 h-5 sm:w-6 sm:h-6 flex-shrink-0" />
+                    ) : (
+                      <span className="text-xl sm:text-2xl">🖼️</span>
+                    )}
                     <span className="text-xs sm:text-base leading-tight whitespace-nowrap">
                       From Gallery
                     </span>

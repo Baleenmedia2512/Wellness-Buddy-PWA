@@ -37,22 +37,11 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
-          // Get user's timezone offset in minutes
-          // getTimezoneOffset() returns positive for west of UTC, negative for east
           const userTimezoneOffset = new Date().getTimezoneOffset();
-          
-          // 🔍 DEBUG: Log timezone info
-          console.log('🌍 Frontend Timezone Info:', {
-            userTimezoneOffset,
-            currentTime: new Date().toString(),
-            dateRange,
-            coachId
-          });
-          
           const params = {
             coachId,
             dateRange,
-            userTimezoneOffset, // Send timezone for proper discipline calculation
+            userTimezoneOffset,
           };
 
           if (dateRange === "custom" && customRange) {
@@ -62,9 +51,7 @@ export const disciplineReportService = {
 
           const response = await axios.get(
             `${API_BASE_URL}/api/coach/discipline-report`,
-            {
-              params,
-            },
+            { params },
           );
 
           return response.data;
@@ -91,21 +78,11 @@ export const disciplineReportService = {
       .execute(
         cacheKey,
         async () => {
-          // Get user's timezone offset in minutes
           const userTimezoneOffset = new Date().getTimezoneOffset();
-          
-          // 🔍 DEBUG: Log timezone info
-          console.log('🌍 Frontend Timezone Info (All Members):', {
-            userTimezoneOffset,
-            currentTime: new Date().toString(),
-            dateRange,
-            userId
-          });
-          
           const params = {
             userId,
             dateRange,
-            userTimezoneOffset, // Send timezone for proper discipline calculation
+            userTimezoneOffset,
           };
 
           if (dateRange === "custom" && customRange) {
@@ -115,9 +92,7 @@ export const disciplineReportService = {
 
           const response = await axios.get(
             `${API_BASE_URL}/api/admin/all-members-discipline`,
-            {
-              params,
-            },
+            { params },
           );
 
           return response.data;
@@ -125,10 +100,7 @@ export const disciplineReportService = {
         cacheManager.ttls.disciplineReport,
       )
       .catch((error) => {
-        console.error(
-          "❌ Error fetching all members discipline report:",
-          error,
-        );
+        console.error("❌ Error fetching all members discipline report:", error);
         throw error;
       });
   },
