@@ -90,21 +90,32 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
   useEffect(() => () => cancelRAF(), []);
 
-  // Lazy-load thumbnail: fetch full image from API and use it as thumbnail
+  // Lazy-load image: only fetch when card scrolls into view
   useEffect(() => {
     if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
+    const el = elRef.current;
+    if (!el) return;
 
-    fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${data.Id}&userId=${userId}`)
-      .then((r) => r.json())
-      .then((res) => {
-        if (res.success && res.imageBase64) {
-          const src = res.imageBase64.startsWith('data:')
-            ? res.imageBase64
-            : `data:image/jpeg;base64,${res.imageBase64}`;
-          setThumbnailSrc(src);
-        }
-      })
-      .catch(() => {/* silently ignore */});
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return;
+        observer.disconnect();
+        fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${data.Id}&userId=${userId}`)
+          .then((r) => r.json())
+          .then((res) => {
+            if (res.success && res.imageBase64) {
+              const src = res.imageBase64.startsWith('data:')
+                ? res.imageBase64
+                : `data:image/jpeg;base64,${res.imageBase64}`;
+              setThumbnailSrc(src);
+            }
+          })
+          .catch(() => {});
+      },
+      { rootMargin: '100px' }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
   }, [data?.Id, data?.hasFullImage, apiBaseUrl, userId]);
 
   if (!data || !data.CreatedAt) {

@@ -168,6 +168,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // ✅ CACHE: Store userId to avoid repeated lookups
   const userIdRef = useRef(null);
   const weightSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
+
+  // ✅ PAGINATION: Show 10 items initially, load more on scroll
+  const [visibleCount, setVisibleCount] = useState(10);
+  const loadMoreRef = useRef(null);
   const weightSummaryRef = useRef(null);
   const weightTrendRef = useRef(null);
   const weightTrendChartRef = useRef(null);
@@ -421,66 +425,95 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   }, [user?.email, apiBaseUrl]);
 
   /**
-   * Fetch ALL weight history on mount and when user changes
+   * Fetch weight history on mount and when user changes
    */
   useEffect(() => {
-    // Clear cached userId when user changes
     userIdRef.current = null;
+    setVisibleCount(10);
     fetchWeightHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.email]);
 
+  // ✅ SCROLL PAGINATION: Load next 10 when sentinel comes into view
+  useEffect(() => {
+    const sentinel = loadMoreRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisibleCount(prev => prev + 10);
+        }
+      },
+      { rootMargin: '300px' }
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [weightHistory.length]);
+
   /**
-   * Fetch ALL weight history (no pagination)
+   * Two-phase fetch:
+   * Phase 1 — metadata only (no images) → renders in ~1s
+   * Phase 2 — images fetched in background → merged silently
    */
   const fetchWeightHistory = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      // Use cached userId or fetch once
       if (!userIdRef.current) {
         userIdRef.current = user?.id || await getUserId(user);
       }
       const userId = userIdRef.current;
-      
+
       if (!userId) {
         throw new Error('User not authenticated or not found in database');
       }
-      
-      // Include images so they display in the weight cards
-      const params = new URLSearchParams({ 
-        userId, 
-        includeImage: 'true',
-        _t: Date.now() 
-      });
-      
+
+      // ── Phase 1: fast fetch without images ────────────────────────
+      const params = new URLSearchParams({ userId, includeImage: 'false', _t: Date.now() });
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
-        },
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
         cache: 'no-store'
       });
 
       const data = await response.json();
-
       if (!response.ok || !data.success) {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      // Set all weight history data
-      // console.log('📊 Weight history loaded:', data.data?.length, 'entries');
-      // console.log('📊 Sample entries:', data.data?.slice(0, 3));
       setWeightHistory(data.data || []);
       setGlobalStats(data.stats || null);
+      setLoading(false);
+
+      // ── Phase 2: background fetch images & merge silently ─────────
+      const imgParams = new URLSearchParams({ userId, includeImage: 'true', _t: Date.now() });
+      fetch(`${apiBaseUrl}/api/get-weight-history?${imgParams}`, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' },
+        cache: 'no-store'
+      })
+        .then(r => r.json())
+        .then(imgData => {
+          if (imgData.success && imgData.data) {
+            const imageMap = new Map(imgData.data.map(r => [r.ID, r.WeightImageBase64]));
+            setWeightHistory(prev =>
+              prev.map(entry => ({
+                ...entry,
+                WeightImageBase64: imageMap.get(entry.ID) ?? entry.WeightImageBase64
+              }))
+            );
+            // Keep modal in sync — if it's open, update the selected entry's image too
+            setSelectedEntry(prev =>
+              prev ? { ...prev, WeightImageBase64: imageMap.get(prev.ID) ?? prev.WeightImageBase64 } : prev
+            );
+          }
+        })
+        .catch(err => console.warn('⚠️ Background image fetch failed:', err));
 
     } catch (err) {
       console.error('❌ Fetch weight history error:', err);
       setError(err.message || 'Failed to load weight history');
-    } finally {
       setLoading(false);
     }
   };
@@ -1230,119 +1263,98 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
         {/* Weight Entries Grouped by Month */}
         <div className="space-y-6">
-          {monthlyGroups.length > 0 && (
-            monthlyGroups.map((monthGroup) => {
-              const monthStats = getMonthStats(monthGroup.entries);
-              
+          {monthlyGroups.length > 0 && (() => {
+            let totalShown = 0;
+            return monthlyGroups.map((monthGroup) => {
+              if (totalShown >= visibleCount) return null;
+
+              const allEntries = monthGroup.entries
+                .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight)
+                .sort((a, b) => istToLocalDate(b.CreatedAt) - istToLocalDate(a.CreatedAt));
+
+              const remaining = visibleCount - totalShown;
+              const visibleEntries = allEntries.slice(0, remaining);
+              totalShown += visibleEntries.length;
+
+              if (visibleEntries.length === 0) return null;
+
               return (
                 <div key={monthGroup.monthKey} className="mb-6">
-                  {/* Month Header */}
-                  {/* <div className="bg-white rounded-xl  p-4 mb-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-bold text-gray-800 flex items-center">
-                        <Calendar className="w-5 h-5 mr-2 text-emerald-500" />
+                  {/* Month and Entries */}
+                  <div className="flex items-center justify-between mb-5">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-gray-600" />
+                      <span className="text-sm font-semibold text-gray-600">
                         {monthGroup.monthName}
-                      </h3>
-                      <span className="text-sm text-gray-500">{monthStats.count} entries</span>
+                      </span>
                     </div>
-                  </div> */}
+                  </div>
 
-{/* Month and Entries */}
-  <div className="flex items-center justify-between mb-5">
-    <div className="flex items-center gap-2">
-      <Calendar className="w-4 h-4 text-gray-600" />
-      <span className="text-sm font-semibold text-gray-600">
-        {monthGroup.monthName}
-      </span>
-    </div>
-    {/* <span className="text-sm text-gray-600">
-      {currentMonthStats.count} {currentMonthStats.count === 1 ? 'entry' : 'entries'}
-    </span> */}
-  </div>
                   {/* Month Entries */}
                   <div className="space-y-3">
-                    {monthGroup.entries
-                      .filter(entry => entry && entry.ID && entry.CreatedAt && entry.Weight)
-                      .sort((a, b) => {
-                        const dateA = istToLocalDate(a.CreatedAt);
-                        const dateB = istToLocalDate(b.CreatedAt);
-                        return dateB - dateA;
-                      })
-                      .map((entry, index) => {
-                        // Show undo row if this is a placeholder
-                        if (entry.isUndoPlaceholder) {
-                          const undoEntry = undoState[entry.ID];
-                          if (!undoEntry || !undoEntry.originalEntry) return null;
-                          return (
-                            <UndoRow
-                              key={entry.ID}
-                              pid={entry.ID}
-                              originalEntry={undoEntry.originalEntry}
-                              expiresAt={undoEntry.expiresAt}
-                              ttlSeconds={undoEntry.ttlSeconds ?? UNDO_SECONDS}
-                              onRestore={handleUndoRestore}
-                              onExpire={() => handleUndoExpire(entry.ID, undoEntry.originalEntry)}
-                            />
-                          );
-                        }
-
-                        // ✅ OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
-                        const prevWeight = previousWeightMap.get(entry.ID);
-                        
-                        // Skeleton placeholder for lazy loading
-                        const skeleton = (
-                          <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 72 }}>
-                            <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
-                              <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-200 rounded-lg"></div>
-                              <div className="flex-1 space-y-1.5 sm:space-y-2">
-                                <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4"></div>
-                                <div className="h-2.5 sm:h-3 bg-gray-200 rounded w-1/2"></div>
-                              </div>
-                              <div className="h-6 sm:h-8 bg-gray-200 rounded w-12 sm:w-16"></div>
-                            </div>
-                          </div>
-                        );
-
-                        // ✅ PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
-                        if (index < 10) {
-                          return (
-                            <Suspense key={entry.ID} fallback={skeleton}>
-                              <WeightCard
-                                data={entry}
-                                previousWeight={prevWeight}
-                                onDelete={handleDeleteEntry}
-                                onView={handleViewEntry}
-                                index={index}
-                                userName={savedUserName || user?.displayName || user?.name || 'User'}
-                                profileImage={savedProfileImage || null}
-                              />
-                            </Suspense>
-                          );
-                        }
-
-                        // Lazy load items beyond the first 5
+                    {visibleEntries.map((entry, index) => {
+                      // Show undo row if this is a placeholder
+                      if (entry.isUndoPlaceholder) {
+                        const undoEntry = undoState[entry.ID];
+                        if (!undoEntry || !undoEntry.originalEntry) return null;
                         return (
-                          <LazyLoadWrapper key={entry.ID} fallback={skeleton} rootMargin="200px">
-                            <Suspense fallback={skeleton}>
-                              <WeightCard
-                                data={entry}
-                                previousWeight={prevWeight}
-                                onDelete={handleDeleteEntry}
-                                onView={handleViewEntry}
-                                index={index}
-                                userName={savedUserName || user?.displayName || user?.name || 'User'}
-                                profileImage={savedProfileImage || null}
-                              />
-                            </Suspense>
-                          </LazyLoadWrapper>
+                          <UndoRow
+                            key={entry.ID}
+                            pid={entry.ID}
+                            originalEntry={undoEntry.originalEntry}
+                            expiresAt={undoEntry.expiresAt}
+                            ttlSeconds={undoEntry.ttlSeconds ?? UNDO_SECONDS}
+                            onRestore={handleUndoRestore}
+                            onExpire={() => handleUndoExpire(entry.ID, undoEntry.originalEntry)}
+                          />
                         );
-                      })}
+                      }
+
+                      const prevWeight = previousWeightMap.get(entry.ID);
+
+                      const skeleton = (
+                        <div className="bg-white rounded-xl p-2.5 xs:p-3 sm:p-4 animate-pulse" style={{ minHeight: 72 }}>
+                          <div className="flex items-center gap-2 xs:gap-3 sm:gap-4">
+                            <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gray-200 rounded-lg"></div>
+                            <div className="flex-1 space-y-1.5 sm:space-y-2">
+                              <div className="h-3 sm:h-4 bg-gray-200 rounded w-3/4"></div>
+                              <div className="h-2.5 sm:h-3 bg-gray-200 rounded w-1/2"></div>
+                            </div>
+                            <div className="h-6 sm:h-8 bg-gray-200 rounded w-12 sm:w-16"></div>
+                          </div>
+                        </div>
+                      );
+
+                      return (
+                        <Suspense key={entry.ID} fallback={skeleton}>
+                          <WeightCard
+                            data={entry}
+                            previousWeight={prevWeight}
+                            onDelete={handleDeleteEntry}
+                            onView={handleViewEntry}
+                            index={index}
+                            userName={savedUserName || user?.displayName || user?.name || 'User'}
+                            profileImage={savedProfileImage || null}
+                          />
+                        </Suspense>
+                      );
+                    })}
                   </div>
                 </div>
               );
-            })
-          )}
+            });
+          })()}
         </div>
+
+        {/* Scroll sentinel — triggers loading next 10 */}
+        {weightHistory.length > visibleCount && (
+          <div ref={loadMoreRef} className="flex justify-center py-4">
+            <div className="flex items-center gap-2 text-sm text-gray-400">
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-emerald-500 rounded-full animate-spin"></div>
+              Loading more...
+            </div>
+          </div>
+        )}
         </div>
       </div>
     );
