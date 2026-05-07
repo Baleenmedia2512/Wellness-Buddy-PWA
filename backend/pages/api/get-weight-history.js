@@ -87,13 +87,20 @@ export default async function handler(req, res) {
         date: formattedRows[0].CreatedAt,
       };
 
-      if (formattedRows.length > 1) {
+      // ✅ previousWeight = most recent entry from a DIFFERENT calendar date (yesterday or earlier)
+      // This ensures the diff shown in WhatsApp/share card is today vs yesterday, not today's 2nd vs 1st entry
+      const latestDateStr = formattedRows[0].CreatedAt.substring(0, 10); // "YYYY-MM-DD"
+      const prevEntry = formattedRows.find(
+        (r, idx) => idx > 0 && r.CreatedAt.substring(0, 10) !== latestDateStr
+      );
+
+      if (prevEntry) {
         stats.previousWeight = {
-          value: parseFloat(formattedRows[1].Weight),
-          date: formattedRows[1].CreatedAt,
+          value: parseFloat(prevEntry.Weight),
+          date: prevEntry.CreatedAt,
         };
         stats.weightChange =
-          parseFloat(formattedRows[0].Weight) - parseFloat(formattedRows[1].Weight);
+          parseFloat(formattedRows[0].Weight) - parseFloat(prevEntry.Weight);
       }
     }
 res.status(200).json({
