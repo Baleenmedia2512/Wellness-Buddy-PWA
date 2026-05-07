@@ -29,15 +29,8 @@ const formatTime = (dateString) => {
 const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, userId }) => {
   const [fullImage, setFullImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
-  const [imageError, setImageError] = useState(false);
 
-  // Reset state when log changes
-  useEffect(() => {
-    setFullImage(null);
-    setImageError(false);
-  }, [log?.Id]);
-
-  // Fetch full image when modal opens
+  // Lazy-load full image when modal opens (list API only returns a thumbnail prefix)
   useEffect(() => {
     if (!log || !log.hasFullImage) return;
     if (!apiBaseUrl || !userId || !log.Id) return;
@@ -47,20 +40,23 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.imageBase64) {
+          // imageBase64 from DB is the raw base64 string — prefix it for <img src>
           const src = data.imageBase64.startsWith('data:')
             ? data.imageBase64
             : `data:image/jpeg;base64,${data.imageBase64}`;
           setFullImage(src);
         }
       })
-      .catch(() => {})
+      .catch(() => {/* silently ignore — thumbnail fallback still works */})
       .finally(() => setImageLoading(false));
   }, [log?.Id]);
 
   if (!log) return null;
 
-  // Only use fullImage — never use truncated base64 from list (it's an incomplete JPEG)
-  const imageSrc = fullImage;
+  // Use full image if loaded, otherwise fall back to the (possibly truncated) thumbnail from list
+  const imageSrc = fullImage || (log.ImageBase64
+    ? (log.ImageBase64.startsWith('data:') ? log.ImageBase64 : `data:image/jpeg;base64,${log.ImageBase64}`)
+    : null);
 
   return (
     <div
@@ -73,20 +69,18 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
       >
         {/* Image header */}
         <div className="relative">
-          {imageSrc && !imageError ? (
+          {imageSrc ? (
             <img
               src={imageSrc}
               alt={log.Topic || 'Meeting Screenshot'}
-              className="w-full h-72 object-cover transition-opacity duration-300"
-              onError={() => setImageError(true)}
+              className={`w-full h-72 object-cover transition-opacity duration-300 ${imageLoading ? 'opacity-60' : 'opacity-100'}`}
+              onError={(e) => {
+                e.target.style.display = 'none';
+              }}
             />
           ) : (
             <div className="w-full h-72 bg-gradient-to-br from-purple-100 to-indigo-100 flex items-center justify-center">
-              {imageLoading ? (
-                <div className="w-10 h-10 border-4 border-purple-300 border-t-purple-600 rounded-full animate-spin" />
-              ) : (
-                <BookOpen className="w-12 h-12 text-purple-400" />
-              )}
+              <BookOpen className="w-12 h-12 text-purple-400" />
             </div>
           )}
 
