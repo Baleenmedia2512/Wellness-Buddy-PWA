@@ -1907,7 +1907,9 @@ function WellnessValleyApp() {
       console.error("❌ Save weight error:", err);
       // Weight validation errors are already shown via alertModal — don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
-        setError(err.message || "Failed to save weight entry");
+        const rawMsg = err.message || "";
+        const isNetworkErr = rawMsg.toLowerCase().includes("load failed") || rawMsg.includes("Failed to fetch") || rawMsg.includes("network") || rawMsg.includes("connection");
+        setError(isNetworkErr ? "🌐 Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
       }
       throw err;
     }
@@ -2812,12 +2814,19 @@ function WellnessValleyApp() {
             bmr: normalizedBmr,
           };
         } else {
-          // Fallback: Weight value not extracted, need manual entry
+          // Fallback: Weight value not extracted — prompt user to retake
           console.log(
-            "⚠️ Weight value not detected in unified call, opening manual entry",
+            "⚠️ Weight value not detected in unified call, prompting retake",
           );
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
+          setAlertModal({
+            isOpen: true,
+            title: "📸 Image Not Clear Enough",
+            message:
+              "We couldn't read the weight from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
+            type: "error",
+          });
+          setCurrentWeightImage(null);
+          setImagePreview(null);
           setLoading(false);
           return;
         }
@@ -2934,15 +2943,21 @@ function WellnessValleyApp() {
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed - check if it's a low confidence issue
+          // Weight detection failed — prompt user to retake a clearer photo
           if (detectedWeight.lowConfidence) {
-            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), opening manual entry`);
-            setError(detectedWeight.error || 'Image quality too low for accurate reading. Please retake with better lighting.');
+            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            console.log("⚠️ Weight detection failed, opening manual entry modal");
+            console.log("⚠️ Weight detection failed, prompting retake");
           }
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
+          setAlertModal({
+            isOpen: true,
+            title: "📸 Please Take a Clearer Photo",
+            message:
+              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
+            type: "error",
+          });
+          setCurrentWeightImage(null);
+          setImagePreview(null);
           setLoading(false);
           return;
         }
@@ -3181,6 +3196,7 @@ function WellnessValleyApp() {
             errorDetails &&
             (errorDetails.includes("network") ||
               errorDetails.includes("Failed to fetch") ||
+              errorDetails.toLowerCase().includes("load failed") ||
               errorDetails.includes("connection") ||
               errorDetails.toLowerCase().includes("internet"));
 
@@ -3201,7 +3217,9 @@ function WellnessValleyApp() {
               detectionReason.toLowerCase().includes("unclear") ||
               detectionReason.toLowerCase().includes("dark") ||
               detectionReason.toLowerCase().includes("low quality") ||
-              detectionReason.toLowerCase().includes("poor lighting"));
+              detectionReason.toLowerCase().includes("poor lighting") ||
+              detectionReason.toLowerCase().includes("not clear") ||
+              detectionReason.toLowerCase().includes("unreadable"));
 
           // Set appropriate error message
           if (isApiError) {
@@ -3209,14 +3227,14 @@ function WellnessValleyApp() {
               "🤖 The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {            errorMessage =
               "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+          } else if (isQualityIssue) {
+            errorMessage = "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
               "⚠️ Please take a photo of food, weight scale, or educational content.";
-          } else if (isQualityIssue) {
-            errorMessage = "📸 Please take a clear photo with good lighting.";
           } else {
             errorMessage =
-              "🍽️ Could not detect food items. Please take a clear photo of your meal.";
+              "📸 Could not detect the image. Please take a clear photo and try again.";
           }
 
           setError(errorMessage);
@@ -3386,8 +3404,13 @@ function WellnessValleyApp() {
           "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
 
-      // Don't show error box for weight validation failures (already showing custom modal)
-      setError("Failed to process image: " + errorMessage);
+      // Handle iOS "Load failed" network error
+      if (errorMessage.toLowerCase() === "load failed" || errorMessage.includes("Failed to fetch")) {
+        setError("🌐 Please check your internet connection (WiFi or mobile data) and try again.");
+      } else {
+        // Don't show error box for weight validation failures (already showing custom modal)
+        setError("Failed to process image: " + errorMessage);
+      }
       console.error("❌ Image processing error:", err);
     } finally {
       setLoading(false);
@@ -3435,7 +3458,10 @@ function WellnessValleyApp() {
     // Network and connectivity errors
     else if (
       rawMessage.includes("network") ||
-      rawMessage.includes("Failed to fetch")
+      rawMessage.includes("Failed to fetch") ||
+      rawMessage.toLowerCase().includes("load failed") ||
+      rawMessage.includes("timeout") ||
+      rawMessage.includes("connection")
     ) {
       return "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("timeout")) {
@@ -4252,13 +4278,15 @@ function WellnessValleyApp() {
             }
 
             return (
-              <div className="bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-                  <span className="text-lg leading-none flex-shrink-0">⚠️</span>
-                  <p className="font-semibold text-sm text-red-700 flex-1">Error</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-start gap-2 px-4 pt-3 pb-2">
+                  <span className="text-lg leading-none flex-shrink-0 mt-0.5">💡</span>
+                  <p className="text-sm text-amber-800 leading-relaxed break-words flex-1">
+                    {error.replace(/^[🤖⚠️🌐📸🍽️💡]\s*/, "")}
+                  </p>
                   <button
                     onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
-                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600"
+                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600 mt-0.5"
                     aria-label="Dismiss"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -4266,9 +4294,6 @@ function WellnessValleyApp() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-sm text-red-600 px-4 pb-3 leading-relaxed break-words">
-                  {error.replace(/^[🤖⚠️🌐📸🍽️]\s*/, "")}
-                </p>
                 {lastImageFileRef.current && (
                   <div className="px-4 pb-3">
                     <TouchFeedbackButton
