@@ -827,6 +827,22 @@ const UserProfileModal = ({
                   />
                 </div>
 
+                {/* Ideal Weight (read-only, computed from height) */}
+                {height && parseFloat(height) >= 50 && (
+                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      {/* <span className="text-blue-500 text-lg">⚖️</span> */}
+                      <div>
+                        <p className="text-xs font-semibold text-blue-600">Ideal Weight</p>
+                        {/* <p className="text-xs text-blue-400">Based on BMI 23 &amp; your height</p> */}
+                      </div>
+                    </div>
+                    <p className="text-base font-bold text-blue-700">
+                      {(23 * Math.pow(parseFloat(height) / 100, 2)).toFixed(1)} kg
+                    </p>
+                  </div>
+                )}
+
                 {/* Diet Preference - Dropdown */}
                 <div className="relative">
                   <label className="block text-sm font-medium text-gray-700 mb-1">
