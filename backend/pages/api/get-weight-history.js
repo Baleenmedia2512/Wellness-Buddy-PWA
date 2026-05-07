@@ -35,23 +35,48 @@ export default async function handler(req, res) {
     const supabase = getSupabaseClient();
 
     // Get weight history using Supabase
+    // Strategy: always fetch all records WITHOUT images first for stats/chart,
+    // then fetch only the latest 10 WITH images — merge them together.
+    // This prevents Vercel 4.5MB response limit from being hit.
     const shouldIncludeImage = includeImage === 'true' || includeImage === true;
-    const selectFields = shouldIncludeImage
-      ? 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, WeightImageBase64, CreatedAt'
-      : 'ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt';
 
+    // Step 1: Fetch ALL records without images (lightweight)
     const { data: rows, error } = await supabase
       .from('weight_records_table')
-      .select(selectFields)
+      .select('ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt')
       .eq('UserId', userId)
       .or('IsDeleted.is.null,IsDeleted.eq.0')
       .order('CreatedAt', { ascending: false });
 
     if (error) throw error;
 
+    // Step 2: If images requested, fetch only the latest 10 records WITH images
+    let imageMap = {};
+    if (shouldIncludeImage) {
+      const { data: imageRows, error: imageError } = await supabase
+        .from('weight_records_table')
+        .select('ID, WeightImageBase64')
+        .eq('UserId', userId)
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .order('CreatedAt', { ascending: false })
+        .limit(10);
+
+      if (!imageError && imageRows) {
+        imageRows.forEach(r => {
+          if (r.WeightImageBase64) imageMap[r.ID] = r.WeightImageBase64;
+        });
+      }
+    }
+
+    // Step 3: Merge image data into the full records
+    const mergedRows = rows.map(row => ({
+      ...row,
+      WeightImageBase64: imageMap[row.ID] || null,
+    }));
+
     // ✅ Format CreatedAt as local time string (without UTC conversion)
     // MySQL stores local time, but mysql2 returns Date objects which get serialized as UTC
-    const formattedRows = rows.map(row => ({
+    const formattedRows = mergedRows.map(row => ({
       ...row,
       CreatedAt: row.CreatedAt instanceof Date 
         ? row.CreatedAt.getFullYear() + '-' +
