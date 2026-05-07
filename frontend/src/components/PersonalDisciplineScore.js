@@ -26,10 +26,10 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
       }
 
       try {
-        console.log(
-          "📊 [PersonalDisciplineScore] Fetching personal discipline for userId:",
-          userId,
-        );
+        // console.log(
+        //   "📊 [PersonalDisciplineScore] Fetching personal discipline for userId:",
+        //   userId,
+        // );
 
         // Get user's timezone offset for proper discipline calculation
         const userTimezoneOffset = new Date().getTimezoneOffset();
@@ -45,19 +45,19 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         );
         const result = await response.json();
 
-        console.log("📊 [PersonalDisciplineScore] Full API Response:", result);
-        console.log("📊 [PersonalDisciplineScore] API Response Summary:", {
-          success: result.success,
-          hasCoachPerformance: !!result.coachPerformance,
-          activities: result.coachPerformance?.activities,
-          overallScore: result.coachPerformance?.periodDiscipline?.percentage,
-          rawCoachPerformance: result.coachPerformance,
-        });
+        // console.log("📊 [PersonalDisciplineScore] Full API Response:", result);
+        // console.log("📊 [PersonalDisciplineScore] API Response Summary:", {
+        //   success: result.success,
+        //   hasCoachPerformance: !!result.coachPerformance,
+        //   activities: result.coachPerformance?.activities,
+        //   overallScore: result.coachPerformance?.periodDiscipline?.percentage,
+        //   rawCoachPerformance: result.coachPerformance,
+        // });
 
         if (!result.success || !result.coachPerformance) {
-          console.log(
-            "📊 [PersonalDisciplineScore] No data available - hiding component",
-          );
+          // console.log(
+          //   "📊 [PersonalDisciplineScore] No data available - hiding component",
+          // );
           setCategories(null);
           setOverallScore(0);
           setLoading(false);
@@ -67,15 +67,15 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         // Get overall discipline score
         const overall =
           result.coachPerformance.periodDiscipline?.percentage || 0;
-        console.log("📊 [PersonalDisciplineScore] Overall score:", overall);
+        // console.log("📊 [PersonalDisciplineScore] Overall score:", overall);
         setOverallScore(overall);
 
         // Get personal discipline activities (use 'activities' field from API)
         const activities = result.coachPerformance.activities || {};
-        console.log(
-          "📊 [PersonalDisciplineScore] Activities data:",
-          activities,
-        );
+        // console.log(
+        //   "📊 [PersonalDisciplineScore] Activities data:",
+        //   activities,
+        // );
 
         const categoryData = {
           weight: activities.weight || { percentage: 0 },
@@ -87,10 +87,10 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
           caloriesBurned: activities.caloriesBurned || { percentage: 0 },
         };
 
-        console.log(
-          "📊 [PersonalDisciplineScore] Setting categories:",
-          categoryData,
-        );
+        // console.log(
+        //   "📊 [PersonalDisciplineScore] Setting categories:",
+        //   categoryData,
+        // );
         setCategories(categoryData);
       } catch (error) {
         console.error(
@@ -110,7 +110,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
   // Expose refresh method to parent component
   useImperativeHandle(ref, () => ({
     refresh: () => {
-      console.log("📊 [PersonalDisciplineScore] Manual refresh triggered");
+      // console.log("📊 [PersonalDisciplineScore] Manual refresh triggered");
       setRefreshKey((prev) => prev + 1);
     },
   }));
@@ -140,16 +140,16 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
 
   // Don't show if no data
   if (!categories) {
-    console.log(
-      "📊 [PersonalDisciplineScore] Not rendering - no categories available",
-    );
+    // console.log(
+    //   "📊 [PersonalDisciplineScore] Not rendering - no categories available",
+    // );
     return null;
   }
 
-  console.log(
-    " [PersonalDisciplineScore] Rendering with categories:",
-    categories,
-  );
+  // console.log(
+  //   " [PersonalDisciplineScore] Rendering with categories:",
+  //   categories,
+  // );
 
   return (
     <div className="w-full bg-white border-b border-gray-200 shadow-sm">

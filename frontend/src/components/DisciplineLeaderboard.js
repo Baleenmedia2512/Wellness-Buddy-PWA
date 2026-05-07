@@ -31,10 +31,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      console.log(
-        "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
-        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
-      );
+      // console.log(
+      //   "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
+      //   `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
+      // );
 
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}&t=${Date.now()}`,
@@ -47,19 +47,19 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log(
-        "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
-        response.status,
-      );
+      // console.log(
+      //   "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
+      //   response.status,
+      // );
       const result = await response.json();
-      console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
+      // console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        console.log(
-          "✅ [DISCIPLINE-LEADERBOARD] Data found:",
-          result.data.length,
-          "users",
-        );
+        // console.log(
+        //   "✅ [DISCIPLINE-LEADERBOARD] Data found:",
+        //   result.data.length,
+        //   "users",
+        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {

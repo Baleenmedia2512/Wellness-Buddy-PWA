@@ -154,6 +154,55 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                 }
                 highlight
               />
+              {/* Current Weight */}
+              {profile.latestWeight && (
+                <ProfileRow
+                  icon={<span className="text-base">📊</span>}
+                  label="Current Weight"
+                  value={`${parseFloat(profile.latestWeight).toFixed(1)} kg`}
+                />
+              )}
+              {/* Weight Mode Badge */}
+              {profile.height && profile.latestWeight && (() => {
+                const ideal = parseFloat((23 * Math.pow(parseFloat(profile.height) / 100, 2)).toFixed(1));
+                const current = parseFloat(profile.latestWeight);
+                const diff = Math.abs(current - ideal).toFixed(1);
+                const isLoss = current > ideal + 0.5;
+                const isGain = current < ideal - 0.5;
+                if (isLoss) return (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-red-50 border border-red-200">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-red-100 shadow-sm flex items-center justify-center">
+                      <span className="text-base">🔥</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-red-400">Weight Mode</p>
+                      <p className="text-sm font-semibold text-red-700">Weight Loss Mode · −{diff} kg</p>
+                    </div>
+                  </div>
+                );
+                if (isGain) return (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-orange-50 border border-orange-200">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-orange-100 shadow-sm flex items-center justify-center">
+                      <span className="text-base">🏋️</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-orange-400">Weight Mode</p>
+                      <p className="text-sm font-semibold text-orange-700">Weight Gain Mode · +{diff} kg</p>
+                    </div>
+                  </div>
+                );
+                return (
+                  <div className="flex items-center gap-3 p-3 rounded-xl bg-green-50 border border-green-200">
+                    <div className="flex-shrink-0 w-10 h-10 rounded-xl bg-green-100 shadow-sm flex items-center justify-center">
+                      <span className="text-base">✅</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-green-500">Weight Mode</p>
+                      <p className="text-sm font-semibold text-green-700">At Ideal Weight 🎯</p>
+                    </div>
+                  </div>
+                );
+              })()}
               <ProfileRow
                 icon={<Salad className="h-4 w-4 text-green-600" />}
                 label="Diet Preference"

@@ -28,12 +28,12 @@ export const getUserContext = async (userId, forceRefresh = false) => {
 
   // Return cached data if still valid (unless force refresh)
   if (!forceRefresh && cachedContext && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION_MS)) {
-    console.log('[USER CONTEXT] ✅ Returning cached context');
+    // console.log('[USER CONTEXT] ✅ Returning cached context');
     return cachedContext;
   }
 
   try {
-    console.log('[USER CONTEXT] 🔄 Fetching user context...');
+    // console.log('[USER CONTEXT] 🔄 Fetching user context...');
     const startTime = Date.now();
 
     const response = await fetch(
@@ -48,19 +48,19 @@ export const getUserContext = async (userId, forceRefresh = false) => {
 
     if (result.success && result.data) {
       const loadTime = Date.now() - startTime;
-      console.log(`[USER CONTEXT] ✅ Context loaded in ${loadTime}ms:`, {
-        personalCorrections: result.data.personalCorrections.length,
-        globalPatterns: result.data.globalPatterns.length,
-        dietPreference: result.data.dietPreference,
-        recentMeals: result.data.recentMeals.length
-      });
+      // console.log(`[USER CONTEXT] ✅ Context loaded in ${loadTime}ms:`, {
+      //   personalCorrections: result.data.personalCorrections.length,
+      //   globalPatterns: result.data.globalPatterns.length,
+      //   dietPreference: result.data.dietPreference,
+      //   recentMeals: result.data.recentMeals.length
+      // });
       
       // Debug: Log actual data to see what we got
       if (result.data.recentMeals.length === 0) {
-        console.log('[USER CONTEXT] ℹ️ No recent meals found - you may need to upload food images');
+        // console.log('[USER CONTEXT] ℹ️ No recent meals found - you may need to upload food images');
       }
       if (result.data.globalPatterns.length === 0) {
-        console.log('[USER CONTEXT] ℹ️ No global patterns found - need 3+ users making same correction');
+        // console.log('[USER CONTEXT] ℹ️ No global patterns found - need 3+ users making same correction');
       }
 
       // Cache the result

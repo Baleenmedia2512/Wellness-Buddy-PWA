@@ -29,10 +29,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      console.log(
-        "🏆 [LEADERBOARD] Fetching data from:",
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
-      );
+      // console.log(
+      //   "🏆 [LEADERBOARD] Fetching data from:",
+      //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
+      // );
 
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
@@ -45,16 +45,16 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log("🏆 [LEADERBOARD] Response status:", response.status);
+      // console.log("🏆 [LEADERBOARD] Response status:", response.status);
       const result = await response.json();
-      console.log("🏆 [LEADERBOARD] Result:", result);
+      // console.log("🏆 [LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        console.log(
-          "✅ [LEADERBOARD] Data found:",
-          result.data.length,
-          "users",
-        );
+        // console.log(
+        //   "✅ [LEADERBOARD] Data found:",
+        //   result.data.length,
+        //   "users",
+        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {
