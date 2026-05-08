@@ -635,7 +635,17 @@ export default async function handler(req, res) {
         });
 
         // A day is disciplined if net calories (consumed - burned) <= BMR target
+        // Include ALL dates in the reporting period so days with no food logged (0 consumed)
+        // are also evaluated — 0 consumed ≤ BMR target → disciplined day ✅
+        const allPeriodDates = new Set();
+        const periodCursor = new Date(dates.start);
+        const periodEnd = new Date(dates.end);
+        while (periodCursor <= periodEnd) {
+          allPeriodDates.add(periodCursor.toISOString().slice(0, 10));
+          periodCursor.setDate(periodCursor.getDate() + 1);
+        }
         const allActivityDates = new Set([
+          ...allPeriodDates,
           ...Object.keys(caloriesConsumedByDate),
           ...Object.keys(caloriesBurnedByDate),
         ]);
