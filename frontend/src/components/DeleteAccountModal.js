@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2, X, CheckCircle, Loader, Mail, ShieldCheck } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
+import { deleteFirebaseUser } from '../services/firebase';
 
 /**
  * DeleteAccountModal — Apple Guideline 5.1.1(v) compliant
@@ -188,6 +189,12 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           }
           keysToRemove.forEach((key) => localStorage.removeItem(key));
 
+          // ✅ CRITICAL: Re-set the sign-out block flag IMMEDIATELY after clearing localStorage.
+          // Without this, Firebase's onAuthStateChanged can silently re-authenticate
+          // the user in the gap between localStorage clear and signOutUser() being called.
+          localStorage.setItem('userSignedOut', 'true');
+          localStorage.setItem('accountDeleted', 'true');
+
           // Clear sessionStorage as well
           sessionStorage.clear();
 
@@ -199,6 +206,14 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           }
         } catch (clearErr) {
           console.warn('[DeleteAccountModal] Cache clear error (non-critical):', clearErr);
+        }
+
+        // ✅ Delete the Firebase Auth user so the token is permanently invalidated.
+        // This prevents the app from silently re-logging in on next open.
+        try {
+          await deleteFirebaseUser();
+        } catch (fbErr) {
+          console.warn('[DeleteAccountModal] Firebase user delete error (non-fatal):', fbErr);
         }
 
         // ✅ Sign out IMMEDIATELY so background app state clears before step 4 shows

@@ -1016,6 +1016,12 @@ function WellnessValleyApp() {
         signOutUser().catch(() => {});
         return;
       }
+      // ✅ Block re-auth if account was permanently deleted
+      if (user && localStorage.getItem("accountDeleted") === "true") {
+        console.warn("🚫 [Auth State] Blocked re-auth — account was deleted");
+        signOutUser().catch(() => {});
+        return;
+      }
       // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
       if (forceLoggedOut) {
         console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
@@ -3479,6 +3485,7 @@ function WellnessValleyApp() {
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
 
       // Flag should already be set by Login component
@@ -3618,6 +3625,7 @@ function WellnessValleyApp() {
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
 
       // Flag is already set by Login component before this function is called
@@ -3939,6 +3947,7 @@ function WellnessValleyApp() {
     } else {
       // No OTP user found, proceed with verification
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
       setIsOtpVerified(true);
       localStorage.setItem("isOtpVerified", "true");
