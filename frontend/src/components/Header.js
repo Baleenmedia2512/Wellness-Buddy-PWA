@@ -14,9 +14,11 @@ import {
   Bell,
   Heart,
   X,
+  Trash2,
 } from "lucide-react";
 import APP_VERSION from "../config/version";
 import UserProfileModal from "./UserProfileModal";
+import DeleteAccountModal from "./DeleteAccountModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 
@@ -45,6 +47,7 @@ const Header = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [savedUserName, setSavedUserName] = useState(null);
   const [savedProfileImage, setSavedProfileImage] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const menuPanelRef = useRef(null);
 
   // Auto-scale menu panel to fit screen without scroll
@@ -606,7 +609,7 @@ const Header = ({
                     </div>
                   </div>
 
-                  {/* ── FOOTER: Sign out + Version ── */}
+                  {/* ── FOOTER: Sign out + Delete Account + Version ── */}
                   <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between bg-gray-50 rounded-b-2xl">
                     <TouchFeedbackButton
                       onClick={() => {
@@ -619,6 +622,19 @@ const Header = ({
                       <LogOut className="h-3.5 w-3.5 text-red-500" />
                       <span className="text-xs font-medium text-red-600">
                         Sign out
+                      </span>
+                    </TouchFeedbackButton>
+                    <TouchFeedbackButton
+                      onClick={() => {
+                        setShowDeleteModal(true);
+                        closeMenu();
+                      }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 hover:bg-red-50 hover:border-red-200 transition-colors"
+                      ariaLabel="Delete account"
+                    >
+                      <Trash2 className="h-3.5 w-3.5 text-red-500" />
+                      <span className="text-xs font-medium text-red-600">
+                        Delete Account
                       </span>
                     </TouchFeedbackButton>
                     <p className="text-[10px] text-gray-400 font-medium">
@@ -639,6 +655,17 @@ const Header = ({
         user={user}
         userRole={userRole}
         onProfileUpdate={handleProfileUpdate}
+      />
+
+      {/* Delete Account Modal */}
+      <DeleteAccountModal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        userEmail={user?.email || ''}
+        onAccountDeleted={() => {
+          setShowDeleteModal(false);
+          onSignOut();
+        }}
       />
     </header>
   );
