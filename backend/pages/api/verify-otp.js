@@ -34,11 +34,12 @@ export default async function handler(req, res) {
         user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
       });
     }
-    // OTP 123456 is for regular login
+    // OTP 123456 is for regular login — always treat as new user since no DB record
     if (purpose !== 'delete' && otp === '123456') {
       return res.json({
         success: true,
         message: 'OTP verified successfully',
+        isNewUser: true,
         user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
       });
     }

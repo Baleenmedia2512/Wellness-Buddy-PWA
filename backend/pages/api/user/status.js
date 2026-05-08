@@ -67,7 +67,8 @@ export default async function handler(req, res) {
     }
 
     // ── Demo account bypass for App Store review ──────────────────────────────
-    // Returns pendingRequest so the OTP modal (enter 123456) shows — not the wizard.
+    // Demo account never writes to DB, so always treat as needing setup.
+    // Returns pendingRequest so the OTP modal (enter 123456) shows.
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     if (DEMO_ACCOUNTS.includes(email)) {
       return res.status(200).json({

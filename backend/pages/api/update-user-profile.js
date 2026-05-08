@@ -50,6 +50,20 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
+    // ── Demo account bypass for App Store review ──────────────────────────────
+    // Do NOT write profile data to the live DB for the demo account.
+    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    const normalizedEmail = email.toLowerCase().trim();
+    if (DEMO_ACCOUNTS.includes(normalizedEmail)) {
+      console.log('✅ [update-user-profile] Demo account — skipping DB write');
+      return res.status(200).json({
+        success: true,
+        message: 'Profile updated successfully',
+        userId: null,
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     console.log("📊 [update-user-profile] Using Supabase REST API");
 
     // First, get the user to verify they exist and get their UserId
