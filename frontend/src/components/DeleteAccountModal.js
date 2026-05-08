@@ -214,13 +214,19 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm">
+      {/* Bottom sheet on mobile, centered card on sm+ screens */}
+      <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[90vh]">
 
         {/* ══ STEP 1 — Warning ══════════════════════════════════════════════ */}
         {step === 1 && (
           <>
-            <div className="bg-red-50 px-5 pt-5 pb-4 border-b border-red-100">
+            {/* Drag handle — visible on mobile only */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+
+            <div className="bg-red-50 px-5 pt-4 pb-4 border-b border-red-100">
               <div className="flex items-start gap-3">
                 <div className="h-10 w-10 rounded-full bg-red-100 flex items-center justify-center flex-shrink-0">
                   <AlertTriangle className="h-5 w-5 text-red-600" />
@@ -235,7 +241,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
               </div>
             </div>
 
-            <div className="px-5 py-4">
+            {/* Scrollable body */}
+            <div className="overflow-y-auto flex-1 px-5 py-4">
               <p className="text-sm text-gray-700 font-medium mb-3">Deleting your account will permanently remove:</p>
               <ul className="space-y-1.5 mb-4">
                 {[
@@ -261,14 +268,15 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
               )}
             </div>
 
-            <div className="flex gap-3 px-5 pb-5">
-              <TouchFeedbackButton onClick={handleClose} className="flex-1 py-2.5 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Cancel">
+            {/* Sticky footer buttons */}
+            <div className="flex gap-3 px-5 pt-3 pb-5 sm:pb-5 border-t border-gray-100 bg-white" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
+              <TouchFeedbackButton onClick={handleClose} className="flex-1 py-3 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Cancel">
                 Cancel
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={handleSendOtp}
                 disabled={otpSending}
-                className="flex-1 py-2.5 px-4 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
+                className="flex-1 py-3 px-4 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 transition-colors flex items-center justify-center gap-1.5 disabled:opacity-60"
                 ariaLabel="Continue"
               >
                 {otpSending ? <><Loader className="h-4 w-4 animate-spin" /> Sending...</> : <><Mail className="h-4 w-4" /> Continue</>}
@@ -280,26 +288,31 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
         {/* ══ STEP 2 — OTP Verification ════════════════════════════════════ */}
         {step === 2 && (
           <>
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+
             <div className="bg-red-50 px-5 py-4">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <ShieldCheck className="h-5 w-5 text-red-600" />
                   <h2 className="text-base font-bold text-red-600">Verify Your Identity</h2>
                 </div>
-                <TouchFeedbackButton onClick={handleClose} className="p-1.5 rounded-full hover:bg-red-500 transition-colors" ariaLabel="Close">
+                <TouchFeedbackButton onClick={handleClose} className="p-1.5 rounded-full hover:bg-red-100 transition-colors" ariaLabel="Close">
                   <X className="h-4 w-4 text-red-600" />
                 </TouchFeedbackButton>
               </div>
             </div>
 
-            <div className="px-5 py-5">
+            <div className="overflow-y-auto flex-1 px-5 py-5">
               <div className="flex justify-center mb-3">
                 <div className="h-14 w-14 rounded-full bg-red-50 flex items-center justify-center">
                   <Mail className="h-7 w-7 text-red-500" />
                 </div>
               </div>
               <p className="text-sm text-gray-700 text-center mb-1">We sent a 6-digit OTP to:</p>
-              <p className="text-sm font-semibold text-gray-900 text-center mb-4 truncate px-2">{userEmail}</p>
+              <p className="text-sm font-semibold text-gray-900 text-center mb-5 truncate px-2">{userEmail}</p>
 
               {/* 6-box OTP input */}
               <div className="flex justify-center gap-2 mb-3" onPaste={handleOtpPaste}>
@@ -313,7 +326,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors"
+                    className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px]"
                     style={{ borderColor: digit ? '#dc2626' : '#e5e7eb' }}
                   />
                 ))}
@@ -337,14 +350,14 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
               )}
             </div>
 
-            <div className="flex gap-3 px-5 pb-5">
-              <TouchFeedbackButton onClick={() => { setStep(1); setOtp(['','','','','','']); setErrorMessage(''); }} className="flex-1 py-2.5 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Back">
+            <div className="flex gap-3 px-5 pt-3 pb-5 border-t border-gray-100 bg-white" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
+              <TouchFeedbackButton onClick={() => { setStep(1); setOtp(['','','','','','']); setErrorMessage(''); }} className="flex-1 py-3 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Back">
                 Back
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={handleVerifyOtp}
                 disabled={!isOtpComplete || otpVerifying}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${isOtpComplete && !otpVerifying ? 'bg-red-600 hover:bg-red-700 shadow-lg' : 'bg-gray-300 cursor-not-allowed'}`}
+                className={`flex-1 py-3 px-4 rounded-xl text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${isOtpComplete && !otpVerifying ? 'bg-red-600 hover:bg-red-700 shadow-lg' : 'bg-gray-300 cursor-not-allowed'}`}
                 ariaLabel="Verify OTP"
               >
                 {otpVerifying ? <><Loader className="h-4 w-4 animate-spin" /> Verifying...</> : <><ShieldCheck className="h-4 w-4" /> Verify OTP</>}
@@ -356,6 +369,11 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
         {/* ══ STEP 3 — Type DELETE ══════════════════════════════════════════ */}
         {step === 3 && (
           <>
+            {/* Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 sm:hidden">
+              <div className="w-10 h-1 rounded-full bg-gray-300" />
+            </div>
+
             <div className="bg-red-50 px-5 py-4 border-b border-red-100">
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-bold text-red-700">Final Confirmation</h2>
@@ -363,10 +381,10 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
                   <X className="h-4 w-4 text-red-400" />
                 </TouchFeedbackButton>
               </div>
-              <p className="text-xs text-red-500 mt-1">{userEmail}</p>
+              <p className="text-xs text-red-500 mt-1 truncate">{userEmail}</p>
             </div>
 
-            <div className="px-5 py-5">
+            <div className="overflow-y-auto flex-1 px-5 py-5">
               <p className="text-sm text-gray-700 mb-4">
                 To permanently delete your account, type{' '}
                 <span className="font-bold text-red-600 bg-red-50 px-1.5 py-0.5 rounded">DELETE</span>{' '}
@@ -377,7 +395,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
                 value={confirmText}
                 onChange={(e) => { setConfirmText(e.target.value); setErrorMessage(''); }}
                 placeholder="Type DELETE here"
-                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 text-sm font-mono text-center tracking-widest focus:outline-none focus:border-red-400 transition-colors"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3.5 text-[16px] font-mono text-center tracking-widest focus:outline-none focus:border-red-400 transition-colors"
                 autoFocus
                 autoCapitalize="characters"
                 autoCorrect="off"
@@ -390,14 +408,14 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
               )}
             </div>
 
-            <div className="flex gap-3 px-5 pb-5">
-              <TouchFeedbackButton onClick={() => { setStep(2); setConfirmText(''); setErrorMessage(''); }} className="flex-1 py-2.5 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Back">
+            <div className="flex gap-3 px-5 pt-3 pb-5 border-t border-gray-100 bg-white" style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}>
+              <TouchFeedbackButton onClick={() => { setStep(2); setConfirmText(''); setErrorMessage(''); }} className="flex-1 py-3 px-4 rounded-xl border-2 border-gray-200 text-gray-700 text-sm font-semibold hover:bg-gray-50 transition-colors" ariaLabel="Back">
                 Back
               </TouchFeedbackButton>
               <TouchFeedbackButton
                 onClick={handleDeleteAccount}
                 disabled={!isConfirmValid || isDeleting}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${isConfirmValid && !isDeleting ? 'bg-red-600 hover:bg-red-700 shadow-lg' : 'bg-gray-300 cursor-not-allowed'}`}
+                className={`flex-1 py-3 px-4 rounded-xl text-white text-sm font-semibold transition-all flex items-center justify-center gap-1.5 ${isConfirmValid && !isDeleting ? 'bg-red-600 hover:bg-red-700 shadow-lg' : 'bg-gray-300 cursor-not-allowed'}`}
                 ariaLabel="Permanently delete account"
               >
                 {isDeleting ? <><Loader className="h-4 w-4 animate-spin" /> Deleting...</> : <><Trash2 className="h-4 w-4" /> Delete Account</>}
@@ -408,7 +426,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
 
         {/* ══ STEP 4 — Success ══════════════════════════════════════════════ */}
         {step === 4 && (
-          <div className="px-5 pt-8 pb-6 text-center">
+          <div className="px-5 pt-8 pb-6 text-center" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
             <div className="flex justify-center mb-4">
               <div className="h-16 w-16 rounded-full bg-green-100 flex items-center justify-center">
                 <CheckCircle className="h-8 w-8 text-green-600" />
@@ -419,7 +437,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
             <p className="text-xs text-gray-400 mb-6">All your personal data has been removed from our servers.</p>
             <TouchFeedbackButton
               onClick={() => { resetState(); if (onAccountDeleted) onAccountDeleted(); }}
-              className="w-full py-3 px-4 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors"
+              className="w-full py-3.5 px-4 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition-colors"
               ariaLabel="Done"
             >
               Done
