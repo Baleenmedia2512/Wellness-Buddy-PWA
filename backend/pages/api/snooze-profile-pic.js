@@ -22,6 +22,13 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass ───────────────────────────────────────────────────
+  // Demo account has no DB record — skip snooze write and return success.
+  if (!userId || userId === null || userId === 'null') {
+    return res.status(200).json({ success: true });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const supabase = getSupabaseClient();
 

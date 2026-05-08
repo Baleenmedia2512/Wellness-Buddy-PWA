@@ -26,6 +26,19 @@ export default async function handler(req, res) {
   const normalizedEmail = email.toLowerCase().trim();
   console.log('🗑️ [delete-user-account] Deleting account for:', normalizedEmail);
 
+  // ── Demo account bypass ───────────────────────────────────────────────────
+  // Demo account never writes to DB, so there is nothing to delete.
+  // Return success immediately so the deletion flow completes cleanly.
+  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+  if (DEMO_ACCOUNTS.includes(normalizedEmail)) {
+    console.log('✅ [delete-user-account] Demo account — no DB record to delete, returning success');
+    return res.status(200).json({
+      success: true,
+      message: 'Account and all associated data have been permanently deleted.',
+    });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const supabase = getSupabaseClient();
 

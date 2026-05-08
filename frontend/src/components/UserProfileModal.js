@@ -179,7 +179,21 @@ const UserProfileModal = ({
       const data = await response.json();
 
       if (data.success && data.data) {
-        const profile = data.data;
+        let profile = data.data;
+
+        // 🔒 Demo account: load locally-saved profile if API returned empty fields
+        const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+        if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
+          const stored = localStorage.getItem(`demo_profile_${user.email}`);
+          if (stored) {
+            try {
+              const local = JSON.parse(stored);
+              console.log('💾 [Demo] Loading profile from localStorage:', local);
+              profile = { ...profile, ...local };
+            } catch (e) { /* ignore */ }
+          }
+        }
+
         console.log("📥 [UserProfileModal] Fetched profile data:", {
           latestBmr: profile.latestBmr,
           latestWeight: profile.latestWeight,
@@ -198,8 +212,26 @@ const UserProfileModal = ({
           setProfileImagePreview(profile.profileImage);
         }
         console.log("✅ [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
+      } else if (data.success && !data.data) {
+        // 🔒 Demo account bypass: API returns top-level fields (no data wrapper)
+        // Load from localStorage instead
+        const stored = localStorage.getItem(`demo_profile_${user.email}`);
+        if (stored) {
+          try {
+            const local = JSON.parse(stored);
+            console.log('💾 [Demo] Loading profile from localStorage (no data wrapper):', local);
+            setName(local.userName || user?.name || "");
+            setHeight(local.height ? String(local.height) : "");
+            setBmr(local.latestBmr ? String(Math.round(local.latestBmr)) : "");
+            setPhone(local.phoneNumber || "");
+            setDietType(local.dietType || "");
+            if (local.profileImage) setProfileImagePreview(local.profileImage);
+          } catch (e) { /* ignore */ }
+        } else {
+          // No stored data — use API top-level fields as fallback
+          setName(data.userName || user?.name || "");
+        }
       }
-    } catch (err) {
       console.error("❌ Error fetching user profile:", err);
       // Fall back to user object data
       setName(user?.name || "");
@@ -410,6 +442,21 @@ const UserProfileModal = ({
       }
 
       if (data.success) {
+        // 🔒 Demo account: persist profile locally since no DB write happens
+        const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+        if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
+          const demoProfile = {
+            userName: name || '',
+            height: height ? parseFloat(height) : null,
+            latestBmr: bmr ? parseFloat(bmr) : null,
+            dietType: dietType || '',
+            phoneNumber: phone ? phone.trim() : '',
+            profileImage: profileImagePreview || null,
+          };
+          localStorage.setItem(`demo_profile_${user.email}`, JSON.stringify(demoProfile));
+          console.log('💾 [Demo] Profile saved to localStorage');
+        }
+
         // Notify parent component of the update
         if (onProfileUpdate) {
           onProfileUpdate({

@@ -533,6 +533,15 @@ function WellnessValleyApp() {
           return false;
         }
 
+        // ✅ New user (e.g. demo account after deletion) — show profile setup modal
+        if (data.isNewUser) {
+          setShowUserNotFoundModal(false);
+          setIsUserActive(true);
+          if (data.role) setUserRole(data.role);
+          setTimeout(() => setShowNewUserProfileModal(true), 500);
+          return true;
+        }
+
         // User found but inactive
         if (data.success && !data.isActive) {
           setShowInactiveModal(true);
