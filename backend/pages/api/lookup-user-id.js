@@ -34,19 +34,9 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── Demo account bypass for App Store review ──────────────────────────────
-  const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-  if (DEMO_ACCOUNTS.includes(email)) {
-    return res.status(200).json({
-      success: true,
-      userId: 554,
-      userName: 'test',
-      email: email,
-      status: 'Active',
-      isActive: true,
-      role: 'member',
-    });
-  }
+  // ── Demo account: query DB like any real user ─────────────────────────────
+  // Do NOT hardcode userId for demo account — after deletion the user won't exist
+  // in DB and the app must treat them as a new user so profile setup runs fresh.
   // ─────────────────────────────────────────────────────────────────────────
 
   try {
