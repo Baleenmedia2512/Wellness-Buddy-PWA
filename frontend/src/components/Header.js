@@ -662,6 +662,7 @@ const Header = ({
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
         userEmail={user?.email || ''}
+        onSignOut={onSignOut}
         onAccountDeleted={() => {
           setShowDeleteModal(false);
           onSignOut();
