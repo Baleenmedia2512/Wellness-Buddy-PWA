@@ -66,6 +66,27 @@ export default async function handler(req, res) {
 
     if (!data) {
       console.log('❌ [lookup-user-id] User not found in database');
+
+      // If this is the demo reviewer account, treat as a new user rather than
+      // returning an error. This ensures the profile setup modal appears
+      // immediately (no "User not found" modal) and keeps the demo flow
+      // self-contained (no writes to the live DB).
+      const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+      if (DEMO_ACCOUNTS.includes(email)) {
+        console.log('ℹ️ [lookup-user-id] Demo account detected and not present in DB — returning new-user response');
+        return res.status(200).json({
+          success: true,
+          userNotFound: false,
+          isNewUser: true,
+          userId: null,
+          userName: 'App Reviewer',
+          email: email,
+          status: 'Active',
+          isActive: true,
+          role: 'member'
+        });
+      }
+
       res.status(404).json({ 
         success: false, 
         message: 'User not found',
