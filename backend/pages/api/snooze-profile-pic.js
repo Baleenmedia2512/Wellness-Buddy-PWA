@@ -23,8 +23,7 @@ export default async function handler(req, res) {
   }
 
   // ── Demo account bypass ───────────────────────────────────────────────────
-  // Demo account has no DB record — skip snooze write and return success.
-  if (!userId || userId === null || userId === 'null') {
+  if (!userId || userId === null || userId === 'null' || userId === 'DEMO_USER') {
     return res.status(200).json({ success: true });
   }
   // ─────────────────────────────────────────────────────────────────────────

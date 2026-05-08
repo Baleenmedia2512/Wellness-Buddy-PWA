@@ -113,6 +113,11 @@ const NutritionDashboard = ({
   const trendPanelRef = useRef(null);
 
   const resolveUserId = useCallback(async () => {
+    // 🔒 Demo account — return sentinel so dashboard renders empty instead of erroring
+    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    if (DEMO_ACCOUNTS.includes((user?.email || '').toLowerCase().trim())) {
+      return 'DEMO_USER';
+    }
     if (user?.id) return user.id;
     if (!user?.email) return null;
 

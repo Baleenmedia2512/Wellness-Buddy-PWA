@@ -164,6 +164,11 @@ export default async function handler(req, res) {
       return;
     }
 
+    // 🔒 Demo account bypass
+    if (userId === 'DEMO_USER') {
+      return res.status(200).json({ success: true, today: { steps: 0, caloriesBurned: 0, activityType: 'walking' }, trend: [] });
+    }
+
     const trendDays = Math.min(30, Math.max(1, Number.parseInt(days, 10) || 7));
     const todayKey =
       rawTargetDate && /^\d{4}-\d{2}-\d{2}$/.test(rawTargetDate)

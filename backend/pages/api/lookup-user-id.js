@@ -78,7 +78,7 @@ export default async function handler(req, res) {
           success: true,
           userNotFound: false,
           isNewUser: true,
-          userId: null,
+          userId: 'DEMO_USER',
           userName: 'App Reviewer',
           email: email,
           status: 'Active',
