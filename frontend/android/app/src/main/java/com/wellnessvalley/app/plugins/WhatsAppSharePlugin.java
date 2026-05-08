@@ -32,7 +32,9 @@ public class WhatsAppSharePlugin extends Plugin {
     public void shareImage(PluginCall call) {
         try {
             String base64Data = call.getString("base64Data");
-            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + ".png");
+            String mimeType = call.getString("mimeType", "image/png");
+            String defaultExt = "image/jpeg".equals(mimeType) ? ".jpg" : ".png";
+            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + defaultExt);
             String title = call.getString("title", "Share Image");
             String text = call.getString("text", "");
             
@@ -77,9 +79,10 @@ public class WhatsAppSharePlugin extends Plugin {
             // Create share intent with HIGH QUALITY configuration
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
             
-            // CRITICAL: Use specific image/png MIME type (prevents compression)
-            // Using "image/*" or "image/jpeg" may trigger compression in some apps
-            shareIntent.setType("image/png");
+            // Use the MIME type matching the encoded bytes. JPEG @ 0.95 is much smaller
+            // than PNG and opens the share sheet much faster while remaining visually
+            // indistinguishable for UI screenshots.
+            shareIntent.setType(mimeType);
             
             // Add the image URI as stream
             shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
@@ -99,7 +102,7 @@ public class WhatsAppSharePlugin extends Plugin {
             shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             
             Log.d(TAG, "Share intent configured:");
-            Log.d(TAG, "  - MIME type: image/png (lossless)");
+            Log.d(TAG, "  - MIME type: " + mimeType);
             Log.d(TAG, "  - File size: " + imageFile.length() + " bytes");
             Log.d(TAG, "  - Permissions: READ + WRITE");
             

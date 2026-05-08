@@ -5,7 +5,7 @@ import { getVersionString } from "../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../services/getUserId";
 import { geminiService } from "../services/geminiService";
-import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
+import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../utils/shareUtils";
 
 const NutritionCard = ({
   data,
@@ -42,6 +42,7 @@ const NutritionCard = ({
   const cardRef = useRef(null);
   const shareRef = useRef(null);
   const addSearchTimeoutRef = useRef(null);
+  const cachedShareDataUrlRef = useRef(null);
 
   // Create high-resolution image URL from original file for sharing
   useEffect(() => {
@@ -68,6 +69,34 @@ const NutritionCard = ({
       }
     };
   }, []);
+
+  // Pre-capture the share image in the background. This is the single biggest
+  // win for share latency: instead of running html2canvas on the click (which
+  // blocks the main thread for several seconds before the share sheet appears),
+  // we capture once when the card is ready and reuse the cached data URL.
+  useEffect(() => {
+    cachedShareDataUrlRef.current = null;
+    if (!shareRef.current || !(imagePreview || selectedImage)) return;
+    let cancelled = false;
+    // Small delay so layout/images settle before we paint to canvas.
+    const t = setTimeout(() => {
+      precaptureShareImage(shareRef.current).then((dataUrl) => {
+        if (!cancelled) cachedShareDataUrlRef.current = dataUrl;
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    imagePreview,
+    selectedImage,
+    highResImageUrl,
+    localDetailedItems,
+    localNutrition,
+    savedProfileImage,
+    sharePhotoBase64,
+  ]);
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
@@ -694,6 +723,8 @@ const NutritionCard = ({
     }
 
     setIsSharing(true);
+    // Yield once so React paints the "Sharing..." spinner BEFORE any heavy work.
+    await new Promise((r) => setTimeout(r, 0));
     try {
       const mealName = generateMealName();
       const calories = localNutrition?.calories || 0;
@@ -747,12 +778,22 @@ const NutritionCard = ({
       }
 
       // Capture and share the complete nutrition card (food image + all nutrition details)
-      await captureAndShare(shareRef.current, {
+      const shareOpts = {
         title: `${mealName} - Wellness Valley`,
         fileName: `wellness-valley-${mealName
           .toLowerCase()
           .replace(/\s+/g, "-")}.png`,
-      });
+      };
+
+      // Fast path: use the pre-captured image if available (skips html2canvas).
+      const cached = cachedShareDataUrlRef.current;
+      if (cached) {
+        const ok = await shareCachedDataUrl(cached, shareOpts);
+        if (ok) return;
+      }
+
+      // Fallback: capture live (slower).
+      await captureAndShare(shareRef.current, shareOpts);
     } catch (error) {
       console.error("❌ Failed to share:", error);
       // Show error to user if it's not a cancellation

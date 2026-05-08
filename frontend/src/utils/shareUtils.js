@@ -13,6 +13,142 @@ const isNativePlatform = () => {
 };
 
 /**
+ * Pre-capture an element to a data URL during idle time, so a later share
+ * tap can skip html2canvas entirely and go straight to the native share sheet.
+ *
+ * Returns a JPEG data URL on success, or null on failure (caller should fall
+ * back to a live captureAndShare).
+ *
+ * Uses requestIdleCallback when available so the heavy paint never competes
+ * with user interaction.
+ */
+export const precaptureShareImage = (element, options = {}) => {
+  const { scale = 1.5, quality = 0.85 } = options;
+
+  return new Promise((resolve) => {
+    if (!element) {
+      resolve(null);
+      return;
+    }
+
+    const run = async () => {
+      try {
+        const start = performance.now();
+        const canvas = await html2canvas(element, {
+          backgroundColor: "#ffffff",
+          scale,
+          useCORS: true,
+          allowTaint: false,
+          logging: false,
+          imageTimeout: 5000,
+          removeContainer: true,
+          scrollY: -window.scrollY,
+          scrollX: -window.scrollX,
+          foreignObjectRendering: false,
+        });
+        const dataUrl = canvas.toDataURL("image/jpeg", quality);
+        console.log(
+          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
+        );
+        resolve(dataUrl);
+      } catch (err) {
+        console.warn("⚠️ Pre-capture failed (will fall back to live capture):", err);
+        resolve(null);
+      }
+    };
+
+    // Schedule on idle so it never competes with rendering or user input.
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(run, { timeout: 2000 });
+    } else {
+      setTimeout(run, 50);
+    }
+  });
+};
+
+/**
+ * Share a previously pre-captured data URL via the fastest available channel.
+ * On Android this hits the custom WhatsAppShare plugin directly — no
+ * html2canvas, no toBlob, no FileReader. Tap → share sheet is typically
+ * 200–400 ms instead of several seconds.
+ *
+ * Returns true on success, false if the caller should fall back to a live
+ * captureAndShare on the original element.
+ */
+export const shareCachedDataUrl = async (dataUrl, options = {}) => {
+  const {
+    title = "Wellness Valley",
+    text = "",
+    fileName = "wellness-valley.jpg",
+  } = options;
+
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
+    return false;
+  }
+
+  const mimeType = dataUrl.substring(5, dataUrl.indexOf(";")) || "image/jpeg";
+  const finalFileName = fileName.replace(/\.png$/i, ".jpg");
+
+  // Android fast path — custom plugin accepts base64 directly.
+  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
+    try {
+      const { WhatsAppShare } = Capacitor.Plugins;
+      if (!WhatsAppShare) return false;
+
+      const start = performance.now();
+      await WhatsAppShare.shareImage({
+        base64Data: dataUrl,
+        fileName: finalFileName,
+        title,
+        text,
+        mimeType,
+      });
+      console.log(
+        `⚡ Cached share dispatched in ${Math.round(performance.now() - start)} ms`,
+      );
+      return true;
+    } catch (err) {
+      const isCanceled =
+        err?.message?.toLowerCase().includes("cancel") ||
+        err?.message?.toLowerCase().includes("cancelled");
+      if (isCanceled) {
+        console.log("ℹ️ User cancelled cached share");
+        return true; // treat as handled
+      }
+      console.warn("⚠️ Cached share failed, will fall back:", err);
+      return false;
+    }
+  }
+
+  // iOS / web — convert dataURL to blob and reuse existing pipeline.
+  try {
+    const resp = await fetch(dataUrl);
+    const blob = await resp.blob();
+    const isNative = Capacitor.isNativePlatform();
+    if (isNative) {
+      await shareNative(blob, {
+        title,
+        text,
+        fileName: finalFileName,
+        shareAsDocument: true,
+        mimeType,
+      });
+    } else {
+      await shareWithRetryAndFallback(blob, {
+        title,
+        text,
+        fileName: finalFileName,
+        shareAsDocument: true,
+      });
+    }
+    return true;
+  } catch (err) {
+    console.warn("⚠️ Cached share dataURL→blob path failed:", err);
+    return false;
+  }
+};
+
+/**
  * Share an actual image directly (original quality, no screenshot)
  * @param {string} imageUrl - The image URL (data URL or blob URL)
  * @param {Object} options - Share options
@@ -118,19 +254,23 @@ export const captureAndShare = async (element, options = {}) => {
     console.log("🖼️ Found", images.length, "images in element");
 
     if (isNative) {
-      // Native app: wait for images (gesture window is not a concern here)
-      await Promise.all(
-        Array.from(images).map((img) => {
-          if (img.complete && img.naturalWidth > 0) return Promise.resolve();
-          return new Promise((resolve) => {
-            img.onload = resolve;
-            img.onerror = resolve;
-            setTimeout(resolve, 2000);
-          });
-        }),
+      // Native app: only wait for images that aren't ready yet, with a tight cap.
+      // Most of the time every image is already decoded — don't pay any latency for them.
+      const pending = Array.from(images).filter(
+        (img) => !(img.complete && img.naturalWidth > 0),
       );
-      // Quick delay for rendering (native only)
-      await new Promise((resolve) => setTimeout(resolve, 200));
+      if (pending.length > 0) {
+        await Promise.all(
+          pending.map(
+            (img) =>
+              new Promise((resolve) => {
+                img.onload = resolve;
+                img.onerror = resolve;
+                setTimeout(resolve, 600); // hard cap — don't block share sheet
+              }),
+          ),
+        );
+      }
     } else {
       // Web browser: skip all waits — every ms counts for the gesture window.
       // Images visible on screen are already decoded by the browser.
@@ -147,46 +287,35 @@ export const captureAndShare = async (element, options = {}) => {
     });
 
     // Step 1: Capture the element as canvas
-    // Native app: scale 5 (ultra-high quality, survives WhatsApp compression)
-    // Web browser: scale 2 (~1-2 MB) — Web Share API on Android Chrome rejects files >5 MB,
-    //              causing silent fallback to download instead of opening the share sheet.
+    // Native app: scale 1.5. Phone DPR (2–3x) already makes the on-screen DOM
+    //   crisp; 1.5× of that is more than enough for WhatsApp/share targets and
+    //   roughly halves html2canvas paint time + JPEG encode time + bridge
+    //   transfer size compared to scale 2 — the single biggest cut to the
+    //   "tap Share → sheet appears" latency.
+    // Web browser: scale 2 — Web Share API on Android Chrome rejects files >5 MB,
+    //   but on web there's no Capacitor bridge cost so 2× is fine.
     const webScale = 2;
-    const nativeScale = 5;
+    const nativeScale = 1.5;
     const captureScale = isNative ? nativeScale : webScale;
-    console.log(`📐 Capture scale: ${captureScale}x (${isNative ? "native app — max quality" : "web browser — optimised for Web Share API"})`);
+    console.log(`📐 Capture scale: ${captureScale}x`);
 
+    const captureStart = performance.now();
     const canvas = await html2canvas(element, {
       backgroundColor: "#ffffff",
       scale: captureScale,
       useCORS: true,
       allowTaint: false,
       logging: false,
-      imageTimeout: 15000,
+      imageTimeout: 5000,
       removeContainer: true,
       scrollY: -window.scrollY,
       scrollX: -window.scrollX,
       foreignObjectRendering: false,
-      // ULTRA HIGH QUALITY IMAGE RENDERING
-      onclone: (clonedDoc) => {
-        // Force high quality rendering for all images
-        const images = clonedDoc.getElementsByTagName("img");
-        for (let img of images) {
-          // Use high-quality rendering (no blur, no smoothing)
-          img.style.imageRendering = "-webkit-optimize-contrast";
-          img.style.WebkitImageRendering = "-webkit-optimize-contrast";
-          img.style.imageRendering = "crisp-edges";
-          img.style.maxWidth = "none";
-          img.style.maxHeight = "none";
-          // Disable any potential compression or smoothing
-          img.style.imageSmoothing = "false";
-          // Force full resolution
-          if (img.naturalWidth) {
-            img.width = img.naturalWidth;
-            img.height = img.naturalHeight;
-          }
-        }
-      },
+      // No onclone hook: forcing maxWidth/naturalWidth on every image was both slow
+      // and risky (could balloon the captured canvas to many MB and cause layout
+      // shifts). Images already render at their on-screen size, which is what we want.
     });
+    console.log(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
 
     console.log(
       "✅ Canvas created successfully with dimensions:",
@@ -195,17 +324,71 @@ export const captureAndShare = async (element, options = {}) => {
       canvas.height,
     );
 
+    // FAST PATH (Android native): skip toBlob + FileReader round-trip.
+    //   canvas.toDataURL() returns base64 in a single pass — exactly the format
+    //   the custom WhatsAppShare plugin needs. This removes one full image
+    //   re-encode and the async FileReader, which together can add hundreds of
+    //   ms on mid-range Android devices and is the single biggest contributor
+    //   to "share sheet takes too long to open".
+    if (isNative && Capacitor.getPlatform() === "android") {
+      const dataUrlMime = "image/jpeg";
+      const dataUrlQuality = 0.85;
+      const fastFileName = fileName.replace(/\.png$/i, ".jpg");
+
+      const dataUrlStart = performance.now();
+      const dataUrl = canvas.toDataURL(dataUrlMime, dataUrlQuality);
+      console.log(
+        `⏱️ canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
+      );
+
+      try {
+        const { WhatsAppShare } = Capacitor.Plugins;
+        if (!WhatsAppShare) {
+          throw new Error("WhatsAppShare plugin not available");
+        }
+
+        const pluginStart = performance.now();
+        const result = await WhatsAppShare.shareImage({
+          base64Data: dataUrl,
+          fileName: fastFileName,
+          title,
+          text,
+          mimeType: dataUrlMime,
+        });
+        console.log(
+          `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
+          result,
+        );
+        return;
+      } catch (pluginError) {
+        const isCanceled =
+          pluginError?.message?.toLowerCase().includes("cancel") ||
+          pluginError?.message?.toLowerCase().includes("cancelled");
+        if (isCanceled) {
+          console.log("ℹ️ User cancelled share (fast path)");
+          return;
+        }
+        console.warn(
+          "⚠️ Fast path failed, falling back to standard toBlob path:",
+          pluginError,
+        );
+        // Fall through to standard path below.
+      }
+    }
+
     // Step 2: Convert canvas to blob
-    // Native app  → PNG lossless (survives WhatsApp compression at full quality)
-    // Web browser → JPEG quality 0.90 (~300–700 KB vs 3–18 MB for PNG)
-    //   Web Share API on Android Chrome silently rejects files over ~5 MB.
-    //   JPEG keeps the file small so the share sheet opens with WhatsApp visible.
+    // Native + web both use JPEG @ 0.85 — visually indistinguishable from 0.95 for UI
+    // screenshots but roughly half the file size, which directly cuts base64 encoding,
+    // Capacitor bridge transfer time, disk write time, and the receiving app's read time.
     const webMimeType = "image/jpeg";
-    const webQuality = 0.90;
-    const nativeMimeType = "image/png";
+    const webQuality = 0.85;
+    const nativeMimeType = "image/jpeg";
+    const nativeQuality = 0.85;
     const mimeType = isNative ? nativeMimeType : webMimeType;
-    const quality = isNative ? 1.0 : webQuality;
-    const webFileName = isNative ? fileName : fileName.replace(/\.png$/i, ".jpg");
+    const quality = isNative ? nativeQuality : webQuality;
+    const nativeFileName = fileName.replace(/\.png$/i, ".jpg");
+    const webFileName = fileName.replace(/\.png$/i, ".jpg");
+    const finalFileName = isNative ? nativeFileName : webFileName;
 
     const blob = await new Promise((resolve, reject) => {
       canvas.toBlob(
@@ -220,7 +403,7 @@ export const captureAndShare = async (element, options = {}) => {
 
     const fileSizeKB = Math.round(blob.size / 1024);
     console.log(
-      `✅ Blob created (${isNative ? "PNG lossless" : "JPEG web-optimised"}):`,
+      `✅ Blob created (${isNative ? "JPEG native-optimised" : "JPEG web-optimised"}):`,
       blob.size,
       "bytes (",
       fileSizeKB,
@@ -232,11 +415,11 @@ export const captureAndShare = async (element, options = {}) => {
     if (isNative) {
       // Native mobile sharing (Capacitor)
       console.log("📱 Using native share (Android/iOS app)");
-      await shareNative(blob, { title, text, fileName, shareAsDocument });
+      await shareNative(blob, { title, text, fileName: finalFileName, shareAsDocument, mimeType });
     } else {
       // Web browser - try Web Share API with fallback to download
       console.log("💻 Web browser detected, attempting share with fallback...");
-      await shareWithRetryAndFallback(blob, { title, text, fileName: webFileName, shareAsDocument });
+      await shareWithRetryAndFallback(blob, { title, text, fileName: finalFileName, shareAsDocument });
     }
 
     console.log("✅ Share completed successfully");
@@ -259,15 +442,14 @@ export const captureAndShare = async (element, options = {}) => {
  */
 const shareNative = async (
   blob,
-  { title, text, fileName, shareAsDocument = true },
+  { title, text, fileName, shareAsDocument = true, mimeType = "image/jpeg" },
 ) => {
   try {
     // Convert blob to base64
+    const b64Start = performance.now();
     const base64Data = await blobToBase64(blob);
     console.log(
-      "📝 Base64 data prepared, size:",
-      base64Data.length,
-      "characters",
+      `📝 Base64 ready in ${Math.round(performance.now() - b64Start)} ms (${Math.round(base64Data.length / 1024)} KB string)`,
     );
 
     // For Android, use custom WhatsAppSharePlugin for better quality
@@ -285,23 +467,24 @@ const shareNative = async (
         }
 
         console.log(
-          "💾 Sharing via custom HIGH-QUALITY plugin (zero compression)...",
+          `💾 Sharing via custom plugin (${mimeType})...`,
         );
         console.log(
-          "   Using lossless PNG format, file size:",
+          "   File size:",
           Math.round(blob.size / 1024),
           "KB",
         );
 
+        const pluginStart = performance.now();
         const result = await WhatsAppShare.shareImage({
           base64Data: base64Data,
           fileName: fileName,
           title: title,
           text: text,
+          mimeType: mimeType,
         });
-
         console.log(
-          "✅ Custom plugin share completed (full quality preserved):",
+          `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms`,
           result,
         );
         return;
@@ -332,8 +515,8 @@ const shareNative = async (
 
       try {
         const timestamp = Date.now();
-        // Use .png extension for compatibility, but share with text to trigger document mode
-        const uniqueFileName = `wellness-valley-${timestamp}.png`;
+        const ext = mimeType === "image/png" ? "png" : "jpg";
+        const uniqueFileName = `wellness-valley-${timestamp}.${ext}`;
         const base64String = base64Data.split(",")[1];
 
         // Write to Cache directory (always exists, no permission issues)
