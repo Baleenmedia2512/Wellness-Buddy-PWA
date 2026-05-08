@@ -120,6 +120,16 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         }
 
         const data = await res.json();
+
+        // 🔒 Demo account: API returns top-level fields (no data wrapper) — treat as empty profile
+        const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+        const emailNorm = (user?.email || user?.Email || '').toLowerCase().trim();
+        if (DEMO_ACCOUNTS.includes(emailNorm) && data.success && !data.data) {
+          if (!mounted) return;
+          setMissingFields({ height: true, phoneNumber: true, dietType: true });
+          return;
+        }
+
         if (!data.success || !data.data) {
           throw new Error(data.message || "Failed to load profile.");
         }

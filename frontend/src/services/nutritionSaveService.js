@@ -109,6 +109,12 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   
   try {
+    // 🔒 Demo account — skip DB save entirely, return fake success
+    if (userId === 'DEMO_USER' || (userEmail && ['testereasywork@gmail.com'].includes(userEmail.toLowerCase().trim()))) {
+      console.log('ℹ️ [saveNutritionAnalysis] Demo account — skipping DB save');
+      return { success: true, id: 'demo-' + Date.now(), insertId: null };
+    }
+
     // Always lookup the real UserID from team_table
     let actualUserId = userId;
     let actualUserEmail = userEmail; // Store email for logging
