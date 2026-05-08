@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { recipient: rawRecipient, otp, contactType = 'email' } = req.body;
+  const { recipient: rawRecipient, otp, contactType = 'email', purpose = '' } = req.body;
   const recipient = rawRecipient ? rawRecipient.toLowerCase().trim() : rawRecipient;
 
   if (!recipient || !otp) {
@@ -24,21 +24,26 @@ export default async function handler(req, res) {
   }
 
   // ── Demo account bypass for App Store review ──────────────────────────────
-  // Fixed OTP 123456 always works for the demo account (real email, real DB user).
-  // Return id:null so the app calls lookup-user-id to fetch the real DB user id.
   const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-  const DEMO_OTP = '123456';
-  if (DEMO_ACCOUNTS.includes(recipient) && otp === DEMO_OTP) {
-    return res.json({
-      success: true,
-      message: 'OTP verified successfully',
-      user: {
-        id: null,
-        username: 'App Reviewer',
-        email: recipient,
-        status: 'Active',
-      },
-    });
+  if (DEMO_ACCOUNTS.includes(recipient)) {
+    // OTP 654321 is ONLY for the account-deletion flow
+    if (purpose === 'delete' && otp === '654321') {
+      return res.json({
+        success: true,
+        message: 'OTP verified successfully',
+        user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
+      });
+    }
+    // OTP 123456 is for regular login
+    if (purpose !== 'delete' && otp === '123456') {
+      return res.json({
+        success: true,
+        message: 'OTP verified successfully',
+        user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
+      });
+    }
+    // Any other OTP → fail
+    return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
   }
   // ─────────────────────────────────────────────────────────────────────────
 

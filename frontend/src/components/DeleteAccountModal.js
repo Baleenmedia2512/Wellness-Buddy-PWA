@@ -149,7 +149,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
       const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipient: userEmail, otp: otpValue, contactType: 'email' }),
+        body: JSON.stringify({ recipient: userEmail, otp: otpValue, contactType: 'email', purpose: 'delete' }),
       });
       const data = await res.json();
       if (data.success) {
