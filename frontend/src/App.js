@@ -3834,6 +3834,8 @@ function WellnessValleyApp() {
       // Clear userId session cache
       clearUserIdCache();
       localStorage.removeItem("dbUserId");
+      // Clear demo meal history on sign-out
+      localStorage.removeItem("demo_meals");
       // Clear profile-complete flag so a new/different user sees the gate if needed
       const emailKey = localStorage.getItem("userEmail") || "";
       if (emailKey) localStorage.removeItem("profileComplete_v2_" + emailKey);

@@ -879,7 +879,17 @@ const NutritionDashboard = ({
         const data = await response.json();
 
         if (data.success) {
-          const list = data.data || [];
+          let list = data.data || [];
+
+          // 🔒 Demo account — merge localStorage meals for the selected date
+          if (actualUserId === 'DEMO_USER') {
+            try {
+              const demoMeals = JSON.parse(localStorage.getItem('demo_meals') || '[]');
+              const dayMeals = demoMeals.filter(m => m.dateKey === dateString);
+              list = [...list, ...dayMeals];
+            } catch (e) { /* ignore */ }
+          }
+
           setAnalyses(list);
           calculateDailyStats(list);
         } else {

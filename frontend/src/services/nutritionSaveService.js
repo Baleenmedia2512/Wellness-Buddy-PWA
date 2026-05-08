@@ -109,10 +109,29 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   
   try {
-    // 🔒 Demo account — skip DB save entirely, return fake success
+    // 🔒 Demo account — skip DB save, store meal in localStorage instead
     if (userId === 'DEMO_USER' || (userEmail && ['testereasywork@gmail.com'].includes(userEmail.toLowerCase().trim()))) {
-      console.log('ℹ️ [saveNutritionAnalysis] Demo account — skipping DB save');
-      return { success: true, id: 'demo-' + Date.now(), insertId: null };
+      console.log('ℹ️ [saveNutritionAnalysis] Demo account — saving to localStorage');
+      const demoId = 'demo-' + Date.now();
+      const now = captureTimestamp || new Date().toISOString();
+      const dateKey = now.slice(0, 10); // YYYY-MM-DD
+      const transformed = transformToBackgroundServiceFormat(analysisResult);
+      const meal = {
+        id: demoId,
+        MealId: demoId,
+        ImagePath: imageBase64 ? imageBase64.slice(0, 200) : null, // truncate for storage
+        AnalysisData: JSON.stringify(transformed),
+        EntryDateTime: now,
+        dateKey,
+      };
+      try {
+        const stored = JSON.parse(localStorage.getItem('demo_meals') || '[]');
+        stored.push(meal);
+        // keep only last 20 meals
+        if (stored.length > 20) stored.splice(0, stored.length - 20);
+        localStorage.setItem('demo_meals', JSON.stringify(stored));
+      } catch (e) { /* ignore */ }
+      return { success: true, id: demoId, insertId: null };
     }
 
     // Always lookup the real UserID from team_table
