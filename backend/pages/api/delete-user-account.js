@@ -61,7 +61,7 @@ export default async function handler(req, res) {
       counsellingResult,
       otpResult,
     ] = await Promise.allSettled([
-      supabase.from('food_nutrition_data_table').delete().eq('UserId', userId),
+      supabase.from('food_nutrition_data_table').delete().eq('"UserID"', userId.toString()),
       supabase.from('weight_records_table').delete().eq('UserId', userId),
       supabase.from('education_logs_table').delete().eq('UserId', userId),
       supabase.from('daily_step_activity').delete().eq('UserId', userId),
