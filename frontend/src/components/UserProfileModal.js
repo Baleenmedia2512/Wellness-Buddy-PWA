@@ -232,6 +232,7 @@ const UserProfileModal = ({
           setName(data.userName || user?.name || "");
         }
       }
+    } catch (err) {
       console.error("❌ Error fetching user profile:", err);
       // Fall back to user object data
       setName(user?.name || "");
