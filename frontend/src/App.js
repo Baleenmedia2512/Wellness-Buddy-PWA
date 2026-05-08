@@ -3841,6 +3841,11 @@ function WellnessValleyApp() {
       localStorage.removeItem("otpUser");
       localStorage.removeItem("currentPage");
       localStorage.removeItem("dbUserId");
+      // ✅ Clear nutrition / background analysis caches so a new login never sees old images
+      localStorage.removeItem("backgroundAnalyses");
+      localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
+      localStorage.removeItem("dashboard_activeTab");
+      GalleryMonitor.clearLocalBackgroundAnalyses();
       // Keep "userSignedOut" flag — set by signOutUser() to block iOS silent re-auth
       sessionStorage.clear();
       resetApp();
@@ -3852,6 +3857,10 @@ function WellnessValleyApp() {
       localStorage.removeItem("otpUser");
       localStorage.removeItem("currentPage");
       localStorage.removeItem("dbUserId");
+      localStorage.removeItem("backgroundAnalyses");
+      localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
+      localStorage.removeItem("dashboard_activeTab");
+      try { GalleryMonitor.clearLocalBackgroundAnalyses(); } catch (_) {}
       // Keep "userSignedOut" flag to block re-auth
       sessionStorage.clear();
       resetApp();
