@@ -178,6 +178,28 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted }) =>
       });
       const data = await res.json();
       if (data.success) {
+        // Clear all client-side caches and stored user data
+        try {
+          // Clear all localStorage keys related to this account
+          const keysToRemove = [];
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key) keysToRemove.push(key);
+          }
+          keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+          // Clear sessionStorage as well
+          sessionStorage.clear();
+
+          // Clear any service worker caches
+          if ('caches' in window) {
+            caches.keys().then((cacheNames) => {
+              cacheNames.forEach((cacheName) => caches.delete(cacheName));
+            });
+          }
+        } catch (clearErr) {
+          console.warn('[DeleteAccountModal] Cache clear error (non-critical):', clearErr);
+        }
         setStep(4);
       } else {
         setErrorMessage(data.message || 'Failed to delete account. Please try again.');

@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../utils/supabaseClient.js';
+import { cache, cacheKeys } from '../../utils/cache.js';
 
 export default async function handler(req, res) {
   console.log('🔴 [delete-user-account] Request received:', { method: req.method });
@@ -100,6 +101,18 @@ export default async function handler(req, res) {
     if (teamDeleteError) {
       console.error('❌ [delete-user-account] Failed to delete from team_table:', teamDeleteError);
       throw new Error('Failed to delete user account: ' + teamDeleteError.message);
+    }
+
+    // Step 4: Clear server-side caches for this user
+    try {
+      cache.delete(cacheKeys.nutritionMeals(userId));
+      cache.delete(cacheKeys.nutritionMeals(userId.toString()));
+      cache.delete(cacheKeys.userProfile(normalizedEmail));
+      cache.delete(cacheKeys.userContext(userId));
+      cache.delete(cacheKeys.userContext(userId.toString()));
+      console.log('✅ [delete-user-account] Server caches cleared for user:', userId);
+    } catch (cacheErr) {
+      console.warn('⚠️ [delete-user-account] Failed to clear caches (non-critical):', cacheErr);
     }
 
     console.log('✅ [delete-user-account] Successfully deleted user account:', normalizedEmail);
