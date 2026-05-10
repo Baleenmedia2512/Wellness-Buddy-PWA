@@ -37,26 +37,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // ── Demo account bypass ───────────────────────────────────────────────────
-    // Demo account has no DB record — return empty profile so form shows blank.
-    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    if (DEMO_ACCOUNTS.includes(email)) {
-      return res.status(200).json({
-        success: true,
-        userId: 'DEMO_USER',
-        userName: 'App Reviewer',
-        email: email,
-        height: null,
-        bmr: null,
-        dietType: null,
-        profileImage: null,
-        phoneNumber: null,
-        latestWeight: null,
-        profilePicSnooze: null,
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
     console.log('📊 [get-user-profile] Fetching fresh profile data for:', email);
 
     const supabase = getSupabaseClient();

@@ -35,23 +35,6 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
-    // ── Demo account bypass for App Store review ──────────────────────────────
-    // Do NOT create real DB records for the demo account — return isNewUser:true
-    // so the profile setup screen shows, but nothing is written to the live DB.
-    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    if (DEMO_ACCOUNTS.includes(email)) {
-      console.log('✅ [save-google-user] Demo account — skipping DB write');
-      return res.status(200).json({
-        success: true,
-        isNewUser: true,
-        userId: null,
-        userName: displayName || 'App Reviewer',
-        email: email,
-        status: 'Active',
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
     const { data: existingRows, error: existingError } = await supabase
       .from("team_table")
       .select('"UserId", "UserName", "Email", "Status", "ProfileImage"')

@@ -66,27 +66,6 @@ export default async function handler(req, res) {
       return;
     }
 
-    // ── Demo account bypass for App Store review ──────────────────────────────
-    // Demo account never writes to DB, so always treat as needing setup.
-    // Returns pendingRequest so the OTP modal (enter 123456) shows.
-    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    if (DEMO_ACCOUNTS.includes(email)) {
-      return res.status(200).json({
-        success: true,
-        setupComplete: false,
-        hasTeamId: false,
-        hasUpline: false,
-        setupSkipped: false,
-        teamId: null,
-        uplineCoachId: null,
-        role: 'member',
-        pendingRequest: { id: 99999, status: 'pending', coachId: 339 },
-        redirectTo: '/setup/validate-otp',
-        message: 'Demo account - enter OTP 123456 to complete setup',
-      });
-    }
-    // ─────────────────────────────────────────────────────────────────────────
-
     const supabase = getSupabaseClient();
 
     // Get user's details from team_table using Supabase

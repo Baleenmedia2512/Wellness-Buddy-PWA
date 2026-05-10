@@ -23,28 +23,70 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── Demo account bypass for App Store review ──────────────────────────────
+  // ── Demo account: fixed OTPs, but use REAL DB ────────────────────────────
+  // No real OTP email is sent, so we accept fixed OTPs and then create/fetch
+  // a genuine DB record so all subsequent save operations work correctly.
   const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
   if (DEMO_ACCOUNTS.includes(recipient)) {
-    // OTP 654321 is ONLY for the account-deletion flow
-    if (purpose === 'delete' && otp === '654321') {
+    const validDeleteOtp = purpose === 'delete' && otp === '654321';
+    const validLoginOtp  = purpose !== 'delete' && otp === '123456';
+    if (!validDeleteOtp && !validLoginOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
+    }
+    // Fixed OTP accepted — now look up or create real DB record
+    try {
+      const supabase = getSupabaseClient();
+      const { data: existingRows, error: lookupErr } = await supabase
+        .from('team_table')
+        .select('"UserId", "UserName", "Email", "Status"')
+        .ilike('Email', recipient)
+        .limit(1);
+      if (lookupErr) throw lookupErr;
+
+      let userInfo;
+      let isNewUser = false;
+
+      if (existingRows && existingRows.length > 0) {
+        userInfo = existingRows[0];
+      } else {
+        // Create real DB record for demo account
+        const currentTime = getISTTimestamp();
+        const { data: newUser, error: insertErr } = await supabase
+          .from('team_table')
+          .insert({
+            EntryDateTime: currentTime,
+            LastActiveAt: currentTime,
+            EntryUser: 'Demo Account',
+            UserName: 'testereasywork',
+            Password: 'User@123#',
+            TargetWeightInKg: 0,
+            Status: 'Active',
+            CoachApproved: 0,
+            Email: recipient,
+          })
+          .select()
+          .single();
+        if (insertErr) throw insertErr;
+        userInfo = newUser;
+        isNewUser = true;
+        console.log('🆕 [verify-otp] Demo account created in DB:', recipient);
+      }
+
       return res.json({
         success: true,
         message: 'OTP verified successfully',
-        user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
+        isNewUser,
+        user: {
+          id: userInfo.UserId,
+          username: userInfo.UserName,
+          email: userInfo.Email,
+          status: userInfo.Status,
+        },
       });
+    } catch (err) {
+      console.error('❌ [verify-otp] Demo account DB error:', err);
+      return res.status(500).json({ message: 'Internal server error' });
     }
-    // OTP 123456 is for regular login — always treat as new user since no DB record
-    if (purpose !== 'delete' && otp === '123456') {
-      return res.json({
-        success: true,
-        message: 'OTP verified successfully',
-        isNewUser: true,
-        user: { id: null, username: 'App Reviewer', email: recipient, status: 'Active' },
-      });
-    }
-    // Any other OTP → fail
-    return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
   }
   // ─────────────────────────────────────────────────────────────────────────
 
