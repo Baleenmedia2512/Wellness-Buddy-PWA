@@ -42,7 +42,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       // Get current user ID first
       const userProfileResponse = await fetch(
-        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(
+        `${API_BASE}/api/user/profile?email=${encodeURIComponent(
           user.email,
         )}&_t=${cacheBuster}`,
       );

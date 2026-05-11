@@ -37,7 +37,7 @@ export const getUserContext = async (userId, forceRefresh = false) => {
     const startTime = Date.now();
 
     const response = await fetch(
-      `${API_BASE_URL}/api/get-user-context?userId=${userId}`
+      `${API_BASE_URL}/api/user/context?userId=${userId}`
     );
 
     if (!response.ok) {
