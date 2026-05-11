@@ -199,3 +199,6 @@ frontend/cypress/videos/
 foodnutritiontable.json
 weightrecoredstable.json
 wellnessvalleyDump20260109.sql
+
+reports/smoke-2*.json
+!reports/smoke-baseline.json

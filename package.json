@@ -1,4 +1,15 @@
 {
+  "name": "wellness-buddy-pwa",
+  "private": true,
+  "version": "3.0.0",
+  "scripts": {
+    "vsa:check": "node scripts/vsa-analyze.js",
+    "smoke": "node scripts/smoke-test.js",
+    "smoke:prod": "cross-env SMOKE_BASE_URL=https://wellness-buddy-pwa.vercel.app node scripts/smoke-test.js",
+    "lint:backend": "cd backend && npx eslint .",
+    "lint:frontend": "cd frontend && npx eslint src",
+    "lint": "npm run lint:backend && npm run lint:frontend"
+  },
   "dependencies": {
     "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"

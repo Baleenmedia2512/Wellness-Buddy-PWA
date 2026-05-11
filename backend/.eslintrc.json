@@ -1,0 +1,66 @@
+{
+  "//": "VSA enforcement rules. Requires eslint to be installed in backend (npm i -D eslint).",
+  "root": true,
+  "env": { "node": true, "es2022": true },
+  "parserOptions": { "ecmaVersion": 2022, "sourceType": "module" },
+  "ignorePatterns": [
+    "node_modules/",
+    ".next/",
+    "build/",
+    "public/",
+    "migrations/"
+  ],
+  "rules": {
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "MemberExpression[object.object.name='process'][object.property.name='env']",
+        "message": "VSA: process.env.* is forbidden outside backend/config/env.js. Import the validated config instead."
+      }
+    ],
+    "no-restricted-imports": [
+      "error",
+      {
+        "patterns": [
+          {
+            "group": ["**/features/*/**", "../features/*/**", "../../features/*/**"],
+            "message": "VSA: a feature must not import from another feature. Move shared code to backend/shared/."
+          },
+          {
+            "group": ["@supabase/supabase-js"],
+            "message": "VSA: do not import supabase-js directly. Use backend/shared/lib/supabaseClient.js."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "//": "config/env.js is the only place allowed to read process.env",
+      "files": ["config/env.js", "shared/config/env.js"],
+      "rules": { "no-restricted-syntax": "off" }
+    },
+    {
+      "//": "Only the shared supabase client may import @supabase/supabase-js",
+      "files": ["shared/lib/supabaseClient.js", "utils/supabaseClient.js"],
+      "rules": { "no-restricted-imports": "off" }
+    },
+    {
+      "//": "pages/api handlers are thin — no business logic, no DB queries",
+      "files": ["pages/api/**/*.js"],
+      "rules": {
+        "no-restricted-imports": [
+          "error",
+          {
+            "patterns": [
+              {
+                "group": ["@supabase/supabase-js", "**/supabaseClient*", "pg", "mysql2"],
+                "message": "VSA: handlers must not query the DB directly. Call a feature service which calls a repository."
+              }
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "//": "VSA frontend rules. Extends the CRA config defined in package.json.",
+  "extends": ["react-app"],
+  "ignorePatterns": [
+    "build/",
+    "node_modules/",
+    "android/",
+    "ios/",
+    "public/",
+    "src/App.js.backup"
+  ],
+  "rules": {
+    "no-restricted-syntax": [
+      "warn",
+      {
+        "selector": "MemberExpression[object.object.name='process'][object.property.name='env']",
+        "message": "VSA: process.env.* is forbidden outside src/config/api.config.js. Import the config instead."
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": ["**/features/*/**", "../features/*/**", "../../features/*/**", "../../../features/*/**"],
+            "message": "VSA: a feature must not import from another feature. Move shared code to src/shared/."
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["src/config/api.config.js", "src/config/**.js"],
+      "rules": { "no-restricted-syntax": "off" }
+    },
+    {
+      "//": "Components must be presentational only — no fetch/axios. Hooks and services may.",
+      "files": ["src/features/*/components/**/*.{js,jsx}", "src/shared/components/**/*.{js,jsx}"],
+      "rules": {
+        "no-restricted-imports": [
+          "warn",
+          {
+            "paths": [
+              { "name": "axios", "message": "VSA: components are presentational. Move HTTP calls to a feature service or hook." }
+            ]
+          },
+          {
+            "patterns": [
+              {
+                "group": ["**/features/*/**", "../features/*/**"],
+                "message": "VSA: a feature must not import from another feature."
+              }
+            ]
+          }
+        ],
+        "no-restricted-globals": [
+          "warn",
+          { "name": "fetch", "message": "VSA: components must not call fetch. Use a feature service or hook." }
+        ]
+      }
+    }
+  ]
+}
