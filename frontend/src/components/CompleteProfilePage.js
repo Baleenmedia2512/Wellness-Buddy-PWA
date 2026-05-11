@@ -8,10 +8,10 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { User, Ruler, CheckCircle2, Phone, Camera, Upload, Clock, AlertCircle, CheckCircle, XCircle, Loader, Crop, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 
 const DIET_OPTIONS = [
-  { value: "Vegetarian", label: "🌱 Vegetarian" },
-  { value: "Non-Vegetarian", label: "🍗 Non-Vegetarian" },
-  { value: "Vegan", label: "🥦 Vegan" },
-  { value: "Pescatarian", label: "🐟 Pescatarian" },
+  { value: "Vegetarian", emoji: "🌱", label: "Vegetarian" },
+  { value: "Non-Vegetarian", emoji: "🍗", label: "Non-Vegetarian" },
+  { value: "Vegan", emoji: "🥦", label: "Vegan" },
+  { value: "Pescatarian", emoji: "🐟", label: "Pescatarian" },
 ];
 
 /** Crop a canvas region supporting rotation */
@@ -507,12 +507,13 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
                 key={opt.value}
                 type="button"
                 onClick={() => setDietType(opt.value)}
-                className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all ${
+                className={`py-3 rounded-xl text-sm font-semibold border-2 transition-all flex items-center justify-center gap-1.5 ${
                   dietType === opt.value
                     ? "border-green-500 bg-green-50 text-green-700"
                     : "border-gray-200 text-gray-600 hover:border-gray-300 bg-white"
                 }`}
               >
+                <span style={{ fontFamily: '"Apple Color Emoji", "Segoe UI Emoji", sans-serif', fontSize: '1.1em' }}>{opt.emoji}</span>
                 {opt.label}
               </button>
             ))}
