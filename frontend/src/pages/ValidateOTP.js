@@ -21,6 +21,20 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
     fetchRequestInfo();
   }, []);
 
+  // ── Demo account: auto-fill 000000 and submit ─────────────────────────────
+  useEffect(() => {
+    const userEmail = localStorage.getItem('userEmail') || '';
+    if (userEmail.toLowerCase().trim() !== 'testereasywork@gmail.com') return;
+
+    // Small delay so the screen renders first
+    const timer = setTimeout(() => {
+      setOtp(['0', '0', '0', '0', '0', '0']);
+    }, 800);
+
+    return () => clearTimeout(timer);
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   const fetchRequestInfo = async () => {
     try {
       const userEmail = localStorage.getItem('userEmail');

@@ -260,6 +260,42 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
+  // ── Demo account: silently complete coach setup in background ─────────────
+  const DEMO_EMAIL = 'testereasywork@gmail.com';
+  const silentlyCompleteDemoSetup = async (userEmail) => {
+    if ((userEmail || '').toLowerCase().trim() !== DEMO_EMAIL) return false;
+    try {
+      const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+      // 1. Search for Yasheer J
+      const searchRes = await fetch(`${API_BASE}/api/users/search?q=Yasheer+J&email=${encodeURIComponent(userEmail)}`);
+      const searchData = await searchRes.json();
+      const yasheer = (searchData.coaches || []).find(c => c.userName.toLowerCase().includes('yasheer'));
+      if (!yasheer) { console.warn('[Demo] Yasheer J not found'); return false; }
+
+      // 2. Send upline request (backend auto-hashes OTP 000000)
+      await fetch(`${API_BASE}/api/upline/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coachId: yasheer.userId, email: userEmail }),
+      });
+
+      // 3. Validate with fixed OTP 000000
+      await fetch(`${API_BASE}/api/upline/validate-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: '000000', email: userEmail }),
+      });
+
+      localStorage.setItem('coachOtpVerified', 'true');
+      console.log('✅ [Demo] Coach setup completed silently');
+      return true;
+    } catch (err) {
+      console.error('[Demo] Silent setup failed:', err);
+      return false;
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Wellness University state
   const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
   const [showWellnessReport, setShowWellnessReport] = useState(false);
@@ -1135,12 +1171,22 @@ function WellnessValleyApp() {
                     if (localStorage.getItem('coachOtpVerified') === 'true') {
                       console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
                       await checkProfileCompletion(userEmail, user);
+                    } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                      // Demo account: silently validate OTP in background
+                      console.log("🤖 [Auth State] Demo account pending OTP — completing silently");
+                      await silentlyCompleteDemoSetup(userEmail);
+                      await checkProfileCompletion(userEmail, user);
                     } else {
                       console.log(
                         "📧 [Auth State] Pending OTP detected, showing OTP modal",
                       );
                       setShowValidateOTP(true);
                     }
+                  } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                    // Demo account: silently run full coach setup in background
+                    console.log("🤖 [Auth State] Demo account setup incomplete — completing silently");
+                    await silentlyCompleteDemoSetup(userEmail);
+                    await checkProfileCompletion(userEmail, user);
                   } else {
                     // User needs to complete setup wizard
                     console.log(
@@ -1382,12 +1428,24 @@ function WellnessValleyApp() {
                 console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
                 await checkProfileCompletion(userEmail);
                 setTimeout(() => checkProfilePicture(user), 800);
+              } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                // Demo account: silently validate OTP in background
+                console.log("🤖 [Setup Check] Demo account pending OTP — completing silently");
+                await silentlyCompleteDemoSetup(userEmail);
+                await checkProfileCompletion(userEmail);
+                setTimeout(() => checkProfilePicture(user), 800);
               } else {
                 console.log(
                   "📧 [Setup Check] Pending OTP detected, showing OTP modal",
                 );
                 setShowValidateOTP(true);
               }
+            } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+              // Demo account: silently run full coach setup in background
+              console.log("🤖 [Setup Check] Demo account setup incomplete — completing silently");
+              await silentlyCompleteDemoSetup(userEmail);
+              await checkProfileCompletion(userEmail);
+              setTimeout(() => checkProfilePicture(user), 800);
             } else {
               // User needs to complete setup wizard
               console.log(
