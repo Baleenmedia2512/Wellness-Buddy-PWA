@@ -171,7 +171,7 @@ const MandatoryProfilePictureModal = ({ user, apiBaseUrl, onComplete, onRemindLa
       setError("");
       setIsSaving(true);
 
-      const response = await fetch(`${apiBaseUrl}/api/user/profile`, {
+      const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

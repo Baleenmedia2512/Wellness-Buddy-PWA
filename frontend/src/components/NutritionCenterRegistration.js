@@ -437,7 +437,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
   // Get user ID helper
   const getUserId = async (email) => {
     const response = await fetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
     );
     const data = await response.json();
     if (!data.success) throw new Error('User not found');

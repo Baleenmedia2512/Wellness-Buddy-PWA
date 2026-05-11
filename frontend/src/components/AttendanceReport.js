@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
@@ -21,7 +21,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ? Full switch
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
     title: '',
@@ -82,7 +82,7 @@ const AttendanceReport = ({ user, onBack }) => {
 
   const getUserId = async (email) => {
     const response = await fetch(
-      `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`,
+      `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`,
     );
     const data = await response.json();
     if (!data.success) throw new Error("User not found");
@@ -114,7 +114,7 @@ const AttendanceReport = ({ user, onBack }) => {
       }
 
       // Debug: Log partnership info in browser console
-      console.log('?? [AttendanceReport] Hierarchy data received:', {
+      console.log('🔍 [AttendanceReport] Hierarchy data received:', {
         hasCoCoachInfo: !!result.data?.hierarchy?.coCoachInfo,
         coCoachInfoKeys: result.data?.hierarchy?.coCoachInfo ? Object.keys(result.data.hierarchy.coCoachInfo) : [],
         isCoach: result.data?.hierarchy?.isCoach,
@@ -296,7 +296,7 @@ const AttendanceReport = ({ user, onBack }) => {
 
     const isSingle = sortBy !== "all";
 
-    // -- Single-column focus mode ----------------------------------------------
+    // ── Single-column focus mode ──────────────────────────────────────────────
     if (isSingle && sortBy === "self") {
       return (
         <div className="flex-1 flex flex-col items-center gap-0.5">
@@ -347,7 +347,7 @@ const AttendanceReport = ({ user, onBack }) => {
       );
     }
 
-    // -- All columns (default) -------------------------------------------------
+    // ── All columns (default) ─────────────────────────────────────────────────
     return (
       <>
         {/* Self */}
@@ -465,7 +465,7 @@ const AttendanceReport = ({ user, onBack }) => {
   const summaryStats = hierarchyData
     ? {
         note: `Self: ${
-          mySelfAttended ? "?" : "?"
+          mySelfAttended ? "✓" : "✗"
         } | Direct: ${directAttended}/${directTotal} | Full: ${fullAttended}/${fullTotal}`,
       }
     : null;
@@ -579,7 +579,7 @@ const AttendanceReport = ({ user, onBack }) => {
       title="Attendance Report"
       subtitle={`${
         teamCounts.coaches + teamCounts.members
-      } Members � Last updated ${new Date().toLocaleString("en-US", {
+      } Members • Last updated ${new Date().toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",

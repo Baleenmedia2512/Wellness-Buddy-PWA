@@ -1,4 +1,4 @@
-// src/components/CompleteProfilePage.js
+﻿// src/components/CompleteProfilePage.js
 // Full-screen blocking page shown when mandatory profile fields are missing.
 // The user cannot close or bypass this page until all required fields are saved.
 // Also handles profile picture upload (with Remind Me Later snooze).
@@ -8,10 +8,10 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { User, Ruler, CheckCircle2, Phone, Camera, Upload, Clock, AlertCircle, CheckCircle, XCircle, Loader, Crop, RotateCcw, RotateCw, ZoomIn, ZoomOut } from "lucide-react";
 
 const DIET_OPTIONS = [
-  { value: "Vegetarian", emoji: "??", label: "Vegetarian" },
-  { value: "Non-Vegetarian", emoji: "??", label: "Non-Vegetarian" },
-  { value: "Vegan", emoji: "??", label: "Vegan" },
-  { value: "Pescatarian", emoji: "??", label: "Pescatarian" },
+  { value: "Vegetarian", emoji: "🌱", label: "Vegetarian" },
+  { value: "Non-Vegetarian", emoji: "🍗", label: "Non-Vegetarian" },
+  { value: "Vegan", emoji: "🥦", label: "Vegan" },
+  { value: "Pescatarian", emoji: "🐟", label: "Pescatarian" },
 ];
 
 /** Crop a canvas region supporting rotation */
@@ -63,7 +63,7 @@ const getCroppedImg = (imageSrc, pixelCrop, rotation = 0, flip = { h: false, v: 
  *   userId            - DB UserId for snooze API call
  */
 const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection = false, snoozeData = null, userId = null }) => {
-  // -- Profile fields state -----------------------------------------------
+  // ── Profile fields state ───────────────────────────────────────────────
   const [height, setHeight] = useState("");
   const [phone, setPhone] = useState("");
   const [dietType, setDietType] = useState("");
@@ -76,7 +76,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     dietType: true,
   });
 
-  // -- Picture state ------------------------------------------------------
+  // ── Picture state ──────────────────────────────────────────────────────
   const [profileImage, setProfileImage] = useState(null);
   const [profileImagePreview, setProfileImagePreview] = useState(null);
   const [rawImageSrc, setRawImageSrc] = useState(null);
@@ -111,7 +111,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         }
 
         const res = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(email)}&_t=${Date.now()}`,
           { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
         );
 
@@ -121,7 +121,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
 
         const data = await res.json();
 
-        // ?? Demo account: API returns top-level fields (no data wrapper) � treat as empty profile
+        // 🔒 Demo account: API returns top-level fields (no data wrapper) — treat as empty profile
         const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
         const emailNorm = (user?.email || user?.Email || '').toLowerCase().trim();
         if (DEMO_ACCOUNTS.includes(emailNorm) && data.success && !data.data) {
@@ -174,7 +174,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         }
       } catch (err) {
         if (!mounted) return;
-        console.error("? [CompleteProfilePage] Failed to fetch profile:", err);
+        console.error("❌ [CompleteProfilePage] Failed to fetch profile:", err);
         setError(err.message || "Failed to load profile. Please try again.");
       } finally {
         if (mounted) {
@@ -190,7 +190,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
     };
   }, [apiBaseUrl, onComplete, user]);
 
-  // -- Picture helpers ----------------------------------------------------
+  // ── Picture helpers ────────────────────────────────────────────────────
   const detectFace = useCallback(async (base64String) => {
     setFaceStatus("detecting");
     try {
@@ -261,7 +261,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       if (missingFields.phoneNumber) payload.phoneNumber = phone.trim();
       if (missingFields.dietType) payload.dietType = dietType;
 
-      const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
+      const res = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -272,15 +272,15 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
       // Then snooze the picture
       if (userId) {
         try {
-          const snoozeRes = await fetch(`${apiBaseUrl}/api/user/snooze-pic`, {
+          const snoozeRes = await fetch(`${apiBaseUrl}/api/snooze-profile-pic`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ userId }),
           });
           const snoozeData = await snoozeRes.json();
-          if (snoozeData.success) console.log("? [CompleteProfile] Picture snoozed:", snoozeData.snooze);
+          if (snoozeData.success) console.log("⏰ [CompleteProfile] Picture snoozed:", snoozeData.snooze);
         } catch (err) {
-          console.error("? [CompleteProfile] Snooze failed:", err);
+          console.error("❌ [CompleteProfile] Snooze failed:", err);
         }
       }
 
@@ -340,7 +340,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         payload.dietType = dietType;
       }
 
-      const res = await fetch(`${apiBaseUrl}/api/user/profile`, {
+      const res = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -358,7 +358,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
 
       // If picture was provided, save it too
       if (showPictureSection && profileImage) {
-        const picRes = await fetch(`${apiBaseUrl}/api/user/profile`, {
+        const picRes = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: user.email || user.Email, profileImage }),
@@ -369,7 +369,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         }
       }
 
-      console.log("? [CompleteProfilePage] Profile saved � unlocking app.");
+      console.log("✅ [CompleteProfilePage] Profile saved — unlocking app.");
       onComplete({
         height: missingFields.height ? parseFloat(height) : undefined,
         phoneNumber: missingFields.phoneNumber ? phone.trim() : undefined,
@@ -377,7 +377,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
         profileImage: profileImage || undefined,
       });
     } catch (err) {
-      console.error("? [CompleteProfilePage] Save error:", err);
+      console.error("❌ [CompleteProfilePage] Save error:", err);
       setError(err.message || "Failed to save. Please try again.");
     } finally {
       setIsSaving(false);
@@ -527,7 +527,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
             <div className="flex items-center gap-2 mb-1">
               <Camera className="w-5 h-5 text-green-600" />
               <span className="text-sm font-semibold text-gray-700">Profile Picture</span>
-              <span className="text-xs text-gray-400 ml-1">(optional � can remind later)</span>
+              <span className="text-xs text-gray-400 ml-1">(optional — can remind later)</span>
             </div>
 
             {/* Cropper */}
@@ -570,7 +570,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
                     <div className="flex items-center gap-2 text-sm text-blue-600"><Loader className="w-4 h-4 animate-spin" /> Verifying face...</div>
                   )}
                   {faceStatus === "face_found" && (
-                    <div className="flex items-center gap-2 text-sm text-green-600"><CheckCircle className="w-4 h-4" /> Real face detected ?</div>
+                    <div className="flex items-center gap-2 text-sm text-green-600"><CheckCircle className="w-4 h-4" /> Real face detected ✓</div>
                   )}
                   {faceStatus === "no_face" && (
                     <div className="space-y-1">
@@ -579,7 +579,7 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
                     </div>
                   )}
                   {faceStatus === "detection_error" && (
-                    <div className="flex items-center gap-2 text-sm text-amber-600"><AlertCircle className="w-4 h-4" /> Could not verify � please retake</div>
+                    <div className="flex items-center gap-2 text-sm text-amber-600"><AlertCircle className="w-4 h-4" /> Could not verify — please retake</div>
                   )}
                   <button onClick={() => { setProfileImage(null); setProfileImagePreview(null); setFaceStatus("idle"); }} className="text-xs text-gray-400 underline mt-1">Remove</button>
                 </div>
@@ -630,11 +630,11 @@ const CompleteProfilePage = ({ user, apiBaseUrl, onComplete, showPictureSection 
               Saving...
             </span>
           ) : (
-            "Save & Continue ?"
+            "Save & Continue →"
           )}
         </button>
 
-        {/* Remind Me Later for picture � DISABLED */}
+        {/* Remind Me Later for picture — DISABLED */}
         {/* {showPictureSection && !profileImage && (
           canSnooze ? (
             <div className="text-center pt-1 px-3 py-3 bg-gradient-to-br from-gray-50 to-gray-100 border border-gray-200 rounded-2xl shadow-sm">

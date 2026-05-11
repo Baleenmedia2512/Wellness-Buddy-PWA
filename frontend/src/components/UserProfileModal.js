@@ -160,7 +160,7 @@ const UserProfileModal = ({
 
       const cacheBuster = Date.now();
       const response = await fetch(
-        `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
+        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
           user.email,
         )}&_t=${cacheBuster}`,
         {
@@ -406,7 +406,7 @@ const UserProfileModal = ({
         }
       }
 
-      const response = await fetch(`${apiBaseUrl}/api/user/profile`, {
+      const response = await fetch(`${apiBaseUrl}/api/update-user-profile`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

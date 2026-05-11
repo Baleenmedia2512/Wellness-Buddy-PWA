@@ -92,7 +92,7 @@ const Header = ({
         const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
         const cacheBuster = Date.now();
         const response = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
             user.email,
           )}&_t=${cacheBuster}`,
           {

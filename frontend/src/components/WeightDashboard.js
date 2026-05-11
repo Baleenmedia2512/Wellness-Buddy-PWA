@@ -406,7 +406,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       if (!user?.email) return;
       try {
         const response = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
           { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', 'Pragma': 'no-cache' } }
         );
         if (response.ok) {

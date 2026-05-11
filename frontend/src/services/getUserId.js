@@ -30,7 +30,7 @@ export async function getUserId(user) {
   }
 
   try {
-    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+    const res = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email })

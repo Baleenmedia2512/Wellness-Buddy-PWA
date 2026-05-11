@@ -172,7 +172,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setErrorMessage('');
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const res = await fetch(`${apiBaseUrl}/api/user/account`, {
+      const res = await fetch(`${apiBaseUrl}/api/delete-user-account`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: userEmail }),

@@ -550,7 +550,7 @@ function WellnessValleyApp() {
           return true;
         }
 
-        const response = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+        const response = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ email: userEmail }),
@@ -914,7 +914,7 @@ function WellnessValleyApp() {
         // Retry a few times because profile writes can be briefly stale right after save.
         for (let attempt = 0; attempt < 3; attempt++) {
           const res = await fetch(
-            `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
+            `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
               userEmail,
             )}&_t=${Date.now()}_${attempt}`,
             { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
@@ -977,7 +977,7 @@ function WellnessValleyApp() {
 
         // Fetch user profile to check for ProfileImage in database (always check DB)
         const res = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
+          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
             userEmail,
           )}&_t=${Date.now()}`,
           { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
@@ -1539,7 +1539,7 @@ function WellnessValleyApp() {
   useEffect(() => {
     if (!user?.email || !apiBaseUrl) { setSavedProfileImage(null); return; }
     // Use standard caching — no need to bust cache on every render
-    fetch(`${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`)
+    fetch(`${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}`)
       .then(res => res.ok ? res.json() : null)
       .then(data => {
         if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);
@@ -3818,7 +3818,7 @@ function WellnessValleyApp() {
 
   const saveUserToBackend = async (user) => {
     try {
-      const response = await fetch(`${apiBaseUrl}/api/user/google`, {
+      const response = await fetch(`${apiBaseUrl}/api/save-google-user`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -5184,7 +5184,7 @@ function WellnessValleyApp() {
             const userId = user.id || user.UserId || localStorage.getItem("dbUserId");
             if (userId) {
               try {
-                const res = await fetch(`${apiBaseUrl}/api/user/snooze-pic`, {
+                const res = await fetch(`${apiBaseUrl}/api/snooze-profile-pic`, {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
                   body: JSON.stringify({ userId }),
@@ -5222,7 +5222,7 @@ function WellnessValleyApp() {
             try {
               console.log("🔄 [Profile Picture] Refreshing user profile data in background...");
               const res = await fetch(
-                `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
+                `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
                 { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
               );
               

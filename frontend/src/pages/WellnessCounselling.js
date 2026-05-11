@@ -45,7 +45,7 @@ const WellnessCounselling = ({ user, onBack }) => {
     console.log('🔍 [WellnessCounselling] Looking up user ID for:', email);
     
     const response = await CapacitorHttp.get({
-      url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
+      url: `${apiBaseUrl}/api/lookup-user-id?email=${encodeURIComponent(email)}`
     });
     const data = response.data;
     
