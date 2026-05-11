@@ -19,7 +19,10 @@ export function methodNotAllowed(res) {
  */
 export async function runService(res, fn) {
   try {
-    const { httpStatus, body } = await fn();
+    const { httpStatus, body, headers } = await fn();
+    if (headers) {
+      Object.entries(headers).forEach(([k, v]) => res.setHeader(k, v));
+    }
     return res.status(httpStatus).json(body);
   } catch (err) {
     if (err && err.status) {

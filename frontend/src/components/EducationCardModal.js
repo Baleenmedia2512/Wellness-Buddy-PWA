@@ -36,7 +36,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
     if (!apiBaseUrl || !userId || !log.Id) return;
 
     setImageLoading(true);
-    fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${log.Id}&userId=${userId}`)
+    fetch(`${apiBaseUrl}/api/education/log-image?logId=${log.Id}&userId=${userId}`)
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.imageBase64) {

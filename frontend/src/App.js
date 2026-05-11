@@ -2343,7 +2343,7 @@ function WellnessValleyApp() {
         captureTimestamp ? "(from EXIF param)" : imageTimestamp ? "(from state)" : "(current time)",
       );
 
-      const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
+      const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

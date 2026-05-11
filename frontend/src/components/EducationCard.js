@@ -94,7 +94,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
   useEffect(() => {
     if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
 
-    fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${data.Id}&userId=${userId}`)
+    fetch(`${apiBaseUrl}/api/education/log-image?logId=${data.Id}&userId=${userId}`)
       .then((r) => r.json())
       .then((res) => {
         if (res.success && res.imageBase64) {

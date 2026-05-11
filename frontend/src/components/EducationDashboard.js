@@ -295,7 +295,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
       if (!userId) return;
 
       const cacheBuster = Date.now();
-      const response = await fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
+      const response = await fetch(`${apiBaseUrl}/api/education/summary?userId=${userId}&_t=${cacheBuster}`, {
         method: 'GET',
         headers: { 
           'Content-Type': 'application/json',
@@ -336,7 +336,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
       // Fetch logs and summary in parallel
       const cacheBuster = Date.now();
       const [logsResponse, summaryResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/get-education-logs?userId=${userId}&_t=${cacheBuster}`, {
+        fetch(`${apiBaseUrl}/api/education/logs?userId=${userId}&_t=${cacheBuster}`, {
           method: 'GET',
           headers: { 
             'Content-Type': 'application/json',
@@ -345,7 +345,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
           },
           cache: 'no-store'
         }),
-        fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
+        fetch(`${apiBaseUrl}/api/education/summary?userId=${userId}&_t=${cacheBuster}`, {
           method: 'GET',
           headers: { 
             'Content-Type': 'application/json',
@@ -423,7 +423,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
     try {
       const userId = userIdRef.current || user?.id;
       
-      const response = await fetch(`${apiBaseUrl}/api/delete-education-log`, {
+      const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -484,7 +484,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
     try {
       const userId = userIdRef.current || user?.id;
       
-      const response = await fetch(`${apiBaseUrl}/api/undo-deleted-education-log`, {
+      const response = await fetch(`${apiBaseUrl}/api/education/undo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 

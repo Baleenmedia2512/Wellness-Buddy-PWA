@@ -72,7 +72,7 @@ const WatchActivityCard = ({
 
         const imageBase64 = await toBase64(imagePreview);
 
-        const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
+        const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -226,7 +226,7 @@ const WatchActivityCard = ({
                     const userId = resolvedUserId ||
                       user?.id || user?.uid || user?.userId || user?.user_id || user?.email;
                     const imageBase64 = await toBase64(imagePreview);
-                    const response = await fetch(`${apiBaseUrl}/api/save-education-log`, {
+                    const response = await fetch(`${apiBaseUrl}/api/education/logs`, {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
                       body: JSON.stringify({
