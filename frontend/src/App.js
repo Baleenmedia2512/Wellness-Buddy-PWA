@@ -162,6 +162,17 @@ function WellnessValleyApp() {
   const [pendingWeightImage, setPendingWeightImage] = useState(null); // Image waiting to be saved
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
+
+  // ✅ Helper: convert any timestamp to IST "YYYY-MM-DD" date string
+  // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
+  const getISTDateStr = (ts) => {
+    if (!ts) return null;
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return String(ts).substring(0, 10);
+    const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+    return istTime.toISOString().substring(0, 10);
+  };
+
   const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
@@ -1760,11 +1771,18 @@ function WellnessValleyApp() {
         if (histData.success && histData.stats?.previousWeight) {
           const prevWeight = parseFloat(histData.stats.previousWeight.value);
           const weightChange = parseFloat(finalSavedWeight) - prevWeight;
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: histData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
+          const latestDate = histData.stats.latestWeight?.date;
+          const prevDate = histData.stats.previousWeight.date;
+          // Safety guard: only show diff if previous entry is from a different IST calendar date
+          if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
+            setWeightDiff({
+              previous: Math.round(prevWeight * 100) / 100,
+              previousDate: prevDate,
+              change: Math.round(weightChange * 100) / 100,
+            });
+          } else {
+            setWeightDiff(null);
+          }
         } else {
           setWeightDiff(null);
         }
@@ -1911,11 +1929,18 @@ function WellnessValleyApp() {
         if (diffData.success && diffData.stats?.previousWeight) {
           const prevWeight = parseFloat(diffData.stats.previousWeight.value);
           const weightChange = val - prevWeight;
-          setWeightDiff({
-            previous: Math.round(prevWeight * 100) / 100,
-            previousDate: diffData.stats.previousWeight.date,
-            change: Math.round(weightChange * 100) / 100,
-          });
+          const latestDate = diffData.stats.latestWeight?.date;
+          const prevDate = diffData.stats.previousWeight.date;
+          // Safety guard: only show diff if previous entry is from a different IST calendar date
+          if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
+            setWeightDiff({
+              previous: Math.round(prevWeight * 100) / 100,
+              previousDate: prevDate,
+              change: Math.round(weightChange * 100) / 100,
+            });
+          } else {
+            setWeightDiff(null);
+          }
         }
       } catch (_) {
         /* non-critical */
@@ -2983,24 +3008,31 @@ function WellnessValleyApp() {
               );
               const diffData = await diffRes.json();
               if (diffData.success && diffData.stats?.previousWeight) {
-                const weightChange = parseFloat(diffData.stats.weightChange);
-                setWeightDiff({
-                  previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
-                  previousDate: diffData.stats.previousWeight.date,
-                  change: Math.round(weightChange * 100) / 100,
-                });
-                // Compute ideal weight for the share card
-                refreshIdealWeight();
-                // ✅ Immediately inject into leaderboard strip — no API wait needed
-                if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
-                  leaderboardRef.current.injectEntry({
-                    userId: diffUserId,
-                    userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
-                    email: user?.email || "",
-                    weightLoss: Math.abs(weightChange),
-                    profileImage: user?.photoURL || user?.ProfileImage || null,
-                    coachName: "",
+                const latestDate = diffData.stats.latestWeight?.date;
+                const prevDate = diffData.stats.previousWeight.date;
+                // Safety guard: only show diff if previous entry is from a different IST calendar date
+                if (latestDate && prevDate && getISTDateStr(latestDate) !== getISTDateStr(prevDate)) {
+                  const weightChange = parseFloat(diffData.stats.weightChange);
+                  setWeightDiff({
+                    previous: Math.round(parseFloat(diffData.stats.previousWeight.value) * 100) / 100,
+                    previousDate: prevDate,
+                    change: Math.round(weightChange * 100) / 100,
                   });
+                  // Compute ideal weight for the share card
+                  refreshIdealWeight();
+                  // ✅ Immediately inject into leaderboard strip — no API wait needed
+                  if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
+                    leaderboardRef.current.injectEntry({
+                      userId: diffUserId,
+                      userName: user?.displayName || user?.name || user?.email?.split("@")[0] || "You",
+                      email: user?.email || "",
+                      weightLoss: Math.abs(weightChange),
+                      profileImage: user?.photoURL || user?.ProfileImage || null,
+                      coachName: "",
+                    });
+                  }
+                } else {
+                  setWeightDiff(null);
                 }
               }
             } catch (_) {

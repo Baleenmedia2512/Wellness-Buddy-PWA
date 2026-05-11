@@ -112,11 +112,29 @@ export default async function handler(req, res) {
         date: formattedRows[0].CreatedAt,
       };
 
-      // ✅ previousWeight = most recent entry from a DIFFERENT calendar date (yesterday or earlier)
+      // ✅ Convert any timestamp to IST date string "YYYY-MM-DD"
+      // All timestamps are stored as IST, but Supabase may return UTC-offset strings
+      // (e.g. "2026-05-10T22:30:00+00:00" for an IST time of "2026-05-11T04:00:00+05:30").
+      // Using plain substring(0,10) on a UTC string would make an early-morning IST entry
+      // appear to be from the previous day, incorrectly triggering the "different date" filter.
+      // Solution: always convert to IST (+5:30) before extracting the date portion.
+      const getISTDateStr = (ts) => {
+        if (!ts) return null;
+        const d = new Date(ts);
+        if (isNaN(d.getTime())) {
+          // Fallback for already-formatted IST strings without timezone marker
+          return String(ts).substring(0, 10);
+        }
+        // Add IST offset (UTC+5:30) to get the correct IST calendar date
+        const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+        return istTime.toISOString().substring(0, 10); // "YYYY-MM-DD" in IST
+      };
+
+      // ✅ previousWeight = most recent entry from a DIFFERENT IST calendar date (yesterday or earlier)
       // This ensures the diff shown in WhatsApp/share card is today vs yesterday, not today's 2nd vs 1st entry
-      const latestDateStr = formattedRows[0].CreatedAt.substring(0, 10); // "YYYY-MM-DD"
+      const latestDateStr = getISTDateStr(formattedRows[0].CreatedAt); // "YYYY-MM-DD" in IST
       const prevEntry = formattedRows.find(
-        (r, idx) => idx > 0 && r.CreatedAt.substring(0, 10) !== latestDateStr
+        (r, idx) => idx > 0 && getISTDateStr(r.CreatedAt) !== latestDateStr
       );
 
       if (prevEntry) {
