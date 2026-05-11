@@ -94,6 +94,83 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
+    // ── Demo account: auto-assign Yasheer J as coach with fixed OTP 000000 ──
+    // No email is sent; the tester enters 000000 to complete setup.
+    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
+    if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim())) {
+      console.log('ℹ️ [upline/request] Demo account — auto-assigning Yasheer J as coach');
+
+      // Look up Yasheer J from DB dynamically (no hardcoded ID)
+      const { data: yasheerRows, error: yasheerErr } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, Email')
+        .ilike('UserName', 'Yasheer J')
+        .limit(1);
+
+      if (yasheerErr || !yasheerRows || yasheerRows.length === 0) {
+        console.error('❌ [upline/request] Could not find Yasheer J in DB:', yasheerErr);
+        return res.status(500).json({ success: false, error: 'Default coach not found. Please contact support.' });
+      }
+
+      const demoCoach = yasheerRows[0];
+
+      // Get demo requester's UserId
+      const { data: demoRequesterRows, error: demoRequesterErr } = await supabase
+        .from('team_table')
+        .select('UserId, UserName, CoachId')
+        .ilike('Email', email)
+        .limit(1);
+
+      if (demoRequesterErr || !demoRequesterRows || demoRequesterRows.length === 0) {
+        return res.status(404).json({ success: false, error: 'Demo user not found in DB. Please login again.' });
+      }
+
+      const demoRequester = demoRequesterRows[0];
+
+      if (demoRequester.CoachId) {
+        return res.status(400).json({ success: false, error: 'You already have a coach', redirectTo: '/dashboard' });
+      }
+
+      // Cancel any existing pending requests
+      await supabase
+        .from('approval_requests_table')
+        .update({ Status: 'cancelled', ProcessedAt: new Date().toISOString() })
+        .eq('RequesterId', demoRequester.UserId)
+        .eq('Status', 'pending');
+
+      // Hash fixed OTP 000000
+      const demoOtpHash = await bcrypt.hash('000000', 10);
+      const requestedAt = new Date();
+      const otpExpiresAt = new Date(requestedAt.getTime() + 24 * 60 * 60 * 1000);
+
+      const { data: demoInsert, error: demoInsertErr } = await supabase
+        .from('approval_requests_table')
+        .insert([{
+          RequesterId: demoRequester.UserId,
+          UplineCoachId: demoCoach.UserId,
+          Status: 'pending',
+          OtpHash: demoOtpHash,
+          OtpExpiresAt: otpExpiresAt.toISOString(),
+          OtpSentAt: requestedAt.toISOString(),
+          OtpAttempts: 0,
+          RequestedAt: requestedAt.toISOString(),
+        }])
+        .select('Id');
+
+      if (demoInsertErr) throw demoInsertErr;
+
+      console.log('✅ [upline/request] Demo request created with Yasheer J. OTP: 000000');
+      return res.status(200).json({
+        success: true,
+        message: 'Request sent! Enter OTP 000000 to complete setup.',
+        requestId: demoInsert[0].Id,
+        coachName: demoCoach.UserName,
+        nextStep: 'validate-otp',
+        redirectTo: '/setup/validate-otp',
+      });
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     // Get requester's UserId and details
     const { data: requesterRows, error: requesterError } = await supabase
       .from("team_table")

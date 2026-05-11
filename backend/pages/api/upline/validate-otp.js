@@ -64,11 +64,11 @@ export default async function handler(req, res) {
     // Connect to Supabase
     const supabase = getSupabaseClient();
 
-    // ── Demo account: fixed OTP 123456 accepted, but do real DB ops ──────────
+    // ── Demo account: fixed OTP 000000 accepted, but do real DB ops ──────────
     // No OTP is emailed to the demo account, so we accept the fixed code and
     // then continue through the normal flow (DB records already exist after login).
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    const DEMO_OTP = '123456';
+    const DEMO_OTP = '000000';
     const isDemoAccount = DEMO_ACCOUNTS.includes(email.toLowerCase().trim());
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -157,7 +157,7 @@ export default async function handler(req, res) {
       requestId: request.Id,
     });
 
-    const isValid = (isDemoAccount && otp === DEMO_OTP) || await bcrypt.compare(otp, request.OtpHash);
+    const isValid = (isDemoAccount && otp === '000000') || await bcrypt.compare(otp, request.OtpHash);
 
     console.log("OTP validation result:", isValid);
 
