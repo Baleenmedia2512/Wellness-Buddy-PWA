@@ -40,7 +40,7 @@ export async function getTodayScreenTime() {
  * Save screen time to backend
  */
 export async function saveScreenTime({ userId, date, totalScreenTimeSeconds }) {
-  return apiClient.post('/api/save-screen-time', {
+  return apiClient.post('/api/screen/save', {
     userId,
     date,
     totalScreenTimeSeconds
@@ -54,7 +54,7 @@ export async function saveScreenTime({ userId, date, totalScreenTimeSeconds }) {
  * @param {string|null} targetDate - YYYY-MM-DD device-local date (IST fix)
  */
 export async function fetchScreenTimeHistory(userId, days = 7, targetDate = null) {
-  let url = `/api/get-screen-time?userId=${encodeURIComponent(userId)}&days=${days}`;
+  let url = `/api/screen/history?userId=${encodeURIComponent(userId)}&days=${days}`;
   if (targetDate) url += `&targetDate=${encodeURIComponent(targetDate)}`;
   return apiClient.get(url, { cache: false });
 }
