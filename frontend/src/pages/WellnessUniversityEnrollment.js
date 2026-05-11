@@ -102,7 +102,7 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
       // Fetch user profile to get coach name
       const cacheBuster = Date.now();
       const profileResponse = await fetch(
-        `${API_BASE}/api/get-user-profile?email=${encodeURIComponent(
+        `${API_BASE}/api/user/profile?email=${encodeURIComponent(
           user.email,
         )}&_t=${cacheBuster}`,
       );

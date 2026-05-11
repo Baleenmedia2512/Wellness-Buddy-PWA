@@ -122,7 +122,7 @@ const NutritionDashboard = ({
     if (!user?.email) return null;
 
     try {
-      const lookupResponse = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+      const lookupResponse = await fetch(`${apiBaseUrl}/api/user/lookup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: user.email }),
@@ -1153,7 +1153,7 @@ const NutritionDashboard = ({
       try {
         // Add timestamp to bust cache and get fresh data
         const response = await fetch(
-          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
+          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
             user.email,
           )}&_t=${Date.now()}`,
         );

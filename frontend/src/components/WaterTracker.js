@@ -63,7 +63,7 @@ export default function WaterTracker({ user, userId: propUserId, apiBaseUrl: pro
     // Fallback: look up via email
     const email = user?.email || localStorage.getItem("userEmail");
     if (email) {
-      fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+      fetch(`${apiBaseUrl}/api/user/lookup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

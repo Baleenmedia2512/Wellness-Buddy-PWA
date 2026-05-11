@@ -369,7 +369,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       if (email) {
         try {
           const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-          const res  = await fetch(`${apiBaseUrl}/api/lookup-user-id`, {
+          const res  = await fetch(`${apiBaseUrl}/api/user/lookup`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email })

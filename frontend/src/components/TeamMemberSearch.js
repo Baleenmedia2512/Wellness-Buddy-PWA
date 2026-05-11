@@ -41,7 +41,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
         const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
         const cacheBuster = Date.now();
         const response = await fetch(
-          `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
+          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${cacheBuster}`,
           {
             cache: 'no-store',
             headers: {
