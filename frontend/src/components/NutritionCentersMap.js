@@ -205,7 +205,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
         endParam = todayStr;
       }
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
+        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=${teamFilter}&scope=${scope}&dateRange=${dateParam}&startDate=${startParam}&endDate=${endParam}`,
         {
           cache: 'no-store',
           headers: {

@@ -60,7 +60,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     nameCheckTimerRef.current = setTimeout(async () => {
       try {
         const response = await fetch(
-          `${apiBaseUrl}/api/check-center-name?name=${encodeURIComponent(name.trim())}`,
+          `${apiBaseUrl}/api/nutrition-centers/check-name?name=${encodeURIComponent(name.trim())}`,
           { cache: 'no-store' }
         );
         const data = await response.json();
@@ -452,7 +452,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     try {
       const userId = await getUserId(user.email);
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=self`,
+        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=self`,
         {
           cache: 'no-store',
           headers: {
@@ -499,7 +499,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
       const userId = await getUserId(user.email);
 
-      const response = await fetch(`${apiBaseUrl}/api/register-nutrition-center`, {
+      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -571,7 +571,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     try {
       const userId = await getUserId(user.email);
 
-      const response = await fetch(`${apiBaseUrl}/api/unregister-nutrition-center`, {
+      const response = await fetch(`${apiBaseUrl}/api/nutrition-centers/unregister`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

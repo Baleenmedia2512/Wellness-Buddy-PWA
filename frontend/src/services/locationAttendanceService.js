@@ -121,7 +121,7 @@ class LocationAttendanceService {
       // Use scope=all to fetch ALL clubs globally for GPS-based attendance detection
       // This allows users to check in at ANY club, not just their team's clubs
       const response = await fetch(
-        `${apiBaseUrl}/api/get-nutrition-centers?userId=${userId}&teamFilter=full&scope=all`,
+        `${apiBaseUrl}/api/nutrition-centers?userId=${userId}&teamFilter=full&scope=all`,
         {
           cache: 'no-store',
           headers: {
