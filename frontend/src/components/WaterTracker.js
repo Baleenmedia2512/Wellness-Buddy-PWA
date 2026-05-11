@@ -6,7 +6,7 @@
  *
  * Data flow:
  *   READ  → GET /api/water/intake?userId=X&date=YYYY-MM-DD
- *   WRITE → POST /api/save-background-analysis  (stores a food_nutrition_data_table row
+ *   WRITE → POST /api/background-analysis  (stores a food_nutrition_data_table row
  *           with AnalysisData = { foods: [{ name:"water", volume_ml: N, calories: 0 }] })
  */
 

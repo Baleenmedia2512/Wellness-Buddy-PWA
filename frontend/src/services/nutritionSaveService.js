@@ -164,7 +164,7 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
     // Transform analysisResult to match background service format (foods array + total object)
     const transformedAnalysisResult = transformToBackgroundServiceFormat(analysisResult);
     
-    const res = await fetch(`${apiBaseUrl}/api/save-background-analysis`, {
+    const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
@@ -222,7 +222,7 @@ export async function saveNutritionAnalysis({ userId, imagePath, imageBase64, an
 export async function deleteNutritionAnalysis({ id, userId }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
-    const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+    const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id, userId })

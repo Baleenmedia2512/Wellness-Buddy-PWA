@@ -432,7 +432,7 @@ const SuccessSavePopup = ({
           const isWeightEntry = popup.isWeight;
           const undoUrl = isWeightEntry 
             ? `${apiBaseUrl}/api/weight/undo`
-            : `${apiBaseUrl}/api/undo-deleted-analysis`;
+            : `${apiBaseUrl}/api/background-analysis/undo`;
           
           const undoBody = isWeightEntry
             ? { id: popup.analysisId, userId: popup.userId }
@@ -648,7 +648,7 @@ const SuccessSavePopup = ({
                     const isWeightEntry = popup.isWeight;
                     const deleteUrl = isWeightEntry 
                       ? `${apiBaseUrl}/api/weight/delete`
-                      : `${apiBaseUrl}/api/delete-background-analysis`;
+                      : `${apiBaseUrl}/api/background-analysis`;
                     
                     const deleteBody = isWeightEntry
                       ? { userId: popup.userId, entryId: analysisId }

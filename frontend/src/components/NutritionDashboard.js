@@ -1307,7 +1307,7 @@ const NutritionDashboard = ({
     applyDailyDelta(deltas);
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/delete-background-analysis`, {
+      const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id: mealToDelete.ID, userId: user?.id }),
@@ -1528,7 +1528,7 @@ const NutritionDashboard = ({
             try {
               // NOTE: make sure this path matches your backend filename.
               const resp = await fetch(
-                `${apiBaseUrl}/api/undo-deleted-analysis`,
+                `${apiBaseUrl}/api/background-analysis/undo`,
                 {
                   method: "POST",
                   headers: { "Content-Type": "application/json" },
@@ -3182,7 +3182,7 @@ const NutritionDashboard = ({
                           // --- Server call; rollback if it fails ---
                           try {
                             const res = await fetch(
-                              `${apiBaseUrl}/api/delete-background-analysis`,
+                              `${apiBaseUrl}/api/background-analysis`,
                               {
                                 method: "DELETE",
                                 headers: { "Content-Type": "application/json" },

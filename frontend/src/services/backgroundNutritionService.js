@@ -9,7 +9,7 @@
 export async function fetchLatestBackgroundNutrition(userId) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
-    const res = await fetch(`${apiBaseUrl}/api/get-background-analysis?userId=${userId}&limit=1&offset=0`);
+    const res = await fetch(`${apiBaseUrl}/api/background-analysis?userId=${userId}&limit=1&offset=0`);
     if (!res.ok) throw new Error('Failed to fetch background nutrition');
     const data = await res.json();
     if (data.success && Array.isArray(data.data) && data.data.length > 0) {
