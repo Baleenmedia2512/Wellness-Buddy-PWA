@@ -472,10 +472,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
       const currentOffset = reset ? 0 : offsetRef.current;
 
-      // ✅ LAZY LOAD: only request 10 entries per page
+      // ✅ LAZY LOAD: only request 10 entries per page (no images — fetched per card)
       const params = new URLSearchParams({
         userId,
-        includeImage: 'true',
+        includeImage: 'false',
         limit: String(WEIGHT_PAGE_SIZE),
         offset: String(currentOffset),
         _t: Date.now()
@@ -1388,6 +1388,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
                                 profileImage={savedProfileImage || null}
+                                apiBaseUrl={apiBaseUrl}
+                                userId={userIdRef.current}
                               />
                             </Suspense>
                           );
@@ -1405,6 +1407,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
                                 profileImage={savedProfileImage || null}
+                                apiBaseUrl={apiBaseUrl}
+                                userId={userIdRef.current}
                               />
                             </Suspense>
                           </LazyLoadWrapper>
