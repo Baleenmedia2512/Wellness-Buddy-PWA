@@ -5,7 +5,7 @@
  * Default required: 2500 ml (2.5 L) when no weight is logged.
  *
  * Data flow:
- *   READ  → GET /api/get-water-intake?userId=X&date=YYYY-MM-DD
+ *   READ  → GET /api/water/intake?userId=X&date=YYYY-MM-DD
  *   WRITE → POST /api/save-background-analysis  (stores a food_nutrition_data_table row
  *           with AnalysisData = { foods: [{ name:"water", volume_ml: N, calories: 0 }] })
  */
@@ -87,7 +87,7 @@ export default function WaterTracker({ user, userId: propUserId, apiBaseUrl: pro
     try {
       const date = todayLocal();
       const res = await fetch(
-        `${apiBaseUrl}/api/get-water-intake?userId=${resolvedUserId}&date=${date}&_t=${Date.now()}`,
+        `${apiBaseUrl}/api/water/intake?userId=${resolvedUserId}&date=${date}&_t=${Date.now()}`,
         { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
       );
       if (!res.ok) throw new Error(`Server error ${res.status}`);
