@@ -75,16 +75,13 @@ const Header = ({
     };
   }, [menuOpen]);
 
-  // Initialize showProfileModal from localStorage to persist across page refreshes
-  const [showProfileModal, setShowProfileModal] = useState(() => {
-    const saved = localStorage.getItem("showProfileModal");
-    return saved === "true";
-  });
+  // Profile modal — only opens when user explicitly clicks "Manage your Profile"
+  const [showProfileModal, setShowProfileModal] = useState(false);
 
-  // Persist modal state to localStorage
+  // Clear stale showProfileModal key from localStorage (old versions stored it)
   useEffect(() => {
-    localStorage.setItem("showProfileModal", showProfileModal.toString());
-  }, [showProfileModal]);
+    localStorage.removeItem("showProfileModal");
+  }, []);
 
   // Fetch saved user name from profile
   useEffect(() => {

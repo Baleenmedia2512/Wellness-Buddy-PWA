@@ -569,12 +569,11 @@ function WellnessValleyApp() {
           return false;
         }
 
-        // ✅ New user (e.g. demo account after deletion) — show profile setup modal
+        // ✅ New user — SetupWizard will handle profile collection, no popup needed
         if (data.isNewUser) {
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
           if (data.role) setUserRole(data.role);
-          setTimeout(() => setShowNewUserProfileModal(true), 500);
           return true;
         }
 
@@ -3996,14 +3995,11 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // Show profile modal for new users
+        // New user — SetupWizard handles profile collection, no popup needed
         if (isNewUser || parsedUser.isNewUser) {
           console.log(
-            "🆕 [handleOtpVerified] New user - showing profile modal",
+            "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
           );
-          setTimeout(() => {
-            setShowNewUserProfileModal(true);
-          }, 500);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
