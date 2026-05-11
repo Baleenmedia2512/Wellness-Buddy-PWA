@@ -50,6 +50,8 @@ export default async function handler(req, res) {
   try {
     const supabase = getSupabaseClient();
 
+    const normalizedEmail = email.toLowerCase().trim();
+
     console.log("📊 [update-user-profile] Using Supabase REST API");
 
     // First, get the user to verify they exist and get their UserId

@@ -15,7 +15,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { recipient: rawRecipient, otp, contactType = 'email' } = req.body;
+  const { recipient: rawRecipient, otp, contactType = 'email', purpose = '' } = req.body;
   const recipient = rawRecipient ? rawRecipient.toLowerCase().trim() : rawRecipient;
 
   if (!recipient || !otp) {
@@ -23,22 +23,70 @@ export default async function handler(req, res) {
     return;
   }
 
-  // ── Demo account bypass for App Store review ──────────────────────────────
-  // Fixed OTP 123456 always works for the demo account (real email, real DB user).
-  // Return id:null so the app calls lookup-user-id to fetch the real DB user id.
+  // ── Demo account: fixed OTPs, but use REAL DB ────────────────────────────
+  // No real OTP email is sent, so we accept fixed OTPs and then create/fetch
+  // a genuine DB record so all subsequent save operations work correctly.
   const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-  const DEMO_OTP = '123456';
-  if (DEMO_ACCOUNTS.includes(recipient) && otp === DEMO_OTP) {
-    return res.json({
-      success: true,
-      message: 'OTP verified successfully',
-      user: {
-        id: null,
-        username: 'App Reviewer',
-        email: recipient,
-        status: 'Active',
-      },
-    });
+  if (DEMO_ACCOUNTS.includes(recipient)) {
+    const validDeleteOtp = purpose === 'delete' && otp === '654321';
+    const validLoginOtp  = purpose !== 'delete' && otp === '123456';
+    if (!validDeleteOtp && !validLoginOtp) {
+      return res.status(400).json({ success: false, message: 'Invalid OTP. Please try again.' });
+    }
+    // Fixed OTP accepted — now look up or create real DB record
+    try {
+      const supabase = getSupabaseClient();
+      const { data: existingRows, error: lookupErr } = await supabase
+        .from('team_table')
+        .select('"UserId", "UserName", "Email", "Status"')
+        .ilike('Email', recipient)
+        .limit(1);
+      if (lookupErr) throw lookupErr;
+
+      let userInfo;
+      let isNewUser = false;
+
+      if (existingRows && existingRows.length > 0) {
+        userInfo = existingRows[0];
+      } else {
+        // Create real DB record for demo account
+        const currentTime = getISTTimestamp();
+        const { data: newUser, error: insertErr } = await supabase
+          .from('team_table')
+          .insert({
+            EntryDateTime: currentTime,
+            LastActiveAt: currentTime,
+            EntryUser: 'Demo Account',
+            UserName: 'testereasywork',
+            Password: 'User@123#',
+            TargetWeightInKg: 0,
+            Status: 'Active',
+            CoachApproved: 0,
+            Email: recipient,
+          })
+          .select()
+          .single();
+        if (insertErr) throw insertErr;
+        userInfo = newUser;
+        isNewUser = true;
+        console.log('🆕 [verify-otp] Demo account created in DB:', recipient);
+      }
+
+      return res.json({
+        success: true,
+        message: 'OTP verified successfully',
+        isNewUser,
+        user: {
+          id: userInfo.UserId,
+          username: userInfo.UserName,
+          email: userInfo.Email,
+          status: userInfo.Status,
+        },
+      });
+    } catch (err) {
+      console.error('❌ [verify-otp] Demo account DB error:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
   }
   // ─────────────────────────────────────────────────────────────────────────
 

@@ -33,6 +33,21 @@ export default async function handler(req, res) {
     return;
   }
 
+  // 🔒 Demo account bypass — return empty stats, no DB query
+  if (userId === 'DEMO_USER') {
+    return res.status(200).json({
+      success: true,
+      meals: [],
+      totalCalories: 0,
+      totalProtein: 0,
+      totalCarbs: 0,
+      totalFat: 0,
+      totalFiber: 0,
+      mealCount: 0,
+      weightRecords: [],
+    });
+  }
+
   try {
     const supabase = getSupabaseClient();
 

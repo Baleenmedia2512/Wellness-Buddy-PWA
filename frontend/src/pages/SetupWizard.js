@@ -51,6 +51,56 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
     return /^[a-zA-Z0-9]{10}$/.test(id);
   };
 
+  const DEMO_EMAIL = 'testereasywork@gmail.com';
+
+  // ── Demo account: auto-select Yasheer J, skip Team ID, send request ───────
+  useEffect(() => {
+    const userEmail = localStorage.getItem('userEmail') || '';
+    if (userEmail.toLowerCase().trim() !== DEMO_EMAIL) return;
+
+    const autoComplete = async () => {
+      try {
+        // Step 1: search for Yasheer J
+        const response = await axios.get(
+          `${API_BASE}/api/users/search?q=Yasheer J&email=${encodeURIComponent(userEmail)}`
+        );
+        const coaches = response.data.coaches || [];
+        const yasheer = coaches.find(c =>
+          c.userName.toLowerCase().includes('yasheer')
+        );
+        if (!yasheer) {
+          console.error('[SetupWizard] Yasheer J not found in search results');
+          return;
+        }
+
+        setSelectedCoach(yasheer);
+        setCoaches([yasheer]);
+        setSearchQuery('Yasheer J');
+
+        // Step 2: auto send the upline request (skip Team ID)
+        const requestResponse = await axios.post(
+          `${API_BASE}/api/upline/request`,
+          { coachId: yasheer.userId, email: userEmail }
+        );
+        console.log('✅ [Demo] Upline request sent automatically:', requestResponse.data);
+
+        // Step 3: navigate to OTP screen
+        if (onNavigateToOTP) {
+          onNavigateToOTP();
+        } else if (onClose) {
+          onClose();
+        }
+      } catch (err) {
+        console.error('[SetupWizard] Demo auto-complete failed:', err);
+        // Fallback: show Step 2 with Yasheer J pre-selected
+        setStep(2);
+      }
+    };
+
+    autoComplete();
+  }, []);
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Real-time search with debounce
   useEffect(() => {
     if (searchQuery.trim().length < 2) {
@@ -524,13 +574,25 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
                       </div>
                     </div>
                   </div>
-                  <button
-                    onClick={() => setStep(1)}
-                    className="text-green-600 text-sm font-bold hover:text-green-700"
-                  >
-                    Change
-                  </button>
+                  {(localStorage.getItem('userEmail') || '').toLowerCase().trim() !== DEMO_EMAIL && (
+                    <button
+                      onClick={() => setStep(1)}
+                      className="text-green-600 text-sm font-bold hover:text-green-700"
+                    >
+                      Change
+                    </button>
+                  )}
                 </div>
+
+                {/* Demo account info banner */}
+                {(localStorage.getItem('userEmail') || '').toLowerCase().trim() === DEMO_EMAIL && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3 mb-6">
+                    <div className="text-blue-500 text-xl shrink-0">ℹ️</div>
+                    <p className="text-blue-700 text-xs font-medium leading-relaxed">
+                      Your coach has been automatically assigned. Enter OTP <strong>000000</strong> on the next screen to complete setup.
+                    </p>
+                  </div>
+                )}
 
                 <div className="mb-6">
                   <h3 className="text-lg font-bold text-gray-900 mb-1">

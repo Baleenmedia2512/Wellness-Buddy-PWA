@@ -22,6 +22,12 @@ export default async function handler(req, res) {
     return;
   }
 
+  // ── Demo account bypass ───────────────────────────────────────────────────
+  if (!userId || userId === null || userId === 'null' || userId === 'DEMO_USER') {
+    return res.status(200).json({ success: true });
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   try {
     const supabase = getSupabaseClient();
 

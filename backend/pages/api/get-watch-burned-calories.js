@@ -25,6 +25,11 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, message: 'userId is required' });
   }
 
+  // 🔒 Demo account bypass
+  if (userId === 'DEMO_USER') {
+    return res.status(200).json({ success: true, caloriesBurned: 0, entries: [] });
+  }
+
   // Default to today (YYYY-MM-DD)
   const targetDate = date || new Date().toISOString().slice(0, 10);
 

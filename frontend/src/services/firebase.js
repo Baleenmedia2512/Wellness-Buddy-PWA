@@ -7,7 +7,8 @@ import {
   getRedirectResult,
   signInWithCredential,
   onAuthStateChanged,
-  updateProfile
+  updateProfile,
+  deleteUser
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@southdevs/capacitor-google-auth';
@@ -362,3 +363,19 @@ export const isMobileDevice = isMobile;
 export const isNativePlatform = isCapacitorNative;
 
 export const cleanup = () => clearRedirectPending();
+
+// 🗑️ Delete the Firebase Auth user account permanently (called on account deletion)
+export const deleteFirebaseUser = async () => {
+  try {
+    const currentUser = auth.currentUser;
+    if (currentUser) {
+      await deleteUser(currentUser);
+      console.log('✅ [deleteFirebaseUser] Firebase Auth user deleted successfully');
+    } else {
+      console.warn('⚠️ [deleteFirebaseUser] No current Firebase user to delete');
+    }
+  } catch (error) {
+    // "requires-recent-login" means the session is too old — not fatal for deletion flow
+    console.warn('⚠️ [deleteFirebaseUser] Could not delete Firebase user (non-fatal):', error.code, error.message);
+  }
+};

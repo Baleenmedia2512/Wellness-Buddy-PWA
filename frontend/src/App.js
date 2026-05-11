@@ -261,6 +261,42 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
+  // ── Demo account: silently complete coach setup in background ─────────────
+  const DEMO_EMAIL = 'testereasywork@gmail.com';
+  const silentlyCompleteDemoSetup = async (userEmail) => {
+    if ((userEmail || '').toLowerCase().trim() !== DEMO_EMAIL) return false;
+    try {
+      const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
+      // 1. Search for Yasheer J
+      const searchRes = await fetch(`${API_BASE}/api/users/search?q=Yasheer+J&email=${encodeURIComponent(userEmail)}`);
+      const searchData = await searchRes.json();
+      const yasheer = (searchData.coaches || []).find(c => c.userName.toLowerCase().includes('yasheer'));
+      if (!yasheer) { console.warn('[Demo] Yasheer J not found'); return false; }
+
+      // 2. Send upline request (backend auto-hashes OTP 000000)
+      await fetch(`${API_BASE}/api/upline/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ coachId: yasheer.userId, email: userEmail }),
+      });
+
+      // 3. Validate with fixed OTP 000000
+      await fetch(`${API_BASE}/api/upline/validate-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ otp: '000000', email: userEmail }),
+      });
+
+      localStorage.setItem('coachOtpVerified', 'true');
+      console.log('✅ [Demo] Coach setup completed silently');
+      return true;
+    } catch (err) {
+      console.error('[Demo] Silent setup failed:', err);
+      return false;
+    }
+  };
+  // ─────────────────────────────────────────────────────────────────────────
+
   // Wellness University state
   const [showWellnessEnrollment, setShowWellnessEnrollment] = useState(false);
   const [showWellnessReport, setShowWellnessReport] = useState(false);
@@ -532,6 +568,14 @@ function WellnessValleyApp() {
           setShowUserNotFoundModal(true);
           setIsUserActive(false);
           return false;
+        }
+
+        // ✅ New user — SetupWizard will handle profile collection, no popup needed
+        if (data.isNewUser) {
+          setShowUserNotFoundModal(false);
+          setIsUserActive(true);
+          if (data.role) setUserRole(data.role);
+          return true;
         }
 
         // User found but inactive
@@ -1017,6 +1061,12 @@ function WellnessValleyApp() {
         signOutUser().catch(() => {});
         return;
       }
+      // ✅ Block re-auth if account was permanently deleted
+      if (user && localStorage.getItem("accountDeleted") === "true") {
+        console.warn("🚫 [Auth State] Blocked re-auth — account was deleted");
+        signOutUser().catch(() => {});
+        return;
+      }
       // ✅ Hard gate: if forceLoggedOut is true, never re-login from Firebase
       if (forceLoggedOut) {
         console.warn("🚫 [Auth State] Blocked re-auth — forceLoggedOut is true");
@@ -1121,12 +1171,22 @@ function WellnessValleyApp() {
                     if (localStorage.getItem('coachOtpVerified') === 'true') {
                       console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
                       await checkProfileCompletion(userEmail, user);
+                    } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                      // Demo account: silently validate OTP in background
+                      console.log("🤖 [Auth State] Demo account pending OTP — completing silently");
+                      await silentlyCompleteDemoSetup(userEmail);
+                      await checkProfileCompletion(userEmail, user);
                     } else {
                       console.log(
                         "📧 [Auth State] Pending OTP detected, showing OTP modal",
                       );
                       setShowValidateOTP(true);
                     }
+                  } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                    // Demo account: silently run full coach setup in background
+                    console.log("🤖 [Auth State] Demo account setup incomplete — completing silently");
+                    await silentlyCompleteDemoSetup(userEmail);
+                    await checkProfileCompletion(userEmail, user);
                   } else {
                     // User needs to complete setup wizard
                     console.log(
@@ -1368,12 +1428,24 @@ function WellnessValleyApp() {
                 console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
                 await checkProfileCompletion(userEmail);
                 setTimeout(() => checkProfilePicture(user), 800);
+              } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+                // Demo account: silently validate OTP in background
+                console.log("🤖 [Setup Check] Demo account pending OTP — completing silently");
+                await silentlyCompleteDemoSetup(userEmail);
+                await checkProfileCompletion(userEmail);
+                setTimeout(() => checkProfilePicture(user), 800);
               } else {
                 console.log(
                   "📧 [Setup Check] Pending OTP detected, showing OTP modal",
                 );
                 setShowValidateOTP(true);
               }
+            } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
+              // Demo account: silently run full coach setup in background
+              console.log("🤖 [Setup Check] Demo account setup incomplete — completing silently");
+              await silentlyCompleteDemoSetup(userEmail);
+              await checkProfileCompletion(userEmail);
+              setTimeout(() => checkProfilePicture(user), 800);
             } else {
               // User needs to complete setup wizard
               console.log(
@@ -3545,6 +3617,7 @@ function WellnessValleyApp() {
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
 
       // Flag should already be set by Login component
@@ -3684,6 +3757,7 @@ function WellnessValleyApp() {
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
 
       // Flag is already set by Login component before this function is called
@@ -3883,6 +3957,8 @@ function WellnessValleyApp() {
       // Clear userId session cache
       clearUserIdCache();
       localStorage.removeItem("dbUserId");
+      // Clear demo meal history on sign-out
+      localStorage.removeItem("demo_meals");
       // Clear profile-complete flag so a new/different user sees the gate if needed
       const emailKey = localStorage.getItem("userEmail") || "";
       if (emailKey) localStorage.removeItem("profileComplete_v2_" + emailKey);
@@ -3907,6 +3983,11 @@ function WellnessValleyApp() {
       localStorage.removeItem("otpUser");
       localStorage.removeItem("currentPage");
       localStorage.removeItem("dbUserId");
+      // ✅ Clear nutrition / background analysis caches so a new login never sees old images
+      localStorage.removeItem("backgroundAnalyses");
+      localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
+      localStorage.removeItem("dashboard_activeTab");
+      GalleryMonitor.clearLocalBackgroundAnalyses();
       // Keep "userSignedOut" flag — set by signOutUser() to block iOS silent re-auth
       sessionStorage.clear();
       resetApp();
@@ -3918,6 +3999,10 @@ function WellnessValleyApp() {
       localStorage.removeItem("otpUser");
       localStorage.removeItem("currentPage");
       localStorage.removeItem("dbUserId");
+      localStorage.removeItem("backgroundAnalyses");
+      localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
+      localStorage.removeItem("dashboard_activeTab");
+      try { GalleryMonitor.clearLocalBackgroundAnalyses(); } catch (_) {}
       // Keep "userSignedOut" flag to block re-auth
       sessionStorage.clear();
       resetApp();
@@ -3976,14 +4061,11 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // Show profile modal for new users
+        // New user — SetupWizard handles profile collection, no popup needed
         if (isNewUser || parsedUser.isNewUser) {
           console.log(
-            "🆕 [handleOtpVerified] New user - showing profile modal",
+            "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
           );
-          setTimeout(() => {
-            setShowNewUserProfileModal(true);
-          }, 500);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
@@ -3996,6 +4078,7 @@ function WellnessValleyApp() {
     } else {
       // No OTP user found, proceed with verification
       localStorage.removeItem("userSignedOut");
+      localStorage.removeItem("accountDeleted");
       setForceLoggedOut(false);
       setIsOtpVerified(true);
       localStorage.setItem("isOtpVerified", "true");

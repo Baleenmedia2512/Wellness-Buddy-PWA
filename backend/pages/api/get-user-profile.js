@@ -37,16 +37,6 @@ export default async function handler(req, res) {
   }
 
   try {
-    // DISABLED: Backend cache disabled for profile data to ensure fresh data after updates
-    // User profiles change frequently and cache causes stale data issues
-    // const cacheKey = cacheKeys.userProfile(email);
-    // const cachedProfile = cache.get(cacheKey);
-    // if (cachedProfile) {
-    //   console.log('✅ [get-user-profile] Cache HIT for:', email);
-    //   res.setHeader('X-Cache', 'HIT');
-    //   return res.status(200).json(cachedProfile);
-    // }
-
     console.log('📊 [get-user-profile] Fetching fresh profile data for:', email);
 
     const supabase = getSupabaseClient();
