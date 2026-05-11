@@ -444,7 +444,7 @@ export async function checkForDuplicateWeight({
     try {
       const cacheBuster = Date.now();
       response = await fetch(
-        `${apiBaseUrl}/api/get-weight-history?userId=${userId}&limit=10&offset=0&includeImage=false&_t=${cacheBuster}`,
+        `${apiBaseUrl}/api/weight/history?userId=${userId}&limit=10&offset=0&includeImage=false&_t=${cacheBuster}`,
         {
           headers: {
             "Cache-Control": "no-cache",

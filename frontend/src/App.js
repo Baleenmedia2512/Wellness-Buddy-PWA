@@ -1663,7 +1663,7 @@ function WellnessValleyApp() {
 
       // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
-      const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1721,7 +1721,7 @@ function WellnessValleyApp() {
       // Fetch previous weight to show "vs Previous entry" diff immediately
       try {
         const histRes = await fetch(
-          `${apiBaseUrl}/api/get-weight-history?userId=${userId}&includeImage=false&_t=${Date.now()}`
+          `${apiBaseUrl}/api/weight/history?userId=${userId}&includeImage=false&_t=${Date.now()}`
         );
         const histData = await histRes.json();
         if (histData.success && histData.stats?.previousWeight) {
@@ -1837,7 +1837,7 @@ function WellnessValleyApp() {
       const currentEntryId = savedWeightIdRef.current;
       if (currentEntryId) payload.entryId = currentEntryId;
 
-      const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+      const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -1869,7 +1869,7 @@ function WellnessValleyApp() {
       try {
         let diffUserId = user?.id || (await getUserId(user));
         const diffRes = await fetch(
-          `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
+          `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
         );
         const diffData = await diffRes.json();
         if (diffData.success && diffData.stats?.previousWeight) {
@@ -2073,7 +2073,7 @@ function WellnessValleyApp() {
       if (!uid) uid = await getUserId(user);
       if (!uid) return;
       const res = await fetch(
-        `${apiBaseUrl}/api/get-weight-history?userId=${uid}&includeImage=false&_t=${Date.now()}`
+        `${apiBaseUrl}/api/weight/history?userId=${uid}&includeImage=false&_t=${Date.now()}`
       );
       const data = await res.json();
       if (data.success && data.stats?.latestWeight) {
@@ -2885,7 +2885,7 @@ function WellnessValleyApp() {
           try {
             const tempUserId = user?.id || (await getUserId(user));
             const prevWeightRes = await fetch(
-              `${apiBaseUrl}/api/get-weight-history?userId=${tempUserId}&includeImage=false&_t=${Date.now()}`,
+              `${apiBaseUrl}/api/weight/history?userId=${tempUserId}&includeImage=false&_t=${Date.now()}`,
             );
             const prevWeightData = await prevWeightRes.json();
             
@@ -2932,7 +2932,7 @@ function WellnessValleyApp() {
             try {
               const diffUserId = user?.id || (await getUserId(user));
               const diffRes = await fetch(
-                `${apiBaseUrl}/api/get-weight-history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
+                `${apiBaseUrl}/api/weight/history?userId=${diffUserId}&includeImage=false&_t=${Date.now()}`,
               );
               const diffData = await diffRes.json();
               if (diffData.success && diffData.stats?.previousWeight) {

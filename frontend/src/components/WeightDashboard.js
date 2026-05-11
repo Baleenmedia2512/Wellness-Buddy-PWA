@@ -458,7 +458,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         _t: Date.now() 
       });
       
-      const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
+      const response = await fetch(`${apiBaseUrl}/api/weight/history?${params}`, {
         method: 'GET',
         headers: { 
           'Content-Type': 'application/json',
@@ -533,7 +533,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     try {
       const userId = userIdRef.current || user?.id;
       
-      const response = await fetch(`${apiBaseUrl}/api/delete-weight-entry`, {
+      const response = await fetch(`${apiBaseUrl}/api/weight/delete`, {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -591,7 +591,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     try {
       const userId = userIdRef.current || user?.id;
       
-      const response = await fetch(`${apiBaseUrl}/api/undo-deleted-weight-entry`, {
+      const response = await fetch(`${apiBaseUrl}/api/weight/undo`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -640,7 +640,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
    */
   const handleUpdateEntry = async (entryId, newWeight) => {
     const userId = userIdRef.current || user?.id;
-    const response = await fetch(`${apiBaseUrl}/api/save-weight-entry`, {
+    const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, entryId, weightValue: newWeight })

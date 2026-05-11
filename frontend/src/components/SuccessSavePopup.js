@@ -431,7 +431,7 @@ const SuccessSavePopup = ({
           // Use different API endpoint for weight entries vs nutrition entries
           const isWeightEntry = popup.isWeight;
           const undoUrl = isWeightEntry 
-            ? `${apiBaseUrl}/api/undo-deleted-weight-entry`
+            ? `${apiBaseUrl}/api/weight/undo`
             : `${apiBaseUrl}/api/undo-deleted-analysis`;
           
           const undoBody = isWeightEntry
@@ -647,7 +647,7 @@ const SuccessSavePopup = ({
                     // Use different API endpoint for weight entries vs nutrition entries
                     const isWeightEntry = popup.isWeight;
                     const deleteUrl = isWeightEntry 
-                      ? `${apiBaseUrl}/api/delete-weight-entry`
+                      ? `${apiBaseUrl}/api/weight/delete`
                       : `${apiBaseUrl}/api/delete-background-analysis`;
                     
                     const deleteBody = isWeightEntry
