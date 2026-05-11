@@ -276,7 +276,7 @@ function logCombinedTotalsToConsole(operationType, costs, processingTime) {
  * Save token usage to backend database
  */
 async function saveTokenUsageToDatabase(tokenData) {
-  const url = `${API_BASE_URL}/api/save-token-usage`;
+  const url = `${API_BASE_URL}/api/token/usage`;
 
   console.log("📤 Saving token usage to:", url);
 

@@ -37,7 +37,7 @@ async function fetchPricingFromAPI(email, modelName) {
   try {
     const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
     const response = await fetch(
-      `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+      `${apiBaseUrl}/api/token/pricing?email=${encodeURIComponent(
         email,
       )}&modelName=${encodeURIComponent(modelName)}`,
       {

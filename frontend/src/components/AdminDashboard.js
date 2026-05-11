@@ -358,7 +358,7 @@ const AdminDashboard = ({ user, onClose }) => {
       };
 
       // Build URL with custom date range if selected
-      let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(
+      let url = `${apiBaseUrl}/api/token/usage?email=${encodeURIComponent(
         user?.email,
       )}`;
 
@@ -425,7 +425,7 @@ const AdminDashboard = ({ user, onClose }) => {
       try {
         const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
         const pricingResponse = await fetch(
-          `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+          `${apiBaseUrl}/api/token/pricing?email=${encodeURIComponent(
             user?.email,
           )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
           {
@@ -488,7 +488,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
           // Fetch custom pricing configuration
           const pricingResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+            `${apiBaseUrl}/api/token/pricing?email=${encodeURIComponent(
               user?.email,
             )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
             {
@@ -542,7 +542,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
           // Check if there's a saved correction in the database for this time range
           const correctionResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-correction?${correctionParams.toString()}`,
+            `${apiBaseUrl}/api/token/correction?${correctionParams.toString()}`,
             {
               cache: "no-store",
               headers: {
@@ -649,7 +649,7 @@ const AdminDashboard = ({ user, onClose }) => {
           };
 
           // Build URL with current filter settings
-          let url = `${apiBaseUrl}/api/get-token-usage?email=${encodeURIComponent(
+          let url = `${apiBaseUrl}/api/token/usage?email=${encodeURIComponent(
             user?.email,
           )}`;
 
@@ -864,7 +864,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
       console.log("💾 Saving correction for time range:", timeRange);
 
-      const response = await fetch(`${apiBaseUrl}/api/save-token-correction`, {
+      const response = await fetch(`${apiBaseUrl}/api/token/correction`, {
         method: "POST",
         cache: "no-store",
         headers: {
@@ -888,7 +888,7 @@ const AdminDashboard = ({ user, onClose }) => {
         // Refetch pricing configuration from database to confirm it was saved
         try {
           const pricingResponse = await fetch(
-            `${apiBaseUrl}/api/get-token-pricing?email=${encodeURIComponent(
+            `${apiBaseUrl}/api/token/pricing?email=${encodeURIComponent(
               user?.email,
             )}&modelName=gemini-2.5-flash-lite&t=${Date.now()}`,
             {

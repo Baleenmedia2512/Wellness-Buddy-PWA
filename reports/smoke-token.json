@@ -1,0 +1,548 @@
+{
+  "generated": "2026-05-11T12:17:53.044Z",
+  "baseUrl": "http://localhost:3001",
+  "total": 77,
+  "pass": 77,
+  "fail": 0,
+  "results": [
+    {
+      "method": "GET",
+      "path": "/api/admin/all-members-discipline",
+      "status": 400,
+      "ms": 434,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/time-windows",
+      "status": 200,
+      "ms": 394,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/check-center-name",
+      "status": 405,
+      "ms": 73,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/attendance-report",
+      "status": 400,
+      "ms": 71,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/club-attendance-report",
+      "status": 400,
+      "ms": 37,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/discipline-report",
+      "status": 400,
+      "ms": 48,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/download-attendance-excel",
+      "status": 400,
+      "ms": 41,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/hierarchical-club-attendance",
+      "status": 400,
+      "ms": 37,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/hierarchical-clubs-overview",
+      "status": 400,
+      "ms": 41,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/team-hierarchy",
+      "status": 400,
+      "ms": 43,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/coach/team-steps",
+      "status": 400,
+      "ms": 43,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/counselling/get-assessments",
+      "status": 400,
+      "ms": 38,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/counselling/hierarchical-assessments",
+      "status": 400,
+      "ms": 48,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/counselling/save-assessment",
+      "status": 400,
+      "ms": 49,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/delete-background-analysis",
+      "status": 405,
+      "ms": 41,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/delete-education-log",
+      "status": 405,
+      "ms": 50,
+      "ok": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/user/account",
+      "status": 400,
+      "ms": 111,
+      "ok": true
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/weight/delete",
+      "status": 400,
+      "ms": 48,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/detect-face",
+      "status": 400,
+      "ms": 49,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-activity-time-report",
+      "status": 400,
+      "ms": 84,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-background-analysis",
+      "status": 400,
+      "ms": 45,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-daily-activity",
+      "status": 400,
+      "ms": 50,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-education-log-image",
+      "status": 400,
+      "ms": 64,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-education-logs",
+      "status": 400,
+      "ms": 65,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-education-summary",
+      "status": 400,
+      "ms": 51,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-food-corrections",
+      "status": 400,
+      "ms": 48,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-global-corrections",
+      "status": 200,
+      "ms": 261,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/token/latest-costs",
+      "status": 400,
+      "ms": 197,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-my-club-attendance",
+      "status": 400,
+      "ms": 61,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-nutrition-centers",
+      "status": 400,
+      "ms": 66,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/screen/history",
+      "status": 400,
+      "ms": 107,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-time-windows",
+      "status": 200,
+      "ms": 175,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/token/correction",
+      "status": 400,
+      "ms": 83,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/token/pricing",
+      "status": 400,
+      "ms": 83,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/token/usage",
+      "status": 400,
+      "ms": 83,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/context",
+      "status": 400,
+      "ms": 69,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/profile",
+      "status": 400,
+      "ms": 71,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/get-watch-burned-calories",
+      "status": 400,
+      "ms": 64,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/water/intake",
+      "status": 400,
+      "ms": 68,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/weight/history",
+      "status": 400,
+      "ms": 81,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/leaderboard/get-discipline-leaderboard",
+      "status": 200,
+      "ms": 1369,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/leaderboard/get-global-leaderboard",
+      "status": 200,
+      "ms": 1302,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/lookup",
+      "status": 400,
+      "ms": 151,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/register-nutrition-center",
+      "status": 400,
+      "ms": 125,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/token/reverse-lookup",
+      "status": 405,
+      "ms": 132,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/save-background-analysis",
+      "status": 400,
+      "ms": 142,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/save-daily-activity",
+      "status": 400,
+      "ms": 73,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/save-education-log",
+      "status": 400,
+      "ms": 75,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/save-food-correction",
+      "status": 400,
+      "ms": 108,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/google",
+      "status": 400,
+      "ms": 125,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/screen/save",
+      "status": 400,
+      "ms": 119,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/token/correction",
+      "status": 400,
+      "ms": 32,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/token/usage",
+      "status": 400,
+      "ms": 7,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/weight/save",
+      "status": 400,
+      "ms": 75,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/search-food-history",
+      "status": 405,
+      "ms": 74,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/send-otp",
+      "status": 400,
+      "ms": 126,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/server-time",
+      "status": 200,
+      "ms": 73,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/snooze-pic",
+      "status": 400,
+      "ms": 95,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/team/check-availability",
+      "status": 400,
+      "ms": 77,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/team/claim-id",
+      "status": 400,
+      "ms": 78,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/undo-deleted-analysis",
+      "status": 400,
+      "ms": 90,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/undo-deleted-education-log",
+      "status": 400,
+      "ms": 79,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/weight/undo",
+      "status": 400,
+      "ms": 85,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/unregister-nutrition-center",
+      "status": 400,
+      "ms": 82,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/update-nutrition-analysis",
+      "status": 405,
+      "ms": 77,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/profile",
+      "status": 400,
+      "ms": 7,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/upline/cancel-request",
+      "status": 400,
+      "ms": 82,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/upline/request",
+      "status": 400,
+      "ms": 84,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/upline/validate-otp",
+      "status": 400,
+      "ms": 88,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/user/skip-setup",
+      "status": 400,
+      "ms": 82,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/user/status",
+      "status": 400,
+      "ms": 119,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/user-nutrition-stats",
+      "status": 400,
+      "ms": 134,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/users/search",
+      "status": 400,
+      "ms": 98,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/verify-otp",
+      "status": 400,
+      "ms": 97,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/wellness-university/enroll",
+      "status": 400,
+      "ms": 89,
+      "ok": true
+    },
+    {
+      "method": "GET",
+      "path": "/api/wellness-university/get-enrollments",
+      "status": 400,
+      "ms": 121,
+      "ok": true
+    },
+    {
+      "method": "POST",
+      "path": "/api/wellness-university/update-enrollment",
+      "status": 400,
+      "ms": 136,
+      "ok": true
+    }
+  ]
+}

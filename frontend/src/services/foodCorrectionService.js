@@ -208,7 +208,7 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
       console.log("🔍 [REVERSE-LOOKUP] Querying server for:", correctedName);
       
       const response = await fetch(
-        `${API_BASE_URL}/api/reverse-lookup-correction?correctedName=${encodeURIComponent(correctedName)}`,
+        `${API_BASE_URL}/api/token/reverse-lookup?correctedName=${encodeURIComponent(correctedName)}`,
         {
           method: "GET",
           headers: {
