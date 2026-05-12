@@ -280,6 +280,8 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
    * Fetch education logs and summary on mount, user change, or external refresh trigger
    */
   useEffect(() => {
+    // Don't fetch until user is fully loaded
+    if (!user?.id) return;
     // Clear cached userId when user changes
     userIdRef.current = null;
     fetchEducationLogs();
