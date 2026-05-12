@@ -580,9 +580,8 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
               {
                 icon: (
                   <BathroomScaleIcon
-                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
-                      weight,
-                    )}`}
+                    className="h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1"
+                    variant={weight > 0 ? "green" : "red"}
                   />
                 ),
                 val: weight,
