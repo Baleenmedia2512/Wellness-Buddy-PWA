@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { BookOpen, Calendar, RotateCcw, Monitor, Clock, Layers, TrendingUp, Video, CheckCircle2, Flame, Sun, Moon, Sunset, Check } from 'lucide-react';
-import { getUserId } from '../services/getUserId';
-import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
+import { getUserId } from '../../../services/getUserId';
+import { istToLocalDate, formatISTToLocalDate } from '../../../utils/timezoneUtils';
 import EducationCardModal from './EducationCardModal';
 
 const UNDO_SECONDS = 10;

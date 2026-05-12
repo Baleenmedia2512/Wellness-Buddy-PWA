@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
-import { istToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
+import { istToLocalDate, formatISTToLocalTime } from '../../../utils/timezoneUtils';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;

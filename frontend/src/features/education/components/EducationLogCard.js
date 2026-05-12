@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
-import { captureAndShare } from '../utils/shareUtils';
-import { getVersionString } from '../config/version';
+import { captureAndShare } from '../../../utils/shareUtils';
+import { getVersionString } from '../../../config/version';
 
 const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, savedProfileImage, sharePhotoBase64 }) => {
   const [isSharing, setIsSharing] = useState(false);

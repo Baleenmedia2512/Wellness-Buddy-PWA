@@ -19,7 +19,7 @@ import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./components/NutritionCard";
-import EducationLogCard from "./components/EducationLogCard";
+import EducationLogCard from "./features/education/components/EducationLogCard";
 import WatchActivityCard from "./components/WatchActivityCard";
 import TestImageGuide from "./components/TestImageGuide";
 import LoadingSpinner from "./components/LoadingSpinner";
@@ -44,7 +44,7 @@ import {
 import { geminiService } from "./services/geminiService";
 import { imageTypeDetector } from "./services/imageTypeDetector";
 import { weightDetectionService } from "./features/weight/services/weightDetectionService";
-import { educationDetectionService } from "./services/educationDetectionService";
+import { educationDetectionService } from "./features/education/services/educationDetectionService";
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
@@ -53,7 +53,7 @@ import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/re
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
 import SmartFoodSearchModal from "./components/SmartFoodSearchModal";
-import ManualEducationEntryModal from "./components/ManualEducationEntryModal";
+import ManualEducationEntryModal from "./features/education/components/ManualEducationEntryModal";
 import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
 import DuplicateFoodModal from "./components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
