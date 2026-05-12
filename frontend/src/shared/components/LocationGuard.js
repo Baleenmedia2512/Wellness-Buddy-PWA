@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { MapPin } from 'lucide-react';
-import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
+import { StepCounterPlugin } from '../../plugins/stepCounterPlugin';
 
 const POLL_INTERVAL_MS = 2000;
 
@@ -13,7 +13,7 @@ const POLL_INTERVAL_MS = 2000;
  * Safe to render on web (overlay never shows there).
  *
  * Props:
- *   children  — content to render beneath the guard
+ *   children  â€” content to render beneath the guard
  */
 export default function LocationGuard({ children }) {
   const [locationOff, setLocationOff] = useState(false);
@@ -25,7 +25,7 @@ export default function LocationGuard({ children }) {
       const { enabled } = await StepCounterPlugin.isLocationEnabled();
       setLocationOff(!enabled);
     } catch {
-      // fail open — never block the user on error
+      // fail open â€” never block the user on error
       setLocationOff(false);
     }
   };

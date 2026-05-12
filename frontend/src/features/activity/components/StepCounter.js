@@ -4,7 +4,7 @@ import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, Trending
 import { Geolocation } from '@capacitor/geolocation';
 import { StepCounterPlugin } from '../../../plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../../../plugins/galleryMonitorPlugin';
-import { fetchDailyActivity, saveDailyActivity } from '../shared/services/dailyActivityService';
+import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import LocationGuard from '../../../shared/components/LocationGuard';
 

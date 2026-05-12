@@ -1,6 +1,6 @@
-import { Capacitor } from '@capacitor/core';
+﻿import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
+import { GalleryMonitorPlugin } from '../../plugins/galleryMonitorPlugin';
 
 export const GalleryMonitor = {
   _isInitialized: false,
@@ -201,7 +201,7 @@ export const GalleryMonitor = {
       // 3. Showing Android notifications
       // 4. Retry logic for failed operations
       
-      // console.log('✅ Background service will handle analysis and database saving');
+      // console.log('âœ… Background service will handle analysis and database saving');
       
     } catch (error) {
       console.error('Image processing failed:', error);

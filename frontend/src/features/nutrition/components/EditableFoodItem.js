@@ -11,7 +11,7 @@ import { geminiService } from "../../../shared/services/geminiService";
 import {
   saveFoodCorrection,
   reverseLookupOriginalAiName,
-} from "../shared/services/foodCorrectionService";
+} from "../services/foodCorrectionService";
 import { getUserContext } from "../../user/services/userContextService";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 import {
@@ -1174,7 +1174,7 @@ const EditableFoodItem = forwardRef(
         console.log("   - correctedFiber:", correctedData.correctedFiber);
 
         // Save correction
-        const { saveFoodCorrection } = await import("../shared/services/foodCorrectionService");
+        const { saveFoodCorrection } = await import("../services/foodCorrectionService");
         const response = await saveFoodCorrection(userId, aiDetectedName, userCorrectedName, correctedData);
 
         if (response.success) {

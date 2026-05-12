@@ -1,4 +1,4 @@
 ﻿// Public surface of the `admin` feature slice.
-export { default as AdminDashboard } from './shared/components/AdminDashboard';
-export { default as FoodCorrectionsDebugPanel } from './shared/components/FoodCorrectionsDebugPanel';
-export { default as TestImageGuide } from './shared/components/TestImageGuide';
+export { default as AdminDashboard } from './components/AdminDashboard';
+export { default as FoodCorrectionsDebugPanel } from './components/FoodCorrectionsDebugPanel';
+export { default as TestImageGuide } from './components/TestImageGuide';

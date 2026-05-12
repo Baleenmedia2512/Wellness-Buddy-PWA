@@ -10,7 +10,7 @@ import {
   fetchScreenTimeHistory,
   formatScreenTime,
   backfillMissingScreenTimeDays
-} from '../shared/services/screenTimeService';
+} from '../services/screenTimeService';
 
 const toDateKey = (date = new Date()) => {
   const y = date.getFullYear();

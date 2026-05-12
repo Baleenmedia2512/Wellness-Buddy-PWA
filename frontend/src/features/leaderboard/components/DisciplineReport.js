@@ -26,7 +26,7 @@ import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettin
 import {
   disciplineReportService,
   clearDisciplineReportCache,
-} from "../shared/services/disciplineReportService";
+} from "../services/disciplineReportService";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 
 const DisciplineReport = ({ user, onBack, userRole }) => {

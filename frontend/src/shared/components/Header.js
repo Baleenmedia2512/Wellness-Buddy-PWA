@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import {
   LogOut,
   LayoutDashboard,
@@ -16,11 +16,11 @@ import {
   X,
   Trash2,
 } from "lucide-react";
-import APP_VERSION from "../config/version";
-import UserProfileModal from "../features/user/components/UserProfileModal";
-import DeleteAccountModal from "../features/user/components/DeleteAccountModal";
+import APP_VERSION from "../../config/version";
+import { UserProfileModal } from "../../features/user";
+import { DeleteAccountModal } from "../../features/user";
 import TouchFeedbackButton from "./TouchFeedbackButton";
-import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
+import wellnessValleyIcon from "../../assets/wellness-valley-icon.png";
 
 const Header = ({
   user,
@@ -75,7 +75,7 @@ const Header = ({
     };
   }, [menuOpen]);
 
-  // Profile modal — only opens when user explicitly clicks "Manage your Profile"
+  // Profile modal â€” only opens when user explicitly clicks "Manage your Profile"
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Clear stale showProfileModal key from localStorage (old versions stored it)
@@ -246,7 +246,7 @@ const Header = ({
                 )}
               </TouchFeedbackButton>
 
-              {/* AI/Manual mode indicator — FEATURE DISABLED */}
+              {/* AI/Manual mode indicator â€” FEATURE DISABLED */}
               {/* <div
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
                 style={{
@@ -291,9 +291,9 @@ const Header = ({
                   onClick={closeMenu}
                 />
 
-                {/* Google-style fixed centered panel — no scroll */}
+                {/* Google-style fixed centered panel â€” no scroll */}
                 <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] left-1/2 w-[min(320px,calc(100vw-20px))] xs:w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
-                  {/* ── PROFILE CARD ── */}
+                  {/* â”€â”€ PROFILE CARD â”€â”€ */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
                     {/* Close button */}
                     <TouchFeedbackButton
@@ -371,7 +371,7 @@ const Header = ({
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* ── APP GRID ── no scroll, compact tiles */}
+                  {/* â”€â”€ APP GRID â”€â”€ no scroll, compact tiles */}
                   <div className="p-2">
                     <div className="grid grid-cols-3 gap-0.5">
                       {/* Dashboard */}
@@ -391,7 +391,7 @@ const Header = ({
                         </span>
                       </TouchFeedbackButton>
 
-                      {/* Step Counter — FEATURE DISABLED */}
+                      {/* Step Counter â€” FEATURE DISABLED */}
                       {/* {onShowStepCounter && (
                         <TouchFeedbackButton
                           onClick={() => { onShowStepCounter(); closeMenu(); }}
@@ -405,7 +405,7 @@ const Header = ({
                         </TouchFeedbackButton>
                       )} */}
 
-                      {/* Screen Time — FEATURE DISABLED */}
+                      {/* Screen Time â€” FEATURE DISABLED */}
                       {/* {onShowScreenTime && (
                         <TouchFeedbackButton
                           onClick={() => { onShowScreenTime(); closeMenu(); }}
@@ -419,7 +419,7 @@ const Header = ({
                         </TouchFeedbackButton>
                       )} */}
 
-                      {/* Reminders — FEATURE DISABLED */}
+                      {/* Reminders â€” FEATURE DISABLED */}
                       {/* {onShowReminders && (
                         <TouchFeedbackButton
                           onClick={() => { onShowReminders(); closeMenu(); }}
@@ -606,7 +606,7 @@ const Header = ({
                     </div>
                   </div>
 
-                  {/* ── FOOTER: Sign out + Delete Account + Version ── */}
+                  {/* â”€â”€ FOOTER: Sign out + Delete Account + Version â”€â”€ */}
                   <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between bg-gray-50 rounded-b-2xl">
                     <TouchFeedbackButton
                       onClick={() => {

@@ -11,7 +11,7 @@ import {
   getTodayScreenTime,
   saveScreenTime,
   backfillMissingScreenTimeDays
-} from '../shared/services/screenTimeService';
+} from '../services/screenTimeService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 

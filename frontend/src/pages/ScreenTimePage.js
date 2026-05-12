@@ -11,7 +11,7 @@ import {
   formatScreenTime,
   backfillMissingScreenTimeDays,
   getAccurateScreenTimeHistory,
-} from '../features/screen/services/screenTimeService';
+} from '../features/screen';
 import LoadingSpinner from '../shared/components/LoadingSpinner';
 
 const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit (in seconds)

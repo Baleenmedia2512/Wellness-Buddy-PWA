@@ -18,50 +18,50 @@ import { Camera } from "@capacitor/camera";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
-import NutritionCard from "./features/nutrition/components/NutritionCard";
-import EducationLogCard from "./features/education/components/EducationLogCard";
-import WatchActivityCard from "./features/activity/components/WatchActivityCard";
-import TestImageGuide from "./features/admin/components/TestImageGuide";
+import { NutritionCard } from "./features/nutrition";
+import { EducationLogCard } from "./features/education";
+import { WatchActivityCard } from "./features/activity";
+import { TestImageGuide } from "./features/admin";
 import LoadingSpinner from "./shared/components/LoadingSpinner";
-import Login from "./features/user/components/Login";
-import InactiveUserModal from "./features/user/components/InactiveUserModal";
-import UserNotFoundModal from "./features/user/components/UserNotFoundModal";
+import { Login } from "./features/user";
+import { InactiveUserModal } from "./features/user";
+import { UserNotFoundModal } from "./features/user";
 import Header from "./shared/components/Header";
 import {
   getUserContext,
   clearContextCache,
-} from "./features/user/services/userContextService";
+} from "./features/user";
 import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getUserId, clearUserIdCache } from "./features/user/services/getUserId";
+import { getUserId, clearUserIdCache } from "./features/user";
 import { getVersionString } from "./config/version";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
-} from "./features/nutrition/services/nutritionSaveService";
+} from "./features/nutrition";
 import { geminiService } from "./shared/services/geminiService";
 import { imageTypeDetector } from "./shared/services/imageTypeDetector";
-import { weightDetectionService } from "./features/weight/services/weightDetectionService";
-import { educationDetectionService } from "./features/education/services/educationDetectionService";
-import { duplicateDetectionService } from "./features/nutrition/services/duplicateDetectionService";
-import { applyUserCorrections } from "./features/nutrition/services/foodCorrectionService";
+import { weightDetectionService } from "./features/weight";
+import { educationDetectionService } from "./features/education";
+import { duplicateDetectionService } from "./features/nutrition";
+import { applyUserCorrections } from "./features/nutrition";
 import { captureAndShare } from "./shared/utils/shareUtils";
-import { locationAttendanceService } from "./features/nutrition-centers/services/locationAttendanceService";
+import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
-import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
-import SmartFoodSearchModal from "./features/nutrition/components/SmartFoodSearchModal";
-import ManualEducationEntryModal from "./features/education/components/ManualEducationEntryModal";
-import ManualWatchEntryModal from "./features/activity/components/ManualWatchEntryModal";
-import DuplicateFoodModal from "./features/nutrition/components/DuplicateFoodModal";
-import UserProfileModal from "./features/user/components/UserProfileModal";
-import CompleteProfilePage from "./features/user/components/CompleteProfilePage";
-import MandatoryProfilePictureModal from "./features/user/components/MandatoryProfilePictureModal";
-import ClubSelectionModal from "./features/nutrition-centers/components/ClubSelectionModal";
+import { ManualWeightEntryModal } from "./features/weight";
+import { SmartFoodSearchModal } from "./features/nutrition";
+import { ManualEducationEntryModal } from "./features/education";
+import { ManualWatchEntryModal } from "./features/activity";
+import { DuplicateFoodModal } from "./features/nutrition";
+import { UserProfileModal } from "./features/user";
+import { CompleteProfilePage } from "./features/user";
+import { MandatoryProfilePictureModal } from "./features/user";
+import { ClubSelectionModal } from "./features/nutrition-centers";
 import CustomAlertModal from "./shared/components/CustomAlertModal";
-import CoachScoreSummary from "./features/leaderboard/components/CoachScoreSummary";
+import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
 import {

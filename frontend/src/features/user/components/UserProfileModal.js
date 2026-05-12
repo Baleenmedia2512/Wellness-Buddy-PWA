@@ -21,7 +21,7 @@ import {
   XCircle,
   Loader,
 } from "lucide-react";
-import { getUserContext } from "../shared/services/userContextService";
+import { getUserContext } from "../services/userContextService";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 
 /** Crop a canvas region supporting rotation */

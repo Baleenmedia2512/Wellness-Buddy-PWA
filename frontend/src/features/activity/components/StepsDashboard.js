@@ -3,7 +3,7 @@ import { Footprints, Flame, TrendingUp, ChevronLeft, ChevronRight, Calendar } fr
 import {
   LineChart, Line, XAxis, YAxis, LabelList, ReferenceLine, ResponsiveContainer
 } from 'recharts';
-import { fetchDailyActivity } from '../shared/services/dailyActivityService';
+import { fetchDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 

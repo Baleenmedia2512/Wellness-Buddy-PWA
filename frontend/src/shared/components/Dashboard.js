@@ -1,8 +1,8 @@
-// src/components/Dashboard.js
+﻿// src/components/Dashboard.js
 import React, { useState, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
-import TeamMemberSearch from '../features/team/components/TeamMemberSearch';
+import { TeamMemberSearch } from '../../features/team';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
@@ -49,10 +49,10 @@ const EducationIcon = ({ className }) => (
   </svg>
 );
 
-// ✅ LAZY LOADING: Load tab components on-demand (only one visible at a time)
-const NutritionDashboard = lazy(() => import('../features/nutrition/components/NutritionDashboard'));
-const WeightDashboard = lazy(() => import('../features/weight/components/WeightDashboard'));
-const EducationDashboard = lazy(() => import('../features/education/components/EducationDashboard'));
+// âœ… LAZY LOADING: Load tab components on-demand (only one visible at a time)
+const NutritionDashboard = lazy(() => import('../../features/nutrition/components/NutritionDashboard'));
+const WeightDashboard = lazy(() => import('../../features/weight/components/WeightDashboard'));
+const EducationDashboard = lazy(() => import('../../features/education/components/EducationDashboard'));
 // FEATURE DISABLED: const StepsDashboard = lazy(() => import('./StepsDashboard'));
 // FEATURE DISABLED: const ScreenDashboard = lazy(() => import('./ScreenDashboard'));
 
@@ -319,7 +319,7 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
                 }
                 
                 // Add days from next month to fill the grid
-                const remainingCells = 42 - days.length; // 6 rows × 7 days
+                const remainingCells = 42 - days.length; // 6 rows Ã— 7 days
                 for (let day = 1; day <= remainingCells; day++) {
                   const nextDate = new Date(year, month + 1, day);
                   days.push({
