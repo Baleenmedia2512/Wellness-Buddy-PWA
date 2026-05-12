@@ -1,8 +1,8 @@
 // src/components/DeleteAccountModal.js
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2, X, CheckCircle, Loader, Mail, ShieldCheck } from 'lucide-react';
-import TouchFeedbackButton from './TouchFeedbackButton';
-import { deleteFirebaseUser } from '../services/firebase';
+import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
+import { deleteFirebaseUser } from '../../../services/firebase';
 
 /**
  * DeleteAccountModal — Apple Guideline 5.1.1(v) compliant

@@ -17,8 +17,8 @@ import {
   Trash2,
 } from "lucide-react";
 import APP_VERSION from "../config/version";
-import UserProfileModal from "./UserProfileModal";
-import DeleteAccountModal from "./DeleteAccountModal";
+import UserProfileModal from "../features/user/components/UserProfileModal";
+import DeleteAccountModal from "../features/user/components/DeleteAccountModal";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
 

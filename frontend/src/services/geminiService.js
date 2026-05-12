@@ -1,5 +1,5 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { getUserContext, formatContextForAI } from "./userContextService";
+import { getUserContext, formatContextForAI } from "../features/user/services/userContextService";
 import { applyGlobalAutoCorrections } from "../features/nutrition/services/foodCorrectionService";
 
 // Comprehensive network debugging to catch ALL requests

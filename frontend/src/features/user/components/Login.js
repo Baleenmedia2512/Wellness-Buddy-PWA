@@ -1,9 +1,9 @@
 // src/components/Login.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import TermsAndConditions from './TermsAndConditions';
-import PrivacyPolicy from './PrivacyPolicy';
-import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
+import TermsAndConditions from '../../../components/TermsAndConditions';
+import PrivacyPolicy from '../../../components/PrivacyPolicy';
+import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { getUserCorrections } from '../features/nutrition/services/foodCorrectionService';
-import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../services/userContextService';
+import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../features/user/services/userContextService';
 import { geminiService } from '../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 import { istToLocalDate } from '../utils/timezoneUtils';

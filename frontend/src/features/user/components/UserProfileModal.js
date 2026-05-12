@@ -22,7 +22,7 @@ import {
   Loader,
 } from "lucide-react";
 import { getUserContext } from "../services/userContextService";
-import TouchFeedbackButton from "./TouchFeedbackButton";
+import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
 
 /** Crop a canvas region supporting rotation */
 const getCroppedImg = (imageSrc, pixelCrop, rotation = 0) => {
