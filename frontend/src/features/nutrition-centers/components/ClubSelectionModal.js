@@ -1,7 +1,7 @@
 import React from 'react';
 import { MapPin, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import TouchFeedbackButton from './TouchFeedbackButton';
+import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
 
 const ClubSelectionModal = ({ isOpen, onClose, nearbyCenters, onSelectClub }) => {
   if (!isOpen) return null;

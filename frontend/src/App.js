@@ -48,7 +48,7 @@ import { educationDetectionService } from "./features/education/services/educati
 import { duplicateDetectionService } from "./features/nutrition/services/duplicateDetectionService";
 import { applyUserCorrections } from "./features/nutrition/services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
-import { locationAttendanceService } from "./services/locationAttendanceService";
+import { locationAttendanceService } from "./features/nutrition-centers/services/locationAttendanceService";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/reminderService";
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
@@ -59,7 +59,7 @@ import DuplicateFoodModal from "./features/nutrition/components/DuplicateFoodMod
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
-import ClubSelectionModal from "./components/ClubSelectionModal";
+import ClubSelectionModal from "./features/nutrition-centers/components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
 import CoachScoreSummary from "./features/leaderboard/components/CoachScoreSummary";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";

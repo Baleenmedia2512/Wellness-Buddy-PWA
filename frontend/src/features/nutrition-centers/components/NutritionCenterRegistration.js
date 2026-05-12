@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
-import TouchFeedbackButton from './TouchFeedbackButton';
-import LoadingSpinner from './LoadingSpinner';
-import CustomAlertModal from './CustomAlertModal';
+import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
+import LoadingSpinner from '../../../components/LoadingSpinner';
+import CustomAlertModal from '../../../components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
