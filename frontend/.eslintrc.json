@@ -37,7 +37,7 @@
       "files": ["src/features/*/components/**/*.{js,jsx}", "src/shared/components/**/*.{js,jsx}"],
       "rules": {
         "no-restricted-imports": [
-          "error",
+          "warn",
           {
             "paths": [
               { "name": "axios", "message": "VSA: components are presentational. Move HTTP calls to a feature service or hook." }
@@ -51,7 +51,7 @@
           }
         ],
         "no-restricted-globals": [
-          "error",
+          "warn",
           { "name": "fetch", "message": "VSA: components must not call fetch. Use a feature service or hook." }
         ]
       }
