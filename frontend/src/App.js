@@ -1633,9 +1633,9 @@ function WellnessValleyApp() {
   };
 
   /**
-   * Fetch the user's height (from profile) and compute their ideal weight
-   * using BMI 23 as the target (upper-mid of the WHO normal range 18.5–24.9).
-   * Formula: idealWeight (kg) = 23 × (heightInMeters)²
+   * Fetch the user's height (from profile) and compute their ideal weight range
+   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5–24.9).
+   * Formula: idealWeight (kg) = BMI × (heightInMeters)²
    * Updates `idealWeight` state so the share card / visible card can show it.
    */
   const refreshIdealWeight = async () => {
@@ -1653,9 +1653,11 @@ function WellnessValleyApp() {
         return;
       }
       const heightM = heightCm / 100;
-      const ideal = 23 * heightM * heightM;
+      const idealMin = 19 * heightM * heightM;
+      const idealMax = 23 * heightM * heightM;
       setIdealWeight({
-        value: Math.round(ideal * 10) / 10, // 1 decimal
+        min: Math.round(idealMin * 10) / 10, // BMI 19 lower bound
+        value: Math.round(idealMax * 10) / 10, // BMI 23 upper bound
         unit: "kg",
         heightCm: Math.round(heightCm),
       });
@@ -2919,7 +2921,7 @@ function WellnessValleyApp() {
             isOpen: true,
             title: "📸 Image Not Clear Enough",
             message:
-              "We couldn't read the weight from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
+              "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
             type: "error",
           });
           setCurrentWeightImage(null);
@@ -4721,7 +4723,7 @@ function WellnessValleyApp() {
                               margin: 0,
                             }}
                           >
-                            {idealWeight.value} {idealWeight.unit}
+                            {idealWeight.min} – {idealWeight.value} {idealWeight.unit}
                           </p>
                         </div>
                       </div>

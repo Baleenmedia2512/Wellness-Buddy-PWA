@@ -176,7 +176,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-red-400">Weight Mode</p>
-                      <p className="text-sm font-semibold text-red-700">Weight Loss Mode · −{diff} kg</p>
+                      <p className="text-sm font-semibold text-red-700">Weight Loss Phase · −{diff} kg</p>
                     </div>
                   </div>
                 );
@@ -187,7 +187,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs font-medium text-orange-400">Weight Mode</p>
-                      <p className="text-sm font-semibold text-orange-700">Weight Gain Mode · +{diff} kg</p>
+                      <p className="text-sm font-semibold text-orange-700">Weight Gain Phase · +{diff} kg</p>
                     </div>
                   </div>
                 );

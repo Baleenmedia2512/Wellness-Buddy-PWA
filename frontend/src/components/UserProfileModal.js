@@ -878,27 +878,36 @@ const UserProfileModal = ({
                 </div>
 
                 {/* Ideal Weight (read-only, computed from height) */}
-                {height && parseFloat(height) >= 50 && (
-                  <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {/* <span className="text-blue-500 text-lg">⚖️</span> */}
-                      <div>
-                        <p className="text-xs font-semibold text-blue-600">Ideal Weight</p>
-                        {/* <p className="text-xs text-blue-400">Based on BMI 23 &amp; your height</p> */}
+                {height && parseFloat(height) >= 50 && (() => {
+                  const heightM = parseFloat(height) / 100;
+                  const idealMin = parseFloat((19 * heightM * heightM).toFixed(1));
+                  const idealMax = parseFloat((23 * heightM * heightM).toFixed(1));
+                  const current = latestWeight;
+                  const isLoss = current && current > idealMax + 0.5;
+                  const isGain = current && current < idealMin - 0.5;
+                  const displayWeight = isGain
+                    ? `${idealMin} kg`
+                    : isLoss
+                    ? `${idealMax} kg`
+                    : `${idealMin} – ${idealMax} kg`;
+                  return (
+                    <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div>
+                          <p className="text-xs font-semibold text-blue-600">Ideal Weight</p>
+                        </div>
                       </div>
+                      <p className="text-base font-bold text-blue-700">{displayWeight}</p>
                     </div>
-                    <p className="text-base font-bold text-blue-700">
-                      {(23 * Math.pow(parseFloat(height) / 100, 2)).toFixed(1)} kg
-                    </p>
-                  </div>
-                )}
+                  );
+                })()}
 
                 {/* Current Weight (read-only) */}
                 {latestWeight && (
                   <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-xl px-4 py-3">
                     <div>
                       <p className="text-xs font-semibold text-gray-600">⚖️ Current Weight</p>
-                      <p className="text-xs text-gray-400">Last recorded weight</p>
+                      {/* <p className="text-xs text-gray-400">Last recorded weight</p> */}
                     </div>
                     <p className="text-base font-bold text-gray-700">{latestWeight.toFixed(1)} kg</p>
                   </div>
@@ -906,27 +915,30 @@ const UserProfileModal = ({
 
                 {/* Weight Mode Badge — compares current weight vs ideal weight */}
                 {height && parseFloat(height) >= 50 && latestWeight && (() => {
-                  const ideal = parseFloat((23 * Math.pow(parseFloat(height) / 100, 2)).toFixed(1));
+                  const heightM = parseFloat(height) / 100;
+                  const idealMin = parseFloat((19 * heightM * heightM).toFixed(1));
+                  const idealMax = parseFloat((23 * heightM * heightM).toFixed(1));
                   const current = latestWeight;
-                  const diff = Math.abs(current - ideal).toFixed(1);
-                  const isLoss = current > ideal + 0.5;
-                  const isGain = current < ideal - 0.5;
+                  const isLoss = current > idealMax + 0.5;
+                  const isGain = current < idealMin - 0.5;
+                  const diffAbove = Math.abs(current - idealMax).toFixed(1);
+                  const diffBelow = Math.abs(current - idealMin).toFixed(1);
                   if (isLoss) return (
                     <div className="flex items-center justify-between bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                       <div>
-                        <p className="text-xs font-semibold text-red-600">🔥 Weight Loss Mode</p>
-                        <p className="text-xs text-red-400">{diff} kg above ideal weight</p>
+                        <p className="text-xs font-semibold text-red-600">🔥 Weight Loss Phase</p>
+                        {/* <p className="text-xs text-red-400">{diff} kg above ideal weight</p> */}
                       </div>
-                      <span className="text-lg font-bold text-red-500">−{diff} kg</span>
+                      <span className="text-lg font-bold text-red-500">−{diffAbove} kg</span>
                     </div>
                   );
                   if (isGain) return (
                     <div className="flex items-center justify-between bg-orange-50 border border-orange-200 rounded-xl px-4 py-3">
                       <div>
-                        <p className="text-xs font-semibold text-orange-600">🏋️ Weight Gain Mode</p>
-                        <p className="text-xs text-orange-400">{diff} kg below ideal weight</p>
+                        <p className="text-xs font-semibold text-orange-600">🏋️ Weight Gain Phase</p>
+                        <p className="text-xs text-orange-400">{diffBelow} kg below ideal weight</p>
                       </div>
-                      <span className="text-lg font-bold text-orange-500">+{diff} kg</span>
+                      <span className="text-lg font-bold text-orange-500">+{diffBelow} kg</span>
                     </div>
                   );
                   return (
