@@ -1,11 +1,11 @@
 //src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
-import { getVersionString } from "../config/version";
+import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
-import { getUserId } from "../services/getUserId";
-import { geminiService } from "../services/geminiService";
-import { captureAndShare, shareImageDirectly } from "../utils/shareUtils";
+import { getUserId } from "../../../services/getUserId";
+import { geminiService } from "../../../services/geminiService";
+import { captureAndShare, shareImageDirectly } from "../../../utils/shareUtils";
 
 const NutritionCard = ({
   data,

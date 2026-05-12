@@ -2,7 +2,7 @@
 import { weightDetectionService } from '../features/weight/services/weightDetectionService';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
-import { applyFallbackNutrition } from './nutritionFallback';
+import { applyFallbackNutrition } from '../features/nutrition/services/nutritionFallback';
 
 /**
  * Image Type Detector Service using Gemini AI
