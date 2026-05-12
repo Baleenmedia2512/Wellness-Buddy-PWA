@@ -6,7 +6,7 @@ import HealthProblemChips from "./HealthProblemChips";
 import EatingHabitsSection from "./EatingHabitsSection";
 import SleepQualitySection from "./SleepQualitySection";
 import MedicationSection from "./MedicationSection";
-import TouchFeedbackButton from "../TouchFeedbackButton";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 
 /**
  * Wellness Counselling Form Component

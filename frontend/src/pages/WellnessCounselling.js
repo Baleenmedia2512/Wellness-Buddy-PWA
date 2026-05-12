@@ -7,7 +7,7 @@ import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "../shared/components/common/HierarchicalReportLayout";
 import HierarchicalNode from "../shared/components/common/HierarchicalNode";
-import WellnessCounsellingForm from "../shared/components/WellnessCounselling/WellnessCounsellingForm";
+import WellnessCounsellingForm from "../features/counselling/components/WellnessCounsellingForm";
 import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
 /**
  * Wellness Counselling Page
