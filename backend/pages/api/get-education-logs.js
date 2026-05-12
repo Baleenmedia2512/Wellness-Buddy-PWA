@@ -46,9 +46,9 @@ export default async function handler(req, res) {
     const { data: logs, error } = await supabase
       .from('education_logs_table')
       .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"')
-      .eq('"UserId"', userId)
-      .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-      .order('"CreatedAt"', { ascending: false })
+      .eq('UserId', userId)
+      .or('IsDeleted.is.null,IsDeleted.eq.0')
+      .order('CreatedAt', { ascending: false })
       .limit(100);
 
     if (error) throw error;
