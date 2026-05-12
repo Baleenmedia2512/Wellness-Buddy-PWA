@@ -7,11 +7,14 @@ import { formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUti
  * WeightCardModal Component
  * Detailed view modal for weight entries with comprehensive metrics breakdown
  */
-const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = null, apiBaseUrl }) => {
+const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = null, apiBaseUrl, userId = null }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [editWeight, setEditWeight] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState('');
+  // ✅ Lazy-fetched scale image (list endpoint omits base64 for speed)
+  const [lazyImage, setLazyImage] = useState(null);
+  const [imageLoading, setImageLoading] = useState(false);
 
   // Sync edit field when data changes
   useEffect(() => {
@@ -21,6 +24,34 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
     setIsEditing(false);
     setEditError('');
   }, [data?.ID, data?.Weight]);
+
+  // ✅ Fetch full-size image on demand when modal opens (if not already provided)
+  useEffect(() => {
+    if (!data?.ID) return;
+    if (data?.WeightImageBase64) return; // already provided
+    if (!apiBaseUrl || !userId) return;
+
+    let cancelled = false;
+    setLazyImage(null);
+    setImageLoading(true);
+    (async () => {
+      try {
+        const res = await fetch(
+          `${apiBaseUrl}/api/get-weight-image?userId=${encodeURIComponent(userId)}&id=${encodeURIComponent(data.ID)}`
+        );
+        if (!res.ok) return;
+        const json = await res.json();
+        if (cancelled) return;
+        if (json && json.success && json.image) {
+          setLazyImage(json.image);
+        }
+      } catch (_) { /* non-critical */ }
+      finally {
+        if (!cancelled) setImageLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [apiBaseUrl, userId, data?.ID, data?.WeightImageBase64]);
 
   if (!data) return null;
 
@@ -68,24 +99,34 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
       >
         {/* Image Header with Overlay */}
         <div className="relative">
-          {data.WeightImageBase64 ? (
-            <img
-              src={
-                data.WeightImageBase64.startsWith('data:image') 
-                  ? data.WeightImageBase64 
-                  : `data:image/jpeg;base64,${data.WeightImageBase64}`
-              }
-              alt="Weighing Scale"
-              className="w-full h-72 object-cover"
-              onError={(e) => {
-                e.target.src = 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?w=800&q=80';
-              }}
-            />
-          ) : (
-            <div className="w-full h-72  bg-gradient-to-br from-emerald-100 to-teal-200 flex items-center justify-center">
-              <Scale className="w-24 h-24 text-emerald-600 opacity-50" />
-            </div>
-          )}
+          {(() => {
+            const src = data.WeightImageBase64 || lazyImage;
+            if (src) {
+              return (
+                <img
+                  src={
+                    src.startsWith('data:image')
+                      ? src
+                      : `data:image/jpeg;base64,${src}`
+                  }
+                  alt="Weighing Scale"
+                  className="w-full h-72 object-cover"
+                  onError={(e) => {
+                    e.target.src = 'https://images.unsplash.com/photo-1516594915697-87eb3b1c14ea?w=800&q=80';
+                  }}
+                />
+              );
+            }
+            return (
+              <div className="w-full h-72  bg-gradient-to-br from-emerald-100 to-teal-200 flex items-center justify-center">
+                {imageLoading ? (
+                  <span className="inline-block h-10 w-10 rounded-full border-4 border-emerald-400 border-t-transparent animate-spin" />
+                ) : (
+                  <Scale className="w-24 h-24 text-emerald-600 opacity-50" />
+                )}
+              </div>
+            );
+          })()}
 
           {/* Gradient Overlay */}
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/55 to-transparent p-5 space-y-3">

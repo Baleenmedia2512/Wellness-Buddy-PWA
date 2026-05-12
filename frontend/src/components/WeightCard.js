@@ -25,11 +25,6 @@ const WeightCard = React.memo(({
   const [leaving, setLeaving] = useState(false);
   const [deletedOnce, setDeletedOnce] = useState(false);
 
-  // ✅ Lazy-fetched image (so list endpoint can omit base64 for speed)
-  const [lazyImage, setLazyImage] = useState(null);
-  const [imageVisible, setImageVisible] = useState(false);
-  const imgWrapRef = useRef(null);
-
   const startXRef = useRef(0);
   const startYRef = useRef(0);
   const dxRef = useRef(0);
@@ -51,47 +46,6 @@ const WeightCard = React.memo(({
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => () => cancelRAF(), []);
-
-  // ✅ Observe image slot — only request the base64 image when scrolled into view
-  useEffect(() => {
-    const el = imgWrapRef.current;
-    if (!el) return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setImageVisible(true);
-          observer.disconnect();
-        }
-      },
-      { rootMargin: '150px', threshold: 0 }
-    );
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, []);
-
-  // ✅ Fetch image on demand when the card becomes visible (only if not already provided)
-  useEffect(() => {
-    if (!imageVisible) return;
-    if (data?.WeightImageBase64) return; // already provided by list
-    if (lazyImage !== null) return;
-    if (!apiBaseUrl || !userId || !data?.ID) return;
-
-    let cancelled = false;
-    (async () => {
-      try {
-        const res = await fetch(
-          `${apiBaseUrl}/api/get-weight-image?userId=${encodeURIComponent(userId)}&id=${encodeURIComponent(data.ID)}`
-        );
-        if (!res.ok) return;
-        const json = await res.json();
-        if (cancelled) return;
-        if (json && json.success && json.image) {
-          setLazyImage(json.image);
-        }
-      } catch (_) { /* non-critical */ }
-    })();
-    return () => { cancelled = true; };
-  }, [imageVisible, apiBaseUrl, userId, data?.ID, data?.WeightImageBase64, lazyImage]);
 
   if (!data || !data.Weight || !data.CreatedAt) {
     console.warn('WeightCard received invalid data:', data);
@@ -277,23 +231,9 @@ const WeightCard = React.memo(({
           style={{ width: `${progress * 100}%`, transition: dragging ? 'none' : 'width 180ms ease', opacity: progress > 0 ? 1 : 0 }} />
 
         <div className="p-3 flex items-center gap-3">
-          {/* Scale image or icon */}
-          <div ref={imgWrapRef} className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center shadow-sm">
-            {(() => {
-              const src = data.WeightImageBase64 || lazyImage;
-              if (src && src.trim() !== '') {
-                return (
-                  <img
-                    src={src.startsWith('data:image') ? src : `data:image/jpeg;base64,${src}`}
-                    alt="Scale"
-                    className="w-full h-full object-cover"
-                    loading="lazy"
-                    onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                  />
-                );
-              }
-              return <Scale className="w-7 h-7 text-emerald-500" />;
-            })()}
+          {/* Scale icon (image is shown only in detail modal) */}
+          <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center shadow-sm">
+            <Scale className="w-7 h-7 text-emerald-500" />
           </div>
 
           {/* Middle: weight + date + diff badge */}

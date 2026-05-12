@@ -1474,6 +1474,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               onDelete={handleDeleteEntry}
               onUpdate={handleUpdateEntry}
               apiBaseUrl={apiBaseUrl}
+              userId={userIdRef.current}
               previousWeight={(() => {
                 const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
                 const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
@@ -1514,6 +1515,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             onDelete={handleDeleteEntry}
             onUpdate={handleUpdateEntry}
             apiBaseUrl={apiBaseUrl}
+            userId={userIdRef.current}
             previousWeight={(() => {
               const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
               const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
