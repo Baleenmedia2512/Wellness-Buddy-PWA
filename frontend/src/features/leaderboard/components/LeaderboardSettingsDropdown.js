@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Settings, Trophy } from 'lucide-react';
-import TouchFeedbackButton from './TouchFeedbackButton';
+import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
 
 /**
  * Leaderboard Settings Dropdown

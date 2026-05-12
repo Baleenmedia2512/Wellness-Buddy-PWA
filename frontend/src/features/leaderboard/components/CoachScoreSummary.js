@@ -5,7 +5,7 @@ import {
   SelfLogo,
   DirectLogo,
   FullTeamLogo,
-} from "./common/DisciplineScoreLogos";
+} from "../../../components/common/DisciplineScoreLogos";
 
 /**
  * CoachScoreSummary - Displays coach's performance summary on main page

@@ -15,19 +15,19 @@ import {
 } from "lucide-react";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
-} from "./common/HierarchicalReportLayout";
-import HierarchicalNode from "./common/HierarchicalNode";
+} from "../../../components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../../../components/common/HierarchicalNode";
 import {
   SelfLogo,
   DirectLogo,
   FullTeamLogo,
-} from "./common/DisciplineScoreLogos";
-import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
+} from "../../../components/common/DisciplineScoreLogos";
+import TimeWindowSettingsModal from "../../../components/TimeWindowSettingsModal";
 import {
   disciplineReportService,
   clearDisciplineReportCache,
 } from "../services/disciplineReportService";
-import { teamHierarchyService } from "../services/teamHierarchyService";
+import { teamHierarchyService } from "../../../services/teamHierarchyService";
 
 const DisciplineReport = ({ user, onBack, userRole }) => {
   const [loading, setLoading] = useState(true);

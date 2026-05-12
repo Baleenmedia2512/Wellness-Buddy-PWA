@@ -1,6 +1,6 @@
 // src/services/disciplineReportService.js
 import axios from "axios";
-import { cacheManager } from "./cacheManager";
+import { cacheManager } from "../../../services/cacheManager";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 

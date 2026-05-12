@@ -61,7 +61,7 @@ import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";
 import ClubSelectionModal from "./components/ClubSelectionModal";
 import CustomAlertModal from "./components/CustomAlertModal";
-import CoachScoreSummary from "./components/CoachScoreSummary";
+import CoachScoreSummary from "./features/leaderboard/components/CoachScoreSummary";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./services/galleryMonitor";
 import {
@@ -79,13 +79,13 @@ import LocationGuard from "./components/LocationGuard";
 
 // ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() => import("./features/weight/components/WeightLossLeaderboard"));
-const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
+const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/components/DisciplineLeaderboard"));
 const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
-const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
+const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>

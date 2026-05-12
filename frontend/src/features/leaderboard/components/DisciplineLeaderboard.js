@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
 } from "react";
 import { Award, Star } from "lucide-react";
-import LEADERBOARD_CONFIG from "../config/leaderboardConfig";
+import LEADERBOARD_CONFIG from "../../../config/leaderboardConfig";
 
 /**
  * DisciplineLeaderboard Component
