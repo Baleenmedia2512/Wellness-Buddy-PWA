@@ -11,17 +11,38 @@ export async function insertLog(payload) {
   return data;
 }
 
-export async function listLogs(userId) {
+export async function listLogs(userId, { limit = null, offset = 0, includeImage = true } = {}) {
   const supabase = getSupabaseClient();
-  const { data, error } = await supabase
+  const selectFields = includeImage
+    ? '"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"'
+    : '"Id", "Platform", "Topic", "CreatedAt", "Confidence"';
+  let query = supabase
     .from('education_logs_table')
-    .select('"Id", "Platform", "Topic", "CreatedAt", "Confidence", "ImageBase64"')
-    .eq('"UserId"', userId)
-    .or('"IsDeleted".is.null,"IsDeleted".eq.0')
-    .order('"CreatedAt"', { ascending: false })
-    .limit(100);
+    .select(selectFields)
+    .eq('UserId', userId)
+    .or('IsDeleted.is.null,IsDeleted.eq.0')
+    .order('CreatedAt', { ascending: false });
+  const useLimit = Number.isFinite(limit) && limit > 0;
+  const fromIdx = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  if (useLimit) {
+    query = query.range(fromIdx, fromIdx + limit - 1);
+  } else {
+    query = query.limit(100);
+  }
+  const { data, error } = await query;
   if (error) throw error;
   return data || [];
+}
+
+export async function countLogs(userId) {
+  const supabase = getSupabaseClient();
+  const { count, error } = await supabase
+    .from('education_logs_table')
+    .select('"Id"', { count: 'exact', head: true })
+    .eq('UserId', userId)
+    .or('IsDeleted.is.null,IsDeleted.eq.0');
+  if (error) return null;
+  return typeof count === 'number' ? count : null;
 }
 
 export async function getLogImage(logId, userId) {
@@ -41,9 +62,9 @@ export async function summaryLogs(userId) {
   const { data, error } = await supabase
     .from('education_logs_table')
     .select('"CreatedAt", "Platform"')
-    .eq('"UserId"', userId)
-    .eq('"IsDeleted"', 0)
-    .order('"CreatedAt"', { ascending: false })
+    .eq('UserId', userId)
+    .eq('IsDeleted', 0)
+    .order('CreatedAt', { ascending: false })
     .limit(1000);
   if (error) throw error;
   return data || [];

@@ -1,4 +1,4 @@
-package com.wellnessvalley.app.plugins;
+﻿package com.wellnessvalley.app.plugins;
 
 import android.content.Intent;
 import android.net.Uri;
@@ -32,7 +32,9 @@ public class WhatsAppSharePlugin extends Plugin {
     public void shareImage(PluginCall call) {
         try {
             String base64Data = call.getString("base64Data");
-            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + ".png");
+            String mimeType = call.getString("mimeType", "image/png");
+            String defaultExt = "image/jpeg".equals(mimeType) ? ".jpg" : ".png";
+            String fileName = call.getString("fileName", "wellness-valley-" + System.currentTimeMillis() + defaultExt);
             String title = call.getString("title", "Share Image");
             String text = call.getString("text", "");
             
@@ -77,9 +79,10 @@ public class WhatsAppSharePlugin extends Plugin {
             // Create share intent with HIGH QUALITY configuration
             Intent shareIntent = new Intent(Intent.ACTION_SEND);
             
-            // CRITICAL: Use specific image/png MIME type (prevents compression)
-            // Using "image/*" or "image/jpeg" may trigger compression in some apps
-            shareIntent.setType("image/png");
+            // Use the MIME type matching the encoded bytes. JPEG @ 0.95 is much smaller
+            // than PNG and opens the share sheet much faster while remaining visually
+            // indistinguishable for UI screenshots.
+            shareIntent.setType(mimeType);
             
             // Add the image URI as stream
             shareIntent.putExtra(Intent.EXTRA_STREAM, imageUri);
@@ -99,7 +102,7 @@ public class WhatsAppSharePlugin extends Plugin {
             shareIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             
             Log.d(TAG, "Share intent configured:");
-            Log.d(TAG, "  - MIME type: image/png (lossless)");
+            Log.d(TAG, "  - MIME type: " + mimeType);
             Log.d(TAG, "  - File size: " + imageFile.length() + " bytes");
             Log.d(TAG, "  - Permissions: READ + WRITE");
             
@@ -112,13 +115,13 @@ public class WhatsAppSharePlugin extends Plugin {
             // Start the share activity
             getContext().startActivity(chooser);
             
-            Log.d(TAG, "✅ Share intent launched successfully");
+            Log.d(TAG, "Γ£à Share intent launched successfully");
             
             // Schedule cleanup after 2 minutes
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (imageFile.exists()) {
                     boolean deleted = imageFile.delete();
-                    Log.d(TAG, deleted ? "✅ Temp file cleaned up" : "⚠️ Failed to delete temp file");
+                    Log.d(TAG, deleted ? "Γ£à Temp file cleaned up" : "ΓÜá∩╕Å Failed to delete temp file");
                 }
             }, 120000);
             
@@ -128,7 +131,7 @@ public class WhatsAppSharePlugin extends Plugin {
             call.resolve(result);
             
         } catch (Exception e) {
-            Log.e(TAG, "❌ Share failed: " + e.getMessage(), e);
+            Log.e(TAG, "Γ¥î Share failed: " + e.getMessage(), e);
             call.reject("Failed to share image: " + e.getMessage(), e);
         }
     }
@@ -190,7 +193,7 @@ public class WhatsAppSharePlugin extends Plugin {
             // Check if WhatsApp is installed
             if (whatsappIntent.resolveActivity(getContext().getPackageManager()) != null) {
                 getContext().startActivity(whatsappIntent);
-                Log.d(TAG, "✅ WhatsApp share launched");
+                Log.d(TAG, "Γ£à WhatsApp share launched");
                 
                 // Schedule cleanup
                 new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
@@ -207,7 +210,7 @@ public class WhatsAppSharePlugin extends Plugin {
             }
             
         } catch (Exception e) {
-            Log.e(TAG, "❌ WhatsApp share failed: " + e.getMessage(), e);
+            Log.e(TAG, "Γ¥î WhatsApp share failed: " + e.getMessage(), e);
             call.reject("Failed to share to WhatsApp: " + e.getMessage(), e);
         }
     }
@@ -253,7 +256,7 @@ public class WhatsAppSharePlugin extends Plugin {
                 
                 getActivity().startActivity(intent);
                 
-                Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 1");
+                Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 1");
                 JSObject result = new JSObject();
                 result.put("success", true);
                 result.put("method", "explicit_component");
@@ -273,7 +276,7 @@ public class WhatsAppSharePlugin extends Plugin {
                     intent.putExtra("jid", cleanPhone + "@s.whatsapp.net");
                     getActivity().startActivity(intent);
                     
-                    Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 2");
+                    Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 2");
                     JSObject result = new JSObject();
                     result.put("success", true);
                     result.put("method", "direct_launch");
@@ -293,7 +296,7 @@ public class WhatsAppSharePlugin extends Plugin {
                 intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 getActivity().startActivity(intent);
                 
-                Log.d(TAG, "✅ SUCCESS: WhatsApp opened via Strategy 3");
+                Log.d(TAG, "Γ£à SUCCESS: WhatsApp opened via Strategy 3");
                 JSObject result = new JSObject();
                 result.put("success", true);
                 result.put("method", "launcher");
@@ -305,11 +308,11 @@ public class WhatsAppSharePlugin extends Plugin {
                 Log.e(TAG, "Strategy 3 failed: " + e3.getMessage());
             }
             
-            Log.e(TAG, "❌ ALL STRATEGIES FAILED");
+            Log.e(TAG, "Γ¥î ALL STRATEGIES FAILED");
             call.reject("Could not open WhatsApp despite it being installed. Please check app permissions.");
             
         } catch (Exception e) {
-            Log.e(TAG, "❌ CRITICAL ERROR: " + e.getMessage(), e);
+            Log.e(TAG, "Γ¥î CRITICAL ERROR: " + e.getMessage(), e);
             call.reject("Failed to open WhatsApp: " + e.getMessage(), e);
         }
     }

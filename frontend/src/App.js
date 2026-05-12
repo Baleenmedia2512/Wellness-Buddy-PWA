@@ -47,7 +47,7 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
-import { captureAndShare } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
@@ -171,6 +171,7 @@ function WellnessValleyApp() {
   const [savedUserName, setSavedUserName] = useState(null); // Saved profile name for share card
   const fileInputRef = useRef(null);
   const weightAnalysisShareRef = useRef(null);
+  const cachedWeightShareDataUrlRef = useRef(null);
 
   // Duplicate food detection state
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
@@ -320,6 +321,30 @@ function WellnessValleyApp() {
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
+
+  // Pre-capture the weight share image in the background as soon as the result
+  // card is rendered. Tap ΓåÆ share sheet then skips html2canvas entirely.
+  useEffect(() => {
+    cachedWeightShareDataUrlRef.current = null;
+    if (imageType !== "weight" || !weightResult || !imagePreview) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!weightAnalysisShareRef.current) return;
+      precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
+        if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
+      });
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [
+    imageType,
+    weightResult,
+    imagePreview,
+    savedProfileImage,
+    sharePhotoBase64,
+  ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
 
@@ -4827,17 +4852,28 @@ function WellnessValleyApp() {
                     onClick={async () => {
                       if (isWeightSharing) return;
                       setIsWeightSharing(true);
+                      // Yield so React paints the spinner before any heavy work.
+                      await new Promise((r) => setTimeout(r, 0));
                       try {
-                        // Small delay to ensure hidden container is fully rendered
-                        await new Promise((resolve) =>
-                          setTimeout(resolve, 100),
-                        );
-
-                        await captureAndShare(weightAnalysisShareRef.current, {
+                        const shareOpts = {
                           title: `Weight Record - ${weightResult.weightValue} ${weightResult.unit}`,
                           text: "",
                           fileName: `wellness-valley-weight-${weightResult.weightValue}${weightResult.unit}.png`,
-                        });
+                        };
+
+                        // Fast path: pre-captured image (skips html2canvas).
+                        const cached = cachedWeightShareDataUrlRef.current;
+                        if (cached) {
+                          const ok = await shareCachedDataUrl(cached, shareOpts);
+                          if (ok) return;
+                        }
+
+                        // Fallback: capture live (slower).
+                        await new Promise((resolve) => setTimeout(resolve, 100));
+                        await captureAndShare(
+                          weightAnalysisShareRef.current,
+                          shareOpts,
+                        );
                       } catch (error) {
                         console.error("Failed to share:", error);
                       } finally {

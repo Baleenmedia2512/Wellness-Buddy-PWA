@@ -1,11 +1,25 @@
-﻿import React, { useState, useRef } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
-import { captureAndShare } from '../../../shared/utils/shareUtils';
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl } from '../../../shared/utils/shareUtils';
 import { getVersionString } from '../../../config/version';
 
 const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, savedProfileImage, sharePhotoBase64 }) => {
   const [isSharing, setIsSharing] = useState(false);
   const shareRef = useRef(null);
+  const cachedShareDataUrlRef = useRef(null);
+
+  // Pre-capture the share image in the background as soon as the share content
+  // is ready. This moves the heavy html2canvas work OFF the click handler so
+  // tapping Share dispatches the native sheet almost instantly.
+  useEffect(() => {
+    cachedShareDataUrlRef.current = null;
+    if (!shareRef.current || !educationData || !imagePreview) return;
+    let cancelled = false;
+    precaptureShareImage(shareRef.current).then((dataUrl) => {
+      if (!cancelled) cachedShareDataUrlRef.current = dataUrl;
+    });
+    return () => { cancelled = true; };
+  }, [educationData, imagePreview, savedProfileImage, sharePhotoBase64]);
 
   // Handle share button click
   const handleShare = async (e) => {
@@ -27,13 +41,24 @@ const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, sa
     }
 
     setIsSharing(true);
+    // Yield once so React paints the "Sharing..." spinner BEFORE any heavy work.
+    await new Promise((r) => setTimeout(r, 0));
     try {
-      // Capture and share the card with image + details
-      await captureAndShare(shareRef.current, {
+      const shareOpts = {
         title: `Education Session - ${educationData.topic}`,
         text: "",
         fileName: `wellness-valley-education-${educationData.topic.toLowerCase().replace(/\s+/g, '-')}.png`,
-      });
+      };
+
+      // Fast path: use the pre-captured image if available.
+      const cached = cachedShareDataUrlRef.current;
+      if (cached) {
+        const ok = await shareCachedDataUrl(cached, shareOpts);
+        if (ok) return;
+      }
+
+      // Fallback: capture live (slower).
+      await captureAndShare(shareRef.current, shareOpts);
     } catch (error) {
       console.error("Failed to share:", error);
     } finally {

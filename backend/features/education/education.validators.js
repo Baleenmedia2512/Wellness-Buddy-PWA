@@ -11,7 +11,21 @@ export function validateSaveLog(body) {
 
 export function validateGetLogs(query) {
   if (!query?.userId) throw new ValidationError(400, 'userId is required');
-  return { userId: query.userId };
+  const parsedLimit = query.limit !== undefined && query.limit !== null && query.limit !== ''
+    ? parseInt(query.limit, 10)
+    : null;
+  const parsedOffset = query.offset !== undefined && query.offset !== null && query.offset !== ''
+    ? parseInt(query.offset, 10)
+    : 0;
+  const includeImage = query.includeImage === undefined
+    ? true
+    : (query.includeImage === 'true' || query.includeImage === true);
+  return {
+    userId: query.userId,
+    limit: Number.isFinite(parsedLimit) ? parsedLimit : null,
+    offset: Number.isFinite(parsedOffset) ? parsedOffset : 0,
+    includeImage,
+  };
 }
 
 export function validateGetLogImage(query) {

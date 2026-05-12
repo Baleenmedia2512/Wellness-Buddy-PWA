@@ -72,19 +72,34 @@ export async function saveLog(input) {
 }
 
 // ─── list logs ───────────────────────────────────────────────────────────────
-export async function listLogs({ userId }) {
-  const logs = await repo.listLogs(userId);
+export async function listLogs({ userId, limit = null, offset = 0, includeImage = true }) {
+  const useLimit = Number.isFinite(limit) && limit > 0;
+  const fromIdx = Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  const logs = await repo.listLogs(userId, { limit, offset: fromIdx, includeImage });
   const THUMB_CHARS = 5000;
   const trimmedLogs = logs.map((log) => ({
     ...log,
-    ImageBase64: log.ImageBase64
-      ? (log.ImageBase64.length > THUMB_CHARS ? log.ImageBase64.slice(0, THUMB_CHARS) : log.ImageBase64)
+    ImageBase64: includeImage
+      ? (log.ImageBase64
+          ? (log.ImageBase64.length > THUMB_CHARS ? log.ImageBase64.slice(0, THUMB_CHARS) : log.ImageBase64)
+          : null)
       : null,
-    hasFullImage: !!(log.ImageBase64 && log.ImageBase64.length > 0),
+    // When image data is omitted from SELECT, assume true so the card lazy-fetches
+    hasFullImage: includeImage
+      ? !!(log.ImageBase64 && log.ImageBase64.length > 0)
+      : true,
   }));
+  let pagination = null;
+  if (useLimit) {
+    const total = await repo.countLogs(userId);
+    const hasMore = total != null
+      ? (fromIdx + trimmedLogs.length) < total
+      : trimmedLogs.length === limit;
+    pagination = { limit, offset: fromIdx, total: total ?? trimmedLogs.length, hasMore };
+  }
   return {
     httpStatus: 200,
-    body: { success: true, count: trimmedLogs.length, logs: trimmedLogs },
+    body: { success: true, count: trimmedLogs.length, logs: trimmedLogs, pagination },
   };
 }
 
