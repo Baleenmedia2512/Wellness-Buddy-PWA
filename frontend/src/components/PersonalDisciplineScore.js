@@ -5,7 +5,8 @@ import React, {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import { Scale, BookOpen, Coffee, Utensils, Moon, Droplets, Flame } from "lucide-react";
+import { BookOpen, Coffee, Utensils, Moon, Droplets, Flame } from "lucide-react";
+import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 
 /**
  * PersonalDisciplineScore - Displays user's personal discipline breakdown by category
@@ -124,7 +125,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
 
   // Icons for each category
   const categoryIcons = {
-    weight: <Scale className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
+    weight: <BathroomScaleIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     education: <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     breakfast: <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     lunch: <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,

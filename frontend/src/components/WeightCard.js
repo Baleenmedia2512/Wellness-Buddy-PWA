@@ -1,7 +1,7 @@
 // src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
-import { Scale } from 'lucide-react';
 import { istToLocalDate } from '../utils/timezoneUtils';
+import BathroomScaleIcon from './icons/BathroomScaleIcon';
 
 /**
  * WeightCard Component
@@ -233,7 +233,7 @@ const WeightCard = React.memo(({
         <div className="p-3 flex items-center gap-3">
           {/* Scale icon (image is shown only in detail modal) */}
           <div className="w-14 h-14 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-emerald-50 to-teal-100 flex items-center justify-center shadow-sm">
-            <Scale className="w-7 h-7 text-emerald-500" />
+            <BathroomScaleIcon className="w-9 h-9 text-emerald-600" />
           </div>
 
           {/* Middle: weight + date + diff badge */}

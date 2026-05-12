@@ -1,6 +1,7 @@
 // src/components/WeightCardModal.js
 import React, { useState, useEffect } from 'react';
-import { X, Scale, Pencil, Check, XCircle } from 'lucide-react';
+import { X, Pencil, Check, XCircle } from 'lucide-react';
+import BathroomScaleIcon from './icons/BathroomScaleIcon';
 import { formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
 
 /**
@@ -122,7 +123,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
                 {imageLoading ? (
                   <span className="inline-block h-10 w-10 rounded-full border-4 border-emerald-400 border-t-transparent animate-spin" />
                 ) : (
-                  <Scale className="w-24 h-24 text-emerald-600 opacity-50" />
+                  <BathroomScaleIcon className="w-24 h-24 text-emerald-600 opacity-50" />
                 )}
               </div>
             );
@@ -181,7 +182,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
           {/* Weight Details Section */}
           <div className="mb-4">
             <h3 className="font-semibold text-gray-900 text-sm flex items-center mb-3">
-              <Scale className="w-5 h-5 text-gray-500 mr-1.5" />
+              <BathroomScaleIcon className="w-5 h-5 text-gray-500 mr-1.5" />
               Weight Details
             </h3>
             

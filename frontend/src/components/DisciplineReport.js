@@ -2,7 +2,6 @@ import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   TrendingUp,
   TrendingDown,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -13,6 +12,7 @@ import {
   ArrowUpDown,
   Users,
 } from "lucide-react";
+import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
@@ -586,7 +586,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             {[
               {
                 icon: (
-                  <Scale
+                  <BathroomScaleIcon
                     className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
                       weight,
                     )}`}

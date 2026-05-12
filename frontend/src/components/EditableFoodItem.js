@@ -19,7 +19,6 @@ import {
   Edit2,
   Save,
   X,
-  Scale,
   Utensils,
   Flame,
   Beef,
@@ -28,6 +27,7 @@ import {
   Leaf,
   Trash2,
 } from "lucide-react";
+import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 
 const DELETE_UNDO_SECONDS = 5;
 
@@ -2037,7 +2037,7 @@ const EditableFoodItem = forwardRef(
           {/* Custom Grams/ML Input - Always visible */}
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-              <Scale className="w-3.5 h-3.5 text-gray-500" />
+              <BathroomScaleIcon className="w-3.5 h-3.5 text-gray-500" />
               <span>{selectedFood?.isLiquid ? "Volume" : "Weight"}</span>
             </label>
             <div className="relative">

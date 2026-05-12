@@ -1,13 +1,13 @@
 // src/components/WeightDashboard.js
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef, useCallback } from 'react';
 import { 
-  Scale,
   RotateCcw,
   Calendar,
   TrendingUp,
   TrendingDown, 
   Minus 
 } from 'lucide-react';
+import BathroomScaleIcon from './icons/BathroomScaleIcon';
 import { getUserId } from '../services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
 import '../LazyLoadStyles.css';
@@ -802,7 +802,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 <p className="text-sm text-gray-500 mt-1">Weight tracking history</p>
               </div> */}
               {/* <div className="bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full p-3">
-                <Scale className="w-6 h-6 text-white" />
+                <BathroomScaleIcon className="w-6 h-6 text-white" />
               </div> */}
             {/* </div> */}
           {/* </div> */}
