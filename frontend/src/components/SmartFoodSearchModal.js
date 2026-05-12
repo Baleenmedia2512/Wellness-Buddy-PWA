@@ -74,7 +74,7 @@ const SmartFoodSearchModal = ({
     setIsSearching(true);
     try {
       const res = await fetch(
-        `${apiBaseUrl}/api/search-food-history?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`
+        `${apiBaseUrl}/api/food-corrections/search?userId=${encodeURIComponent(userId)}&query=${encodeURIComponent(query)}`
       );
       const data = await res.json();
       if (data.success) {

@@ -1,5 +1,4 @@
 {
-  "//": "VSA frontend rules. Extends the CRA config defined in package.json.",
   "extends": ["react-app"],
   "ignorePatterns": [
     "build/",
@@ -35,7 +34,6 @@
       "rules": { "no-restricted-syntax": "off" }
     },
     {
-      "//": "Components must be presentational only — no fetch/axios. Hooks and services may.",
       "files": ["src/features/*/components/**/*.{js,jsx}", "src/shared/components/**/*.{js,jsx}"],
       "rules": {
         "no-restricted-imports": [

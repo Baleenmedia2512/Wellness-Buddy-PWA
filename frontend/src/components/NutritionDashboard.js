@@ -474,7 +474,7 @@ const NutritionDashboard = ({
       };
 
       const response = await fetch(
-        `${apiBaseUrl}/api/update-nutrition-analysis`,
+        `${apiBaseUrl}/api/food-corrections/nutrition`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -867,7 +867,7 @@ const NutritionDashboard = ({
         // Add cache busting parameter to force fresh data
         const cacheBuster = Date.now();
         const response = await fetch(
-          `${apiBaseUrl}/api/user-nutrition-stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+          `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
           {
             cache: "no-store", // Disable browser cache
             headers: {
@@ -1046,7 +1046,7 @@ const NutritionDashboard = ({
             const dateString = toLocalDateString(d);
             const cacheBuster = Date.now() + Math.random();
             const response = await fetch(
-              `${apiBaseUrl}/api/user-nutrition-stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+              `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
               {
                 cache: "no-store",
                 headers: {

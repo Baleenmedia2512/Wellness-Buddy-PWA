@@ -234,7 +234,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
     try {
       const cacheBuster = Date.now();
       response = await fetch(
-        `${apiBaseUrl}/api/user-nutrition-stats?userId=${userId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
+        `${apiBaseUrl}/api/food-corrections/stats?userId=${userId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
         {
           headers: {
             "Cache-Control": "no-cache",

@@ -91,7 +91,7 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
       return { success: false, message: "No correction needed" };
     }
 
-    const url = `${API_BASE_URL}/api/save-food-correction`;
+    const url = `${API_BASE_URL}/api/food-corrections`;
     console.log("[CORRECTION SERVICE] API URL:", url);
 
     const payload = {
@@ -172,7 +172,7 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
 export const getUserCorrections = async (userId) => {
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/get-food-corrections?userId=${userId}`,
+      `${API_BASE_URL}/api/food-corrections?userId=${userId}`,
       {
         method: "GET",
         headers: {
@@ -304,8 +304,8 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
       }
 
       const url = userId 
-        ? `${API_BASE_URL}/api/get-global-corrections?userId=${userId}&t=${Date.now()}`
-        : `${API_BASE_URL}/api/get-global-corrections?t=${Date.now()}`;
+        ? `${API_BASE_URL}/api/food-corrections/global?userId=${userId}&t=${Date.now()}`
+        : `${API_BASE_URL}/api/food-corrections/global?t=${Date.now()}`;
 
       const response = await fetch(url, {
         method: "GET",

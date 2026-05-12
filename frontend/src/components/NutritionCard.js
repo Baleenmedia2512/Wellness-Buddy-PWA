@@ -412,7 +412,7 @@ const NutritionCard = ({
 
     console.log("📝 [NutritionCard] Auto-saving update to meal ID:", savedMealId);
 
-    const response = await fetch(`${apiBaseUrl}/api/update-nutrition-analysis`, {
+    const response = await fetch(`${apiBaseUrl}/api/food-corrections/nutrition`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
