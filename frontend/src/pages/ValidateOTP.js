@@ -3,7 +3,7 @@ import axios from 'axios';
 import { motion } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import wellnessValleyIcon from '../assets/wellness-valley-icon.png';
-import InlineNumericKeypad from '../features/user/components/InlineNumericKeypad';
+import { InlineNumericKeypad } from '../features/user';
 
 
 // Use the inline custom keypad only on native (Capacitor) builds.
