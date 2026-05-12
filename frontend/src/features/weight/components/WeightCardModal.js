@@ -1,7 +1,7 @@
 // src/components/WeightCardModal.js
 import React, { useState, useEffect } from 'react';
 import { X, Scale, Pencil, Check, XCircle } from 'lucide-react';
-import { formatISTToLocalDate, formatISTToLocalTime } from '../utils/timezoneUtils';
+import { formatISTToLocalDate, formatISTToLocalTime } from '../../../utils/timezoneUtils';
 
 /**
  * WeightCardModal Component

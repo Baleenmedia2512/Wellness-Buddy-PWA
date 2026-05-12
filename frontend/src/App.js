@@ -43,7 +43,7 @@ import {
 } from "./services/nutritionSaveService";
 import { geminiService } from "./services/geminiService";
 import { imageTypeDetector } from "./services/imageTypeDetector";
-import { weightDetectionService } from "./services/weightDetectionService";
+import { weightDetectionService } from "./features/weight/services/weightDetectionService";
 import { educationDetectionService } from "./services/educationDetectionService";
 import { duplicateDetectionService } from "./services/duplicateDetectionService";
 import { applyUserCorrections } from "./services/foodCorrectionService";
@@ -51,7 +51,7 @@ import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/reminderService";
 import { validateImageFreshness } from "./utils/imageValidator";
-import ManualWeightEntryModal from "./components/ManualWeightEntryModal";
+import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
 import SmartFoodSearchModal from "./components/SmartFoodSearchModal";
 import ManualEducationEntryModal from "./components/ManualEducationEntryModal";
 import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
@@ -78,7 +78,7 @@ import TouchFeedbackButton from "./components/TouchFeedbackButton";
 import LocationGuard from "./components/LocationGuard";
 
 // ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
-const WeightLossLeaderboard = lazy(() => import("./components/WeightLossLeaderboard"));
+const WeightLossLeaderboard = lazy(() => import("./features/weight/components/WeightLossLeaderboard"));
 const DisciplineLeaderboard = lazy(() => import("./components/DisciplineLeaderboard"));
 const PersonalDisciplineScore = lazy(() => import("./components/PersonalDisciplineScore"));
 

@@ -1,7 +1,7 @@
 // src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Scale } from 'lucide-react';
-import { istToLocalDate } from '../utils/timezoneUtils';
+import { istToLocalDate } from '../../../utils/timezoneUtils';
 
 /**
  * WeightCard Component

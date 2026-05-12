@@ -1,5 +1,5 @@
 // src/services/imageTypeDetector.js
-import { weightDetectionService } from './weightDetectionService';
+import { weightDetectionService } from '../features/weight/services/weightDetectionService';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
 import { applyFallbackNutrition } from './nutritionFallback';

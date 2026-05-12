@@ -10,8 +10,8 @@ import {
   ScaleIcon,
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
-import { getUserId } from '../services/getUserId';
-import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
+import { getUserId } from '../../../services/getUserId';
+import { istToLocalDate, formatISTToLocalDate } from '../../../utils/timezoneUtils';
 import '../LazyLoadStyles.css';
 
 // ✅ LAZY LOADING: Load heavy components only when needed
