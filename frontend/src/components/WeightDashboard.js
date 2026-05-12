@@ -448,7 +448,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       const userId = userIdRef.current;
       
       if (!userId) {
-        throw new Error('User not authenticated or not found in database');
+        // User not yet authenticated (e.g. still restoring session) — silently
+        // bail out. The useEffect will re-run once user?.id / user?.email is set.
+        setLoading(false);
+        return;
       }
       
       // Include images so they display in the weight cards
