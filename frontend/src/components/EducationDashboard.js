@@ -745,11 +745,11 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                   ? 'Education Summary'
                   : `Education Trend (${educationTrendRangeDays}D)`}
               </div>
-              <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
+              <div className="flex items-center gap-1 bg-gray-100 rounded-full p-0.5">
                 <button
                   type="button"
                   onClick={() => setActiveEducationPanel('summary')}
-                  className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
+                  className={`px-2 py-0.5 text-[10px] rounded-full transition-all duration-300 ${
                     activeEducationPanel === 'summary'
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : 'text-gray-600 hover:bg-white'
@@ -760,7 +760,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                 <button
                   type="button"
                   onClick={() => setActiveEducationPanel('trend')}
-                  className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
+                  className={`px-2 py-0.5 text-[10px] rounded-full transition-all duration-300 ${
                     activeEducationPanel === 'trend'
                       ? 'bg-emerald-500 text-white shadow-sm'
                       : 'text-gray-600 hover:bg-white'
@@ -1160,9 +1160,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                 aria-label="Go to education summary slide"
                 onClick={() => setActiveEducationPanel('summary')}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
-                  activeEducationPanel === 'summary'
-                    ? 'w-6 bg-emerald-500'
-                    : 'w-2.5 bg-gray-300 hover:bg-gray-400'
+                  activeEducationPanel === 'summary' ? 'w-6 bg-emerald-500' : 'w-2.5 bg-gray-300'
                 }`}
               />
               <button
@@ -1170,9 +1168,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                 aria-label="Go to education trend slide"
                 onClick={() => setActiveEducationPanel('trend')}
                 className={`h-1.5 rounded-full transition-all duration-300 ${
-                  activeEducationPanel === 'trend'
-                    ? 'w-6 bg-emerald-500'
-                    : 'w-2.5 bg-gray-300 hover:bg-gray-400'
+                  activeEducationPanel === 'trend' ? 'w-6 bg-emerald-500' : 'w-2.5 bg-gray-300'
                 }`}
               />
             </div>

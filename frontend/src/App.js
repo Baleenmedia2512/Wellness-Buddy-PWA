@@ -940,7 +940,7 @@ function WellnessValleyApp() {
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail, userObj) => {
+    async (userEmail, userObj, { afterSave = false } = {}) => {
       if (!userEmail) return;
       // Mark check in-flight so the gate does not render while we are fetching
       setProfileChecking(true);
@@ -948,8 +948,11 @@ function WellnessValleyApp() {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         let latestData = null;
 
-        // Retry a few times because profile writes can be briefly stale right after save.
-        for (let attempt = 0; attempt < 3; attempt++) {
+        // Retry with delays only after a profile save (data can be briefly stale).
+        // On sign-in / refresh, one attempt is enough — data is already final.
+        const maxAttempts = afterSave ? 3 : 1;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const res = await fetch(
             `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(
               userEmail,
@@ -972,7 +975,7 @@ function WellnessValleyApp() {
             return;
           }
 
-          if (attempt < 2) {
+          if (attempt < maxAttempts - 1) {
             await sleep(450);
           }
         }
@@ -1176,7 +1179,8 @@ function WellnessValleyApp() {
               console.log(
                 "⏭️ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // Don't show setup wizard - user chose to skip
+              // Still check profile completion even if setup was skipped
+              await checkProfileCompletion(userEmail, user);
               return;
             }
 
@@ -1197,6 +1201,8 @@ function WellnessValleyApp() {
                     "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
                   );
                   localStorage.setItem("setupSkipped", "true");
+                  // Still check profile completion even if setup was skipped
+                  await checkProfileCompletion(userEmail, user);
                   return;
                 }
 
@@ -1392,6 +1398,10 @@ function WellnessValleyApp() {
 
             setUser(parsedUser);
             handleSaveUserCache(parsedUser);
+            // ✅ Check profile completion after OTP user is restored on refresh
+            if (userEmail) {
+              await checkProfileCompletion(userEmail, parsedUser);
+            }
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
             localStorage.removeItem("otpUser");
@@ -1402,7 +1412,26 @@ function WellnessValleyApp() {
     };
 
     restoreOtpUser();
-  }, [isOtpVerified, user, checkUserStatus]);
+  }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+
+  // ✅ Immediate profile check when app comes back to foreground
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const listener = App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive && user) {
+        const userEmail = user.email || user.Email;
+        if (userEmail) {
+          console.log("🔄 [Foreground] App resumed — running immediate profile check");
+          checkProfileCompletion(userEmail, user);
+        }
+      }
+    });
+
+    return () => {
+      listener.then?.((l) => l.remove()).catch(() => {});
+    };
+  }, [user, checkProfileCompletion]);
 
   // Periodic user status check (every 60 seconds)
   useEffect(() => {
@@ -4126,6 +4155,11 @@ function WellnessValleyApp() {
           console.log(
             "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
           );
+        } else {
+          // ✅ Existing user — check profile completion immediately after login
+          if (userEmail) {
+            await checkProfileCompletion(userEmail, parsedUser);
+          }
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
@@ -4153,6 +4187,16 @@ function WellnessValleyApp() {
 
   // Loading state
   if (authLoading) {
+    return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ OTP user restore in progress — keep spinner until user is fully restored
+  if (isOtpVerified && !user) {
+    return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ Profile check in progress — keep spinner until check is done
+  if (profileChecking) {
     return <LoadingSpinner context="normal" />;
   }
 
@@ -4359,7 +4403,7 @@ function WellnessValleyApp() {
         onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
-          checkProfileCompletion(email);
+          checkProfileCompletion(email, null, { afterSave: true });
           // If a new BMR was saved, force NutritionDashboard to re-fetch it
           if (profileData?.bmr) {
             setBmrUpdateKey((prev) => prev + 1);
@@ -4749,7 +4793,14 @@ function WellnessValleyApp() {
                               margin: 0,
                             }}
                           >
-                            {idealWeight.min} – {idealWeight.value} {idealWeight.unit}
+                            {(() => {
+                              const current = weightResult?.weightValue;
+                              const isLoss = current && current > idealWeight.value + 0.5;
+                              const isGain = current && current < idealWeight.min - 0.5;
+                              if (isLoss) return `${idealWeight.value} ${idealWeight.unit}`;
+                              if (isGain) return `${idealWeight.min} ${idealWeight.unit}`;
+                              return `${idealWeight.value} ${idealWeight.unit}`;
+                            })()}
                           </p>
                         </div>
                       </div>
