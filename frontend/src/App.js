@@ -34,7 +34,7 @@ import {
 import {
   initializeBackButton,
   cleanupBackButton,
-} from "./utils/backButtonHandler";
+} from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache } from "./features/user/services/getUserId";
 import { getVersionString } from "./config/version";
 import {
@@ -47,10 +47,10 @@ import { weightDetectionService } from "./features/weight/services/weightDetecti
 import { educationDetectionService } from "./features/education/services/educationDetectionService";
 import { duplicateDetectionService } from "./features/nutrition/services/duplicateDetectionService";
 import { applyUserCorrections } from "./features/nutrition/services/foodCorrectionService";
-import { captureAndShare } from "./utils/shareUtils";
+import { captureAndShare } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers/services/locationAttendanceService";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
-import { validateImageFreshness } from "./utils/imageValidator";
+import { validateImageFreshness } from "./shared/utils/imageValidator";
 import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
 import SmartFoodSearchModal from "./features/nutrition/components/SmartFoodSearchModal";
 import ManualEducationEntryModal from "./features/education/components/ManualEducationEntryModal";

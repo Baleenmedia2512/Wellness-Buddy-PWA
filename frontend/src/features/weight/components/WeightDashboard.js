@@ -1,4 +1,4 @@
-// src/components/WeightDashboard.js
+﻿// src/components/WeightDashboard.js
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef, useCallback } from 'react';
 import { 
   Scale,
@@ -11,17 +11,17 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import { getUserId } from '../../user/services/getUserId';
-import { istToLocalDate, formatISTToLocalDate } from '../../../utils/timezoneUtils';
+import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
 import '../../../LazyLoadStyles.css';
 
-// ✅ LAZY LOADING: Load heavy components only when needed
+// âœ… LAZY LOADING: Load heavy components only when needed
 const WeightCard = lazy(() => import('./WeightCard'));
 const WeightCardModal = lazy(() => import('./WeightCardModal'));
 
 const UNDO_SECONDS = 10; // undo countdown duration
 
 /**
-//  * ✅ PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
+//  * âœ… PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
  */
 const LazyLoadWrapper = ({ children, fallback, rootMargin = '100px' }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -113,7 +113,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
         {undoing ? (
           <>
             <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-            Restoring…
+            Restoringâ€¦
           </>
         ) : (
           <>
@@ -168,7 +168,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
 
-  // ✅ CACHE: Store userId to avoid repeated lookups
+  // âœ… CACHE: Store userId to avoid repeated lookups
   const userIdRef = useRef(null);
   const weightSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
   const weightSummaryRef = useRef(null);
@@ -176,13 +176,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const weightTrendChartRef = useRef(null);
 
   /**
-   * ✅ MEMOIZED: Group weight entries by month
+   * âœ… MEMOIZED: Group weight entries by month
    * Note: Placeholders are handled separately in the render logic
    */
   const monthlyGroups = useMemo(() => {
     const grouped = {};
     
-    // console.log('📊 Processing weightHistory:', weightHistory.length, 'entries');
+    // console.log('ðŸ“Š Processing weightHistory:', weightHistory.length, 'entries');
     
     // Process all entries including placeholders
     weightHistory.forEach(entry => {
@@ -213,12 +213,12 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     
     // Sort months in descending order (most recent first) using sortDate
     const result = Object.values(grouped).sort((a, b) => b.sortDate - a.sortDate);
-    // console.log('📊 Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
+    // console.log('ðŸ“Š Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
     return result;
   }, [weightHistory]);
 
   /**
-   * ✅ MEMOIZED: Pre-compute previous weight map for O(1) lookup
+   * âœ… MEMOIZED: Pre-compute previous weight map for O(1) lookup
    */
   const previousWeightMap = useMemo(() => {
     const map = new Map();
@@ -475,13 +475,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       }
 
       // Set all weight history data
-      // console.log('📊 Weight history loaded:', data.data?.length, 'entries');
-      // console.log('📊 Sample entries:', data.data?.slice(0, 3));
+      // console.log('ðŸ“Š Weight history loaded:', data.data?.length, 'entries');
+      // console.log('ðŸ“Š Sample entries:', data.data?.slice(0, 3));
       setWeightHistory(data.data || []);
       setGlobalStats(data.stats || null);
 
     } catch (err) {
-      console.error('❌ Fetch weight history error:', err);
+      console.error('âŒ Fetch weight history error:', err);
       setError(err.message || 'Failed to load weight history');
     } finally {
       setLoading(false);
@@ -548,10 +548,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to delete entry');
       }
 
-      // console.log('✅ Entry soft-deleted immediately:', entryToDelete.ID);
+      // console.log('âœ… Entry soft-deleted immediately:', entryToDelete.ID);
 
     } catch (err) {
-      console.error('❌ Delete error:', err);
+      console.error('âŒ Delete error:', err);
       // Rollback on backend failure
       setWeightHistory(prev => {
         const idx = prev.findIndex(e => e.ID === placeholder.ID);
@@ -606,10 +606,10 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to restore entry');
       }
 
-      // console.log('✅ Entry restored via API:', originalEntry.ID);
+      // console.log('âœ… Entry restored via API:', originalEntry.ID);
 
     } catch (err) {
-      console.error('❌ Undo restore error:', err);
+      console.error('âŒ Undo restore error:', err);
       // Rollback on backend failure - put placeholder back
       setWeightHistory(prev => {
         const idx = prev.findIndex(e => e.ID === originalEntry.ID);
@@ -672,7 +672,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       return next;
     });
 
-    // console.log('⏱️ Undo timer expired, entry remains deleted:', originalEntry.ID);
+    // console.log('â±ï¸ Undo timer expired, entry remains deleted:', originalEntry.ID);
   };
 
   // Weight saving removed - entries are added via main page image upload
@@ -1228,7 +1228,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 <Scale className="w-9 h-9 text-gray-400" />
               </div>
             ) : (
-              <div className="text-6xl mb-4">⚖️</div>
+              <div className="text-6xl mb-4">âš–ï¸</div>
             )}
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Weight Entries</h3>
             <p className="text-gray-500 text-sm max-w-xs mx-auto">
@@ -1295,7 +1295,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           );
                         }
 
-                        // ✅ OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
+                        // âœ… OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
                         const prevWeight = previousWeightMap.get(entry.ID);
                         
                         // Skeleton placeholder for lazy loading
@@ -1312,7 +1312,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           </div>
                         );
 
-                        // ✅ PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
+                        // âœ… PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
                         if (index < 10) {
                           return (
                             <Suspense key={entry.ID} fallback={skeleton}>

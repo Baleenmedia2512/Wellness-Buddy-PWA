@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { BookOpen, Calendar, RotateCcw, Monitor, Clock, Layers, TrendingUp, Video, CheckCircle2, Flame, Sun, Moon, Sunset, Check } from 'lucide-react';
 import { getUserId } from '../../user/services/getUserId';
-import { istToLocalDate, formatISTToLocalDate } from '../../../utils/timezoneUtils';
+import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
 import EducationCardModal from './EducationCardModal';
 
 const UNDO_SECONDS = 10;
@@ -63,7 +63,7 @@ const UndoRow = ({ pid, originalLog, expiresAt, ttlSeconds = UNDO_SECONDS, onRes
         {undoing ? (
           <>
             <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-            Restoring…
+            Restoringâ€¦
           </>
         ) : (
           <>
@@ -312,7 +312,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         }
       }
     } catch (err) {
-      console.error('❌ Fetch summary error:', err);
+      console.error('âŒ Fetch summary error:', err);
     }
   };
 
@@ -377,7 +377,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
       }
 
     } catch (err) {
-      console.error('❌ Fetch education logs error:', err);
+      console.error('âŒ Fetch education logs error:', err);
       setError(err.message || 'Failed to load education logs');
       setSummaryLoading(false);
     } finally {
@@ -438,13 +438,13 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         throw new Error(data.message || 'Failed to delete education log');
       }
 
-      console.log('✅ Education log soft-deleted:', logToDelete.Id);
+      console.log('âœ… Education log soft-deleted:', logToDelete.Id);
       
       // Refresh summary to reflect the delete
       fetchSummary();
 
     } catch (err) {
-      console.error('❌ Delete error:', err);
+      console.error('âŒ Delete error:', err);
       // Rollback on backend failure
       setEducationLogs(prev => {
         const idx = prev.findIndex(e => e.Id === placeholder.Id);
@@ -499,13 +499,13 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         throw new Error(data.message || 'Failed to restore log');
       }
 
-      console.log('✅ Education log restored:', originalLog.Id);
+      console.log('âœ… Education log restored:', originalLog.Id);
       
       // Refresh summary to reflect the restore
       fetchSummary();
 
     } catch (err) {
-      console.error('❌ Undo restore error:', err);
+      console.error('âŒ Undo restore error:', err);
       // Rollback - put placeholder back
       setEducationLogs(prev => {
         const idx = prev.findIndex(e => e.Id === originalLog.Id);
@@ -543,7 +543,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
       return next;
     });
 
-    console.log('⏱️ Undo timer expired, log remains deleted:', originalLog.Id);
+    console.log('â±ï¸ Undo timer expired, log remains deleted:', originalLog.Id);
   };
 
   /**
@@ -1093,7 +1093,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         {/* New user message - only show when no entries */}
         {monthlyGroups.length === 0 && (
           <div className="text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
-            <div className="text-6xl mb-4">📚</div>
+            <div className="text-6xl mb-4">ðŸ“š</div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Education Sessions</h3>
             <p className="text-gray-500 text-sm max-w-xs mx-auto">
               Upload meeting screenshots to automatically track your education sessions.

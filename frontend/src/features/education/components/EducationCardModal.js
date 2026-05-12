@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect } from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
-import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../../../utils/timezoneUtils';
+import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
 
 /**
  * Format date

@@ -1,5 +1,5 @@
-// src/services/duplicateDetectionService.js
-import { istToLocalDate } from "../../../utils/timezoneUtils";
+﻿// src/services/duplicateDetectionService.js
+import { istToLocalDate } from "../../../shared/utils/timezoneUtils";
 
 /**
  * Get the meal category based on current time
@@ -212,7 +212,7 @@ export async function checkForDuplicateFood({ userId, analysisResult }) {
       return { isDuplicate: false };
     }
 
-    // console.log('🔍 Checking for duplicates:', { newFoodNames, mealCategory, mealCategoryName });
+    // console.log('ðŸ” Checking for duplicates:', { newFoodNames, mealCategory, mealCategoryName });
 
     // Fetch today's nutrition data for the user
     // Use local date formatting to prevent timezone-based date shifting
@@ -436,7 +436,7 @@ export async function checkForDuplicateWeight({
       return { isDuplicate: false };
     }
 
-    // console.log('🔍 Checking for duplicate weight:', { userId, weightValue, unit });
+    // console.log('ðŸ” Checking for duplicate weight:', { userId, weightValue, unit });
 
     // Fetch recent weight history for the user (only need last 10 for today's duplicate check)
     // Don't include image base64 - not needed for duplicate check and significantly faster
@@ -518,7 +518,7 @@ export async function checkForDuplicateWeight({
       }
     });
 
-    // console.log('📊 Weight entries today:', todayEntries.length);
+    // console.log('ðŸ“Š Weight entries today:', todayEntries.length);
 
     // Edge case: No weight entries today
     if (todayEntries.length === 0) {
@@ -575,7 +575,7 @@ export async function checkForDuplicateWeight({
             timeDifference = "just now";
           }
 
-          console.log("✅ Duplicate weight found:", {
+          console.log("âœ… Duplicate weight found:", {
             newWeight,
             existingWeight,
             weightDiff,

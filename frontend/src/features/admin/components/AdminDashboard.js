@@ -25,7 +25,7 @@ import { clearUserPricingCache } from "../../../shared/services/tokenCost/userPr
 import { clearPricingCache } from "../../../shared/services/tokenCost/tokenCostConfig";
 import { App as CapacitorApp } from "@capacitor/app";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
-import { istToLocalDate, formatISTToLocalDate } from "../../../utils/timezoneUtils";
+import { istToLocalDate, formatISTToLocalDate } from "../../../shared/utils/timezoneUtils";
 
 const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
   const [currentMonth, setCurrentMonth] = useState(new Date());

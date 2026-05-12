@@ -1,7 +1,7 @@
-// src/components/WeightCard.js
+﻿// src/components/WeightCard.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Scale } from 'lucide-react';
-import { istToLocalDate } from '../../../utils/timezoneUtils';
+import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
 
 /**
  * WeightCard Component
@@ -57,13 +57,13 @@ const WeightCard = React.memo(({
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     if (date.toDateString() === today.toDateString()) {
-      return `Today · ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return `Today Â· ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     }
     if (date.toDateString() === yesterday.toDateString()) {
-      return `Yesterday · ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+      return `Yesterday Â· ${date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
     }
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-      ' · ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      ' Â· ' + date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
   };
 
   const applyDelta = (clientX) => {
@@ -111,7 +111,7 @@ const WeightCard = React.memo(({
     });
   };
 
-  // Touch events — primary path on iOS
+  // Touch events â€” primary path on iOS
   const onTouchStart = (e) => {
     if (leaving) return;
     touchBlockedRef.current = false;
@@ -146,7 +146,7 @@ const WeightCard = React.memo(({
   const onTouchEnd = () => finishGesture();
   const onTouchCancel = () => finishGesture();
 
-  // Pointer events — fallback for non-touch (desktop/Android mouse)
+  // Pointer events â€” fallback for non-touch (desktop/Android mouse)
   const onPointerDown = (e) => {
     if (!e.isPrimary || leaving || e.pointerType === 'touch') return;
     cancelRAF();
@@ -258,7 +258,7 @@ const WeightCard = React.memo(({
                 const gained = diff > 0;
                 return (
                   <span className={`text-xs font-semibold ${gained ? 'text-red-500' : 'text-green-500'}`}>
-                    {gained ? '↑' : '↓'} {Math.abs(diff).toFixed(1)} kg
+                    {gained ? 'â†‘' : 'â†“'} {Math.abs(diff).toFixed(1)} kg
                   </span>
                 );
               })()}

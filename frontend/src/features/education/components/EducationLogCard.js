@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+﻿import React, { useState, useRef } from 'react';
 import { GraduationCap, Monitor, FileText, Clock, CheckCircle2, Share2 } from 'lucide-react';
-import { captureAndShare } from '../../../utils/shareUtils';
+import { captureAndShare } from '../../../shared/utils/shareUtils';
 import { getVersionString } from '../../../config/version';
 
 const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, savedProfileImage, sharePhotoBase64 }) => {
@@ -17,7 +17,7 @@ const EducationLogCard = ({ educationData, imagePreview, user, savedUserName, sa
 
     // Early return if already sharing
     if (isSharing) {
-      console.log("⚠️ Share already in progress, ignoring duplicate call");
+      console.log("âš ï¸ Share already in progress, ignoring duplicate call");
       return;
     }
 

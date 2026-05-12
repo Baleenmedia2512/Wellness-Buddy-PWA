@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
-import { istToLocalDate, formatISTToLocalTime } from '../../../utils/timezoneUtils';
+import { istToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
 
 const MAX_SWIPE_DISTANCE = 140;
 const DELETE_THRESHOLD = 100;
@@ -160,7 +160,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
     });
   };
 
-  // Touch events — primary path on iOS
+  // Touch events â€” primary path on iOS
   const onTouchStart = (e) => {
     if (leaving) return;
     touchBlockedRef.current = false;
@@ -195,7 +195,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
   const onTouchEnd = () => finishGesture();
   const onTouchCancel = () => finishGesture();
 
-  // Pointer events — fallback for non-touch
+  // Pointer events â€” fallback for non-touch
   const onPointerDown = (e) => {
     if (!e.isPrimary || leaving || e.pointerType === 'touch') return;
     cancelRAF();
@@ -303,7 +303,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
               />
             </div>
           ) : data.hasFullImage ? (
-            // Image exists but not yet loaded — show a placeholder gradient
+            // Image exists but not yet loaded â€” show a placeholder gradient
             <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
               {platformIcon}
             </div>
@@ -322,7 +322,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
             {/* Platform & Date */}
             <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
-              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt)}
+              {data.Platform || 'Online Meeting'} â€¢ {formatDate(data.CreatedAt)}
             </p>
           </div>
         </div>
