@@ -465,7 +465,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         }
 
         const reportRes = await fetch(
-          `${apiBaseUrl}/api/get-activity-time-report?${params}`,
+          `${apiBaseUrl}/api/activity/time-report?${params}`,
           { cache: "no-store" },
         );
 

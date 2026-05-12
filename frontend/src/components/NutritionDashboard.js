@@ -927,7 +927,7 @@ const NutritionDashboard = ({
           "-" +
           String(date.getDate()).padStart(2, "0");
         const res = await fetch(
-          `${apiBaseUrl}/api/get-daily-activity?userId=${actualUserId}&date=${dateStr}&activityType=walking&_t=${Date.now()}`,
+          `${apiBaseUrl}/api/activity?userId=${actualUserId}&date=${dateStr}&activityType=walking&_t=${Date.now()}`,
           { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } },
         );
         const json = await res.json();
@@ -965,7 +965,7 @@ const NutritionDashboard = ({
           "-" +
           String(date.getDate()).padStart(2, "0");
         const res = await fetch(
-          `${apiBaseUrl}/api/get-watch-burned-calories?userId=${actualUserId}&date=${dateStr}&_t=${Date.now()}`,
+          `${apiBaseUrl}/api/activity/watch-calories?userId=${actualUserId}&date=${dateStr}&_t=${Date.now()}`,
         );
         const json = await res.json();
         if (json.success) {

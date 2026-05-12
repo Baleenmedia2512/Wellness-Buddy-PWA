@@ -14,11 +14,11 @@ export async function fetchDailyActivity(userId, days = 7, activityType = null, 
     return `${y}-${m}-${day}`;
   })();
   const dateParam = `&targetDate=${encodeURIComponent(today)}`;
-  return apiClient.get(`/api/get-daily-activity?userId=${encodeURIComponent(userId)}&days=${days}${typeParam}${dateParam}`, {
+  return apiClient.get(`/api/activity?userId=${encodeURIComponent(userId)}&days=${days}${typeParam}${dateParam}`, {
     cache: false
   });
 }
 
 export async function saveDailyActivity(payload) {
-  return apiClient.post('/api/save-daily-activity', payload);
+  return apiClient.post('/api/activity', payload);
 }
