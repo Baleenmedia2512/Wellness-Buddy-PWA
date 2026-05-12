@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
-import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../../../components/common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
-} from "./common/HierarchicalReportLayout";
-import HierarchicalNode from "./common/HierarchicalNode";
-import CustomAlertModal from "./CustomAlertModal";
+} from "../../../components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../../../components/common/HierarchicalNode";
+import CustomAlertModal from "../../../components/CustomAlertModal";
 
 const AttendanceReport = ({ user, onBack }) => {
   const [loading, setLoading] = useState(true);
@@ -579,7 +579,7 @@ const AttendanceReport = ({ user, onBack }) => {
       title="Attendance Report"
       subtitle={`${
         teamCounts.coaches + teamCounts.members
-      } Members • Last updated ${new Date().toLocaleString("en-US", {
+      } Members ï¿½ Last updated ${new Date().toLocaleString("en-US", {
         month: "short",
         day: "numeric",
         hour: "numeric",

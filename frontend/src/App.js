@@ -87,7 +87,7 @@ const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
-const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
+const AttendanceReport = lazy(() => import("./features/team/components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>
   import("./components/NutritionCentersMap"),
 );

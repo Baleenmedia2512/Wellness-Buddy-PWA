@@ -1,7 +1,7 @@
 // src/components/TeamMemberSearch.js
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, Search } from 'lucide-react';
-import { teamHierarchyService } from '../services/teamHierarchyService';
+import { teamHierarchyService } from '../../../services/teamHierarchyService';
 
 /**
  * TeamMemberSearch Component

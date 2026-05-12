@@ -2,7 +2,7 @@
 import React, { useState, lazy, Suspense } from 'react';
 import { ArrowLeft, AppleIcon, Calendar, ChevronLeft, ChevronRight, Footprints, Smartphone } from 'lucide-react';
 import TouchFeedbackButton from './TouchFeedbackButton';
-import TeamMemberSearch from './TeamMemberSearch';
+import TeamMemberSearch from '../features/team/components/TeamMemberSearch';
 
 // Custom weighing scale icon component
 const WeighingScaleIcon = ({ className }) => (
