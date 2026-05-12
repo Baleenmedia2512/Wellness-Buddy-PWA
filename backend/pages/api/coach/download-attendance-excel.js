@@ -2,6 +2,26 @@ import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
 
 /**
+ * Extract main area name from city string
+ * Example: "CMWSSB Division 175, Zone 13 Adyar" → "Adyar"
+ */
+function extractMainAreaName(cityString) {
+  if (!cityString) return '';
+  
+  // Split by comma and take the last part
+  const parts = cityString.split(',').map(part => part.trim());
+  let mainArea = parts[parts.length - 1];
+  
+  // Remove common prefixes like "Division", "Zone" and their numbers
+  mainArea = mainArea
+    .replace(/^(CMWSSB|Division|Zone)\s+\d+\s*/gi, '') // Remove "Division 175", "Zone 13", etc.
+    .replace(/^(CMWSSB|Division|Zone)\s+/gi, '') // Remove just "Division", "Zone" without numbers
+    .trim();
+  
+  return mainArea;
+}
+
+/**
  * Helper function to get team hierarchy with partnership support
  * Same logic as hierarchical-club-attendance.js
  */
@@ -272,42 +292,81 @@ export default async function handler(req, res) {
     // Step 5: Build attendance records with all required fields
     const attendanceRecords = [];
 
+    // Helper: strip CMWSSB Division and Zone XX prefixes from village name
+    // e.g. "CMWSSB Division 175, Zone 17 Adyar" → "Adyar"
+    // e.g. "Zone 17 Adyar" → "Adyar"
+    // e.g. "CMWSSB Division 175" → "" (nothing useful)
+    const cleanVillage = (village) => {
+      if (!village) return '';
+      return village
+        .replace(/CMWSSB\s+Division\s+\d+[,\s]*/gi, '')
+        .replace(/^Zone\s+\d+[,\s]*/gi, '')
+        .trim();
+    };
+
     attendanceLogs.forEach(log => {
       const userId = parseInt(log.UserId);
       const user = userMap.get(userId);
       
       if (user) {
+        // Simple logic: if center_name is null/empty, show "Remote", otherwise show the center name
+        const clubName = log.center_name || 'Remote';
+        
+        // Convert to IST and format for Excel sorting
+        const istDate = new Date(log.CreatedAt);
+        const dateStr = istDate.toLocaleDateString('en-CA', { // YYYY-MM-DD format
+          timeZone: 'Asia/Kolkata'
+        });
+        const timeStr = istDate.toLocaleTimeString('en-GB', { // HH:MM:SS format (24-hour)
+          timeZone: 'Asia/Kolkata',
+          hour12: false
+        });
+        
         attendanceRecords.push({
           userId: user.UserId,
           userName: user.UserName || 'Unknown',
-          city: log.City || '',
-          village: log.Village || '',
+          city: extractMainAreaName(log.City),
+          village: cleanVillage(log.Village),
           phone: user.PhoneNumber || '',
           coach: user.CoachName || 'No Coach',
-          attendedTime: new Date(log.CreatedAt).toLocaleString('en-IN', {
-            timeZone: 'Asia/Kolkata',
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            hour12: true
-          }),
-          clubName: log.center_name || '',
-          attendanceType: log.attendance_type || 'club'
+          date: dateStr,
+          time: timeStr,
+          clubName: clubName,
+          attendanceType: log.attendance_type || '',
+          createdAt: log.CreatedAt // Keep for sorting
         });
       }
     });
 
-    // Step 6: Sort by attended time
+    console.log('📝 [download-attendance-excel] Built', attendanceRecords.length, 'attendance records');
+    console.log('   Remote records:', attendanceRecords.filter(r => r.clubName === 'Remote').length);
+    console.log('   Club records:', attendanceRecords.filter(r => r.clubName !== 'Remote').length);
+
+    // Step 6: Sort by attended time (ascending so latest overwrites earlier)
     attendanceRecords.sort((a, b) => {
-      const timeA = new Date(a.attendedTime);
-      const timeB = new Date(b.attendedTime);
+      const timeA = new Date(a.createdAt);
+      const timeB = new Date(b.createdAt);
       return timeA - timeB;
     });
 
+    // Step 6b: Deduplicate — keep only the latest entry per user
+    const latestByUser = new Map();
+    attendanceRecords.forEach(record => {
+      latestByUser.set(record.userId, record); // overwrites with later record
+    });
+    const deduped = Array.from(latestByUser.values());
+
+    console.log('🔁 [download-attendance-excel] After dedup:', deduped.length, 'unique users (was', attendanceRecords.length, 'records)');
+
+    // Step 6c: Sort again by time (ascending order - earliest first)
+    deduped.sort((a, b) => {
+      const timeA = new Date(a.createdAt);
+      const timeB = new Date(b.createdAt);
+      return timeA - timeB; // Ascending: earliest attendance first
+    });
+
     // Step 7: Add serial numbers
-    const finalData = attendanceRecords.map((record, index) => ({
+    const finalData = deduped.map((record, index) => ({
       sno: index + 1,
       ...record
     }));

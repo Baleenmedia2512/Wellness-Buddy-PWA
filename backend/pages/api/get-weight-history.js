@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { userId, includeImage = 'true' } =
+  const { userId, includeImage = 'true', limit, offset } =
     req.method === 'POST' ? req.body : req.query;
 
   if (!userId) {
@@ -40,6 +40,16 @@ export default async function handler(req, res) {
     // This prevents Vercel 4.5MB response limit from being hit.
     const shouldIncludeImage = includeImage === 'true' || includeImage === true;
 
+    // ✅ Pagination: when limit is provided, fetch only that page
+    const parsedLimit = limit !== undefined && limit !== null && limit !== ''
+      ? parseInt(limit, 10)
+      : null;
+    const parsedOffset = offset !== undefined && offset !== null && offset !== ''
+      ? parseInt(offset, 10)
+      : 0;
+    const useLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
+
+    let query = supabase
     // Step 1: Fetch ALL records without images (lightweight)
     const { data: rows, error } = await supabase
       .from('weight_records_table')
@@ -47,6 +57,14 @@ export default async function handler(req, res) {
       .eq('UserId', userId)
       .or('IsDeleted.is.null,IsDeleted.eq.0')
       .order('CreatedAt', { ascending: false });
+
+    if (useLimit) {
+      const from = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0;
+      const to = from + parsedLimit - 1;
+      query = query.range(from, to);
+    }
+
+    const { data: rows, error } = await query;
 
     if (error) throw error;
 
@@ -88,12 +106,44 @@ export default async function handler(req, res) {
         : row.CreatedAt
     }));
 
-    // ✅ Calculate min/max/avg from the loaded data
-    const weights = formattedRows.map(r => parseFloat(r.Weight)).filter(w => !isNaN(w));
-    const globalMinWeight = weights.length > 0 ? Math.min(...weights) : null;
-    const globalMaxWeight = weights.length > 0 ? Math.max(...weights) : null;
-    const globalAvgWeight = weights.length > 0 ? weights.reduce((a, b) => a + b, 0) / weights.length : null;
-    const totalCount = formattedRows.length;
+    // ✅ Calculate min/max/avg from ALL data (separate lightweight query when paginating)
+    let globalMinWeight = null;
+    let globalMaxWeight = null;
+    let globalAvgWeight = null;
+    let totalCount = formattedRows.length;
+    let latestRow = formattedRows[0] || null;
+    let previousRow = formattedRows[1] || null;
+
+    if (useLimit) {
+      // Fetch all weights (no images) for accurate global stats + total count + latest/previous
+      const { data: allRows, error: statsError } = await supabase
+        .from('weight_records_table')
+        .select('Weight, CreatedAt')
+        .eq('UserId', userId)
+        .or('IsDeleted.is.null,IsDeleted.eq.0')
+        .order('CreatedAt', { ascending: false });
+
+      if (!statsError && Array.isArray(allRows)) {
+        const allWeights = allRows
+          .map(r => parseFloat(r.Weight))
+          .filter(w => !isNaN(w));
+        globalMinWeight = allWeights.length > 0 ? Math.min(...allWeights) : null;
+        globalMaxWeight = allWeights.length > 0 ? Math.max(...allWeights) : null;
+        globalAvgWeight = allWeights.length > 0
+          ? allWeights.reduce((a, b) => a + b, 0) / allWeights.length
+          : null;
+        totalCount = allRows.length;
+        latestRow = allRows[0] || null;
+        previousRow = allRows[1] || null;
+      }
+    } else {
+      const weights = formattedRows.map(r => parseFloat(r.Weight)).filter(w => !isNaN(w));
+      globalMinWeight = weights.length > 0 ? Math.min(...weights) : null;
+      globalMaxWeight = weights.length > 0 ? Math.max(...weights) : null;
+      globalAvgWeight = weights.length > 0
+        ? weights.reduce((a, b) => a + b, 0) / weights.length
+        : null;
+    }
 
     // ✅ Calculate statistics
     let stats = {
@@ -106,10 +156,10 @@ export default async function handler(req, res) {
       maxWeight: globalMaxWeight,
     };
 
-    if (formattedRows.length > 0) {
+    if (latestRow) {
       stats.latestWeight = {
-        value: parseFloat(formattedRows[0].Weight),
-        date: formattedRows[0].CreatedAt,
+        value: parseFloat(latestRow.Weight),
+        date: latestRow.CreatedAt,
       };
 
       // ✅ Convert any timestamp to IST date string "YYYY-MM-DD"
@@ -146,10 +196,24 @@ export default async function handler(req, res) {
           parseFloat(formattedRows[0].Weight) - parseFloat(prevEntry.Weight);
       }
     }
-res.status(200).json({
+
+    const returnedOffset = useLimit && Number.isFinite(parsedOffset) && parsedOffset >= 0
+      ? parsedOffset
+      : 0;
+    const hasMore = useLimit
+      ? (returnedOffset + formattedRows.length) < totalCount
+      : false;
+
+    res.status(200).json({
       success: true,
       data: formattedRows,
       stats,
+      pagination: {
+        limit: useLimit ? parsedLimit : null,
+        offset: returnedOffset,
+        total: totalCount,
+        hasMore,
+      },
     });
   } catch (error) {
     console.error('❌ Database query error:', error);

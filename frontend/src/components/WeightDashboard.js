@@ -1,7 +1,6 @@
 // src/components/WeightDashboard.js
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef, useCallback } from 'react';
 import { 
-  Scale,
   RotateCcw,
   Calendar,
   TrendingUp,
@@ -9,7 +8,7 @@ import {
   Minus,
   ScaleIcon,
 } from 'lucide-react';
-import { Capacitor } from '@capacitor/core';
+import BathroomScaleIcon from './icons/BathroomScaleIcon';
 import { getUserId } from '../services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../utils/timezoneUtils';
 import '../LazyLoadStyles.css';
@@ -171,6 +170,16 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // ✅ CACHE: Store userId to avoid repeated lookups
   const userIdRef = useRef(null);
   const weightSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
+
+  // ✅ PAGINATION: Lazy-load weight history in pages of 10
+  const WEIGHT_PAGE_SIZE = 10;
+  const [weightOffset, setWeightOffset] = useState(0);
+  const [hasMoreWeights, setHasMoreWeights] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef(null);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(false);
+  const offsetRef = useRef(0);
   const weightSummaryRef = useRef(null);
   const weightTrendRef = useRef(null);
   const weightTrendChartRef = useRef(null);
@@ -429,16 +438,28 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   useEffect(() => {
     // Clear cached userId when user changes
     userIdRef.current = null;
-    fetchWeightHistory();
+    // Reset pagination
+    setWeightHistory([]);
+    setWeightOffset(0);
+    setHasMoreWeights(false);
+    offsetRef.current = 0;
+    hasMoreRef.current = false;
+    fetchWeightHistory({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.email]);
 
   /**
-   * Fetch ALL weight history (no pagination)
+   * Fetch weight history page (limit=10). Set reset=true to load first page.
    */
-  const fetchWeightHistory = async () => {
+  const fetchWeightHistory = async ({ reset = false } = {}) => {
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+      } else {
+        if (loadingMoreRef.current || !hasMoreRef.current) return;
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+      }
       setError(null);
 
       // Use cached userId or fetch once
@@ -446,24 +467,28 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         userIdRef.current = user?.id || await getUserId(user);
       }
       const userId = userIdRef.current;
-      
+
       if (!userId) {
         // User not yet authenticated (e.g. still restoring session) — silently
         // bail out. The useEffect will re-run once user?.id / user?.email is set.
         setLoading(false);
         return;
       }
-      
-      // Include images so they display in the weight cards
-      const params = new URLSearchParams({ 
-        userId, 
-        includeImage: 'true',
-        _t: Date.now() 
+
+      const currentOffset = reset ? 0 : offsetRef.current;
+
+      // ✅ LAZY LOAD: only request 10 entries per page (no images — fetched per card)
+      const params = new URLSearchParams({
+        userId,
+        includeImage: 'false',
+        limit: String(WEIGHT_PAGE_SIZE),
+        offset: String(currentOffset),
+        _t: Date.now()
       });
-      
+
       const response = await fetch(`${apiBaseUrl}/api/get-weight-history?${params}`, {
         method: 'GET',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'Cache-Control': 'no-cache',
           'Pragma': 'no-cache'
@@ -477,19 +502,66 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to fetch weight history');
       }
 
-      // Set all weight history data
-      // console.log('📊 Weight history loaded:', data.data?.length, 'entries');
-      // console.log('📊 Sample entries:', data.data?.slice(0, 3));
-      setWeightHistory(data.data || []);
+      const newRows = Array.isArray(data.data) ? data.data : [];
+
+      if (reset) {
+        setWeightHistory(newRows);
+      } else {
+        setWeightHistory(prev => {
+          // Avoid duplicates if a refresh races with infinite scroll
+          const seen = new Set(prev.map(e => e?.ID));
+          const merged = prev.slice();
+          for (const r of newRows) {
+            if (!seen.has(r.ID)) merged.push(r);
+          }
+          return merged;
+        });
+      }
+
       setGlobalStats(data.stats || null);
+
+      const nextOffset = currentOffset + newRows.length;
+      const more = data.pagination
+        ? !!data.pagination.hasMore
+        : newRows.length === WEIGHT_PAGE_SIZE;
+
+      offsetRef.current = nextOffset;
+      hasMoreRef.current = more;
+      setWeightOffset(nextOffset);
+      setHasMoreWeights(more);
 
     } catch (err) {
       console.error('❌ Fetch weight history error:', err);
       setError(err.message || 'Failed to load weight history');
     } finally {
-      setLoading(false);
+      if (reset) {
+        setLoading(false);
+      } else {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
     }
   };
+
+  /**
+   * ✅ INFINITE SCROLL: observe sentinel and load next page when visible
+   */
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting && hasMoreRef.current && !loadingMoreRef.current) {
+          fetchWeightHistory({ reset: false });
+        }
+      },
+      { rootMargin: '300px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMoreWeights, loading]);
 
   // Camera functionality removed - images are processed from main page upload
 
@@ -735,7 +807,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 <p className="text-sm text-gray-500 mt-1">Weight tracking history</p>
               </div> */}
               {/* <div className="bg-gradient-to-br from-emerald-400 to-teal-500 rounded-full p-3">
-                <Scale className="w-6 h-6 text-white" />
+                <BathroomScaleIcon className="w-6 h-6 text-white" />
               </div> */}
             {/* </div> */}
           {/* </div> */}
@@ -1327,6 +1399,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
                                 profileImage={savedProfileImage || null}
+                                apiBaseUrl={apiBaseUrl}
+                                userId={userIdRef.current}
                               />
                             </Suspense>
                           );
@@ -1344,6 +1418,8 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                                 index={index}
                                 userName={savedUserName || user?.displayName || user?.name || 'User'}
                                 profileImage={savedProfileImage || null}
+                                apiBaseUrl={apiBaseUrl}
+                                userId={userIdRef.current}
                               />
                             </Suspense>
                           </LazyLoadWrapper>
@@ -1353,6 +1429,20 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                 </div>
               );
             })
+          )}
+
+          {/* ✅ INFINITE SCROLL: sentinel + loading indicator for next 10 entries */}
+          {(hasMoreWeights || loadingMore) && (
+            <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
+              {loadingMore ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                  Loading more entries…
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400">Scroll to load more</span>
+              )}
+            </div>
           )}
         </div>
         </div>
@@ -1395,6 +1485,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
               onDelete={handleDeleteEntry}
               onUpdate={handleUpdateEntry}
               apiBaseUrl={apiBaseUrl}
+              userId={userIdRef.current}
               previousWeight={(() => {
                 const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
                 const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;
@@ -1435,6 +1526,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             onDelete={handleDeleteEntry}
             onUpdate={handleUpdateEntry}
             apiBaseUrl={apiBaseUrl}
+            userId={userIdRef.current}
             previousWeight={(() => {
               const index = weightHistory.findIndex(e => e.ID === selectedEntry.ID);
               const prevEntry = index > 0 && index + 1 < weightHistory.length ? weightHistory[index + 1] : null;

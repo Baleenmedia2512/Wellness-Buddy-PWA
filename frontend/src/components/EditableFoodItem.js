@@ -19,7 +19,6 @@ import {
   Edit2,
   Save,
   X,
-  Scale,
   Utensils,
   Flame,
   Beef,
@@ -28,6 +27,7 @@ import {
   Leaf,
   Trash2,
 } from "lucide-react";
+import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 
 const DELETE_UNDO_SECONDS = 5;
 
@@ -1268,6 +1268,25 @@ const EditableFoodItem = forwardRef(
       const unit = isLiquid ? "ml" : "g";
       console.log("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
       
+      // 🔄 REVERSAL DETECTION:
+      // If the user has edited the food name back to the ORIGINAL AI-detected
+      // name, treat this entry as a reversal of the auto-correction. The
+      // global/personal correction in the DB stays intact (other entries /
+      // other users keep getting auto-corrected) — but THIS entry must NOT
+      // show the "AUTO-CORRECTED" badge anymore.
+      const editedNameNorm = (foodToSave.name || '').trim().toLowerCase();
+      const originalAiNorm = (foodItem.originalAiName || '').trim().toLowerCase();
+      const isAutoCorrectionReversal =
+        !!foodItem.wasAutoCorrected &&
+        !!originalAiNorm &&
+        editedNameNorm === originalAiNorm;
+
+      if (isAutoCorrectionReversal) {
+        console.log(
+          `🔁 [REVERSAL] User reverted auto-correction back to original AI name "${foodItem.originalAiName}" — clearing wasAutoCorrected for this entry`,
+        );
+      }
+
       const updatedFood = {
         name: foodToSave.name,
         category: foodToSave.category,
@@ -1286,10 +1305,19 @@ const EditableFoodItem = forwardRef(
         nutrition: nutrition,
         per100g: foodToSave.per100g,
         // 🔴 CRITICAL: Preserve originalAiName and correction metadata
-        originalAiName: foodItem.originalAiName || foodItem.name,
-        wasAutoCorrected: foodItem.wasAutoCorrected || false,
-        correctionSource: foodItem.correctionSource || null,
-        correctionMetadata: foodItem.correctionMetadata || null,
+        // (Cleared only when the user has reverted to the original AI name.)
+        originalAiName: isAutoCorrectionReversal
+          ? null
+          : (foodItem.originalAiName || foodItem.name),
+        wasAutoCorrected: isAutoCorrectionReversal
+          ? false
+          : (foodItem.wasAutoCorrected || false),
+        correctionSource: isAutoCorrectionReversal
+          ? null
+          : (foodItem.correctionSource || null),
+        correctionMetadata: isAutoCorrectionReversal
+          ? null
+          : (foodItem.correctionMetadata || null),
       };
 
       console.log("\n📦 [GRAM/ML DEBUG] Final updatedFood object:");
@@ -1681,8 +1709,12 @@ const EditableFoodItem = forwardRef(
               <span className="font-medium text-gray-900 text-base">
                 {foodItem.name}
               </span>
-              {/* 🎯 GLOBAL AUTO-CORRECTION BADGE */}
-              {foodItem.wasAutoCorrected && (
+              {/* 🎯 GLOBAL AUTO-CORRECTION BADGE
+                  Hidden when the current name matches originalAiName — that
+                  means the user has reverted the auto-correction. */}
+              {foodItem.wasAutoCorrected &&
+                (foodItem.name || '').trim().toLowerCase() !==
+                  (foodItem.originalAiName || '').trim().toLowerCase() && (
                 <span
                   className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 border border-green-200"
                   title={`Auto-corrected from "${foodItem.originalAiName}" · ${foodItem.correctionSource}`}
@@ -2005,7 +2037,7 @@ const EditableFoodItem = forwardRef(
           {/* Custom Grams/ML Input - Always visible */}
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-              <Scale className="w-3.5 h-3.5 text-gray-500" />
+              <BathroomScaleIcon className="w-3.5 h-3.5 text-gray-500" />
               <span>{selectedFood?.isLiquid ? "Volume" : "Weight"}</span>
             </label>
             <div className="relative">

@@ -130,16 +130,37 @@ export default async function handler(req, res) {
     const { data: attendanceLogs, error: logsError } = await attendanceQuery;
     if (logsError) throw new Error(logsError.message);
 
-    console.log(
-      '📊 [hierarchical-club-attendance] Found',
-      attendanceLogs?.length || 0,
-      'attendance records'
-    );
+    console.log('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'attendance records (before dedup)');
+    if (attendanceLogs && attendanceLogs.length > 0) {
+      console.log('📊 [hierarchical-club-attendance] Records:', JSON.stringify(attendanceLogs));
+    } else {
+      console.log('📊 [hierarchical-club-attendance] NO records found. Params:', { startOfDay, endOfDay, allUserIds });
+    }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Step 2b: External attendees (people NOT in the team who attended the
-    // selected club). Behaviour preserved from the previous implementation.
-    // ─────────────────────────────────────────────────────────────────────
+    // Step 3a: Deduplicate attendance logs — keep only the LATEST entry per user
+    let dedupedLogs = attendanceLogs || [];
+    if (dedupedLogs.length > 0) {
+      // Sort by CreatedAt ascending (earliest first, so latest overwrites)
+      const sorted = [...dedupedLogs].sort((a, b) => {
+        const timeA = new Date(a.CreatedAt);
+        const timeB = new Date(b.CreatedAt);
+        return timeA - timeB;
+      });
+
+      // Use Map to keep only the latest record per user
+      const latestByUser = new Map();
+      sorted.forEach(log => {
+        const userId = parseInt(log.UserId, 10);
+        latestByUser.set(userId, log); // Overwrites earlier records
+      });
+      
+      // Create deduplicated array
+      dedupedLogs = Array.from(latestByUser.values());
+      
+      console.log('🔁 [hierarchical-club-attendance] After dedup:', dedupedLogs.length, 'unique users (was', attendanceLogs?.length || 0, 'records)');
+    }
+
+    // Step 3b: Fetch external attendees (people NOT in team who attended the club)
     let externalAttendees = [];
     if (clubIdNum) {
       const { data: allClubAttendance } = await supabase
@@ -189,11 +210,9 @@ export default async function handler(req, res) {
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // Step 3: Lookup club names for any club appearing in the logs
-    // ─────────────────────────────────────────────────────────────────────
-    const attendedClubIds = attendanceLogs
-      ? [...new Set(attendanceLogs.map(log => log.nutrition_center_id).filter(Boolean))]
+    // Step 4: Fetch club information for all attended clubs
+    const attendedClubIds = dedupedLogs 
+      ? [...new Set(dedupedLogs.map(log => log.nutrition_center_id).filter(id => id))]
       : [];
     const clubsMap = {};
     if (attendedClubIds.length > 0) {
@@ -212,17 +231,19 @@ export default async function handler(req, res) {
     // Step 4: Build attendance map (userId → { attended, clubs[], remoteCount, ts })
     // ─────────────────────────────────────────────────────────────────────
     const attendanceMap = new Map();
-    (attendanceLogs || []).forEach(log => {
-      const uid = parseInt(log.UserId, 10);
-      const cid = log.nutrition_center_id;
-      const clubInfo = cid ? clubsMap[cid] : null;
-      const platform = (log.Platform || '').toLowerCase();
-      const attendanceType = (log.attendance_type || '').toLowerCase();
-      const isClubVisit = attendanceType === 'club' || platform === 'club' || !!cid;
-      const isRemote = attendanceType === 'remote'
-        || platform === 'zoom'
-        || platform === 'online meeting'
-        || (!isClubVisit && !cid);
+    
+    if (dedupedLogs) {
+      dedupedLogs.forEach(log => {
+        // education_logs_table.UserId is varchar — convert to number so it matches
+        // team_table.UserId (int4) used as the Map key in hierarchyHelpers
+        const userId = parseInt(log.UserId, 10);
+        const clubId = log.nutrition_center_id;
+        const clubInfo = clubId ? clubsMap[clubId] : null;
+        // Determine if remote: check attendance_type first, then fall back to Platform column
+        const platform = (log.Platform || '').toLowerCase();
+        const attendanceType = (log.attendance_type || '').toLowerCase();
+        const isClubVisit = attendanceType === 'club' || platform === 'club' || !!clubId;
+        const isRemote = attendanceType === 'remote' || platform === 'zoom' || platform === 'online meeting' || (!isClubVisit && !clubId);
 
       if (!attendanceMap.has(uid)) {
         attendanceMap.set(uid, { attended: true, clubs: [], remoteCount: 0, timestamps: [] });

@@ -19,7 +19,6 @@ import {
   Bell,
   BellOff,
   RefreshCw,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -30,6 +29,7 @@ import {
   Check,
   Info,
 } from 'lucide-react';
+import BathroomScaleIcon from '../components/icons/BathroomScaleIcon';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
 import TouchFeedbackButton from '../components/TouchFeedbackButton';
@@ -56,7 +56,7 @@ import {
 const ACTIVITY_CONFIG = {
   weight: {
     label:    'Weight',
-    icon:     Scale,
+    icon:     BathroomScaleIcon,
     color:    'text-purple-600',
     bg:       'bg-purple-50',
     ring:     'ring-purple-200',

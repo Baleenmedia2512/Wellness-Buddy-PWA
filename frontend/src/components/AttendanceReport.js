@@ -1,5 +1,8 @@
-﻿import React, { useState, useEffect, useMemo, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Check, XCircle, MapPin, Wifi, Users } from "lucide-react";
+import { Capacitor } from "@capacitor/core";
+import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
+import { Share } from "@capacitor/share";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "./common/DisciplineScoreLogos";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
@@ -287,7 +290,7 @@ const AttendanceReport = ({ user, onBack }) => {
   };
 
   // Render stats strip
-  const renderStats = (node, level, isCurrentUser) => {
+  const renderStats = (node, level, isCurrentUser, coCoach = null) => {
     const attended = node.metrics?.attended === true;
     const clubs = node.metrics?.clubs || [];
     const remoteCount = node.metrics?.remoteCount || 0;
@@ -295,6 +298,11 @@ const AttendanceReport = ({ user, onBack }) => {
     const directTotal = node.directTeamCount?.total || 0;
     const fullQualified = node.fullTeamCount?.qualified || 0;
     const fullTotal = node.fullTeamCount?.total || 0;
+
+    // Co-coach partner data
+    const coCoachAttended = coCoach?.metrics?.attended === true;
+    const coCoachClubs = coCoach?.metrics?.clubs || [];
+    const coCoachRemoteCount = coCoach?.metrics?.remoteCount || 0;
 
     const isSingle = sortBy !== "all";
 
@@ -352,29 +360,87 @@ const AttendanceReport = ({ user, onBack }) => {
     // ── All columns (default) ─────────────────────────────────────────────────
     return (
       <>
-        {/* Self */}
-        <div className="flex-1 flex flex-col items-center pr-2">
-          <SelfLogo className="w-4 h-4 text-blue-600" />
-          <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
-          {attended ? (
-            <div className="flex flex-wrap gap-1 justify-center mt-0.5">
-              {clubs.length > 0 && (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
-                  <MapPin className="h-2.5 w-2.5 text-green-700" />
-                  <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
+        {/* Self - Show TWO entries for co-coach partnerships */}
+        {coCoach ? (
+          <>
+            {/* Coach SELF */}
+            <div className="flex-1 flex flex-col items-center pr-1">
+              <SelfLogo className="w-4 h-4 text-blue-600" />
+              <span className="text-[9px] font-semibold tracking-wide text-blue-600">{node.userName || node.name}</span>
+              {attended ? (
+                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                  {clubs.length > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <MapPin className="h-2 w-2 text-green-700" />
+                      <span className="text-[8px] font-semibold text-green-700">{clubs.length}</span>
+                    </div>
+                  )}
+                  {remoteCount > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                      <Wifi className="h-2 w-2 text-blue-700" />
+                      <span className="text-[8px] font-semibold text-blue-700">{remoteCount}</span>
+                    </div>
+                  )}
+                  {clubs.length === 0 && remoteCount === 0 && (
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                  )}
                 </div>
-              )}
-              {remoteCount > 0 && (
-                <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
-                  <Wifi className="h-2.5 w-2.5 text-blue-700" />
-                  <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
-                </div>
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5" />
               )}
             </div>
-          ) : (
-            <span className="text-lg font-bold text-red-500">0</span>
-          )}
-        </div>
+            {/* Co-Coach SELF */}
+            <div className="flex-1 flex flex-col items-center pr-2">
+              <SelfLogo className="w-4 h-4 text-purple-600" />
+              <span className="text-[9px] font-semibold tracking-wide text-purple-600">{coCoach.userName || coCoach.name}</span>
+              {coCoachAttended ? (
+                <div className="flex flex-wrap gap-0.5 justify-center mt-0.5">
+                  {coCoachClubs.length > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-green-100 border border-green-300">
+                      <MapPin className="h-2 w-2 text-green-700" />
+                      <span className="text-[8px] font-semibold text-green-700">{coCoachClubs.length}</span>
+                    </div>
+                  )}
+                  {coCoachRemoteCount > 0 && (
+                    <div className="flex items-center gap-0.5 px-1 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                      <Wifi className="h-2 w-2 text-blue-700" />
+                      <span className="text-[8px] font-semibold text-blue-700">{coCoachRemoteCount}</span>
+                    </div>
+                  )}
+                  {coCoachClubs.length === 0 && coCoachRemoteCount === 0 && (
+                    <Check className="w-3.5 h-3.5 text-green-600" />
+                  )}
+                </div>
+              ) : (
+                <XCircle className="w-3.5 h-3.5 text-red-500 mt-0.5" />
+              )}
+            </div>
+          </>
+        ) : (
+          /* Single coach - normal SELF display */
+          <div className="flex-1 flex flex-col items-center pr-2">
+            <SelfLogo className="w-4 h-4 text-blue-600" />
+            <span className="text-[10px] font-semibold tracking-wide text-blue-600">SELF</span>
+            {attended ? (
+              <div className="flex flex-wrap gap-1 justify-center mt-0.5">
+                {clubs.length > 0 && (
+                  <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-green-100 border border-green-300">
+                    <MapPin className="h-2.5 w-2.5 text-green-700" />
+                    <span className="text-[9px] font-semibold text-green-700">{clubs.length}</span>
+                  </div>
+                )}
+                {remoteCount > 0 && (
+                  <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-blue-100 border border-blue-300">
+                    <Wifi className="h-2.5 w-2.5 text-blue-700" />
+                    <span className="text-[9px] font-semibold text-blue-700">{remoteCount}</span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <span className="text-lg font-bold text-red-500">0</span>
+            )}
+          </div>
+        )}
         {/* Direct Team */}
         <div className="flex-1 flex flex-col items-center px-2">
           <DirectLogo className="w-4 h-4 text-green-600" />
@@ -566,6 +632,169 @@ const AttendanceReport = ({ user, onBack }) => {
     fetchData(true);
   };
 
+  const saveOrShareFile = useCallback(async ({ content, fileName, mimeType, title }) => {
+    const isNative = Capacitor.isNativePlatform();
+
+    if (isNative) {
+      try {
+        // Save to Cache temporarily, then share so user can choose where to save
+        const result = await Filesystem.writeFile({
+          path: fileName,
+          data: content,
+          directory: Directory.Cache,
+          encoding: Encoding.UTF8,
+        });
+
+        console.log("✅ File created:", result.uri);
+        
+        // Open share sheet - user can save to Downloads, Drive, WhatsApp, etc.
+        await Share.share({
+          title: title || "Attendance Report",
+          text: "Choose where to save or share your attendance report",
+          files: [result.uri],
+          dialogTitle: "Save or Share Report",
+        });
+        
+        console.log("📤 Share sheet opened successfully");
+        
+        return {
+          success: true,
+          path: result.uri,
+          location: "Shared - user can choose location"
+        };
+      } catch (error) {
+        console.error("❌ Error saving/sharing file:", error);
+        throw new Error("Failed to save or share file: " + error.message);
+      }
+    }
+
+    // Web Share API — works on Android Chrome PWA and iOS Safari PWA
+    const blob = new Blob([content], { type: mimeType });
+    if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mimeType })] })) {
+      try {
+        await navigator.share({
+          title: title || "Attendance Report",
+          files: [new File([blob], fileName, { type: mimeType })],
+        });
+        return { success: true, location: "Shared via browser", isWeb: true };
+      } catch (err) {
+        if (err.name === "AbortError") {
+          return { success: false, cancelled: true };
+        }
+        // fall through to anchor download
+      }
+    }
+
+    // Desktop / fallback: anchor click download
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+    
+    return { success: true, location: "browser download", isWeb: true };
+  }, []);
+
+  const handleDownload = async () => {
+    try {
+      console.log("📥 Downloading attendance report...");
+      
+      const userId = await getUserId(user.email);
+      const date = getTargetDate();
+      
+      // Fetch attendance data for Excel export
+      const response = await fetch(
+        `${apiBaseUrl}/api/coach/download-attendance-excel?userId=${userId}&date=${date}`,
+        { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
+      );
+      
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.message || "Failed to fetch attendance data");
+      }
+      
+      const attendanceData = result.data || [];
+      
+      if (attendanceData.length === 0) {
+        showAlert("No attendance records found for the selected date.", "No Data", "info");
+        return;
+      }
+      
+      // Generate CSV content
+      const headers = ["S.No", "Name", "City", "Village", "Phone", "Coach", "Date", "Time", "Club Name"];
+      const csvRows = [
+        headers.join(","),
+        ...attendanceData.map(record => [
+          record.sno,
+          `"${(record.userName || '').replace(/"/g, '""')}"`,
+          `"${(record.city || '').replace(/"/g, '""')}"`,
+          `"${(record.village || '').replace(/"/g, '""')}"`,
+          `"${(record.phone || '').replace(/"/g, '""')}"`,
+          `"${(record.coach || '').replace(/"/g, '""')}"`,
+          record.date || '',
+          record.time || '',
+          `"${(record.clubName || '').replace(/"/g, '""')}"`
+        ].join(","))
+      ];
+      
+      const csvContent = csvRows.join("\n");
+      
+      // Generate filename in format: dd-mm(monthName)-yyyy-username-attendance.csv
+      const dateObj = new Date(date);
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                          'July', 'August', 'September', 'October', 'November', 'December'];
+      const monthName = monthNames[dateObj.getMonth()];
+      const year = dateObj.getFullYear();
+      const username = hierarchyData?.userName || 'user';
+      const filename = `${day}-${month}(${monthName})-${year}-${username}-attendance.csv`;
+      
+      // Use saveOrShareFile for cross-platform support
+      const saveResult = await saveOrShareFile({
+        content: csvContent,
+        fileName: filename,
+        mimeType: "text/csv;charset=utf-8;",
+        title: "Attendance Report (CSV)",
+      });
+      
+      // Check if user cancelled (Web Share API)
+      if (saveResult.cancelled) {
+        return;
+      }
+      
+      console.log("✅ Attendance report downloaded successfully");
+      
+      // For web browsers, don't show success dialog since we can't detect if user actually saved
+      // The browser's own download UI is sufficient
+      if (saveResult.isWeb) {
+        console.log("📥 Download initiated via browser");
+        return; // Don't show success dialog for web downloads
+      }
+      
+      // Show success dialog with file location (mobile only)
+      const locationMessage = `\n\n📁 Saved to: ${saveResult.location}\n\nYou can find this file in your device's Files app.`;
+      
+      showAlert(
+        `Attendance report has been saved successfully!${locationMessage}\n\nFile: ${filename}\nRecords: ${attendanceData.length}`,
+        "Download Successful",
+        "success"
+      );
+      
+    } catch (error) {
+      console.error("❌ Error downloading attendance report:", error);
+      showAlert(
+        `Failed to download attendance report.\n\nError: ${error.message}\n\nPlease try again or contact support if the problem persists.`,
+        "Download Failed",
+        "error"
+      );
+    }
+  };
+
   const handleSortChange = (newSortBy, newSortOrder) => {
     setSortBy("name"); // A-Z / Z-A always sorts by name
     setSortOrder(newSortOrder);
@@ -612,6 +841,7 @@ const AttendanceReport = ({ user, onBack }) => {
       expandedState={expandOverride}
       teamView={teamView}
       onTeamViewChange={setTeamView}
+      onDownload={handleDownload}
     >
       {filteredHierarchy && hasVisibleNodes(filteredHierarchy) ? (
         <HierarchicalNode
@@ -624,6 +854,7 @@ const AttendanceReport = ({ user, onBack }) => {
           renderExpandedDetails={renderExpandedDetails}
           isCurrentUser={true}
           showTeamCount={true}
+          showIndividualReports={false}
           getStatusStyle={getStatusStyle}
           searchQuery={searchQuery}
           filter={filter}

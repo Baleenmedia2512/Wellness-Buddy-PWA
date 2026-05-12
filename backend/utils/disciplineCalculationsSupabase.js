@@ -194,13 +194,24 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     ? Math.round((latestBodyWeight / 20) * 1000)
     : DEFAULT_WATER_REQUIRED_ML;
 
-  // BMR (calorie target) — now read from team_table
-  const { data: teamRow } = await supabase
+  // BMR (calorie target) — read from team_table.
+  // NOTE: a user may legitimately have multiple team_table rows (e.g. a coach
+  // who is also a member of another team). `.maybeSingle()` returns null in
+  // that case and the calorie discipline silently becomes 0%. Fetch all rows
+  // for the user and pick the highest non-null BMR in JS — avoids depending on
+  // a sort column that may not exist on team_table.
+  const { data: teamRows } = await supabase
     .from('team_table')
     .select('Bmr')
     .eq('UserId', userId)
-    .maybeSingle();
-  const userBmrTarget = teamRow?.Bmr ? parseFloat(teamRow.Bmr) : null;
+    .not('Bmr', 'is', null);
+  let userBmrTarget = null;
+  (teamRows || []).forEach(r => {
+    const b = parseFloat(r.Bmr);
+    if (!isNaN(b) && b > 0 && (userBmrTarget === null || b > userBmrTarget)) {
+      userBmrTarget = b;
+    }
+  });
   
   // Get education logs
   const { data: educationLogs } = await supabase
