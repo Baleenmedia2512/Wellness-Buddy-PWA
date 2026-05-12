@@ -69,7 +69,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setErrorMessage('');
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const res = await fetch(`${apiBaseUrl}/api/send-otp`, {
+      const res = await fetch(`${apiBaseUrl}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: userEmail, contactType: 'email' }),
@@ -99,7 +99,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setOtpSending(true);
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const res = await fetch(`${apiBaseUrl}/api/send-otp`, {
+      const res = await fetch(`${apiBaseUrl}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: userEmail, contactType: 'email' }),
@@ -146,7 +146,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setErrorMessage('');
     try {
       const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {
+      const res = await fetch(`${apiBaseUrl}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: userEmail, otp: otpValue, contactType: 'email', purpose: 'delete' }),

@@ -43,7 +43,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setErrorMessage('');
     setEmailLoading(true);
     try {
-      const res = await fetch(`${apiBaseUrl}/api/send-otp`, {
+      const res = await fetch(`${apiBaseUrl}/api/auth/send-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: email, contactType: 'email' }),
@@ -71,7 +71,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
     setOtpVerified(false); // Reset verified state at start
 
     try {
-      const res = await fetch(`${apiBaseUrl}/api/verify-otp`, {
+      const res = await fetch(`${apiBaseUrl}/api/auth/verify-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recipient: email, otp: otpValue, contactType: 'email' }),
