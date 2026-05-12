@@ -20,7 +20,7 @@ import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./features/nutrition/components/NutritionCard";
 import EducationLogCard from "./features/education/components/EducationLogCard";
-import WatchActivityCard from "./components/WatchActivityCard";
+import WatchActivityCard from "./features/activity/components/WatchActivityCard";
 import TestImageGuide from "./components/TestImageGuide";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Login from "./components/Login";
@@ -54,7 +54,7 @@ import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
 import SmartFoodSearchModal from "./features/nutrition/components/SmartFoodSearchModal";
 import ManualEducationEntryModal from "./features/education/components/ManualEducationEntryModal";
-import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
+import ManualWatchEntryModal from "./features/activity/components/ManualWatchEntryModal";
 import DuplicateFoodModal from "./features/nutrition/components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
@@ -86,7 +86,7 @@ const PersonalDisciplineScore = lazy(() => import("./components/PersonalDiscipli
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./components/DisciplineReport"));
-const ActivityTimeReport = lazy(() => import("./components/ActivityTimeReport"));
+const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>
   import("./components/NutritionCentersMap"),

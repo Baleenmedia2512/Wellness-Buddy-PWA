@@ -4,8 +4,8 @@ import {
   LineChart, Line, XAxis, YAxis, LabelList, ReferenceLine, ResponsiveContainer
 } from 'recharts';
 import { fetchDailyActivity } from '../services/dailyActivityService';
-import LoadingSpinner from './LoadingSpinner';
-import TouchFeedbackButton from './TouchFeedbackButton';
+import LoadingSpinner from '../../../components/LoadingSpinner';
+import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
 
 const CALORIES_PER_STEP = 0.04;
 const STEP_GOAL = 10000;

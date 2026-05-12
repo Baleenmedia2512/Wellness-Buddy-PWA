@@ -19,9 +19,9 @@ import { Share } from "@capacitor/share";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "./common/HierarchicalReportLayout";
-import HierarchicalNode from "./common/HierarchicalNode";
-import { teamHierarchyService } from "../services/teamHierarchyService";
-import TimeWindowSettingsModal from "./TimeWindowSettingsModal";
+import HierarchicalNode from "../../../components/common/HierarchicalNode";
+import { teamHierarchyService } from "../../../services/teamHierarchyService";
+import TimeWindowSettingsModal from "../../../components/TimeWindowSettingsModal";
 
 // ───Constants ────────────────────────────────────────────────────────────────
 
