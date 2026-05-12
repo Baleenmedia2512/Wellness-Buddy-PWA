@@ -163,7 +163,7 @@ function WellnessValleyApp() {
   const [weightEntrySaved, setWeightEntrySaved] = useState(false); // Whether entry was saved to DB
   const [weightDiff, setWeightDiff] = useState(null); // { previous: number, change: number, date: string } | null
 
-  // ✅ Helper: convert any timestamp to IST "YYYY-MM-DD" date string
+  // Helper: convert any timestamp to IST "YYYY-MM-DD" date string
   // Used to guard against same-day "previous" entries caused by UTC/IST timezone mismatch
   const getISTDateStr = (ts) => {
     if (!ts) return null;
@@ -173,6 +173,7 @@ function WellnessValleyApp() {
     return istTime.toISOString().substring(0, 10);
   };
 
+  const [idealWeight, setIdealWeight] = useState(null); // { value: number, unit: 'kg', heightCm: number } | null
   const [educationResult, setEducationResult] = useState(null); // Store education meeting results
   const [watchResult, setWatchResult] = useState(null); // Store smartwatch activity results
   const [educationRefreshKey, setEducationRefreshKey] = useState(0); // Increment to force EducationDashboard re-fetch
@@ -334,7 +335,7 @@ function WellnessValleyApp() {
   const [isWeightSharing, setIsWeightSharing] = useState(false);
 
   // Pre-capture the weight share image in the background as soon as the result
-  // card is rendered. Tap ΓåÆ share sheet then skips html2canvas entirely.
+  // card is rendered. Tap -> share sheet then skips html2canvas entirely.
   useEffect(() => {
     cachedWeightShareDataUrlRef.current = null;
     if (imageType !== "weight" || !weightResult || !imagePreview) return;
@@ -939,7 +940,7 @@ function WellnessValleyApp() {
   // Fetches the user profile and shows the blocking CompleteProfilePage if any
   // mandatory field (height, dietType) is missing.
   const checkProfileCompletion = useCallback(
-    async (userEmail, userObj) => {
+    async (userEmail, userObj, { afterSave = false } = {}) => {
       if (!userEmail) return;
       // Mark check in-flight so the gate does not render while we are fetching
       setProfileChecking(true);
@@ -947,8 +948,11 @@ function WellnessValleyApp() {
         const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
         let latestData = null;
 
-        // Retry a few times because profile writes can be briefly stale right after save.
-        for (let attempt = 0; attempt < 3; attempt++) {
+        // Retry with delays only after a profile save (data can be briefly stale).
+        // On sign-in / refresh, one attempt is enough — data is already final.
+        const maxAttempts = afterSave ? 3 : 1;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt++) {
           const res = await fetch(
             `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
               userEmail,
@@ -971,7 +975,7 @@ function WellnessValleyApp() {
             return;
           }
 
-          if (attempt < 2) {
+          if (attempt < maxAttempts - 1) {
             await sleep(450);
           }
         }
@@ -1175,7 +1179,8 @@ function WellnessValleyApp() {
               console.log(
                 "â­ï¸ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
-              // Don't show setup wizard - user chose to skip
+              // Still check profile completion even if setup was skipped
+              await checkProfileCompletion(userEmail, user);
               return;
             }
 
@@ -1196,6 +1201,8 @@ function WellnessValleyApp() {
                     "â­ï¸ [Auth State] User skipped setup (database), bypassing wizard",
                   );
                   localStorage.setItem("setupSkipped", "true");
+                  // Still check profile completion even if setup was skipped
+                  await checkProfileCompletion(userEmail, user);
                   return;
                 }
 
@@ -1391,6 +1398,10 @@ function WellnessValleyApp() {
 
             setUser(parsedUser);
             handleSaveUserCache(parsedUser);
+            // ✅ Check profile completion after OTP user is restored on refresh
+            if (userEmail) {
+              await checkProfileCompletion(userEmail, parsedUser);
+            }
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
             localStorage.removeItem("otpUser");
@@ -1401,7 +1412,26 @@ function WellnessValleyApp() {
     };
 
     restoreOtpUser();
-  }, [isOtpVerified, user, checkUserStatus]);
+  }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
+
+  // ✅ Immediate profile check when app comes back to foreground
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+
+    const listener = App.addListener("appStateChange", ({ isActive }) => {
+      if (isActive && user) {
+        const userEmail = user.email || user.Email;
+        if (userEmail) {
+          console.log("🔄 [Foreground] App resumed — running immediate profile check");
+          checkProfileCompletion(userEmail, user);
+        }
+      }
+    });
+
+    return () => {
+      listener.then?.((l) => l.remove()).catch(() => {});
+    };
+  }, [user, checkProfileCompletion]);
 
   // Periodic user status check (every 60 seconds)
   useEffect(() => {
@@ -1657,6 +1687,40 @@ function WellnessValleyApp() {
   };
 
   /**
+   * Fetch the user's height (from profile) and compute their ideal weight range
+   * using BMI 19 (lower) and BMI 23 (upper) of the WHO normal range (18.5–24.9).
+   * Formula: idealWeight (kg) = BMI × (heightInMeters)²
+   * Updates `idealWeight` state so the share card / visible card can show it.
+   */
+  const refreshIdealWeight = async () => {
+    try {
+      if (!user?.email) return;
+      const profileRes = await fetch(
+        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
+        { cache: "no-store" }
+      );
+      if (!profileRes.ok) return;
+      const profileData = await profileRes.json();
+      const heightCm = parseFloat(profileData?.data?.height);
+      if (!heightCm || heightCm < 50 || heightCm > 250) {
+        setIdealWeight(null);
+        return;
+      }
+      const heightM = heightCm / 100;
+      const idealMin = 19 * heightM * heightM;
+      const idealMax = 23 * heightM * heightM;
+      setIdealWeight({
+        min: Math.round(idealMin * 10) / 10, // BMI 19 lower bound
+        value: Math.round(idealMax * 10) / 10, // BMI 23 upper bound
+        unit: "kg",
+        heightCm: Math.round(heightCm),
+      });
+    } catch (_) {
+      /* non-critical — share card just won't show ideal weight */
+    }
+  };
+
+  /**
    * Perform actual weight save to database (called after duplicate check)
    */
   const performWeightSave = async (
@@ -1779,6 +1843,9 @@ function WellnessValleyApp() {
           setWeightDiff(null);
         }
       } catch (_) { /* non-critical */ }
+
+      // Fetch user height → compute ideal weight for the share card
+      refreshIdealWeight();
 
       // Check if weight was auto-corrected
       if (data.correction && data.correction.wasCorrected) {
@@ -1934,6 +2001,8 @@ function WellnessValleyApp() {
       } catch (_) {
         /* non-critical */
       }
+      // Refresh ideal weight in case the user updated their height in profile
+      refreshIdealWeight();
     } catch (err) {
       setWeightEditError(err.message || "Failed to save");
     } finally {
@@ -1991,7 +2060,9 @@ function WellnessValleyApp() {
       console.error("âŒ Save weight error:", err);
       // Weight validation errors are already shown via alertModal â€” don't show the red error card
       if (!err.message?.toLowerCase().includes("weight validation") && !err.message?.toLowerCase().includes("unrealistic weight")) {
-        setError(err.message || "Failed to save weight entry");
+        const rawMsg = err.message || "";
+        const isNetworkErr = rawMsg.toLowerCase().includes("load failed") || rawMsg.includes("Failed to fetch") || rawMsg.includes("network") || rawMsg.includes("connection");
+        setError(isNetworkErr ? "🌐 Please check your internet connection (WiFi or mobile data) and try again." : (rawMsg || "Failed to save weight entry"));
       }
       throw err;
     }
@@ -2341,10 +2412,11 @@ function WellnessValleyApp() {
           });
           
           const geoResponse = await fetch(
-            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1`,
+            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${attendance.latitude}&lon=${attendance.longitude}&addressdetails=1&accept-language=en`,
             {
               headers: {
-                'User-Agent': 'WellnessBuddy/1.0'
+                'User-Agent': 'WellnessBuddy/1.0',
+                'Accept-Language': 'en'
               }
             }
           );
@@ -2896,12 +2968,19 @@ function WellnessValleyApp() {
             bmr: normalizedBmr,
           };
         } else {
-          // Fallback: Weight value not extracted, need manual entry
+          // Fallback: Weight value not extracted — prompt user to retake
           console.log(
-            "âš ï¸ Weight value not detected in unified call, opening manual entry",
+            "⚠️ Weight value not detected in unified call, prompting retake",
           );
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
+          setAlertModal({
+            isOpen: true,
+            title: "📸 Image Not Clear Enough",
+            message:
+              "We couldn't read from your photo. Please make sure the scale display is clearly visible with good lighting, and retake the photo.",
+            type: "error",
+          });
+          setCurrentWeightImage(null);
+          setImagePreview(null);
           setLoading(false);
           return;
         }
@@ -2996,7 +3075,9 @@ function WellnessValleyApp() {
                     previousDate: prevDate,
                     change: Math.round(weightChange * 100) / 100,
                   });
-                  // âœ… Immediately inject into leaderboard strip â€” no API wait needed
+                  // Compute ideal weight for the share card
+                  refreshIdealWeight();
+                  // ✅ Immediately inject into leaderboard strip — no API wait needed
                   if (weightChange < 0 && leaderboardRef.current?.injectEntry) {
                     leaderboardRef.current.injectEntry({
                       userId: diffUserId,
@@ -3023,15 +3104,21 @@ function WellnessValleyApp() {
           }
           // Don't clear imagePreview or return - let it show like food images
         } else {
-          // Weight detection failed - check if it's a low confidence issue
+          // Weight detection failed — prompt user to retake a clearer photo
           if (detectedWeight.lowConfidence) {
-            console.log(`âš ï¸ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), opening manual entry`);
-            setError(detectedWeight.error || 'Image quality too low for accurate reading. Please retake with better lighting.');
+            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            console.log("âš ï¸ Weight detection failed, opening manual entry modal");
+            console.log("⚠️ Weight detection failed, prompting retake");
           }
-          setCurrentWeightImage(processedImage);
-          setShowManualWeightModal(true);
+          setAlertModal({
+            isOpen: true,
+            title: "📸 Please Take a Clearer Photo",
+            message:
+              "We couldn't read the weight from your image. Please ensure:\n• The scale display is fully visible\n• Good lighting (avoid shadows or glare)\n• Hold the camera steady directly above the scale",
+            type: "error",
+          });
+          setCurrentWeightImage(null);
+          setImagePreview(null);
           setLoading(false);
           return;
         }
@@ -3270,6 +3357,7 @@ function WellnessValleyApp() {
             errorDetails &&
             (errorDetails.includes("network") ||
               errorDetails.includes("Failed to fetch") ||
+              errorDetails.toLowerCase().includes("load failed") ||
               errorDetails.includes("connection") ||
               errorDetails.toLowerCase().includes("internet"));
 
@@ -3290,22 +3378,24 @@ function WellnessValleyApp() {
               detectionReason.toLowerCase().includes("unclear") ||
               detectionReason.toLowerCase().includes("dark") ||
               detectionReason.toLowerCase().includes("low quality") ||
-              detectionReason.toLowerCase().includes("poor lighting"));
+              detectionReason.toLowerCase().includes("poor lighting") ||
+              detectionReason.toLowerCase().includes("not clear") ||
+              detectionReason.toLowerCase().includes("unreadable"));
 
           // Set appropriate error message
           if (isApiError) {
             errorMessage =
               "ðŸ¤– The AI model is temporarily unavailable. Please try again later.";
           } else if (isNetworkError) {            errorMessage =
-              "ðŸŒ Please check your internet connection (WiFi or mobile data) and try again.";
+              "🌐 Please check your internet connection (WiFi or mobile data) and try again.";
+          } else if (isQualityIssue) {
+            errorMessage = "📸 Please take a clearer photo with good lighting. Make sure the display is fully visible and the camera is held steady.";
           } else if (isNonFoodImage) {
             errorMessage =
-              "âš ï¸ Please take a photo of food, weight scale, or educational content.";
-          } else if (isQualityIssue) {
-            errorMessage = "ðŸ“¸ Please take a clear photo with good lighting.";
+              "⚠️ Please take a photo of food, weight scale, or educational content.";
           } else {
             errorMessage =
-              "ðŸ½ï¸ Could not detect food items. Please take a clear photo of your meal.";
+              "📸 Could not detect the image. Please take a clear photo and try again.";
           }
 
           setError(errorMessage);
@@ -3475,9 +3565,14 @@ function WellnessValleyApp() {
           "Could not read the selected image. Please try selecting a different image or use the camera.";
       }
 
-      // Don't show error box for weight validation failures (already showing custom modal)
-      setError("Failed to process image: " + errorMessage);
-      console.error("âŒ Image processing error:", err);
+      // Handle iOS "Load failed" network error
+      if (errorMessage.toLowerCase() === "load failed" || errorMessage.includes("Failed to fetch")) {
+        setError("🌐 Please check your internet connection (WiFi or mobile data) and try again.");
+      } else {
+        // Don't show error box for weight validation failures (already showing custom modal)
+        setError("Failed to process image: " + errorMessage);
+      }
+      console.error("❌ Image processing error:", err);
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
@@ -3524,7 +3619,10 @@ function WellnessValleyApp() {
     // Network and connectivity errors
     else if (
       rawMessage.includes("network") ||
-      rawMessage.includes("Failed to fetch")
+      rawMessage.includes("Failed to fetch") ||
+      rawMessage.toLowerCase().includes("load failed") ||
+      rawMessage.includes("timeout") ||
+      rawMessage.includes("connection")
     ) {
       return "ðŸŒ Please check your internet connection (WiFi or mobile data) and try again.";
     } else if (rawMessage.includes("timeout")) {
@@ -4057,6 +4155,11 @@ function WellnessValleyApp() {
           console.log(
             "ðŸ†• [handleOtpVerified] New user - SetupWizard will collect profile details",
           );
+        } else {
+          // ✅ Existing user — check profile completion immediately after login
+          if (userEmail) {
+            await checkProfileCompletion(userEmail, parsedUser);
+          }
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
@@ -4087,7 +4190,17 @@ function WellnessValleyApp() {
     return <LoadingSpinner context="normal" />;
   }
 
-  // âœ… iOS Sign-out gate: user explicitly signed out â€” always show Login
+  // ✅ OTP user restore in progress — keep spinner until user is fully restored
+  if (isOtpVerified && !user) {
+    return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ Profile check in progress — keep spinner until check is done
+  if (profileChecking) {
+    return <LoadingSpinner context="normal" />;
+  }
+
+  // ✅ iOS Sign-out gate: user explicitly signed out — always show Login
   // This prevents Firebase silent re-auth from bypassing the logout
   if (forceLoggedOut) {
     return (
@@ -4290,7 +4403,7 @@ function WellnessValleyApp() {
         onProfileSaved={(profileData) => {
           const email = user?.email || localStorage.getItem("userEmail") || "";
           profileCompletedRef.current = false;
-          checkProfileCompletion(email);
+          checkProfileCompletion(email, null, { afterSave: true });
           // If a new BMR was saved, force NutritionDashboard to re-fetch it
           if (profileData?.bmr) {
             setBmrUpdateKey((prev) => prev + 1);
@@ -4352,13 +4465,15 @@ function WellnessValleyApp() {
             }
 
             return (
-              <div className="bg-red-50 border border-red-200 rounded-xl shadow-sm overflow-hidden">
-                <div className="flex items-center gap-2 px-4 pt-3 pb-1">
-                  <span className="text-lg leading-none flex-shrink-0">âš ï¸</span>
-                  <p className="font-semibold text-sm text-red-700 flex-1">Error</p>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="flex items-start gap-2 px-4 pt-3 pb-2">
+                  <span className="text-lg leading-none flex-shrink-0 mt-0.5">💡</span>
+                  <p className="text-sm text-amber-800 leading-relaxed break-words flex-1">
+                    {error.replace(/^[🤖⚠️🌐📸🍽️💡]\s*/, "")}
+                  </p>
                   <button
                     onClick={() => { setError(null); setImagePreview(null); lastImageFileRef.current = null; }}
-                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600"
+                    className="flex-shrink-0 p-1.5 rounded-lg hover:bg-black/10 transition-colors text-gray-400 hover:text-gray-600 mt-0.5"
                     aria-label="Dismiss"
                   >
                     <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -4366,9 +4481,6 @@ function WellnessValleyApp() {
                     </svg>
                   </button>
                 </div>
-                <p className="text-sm text-red-600 px-4 pb-3 leading-relaxed break-words">
-                  {error.replace(/^[ðŸ¤–âš ï¸ðŸŒðŸ“¸ðŸ½ï¸]\s*/, "")}
-                </p>
                 {lastImageFileRef.current && (
                   <div className="px-4 pb-3">
                     <TouchFeedbackButton
@@ -4636,6 +4748,64 @@ function WellnessValleyApp() {
                       </p>
                     </div>
 
+                    {/* Ideal Weight Strip (share card) */}
+                    {idealWeight && (
+                      <div
+                        style={{
+                          marginTop: 16,
+                          borderRadius: 16,
+                          padding: "14px 18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          background: "#eff6ff",
+                          border: "1px solid #bfdbfe",
+                        }}
+                      >
+                        <div>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              fontWeight: 600,
+                              color: "#2563eb",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.05em",
+                              margin: "0 0 4px 0",
+                            }}
+                          >
+                            Ideal Weight
+                          </p>
+                          <p
+                            style={{
+                              fontSize: 11,
+                              color: "#6b7280",
+                              margin: 0,
+                            }}
+                          >
+                            Based on height {idealWeight.heightCm} cm
+                          </p>
+                        </div>
+                        <div style={{ textAlign: "right", color: "#1d4ed8" }}>
+                          <p
+                            style={{
+                              fontSize: 22,
+                              fontWeight: 700,
+                              margin: 0,
+                            }}
+                          >
+                            {(() => {
+                              const current = weightResult?.weightValue;
+                              const isLoss = current && current > idealWeight.value + 0.5;
+                              const isGain = current && current < idealWeight.min - 0.5;
+                              if (isLoss) return `${idealWeight.value} ${idealWeight.unit}`;
+                              if (isGain) return `${idealWeight.min} ${idealWeight.unit}`;
+                              return `${idealWeight.value} ${idealWeight.unit}`;
+                            })()}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Weight Diff Strip */}
                     {weightDiff && (
                       <div
@@ -4836,6 +5006,23 @@ function WellnessValleyApp() {
                     { dateStyle: "medium", timeStyle: "short" },
                   )}
                 </div>
+
+                {/* Ideal weight (visible card) */}
+                {idealWeight && (
+                  <div className="mt-3 flex items-center justify-between px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
+                    <div>
+                      <p className="text-xs text-blue-600 font-semibold uppercase tracking-wide">
+                        Ideal Weight
+                      </p>
+                      <p className="text-xs text-gray-500 mt-0.5">
+                        Based on height {idealWeight.heightCm} cm
+                      </p>
+                    </div>
+                    <div className="text-blue-700 font-bold text-lg">
+                      {idealWeight.value} {idealWeight.unit}
+                    </div>
+                  </div>
+                )}
 
                 {/* Weight diff vs previous entry */}
                 {weightDiff && (

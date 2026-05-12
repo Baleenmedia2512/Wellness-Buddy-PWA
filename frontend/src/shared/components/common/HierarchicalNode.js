@@ -17,6 +17,7 @@ import TouchFeedbackButton from "../TouchFeedbackButton";
  * @param {boolean} props.isCurrentUser - Is this node the logged-in user
  * @param {boolean} props.showTeamCount - Show team member count
  * @param {boolean} props.showFullTeam - Show full hierarchy (true) or only direct reports (false)
+ * @param {boolean} props.showIndividualReports - Show individual report cards section (default: true)
  * @param {Function} props.getStatusStyle - Function to get status-based styling
  * @param {string} props.searchQuery - Search query for filtering
  * @param {string} props.filter - Current filter value
@@ -35,6 +36,7 @@ const HierarchicalNode = ({
   isCurrentUser,
   showTeamCount = true,
   showFullTeam = true,
+  showIndividualReports = true,
   defaultShowDetails = false,
   getStatusStyle,
   searchQuery,
@@ -43,9 +45,11 @@ const HierarchicalNode = ({
   matchesSearch,
   forceExpandedState = null,
   defaultExpanded = false,
+  onProfileClick,
 }) => {
   const [expanded, setExpanded] = useState(defaultExpanded);
   const [showDetails, setShowDetails] = useState(defaultShowDetails);
+  const [showIndividualReportsExpanded, setShowIndividualReportsExpanded] = useState(false);
   const [showCoachDetails, setShowCoachDetails] = useState(false);
   const [showCoCoachDetails, setShowCoCoachDetails] = useState(false);
 
@@ -247,80 +251,143 @@ const HierarchicalNode = ({
               )}
             </div>
 
-            {/* Combined Team Stats Strip - Same for both since they manage same team */}
+            {/* Combined Team Stats Strip - Shows TWO SELF entries for co-coach partnership */}
             {renderStats && (
               <div className="flex items-center divide-x px-3 py-2 border-t border-amber-100 divide-amber-100">
-                {renderStats(node, level, isCurrentUser)}
+                {renderStats(node, level, isCurrentUser, coCoach)}
               </div>
             )}
 
-            {/* Expandable Individual Reports */}
+            {/* Individual Reports Section - Show Coach & Co-Coach Activity Breakdown */}
+            {showIndividualReports && renderExpandedDetails && (
             <div className="border-t border-amber-100">
               <TouchFeedbackButton
-                onClick={() => {
-                  setShowCoachDetails(!showCoachDetails);
-                  setShowCoCoachDetails(!showCoCoachDetails);
-                }}
+                onClick={() => setShowIndividualReportsExpanded(!showIndividualReportsExpanded)}
                 className="w-full py-2 flex items-center justify-center gap-2 hover:bg-amber-100/50 transition-colors"
               >
                 <span className="text-xs font-medium text-amber-700">
-                  {showCoachDetails ? "Hide" : "Show"} Individual Reports
+                  {showIndividualReportsExpanded ? "Hide" : "Show"} Individual Reports
                 </span>
-                {showCoachDetails ? (
+                {showIndividualReportsExpanded ? (
                   <ChevronUp className="h-3.5 w-3.5 text-amber-700" />
                 ) : (
                   <ChevronDown className="h-3.5 w-3.5 text-amber-700" />
                 )}
               </TouchFeedbackButton>
-              
-              {/* Individual Report Cards */}
-              <AnimatePresence>
-                {showCoachDetails && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="px-3 pb-3 space-y-2">
-                      {/* First Partner Individual Report */}
-                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
-                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-900">
-                              {node.userName || node.name}
-                            </span>
-                            <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              ({node.isCoCoach ? "Co-Coach" : "Coach"})
-                            </span>
-                            {isCurrentUser && (
-                              <span className="text-[8px] bg-amber-300 text-amber-900 px-1.5 py-0.5 rounded-full font-bold">
-                                YOU
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                        {renderExpandedDetails && renderExpandedDetails(node, level, isCurrentUser)}
-                      </div>
 
-                      {/* Second Partner Individual Report */}
-                      <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
-                        <div className="px-3 py-2 bg-amber-50 border-b border-amber-200">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-amber-900">
-                              {coCoach.userName || coCoach.name}
-                            </span>
-                            <span className="text-[9px] text-amber-600 font-medium uppercase">
-                              ({coCoach.isCoCoach ? "Co-Coach" : "Coach"})\n                            </span>
+              {showIndividualReportsExpanded && (
+                <div className="space-y-3 bg-amber-50/30">
+                  {/* Coach Activity Breakdown */}
+                  <div className="bg-white rounded-lg border border-amber-200 overflow-hidden">
+                    {/* Coach Header */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border-b border-amber-100">
+                      <div className="relative w-7 h-7 flex-shrink-0">
+                        {node.profileImage || node.photoURL ? (
+                          <>
+                            <img
+                              src={node.profileImage || node.photoURL}
+                              alt={node.userName || node.name}
+                              className="w-7 h-7 rounded-full object-cover border-2 bg-amber-100 border-amber-400"
+                              style={{ display: "block" }}
+                              onError={(e) => {
+                                e.target.style.display = "none";
+                                if (e.target.nextSibling) {
+                                  e.target.nextSibling.style.display = "flex";
+                                }
+                              }}
+                            />
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-amber-100 border-amber-400 text-amber-700"
+                              style={{ display: "none" }}
+                            >
+                              {node.userName?.charAt(0).toUpperCase() ||
+                                node.name?.charAt(0).toUpperCase() ||
+                                "?"}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-amber-100 border-amber-400 text-amber-700">
+                            {node.userName?.charAt(0).toUpperCase() ||
+                              node.name?.charAt(0).toUpperCase() ||
+                              "?"}
                           </div>
-                        </div>
-                        {renderExpandedDetails && renderExpandedDetails(coCoach, level, false)}
+                        )}
                       </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-bold text-amber-900 break-words">
+                          {node.userName || node.name}
+                        </span>
+                        <span className="text-[9px] text-amber-600 font-medium uppercase ml-2">
+                          {node.isCoCoach ? "Co-Coach" : "Coach"}
+                        </span>
+                      </div>
+                      {renderStatus && (
+                        <div className="flex-shrink-0">
+                          {renderStatus(node, false)}
+                        </div>
+                      )}
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                    {/* Coach Activity Breakdown */}
+                    {renderExpandedDetails(node, level, isCurrentUser)}
+                  </div>
+
+                  {/* Co-Coach Activity Breakdown */}
+                  <div className="bg-white rounded-lg border border-purple-200 overflow-hidden">
+                    {/* Co-Coach Header */}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 border-b border-purple-100">
+                      <div className="relative w-7 h-7 flex-shrink-0">
+                        {coCoach.profileImage || coCoach.photoURL ? (
+                          <>
+                            <img
+                              src={coCoach.profileImage || coCoach.photoURL}
+                              alt={coCoach.userName || coCoach.name}
+                              className="w-7 h-7 rounded-full object-cover border-2 bg-purple-100 border-purple-400"
+                              style={{ display: "block" }}
+                              onError={(e) => {
+                                e.target.style.display = "none";
+                                if (e.target.nextSibling) {
+                                  e.target.nextSibling.style.display = "flex";
+                                }
+                              }}
+                            />
+                            <div
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-purple-100 border-purple-400 text-purple-700"
+                              style={{ display: "none" }}
+                            >
+                              {coCoach.userName?.charAt(0).toUpperCase() ||
+                                coCoach.name?.charAt(0).toUpperCase() ||
+                                "?"}
+                            </div>
+                          </>
+                        ) : (
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-purple-100 border-purple-400 text-purple-700">
+                            {coCoach.userName?.charAt(0).toUpperCase() ||
+                              coCoach.name?.charAt(0).toUpperCase() ||
+                              "?"}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-bold text-purple-900 break-words">
+                          {coCoach.userName || coCoach.name}
+                        </span>
+                        <span className="text-[9px] text-purple-600 font-medium uppercase ml-2">
+                          {coCoach.isCoCoach ? "Co-Coach" : "Coach"}
+                        </span>
+                      </div>
+                      {renderStatus && (
+                        <div className="flex-shrink-0">
+                          {renderStatus(coCoach, false)}
+                        </div>
+                      )}
+                    </div>
+                    {/* Co-Coach Activity Breakdown */}
+                    {renderExpandedDetails(coCoach, level, false)}
+                  </div>
+                </div>
+              )}
             </div>
+          )}
 
             {/* Expand/Collapse Team Members Button */}
             {hasChildren && (
@@ -363,6 +430,7 @@ const HierarchicalNode = ({
                     isCurrentUser={false}
                     showTeamCount={showTeamCount}
                     showFullTeam={showFullTeam}
+                    showIndividualReports={showIndividualReports}
                     getStatusStyle={getStatusStyle}
                     searchQuery={searchQuery}
                     filter={filter}
@@ -371,6 +439,7 @@ const HierarchicalNode = ({
                     forceExpandedState={forceExpandedState}
                     defaultExpanded={defaultExpanded}
                     defaultShowDetails={defaultShowDetails}
+                    onProfileClick={onProfileClick}
                   />
                 ))}
             </div>
@@ -414,13 +483,17 @@ const HierarchicalNode = ({
             {/* Top row: Avatar + Name/Info + Status Badge */}
             <div className="flex items-start gap-2">
               {/* Avatar */}
-              <div className="relative w-9 h-9 flex-shrink-0 mt-0.5">
+              <div
+                className={`relative w-9 h-9 flex-shrink-0 mt-0.5 ${onProfileClick && !isCurrentUser ? "cursor-pointer" : ""}`}
+                onClick={onProfileClick && !isCurrentUser ? (e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); } : undefined}
+                title={onProfileClick && !isCurrentUser ? "View profile" : undefined}
+              >
                 {node.profileImage || node.photoURL ? (
                   <>
                     <img
                       src={node.profileImage || node.photoURL}
                       alt={node.userName || node.name}
-                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass}`}
+                      className={`w-9 h-9 rounded-full object-cover border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
                       style={{ display: "block" }}
                       onError={(e) => {
                         e.target.style.display = "none";
@@ -440,7 +513,7 @@ const HierarchicalNode = ({
                   </>
                 ) : (
                   <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass}`}
+                    className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold border-2 ${avatarClass} ${onProfileClick && !isCurrentUser ? "hover:opacity-80 transition-opacity" : ""}`}
                   >
                     {node.userName?.charAt(0).toUpperCase() ||
                       node.name?.charAt(0).toUpperCase() ||
@@ -456,9 +529,19 @@ const HierarchicalNode = ({
                   <div className="flex-1 min-w-0">
                     {/* Name and YOU badge */}
                     <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-                      <span className={`text-sm font-bold break-words ${nameClass}`}>
-                        {node.userName || node.name}
-                      </span>
+                      {onProfileClick && !isCurrentUser ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onProfileClick(node.userEmail || node.email); }}
+                          className={`text-sm font-bold break-words text-left hover:underline hover:text-green-600 transition-colors ${nameClass}`}
+                          title="View profile"
+                        >
+                          {node.userName || node.name}
+                        </button>
+                      ) : (
+                        <span className={`text-sm font-bold break-words ${nameClass}`}>
+                          {node.userName || node.name}
+                        </span>
+                      )}
                       {isCurrentUser && (
                         <span className="text-[9px] bg-yellow-300 text-yellow-900 border border-yellow-400 px-1.5 py-0.5 rounded-full font-bold uppercase">
                           YOU
@@ -602,6 +685,7 @@ const HierarchicalNode = ({
                   isCurrentUser={false}
                   showTeamCount={showTeamCount}
                   showFullTeam={showFullTeam}
+                  showIndividualReports={showIndividualReports}
                   getStatusStyle={getStatusStyle}
                   searchQuery={searchQuery}
                   filter={filter}
@@ -610,8 +694,73 @@ const HierarchicalNode = ({
                   forceExpandedState={forceExpandedState}
                   defaultExpanded={defaultExpanded}
                   defaultShowDetails={defaultShowDetails}
+                  onProfileClick={onProfileClick}
                 />
               ))}
+          </div>
+        )}
+
+        {/* Individual Reports Section (optional) */}
+        {showIndividualReports && hasChildren && (
+          <div className="border-t border-gray-100 mt-2">
+            <TouchFeedbackButton
+              onClick={() => setShowIndividualReportsExpanded(!showIndividualReportsExpanded)}
+              className="w-full py-2 flex items-center justify-center gap-2 hover:bg-gray-50 transition-colors"
+            >
+              <span className="text-xs font-medium text-gray-600">
+                {showIndividualReportsExpanded ? "Hide" : "Show"} Individual Reports
+              </span>
+              {showIndividualReportsExpanded ? (
+                <ChevronUp className="h-3.5 w-3.5 text-gray-600" />
+              ) : (
+                <ChevronDown className="h-3.5 w-3.5 text-gray-600" />
+              )}
+            </TouchFeedbackButton>
+
+            {showIndividualReportsExpanded && (
+              <div className="p-3 space-y-2 bg-gray-50">
+                {node.teamMembers
+                  .filter(() => showFullTeam || level === 0)
+                  .map((child) => (
+                    <div
+                      key={child.userId || child.id}
+                      className="bg-white rounded-lg p-3 shadow-sm border border-gray-200"
+                    >
+                      {/* Member Header */}
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          {child.profileImage ? (
+                            <img
+                              src={child.profileImage}
+                              alt={child.userName || child.name}
+                              className="h-8 w-8 rounded-full object-cover border border-gray-200"
+                            />
+                          ) : (
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 flex items-center justify-center">
+                              <span className="text-white font-semibold text-xs">
+                                {(child.userName || child.name || "?")[0].toUpperCase()}
+                              </span>
+                            </div>
+                          )}
+                          <span className="text-sm font-medium text-gray-900">
+                            {child.userName || child.name}
+                          </span>
+                        </div>
+                        {renderStatus && (
+                          <div>{renderStatus(child, false)}</div>
+                        )}
+                      </div>
+
+                      {/* Member Stats */}
+                      {renderStats && (
+                        <div className="flex items-center divide-x border-t border-gray-100 pt-2 divide-gray-100">
+                          {renderStats(child, level + 1, false)}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
       </div>

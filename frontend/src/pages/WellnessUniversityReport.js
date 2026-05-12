@@ -1,6 +1,7 @@
 ﻿import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
+import { TeamMemberProfileModal } from "../features/user";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -32,6 +33,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   const [searchQuery, setSearchQuery] = useState(""); // Search bar
   const [showSuggestions, setShowSuggestions] = useState(false); // Dropdown
   const [currentUserName, setCurrentUserName] = useState(""); // Logged-in user's name
+  const [profileModalEmail, setProfileModalEmail] = useState(null); // Profile viewer modal
 
   const fetchEnrollments = useCallback(async () => {
     setLoading(true);
@@ -1054,6 +1056,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
   };
 
   return (
+    <>
     <div className="fixed inset-0 bg-gray-50 z-50 overflow-y-auto">
       {/* Header */}
       <div className="bg-green-200 sticky top-0 z-10 shadow-lg">
@@ -1244,6 +1247,29 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   </div>
                 ) : (
                   <>
+                    {/* Member Profile Card — only shown when searching for someone else */}
+                    {isSearchingOther && (
+                    <div className="bg-white rounded-xl shadow-sm border border-blue-100 p-3 sm:p-4 flex items-center gap-3 mb-1">
+                      <div
+                        className="w-10 h-10 sm:w-12 sm:h-12 flex-shrink-0 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-lg cursor-pointer active:opacity-70"
+                        onClick={() => setProfileModalEmail(searchedMember.Email)}
+                        title="View full profile"
+                      >
+                        {(searchedMember.UserName || searchedMember.Email || "?").charAt(0).toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <button
+                          onClick={() => setProfileModalEmail(searchedMember.Email)}
+                          className="font-semibold text-blue-600 active:text-green-600 text-sm sm:text-base truncate block hover:underline transition-colors"
+                          title="View full profile"
+                        >
+                          {searchedMember.UserName || searchedMember.Email}
+                        </button>
+                        <p className="text-xs text-gray-400 truncate">{searchedMember.Email}</p>
+                      </div>
+                    </div>
+                    )}
+
                     {[...PROGRAMS]
                       .sort((a, b) => {
                         const aEnrolled = searchedMemberEnrolledPrograms.includes(a.name) ? 1 : 0;
@@ -1660,6 +1686,14 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         )}
       </div>
     </div>
+
+    {/* Member Profile Viewer Modal */}
+    <TeamMemberProfileModal
+      isOpen={!!profileModalEmail}
+      onClose={() => setProfileModalEmail(null)}
+      memberEmail={profileModalEmail}
+    />
+    </>
   );
 };
 

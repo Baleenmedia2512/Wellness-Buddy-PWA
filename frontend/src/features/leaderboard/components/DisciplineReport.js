@@ -28,6 +28,7 @@ import {
   clearDisciplineReportCache,
 } from "../services/disciplineReportService";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
+import { TeamMemberProfileModal } from "../../user";
 
 const DisciplineReport = ({ user, onBack, userRole }) => {
   const [loading, setLoading] = useState(true);
@@ -45,6 +46,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [profileModalEmail, setProfileModalEmail] = useState(null);
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct â†” Full switch
 
@@ -984,6 +986,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           matchesSearch={matchesSearch}
           forceExpandedState={expandOverride}
           defaultExpanded={expandOverride === "expanded"}
+          onProfileClick={setProfileModalEmail}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -1014,6 +1017,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           fetchData(true);
         }}
         userEmail={user?.email}
+      />
+
+      {/* Member Profile Viewer */}
+      <TeamMemberProfileModal
+        isOpen={!!profileModalEmail}
+        onClose={() => setProfileModalEmail(null)}
+        memberEmail={profileModalEmail}
       />
     </HierarchicalReportLayout>
   );

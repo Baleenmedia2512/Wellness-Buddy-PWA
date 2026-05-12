@@ -22,6 +22,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
+import { TeamMemberProfileModal } from "../../user";
 
 // â”€â”€â”€Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -418,7 +419,8 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct â†” Full switch
+  const [profileModalEmail, setProfileModalEmail] = useState(null);
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct/Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
   const [activityRowSortOrder, setActivityRowSortOrder] = useState("asc"); // "asc", "desc"
@@ -1042,6 +1044,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             forceExpandedState={expandOverride}
             defaultExpanded={expandOverride === "expanded"}
             defaultShowDetails={true}
+            onProfileClick={setProfileModalEmail}
           />
         </>
       ) : !loading && !error ? (
@@ -1062,6 +1065,13 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         onClose={() => setShowSettings(false)}
         onUpdate={() => fetchData(true)}
         userEmail={user?.email}
+      />
+
+      {/* Member Profile Viewer */}
+      <TeamMemberProfileModal
+        isOpen={!!profileModalEmail}
+        onClose={() => setProfileModalEmail(null)}
+        memberEmail={profileModalEmail}
       />
 
     </HierarchicalReportLayout>

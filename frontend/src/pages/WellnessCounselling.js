@@ -9,6 +9,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../shared/components/common/HierarchicalNode";
 import { WellnessCounsellingForm } from "../features/counselling";
 import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
+import { TeamMemberProfileModal } from "../features/user";
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -25,7 +26,8 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
   
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct â†” Full switch
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct/Full switch
+  const [profileModalEmail, setProfileModalEmail] = useState(null);
 
   // Form states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -549,6 +551,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             matchesSearch={matchesSearch}
             forceExpandedState={expandOverride}
             defaultExpanded={expandOverride === "expanded"}
+            onProfileClick={setProfileModalEmail}
           />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -598,6 +601,13 @@ const WellnessCounselling = ({ user, onBack }) => {
           onClose={() => setViewingAssessment(null)}
         />
       )}
+
+      {/* Member Profile Viewer */}
+      <TeamMemberProfileModal
+        isOpen={!!profileModalEmail}
+        onClose={() => setProfileModalEmail(null)}
+        memberEmail={profileModalEmail}
+      />
     </div>
   );
 };

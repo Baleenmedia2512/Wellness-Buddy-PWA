@@ -106,7 +106,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
   const educationTrendRef = useRef(null);
   const educationTrendChartRef = useRef(null);
 
-  // Γ£à PAGINATION: Lazy-load education logs in pages of 10 (mirrors WeightDashboard)
+  // PAGINATION: Lazy-load education logs in pages of 10 (mirrors WeightDashboard)
   const EDUCATION_PAGE_SIZE = 10;
   const [hasMoreLogs, setHasMoreLogs] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -455,7 +455,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
   };
 
   /**
-   * Γ£à INFINITE SCROLL: observe sentinel and load next page when visible
+   * INFINITE SCROLL: observe sentinel and load next page when visible
    */
   useEffect(() => {
     const el = loadMoreSentinelRef.current;
@@ -1261,13 +1261,13 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
               );
             }))}
 
-          {/* Γ£à INFINITE SCROLL: sentinel + loading indicator for next page */}
+          {/* INFINITE SCROLL: sentinel + loading indicator for next page */}
           {(hasMoreLogs || loadingMore) && (
             <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
               {loadingMore ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-                  Loading more entriesΓÇª
+                  Loading more entries...
                 </div>
               ) : (
                 <span className="text-xs text-gray-400">Scroll to load more</span>
