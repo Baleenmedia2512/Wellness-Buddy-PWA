@@ -245,20 +245,21 @@ export default async function handler(req, res) {
         const isClubVisit = attendanceType === 'club' || platform === 'club' || !!clubId;
         const isRemote = attendanceType === 'remote' || platform === 'zoom' || platform === 'online meeting' || (!isClubVisit && !clubId);
 
-      if (!attendanceMap.has(uid)) {
-        attendanceMap.set(uid, { attended: true, clubs: [], remoteCount: 0, timestamps: [] });
-      }
-      const ua = attendanceMap.get(uid);
-      if (isClubVisit && !isRemote) {
-        const clubName = clubInfo?.name || log.center_name || null;
-        if (clubName && !ua.clubs.find(c => c.id === cid && cid)) {
-          ua.clubs.push({ id: cid, name: clubName });
+        if (!attendanceMap.has(userId)) {
+          attendanceMap.set(userId, { attended: true, clubs: [], remoteCount: 0, timestamps: [] });
         }
-      } else {
-        ua.remoteCount += 1;
-      }
-      ua.timestamps.push(log.CreatedAt);
-    });
+        const ua = attendanceMap.get(userId);
+        if (isClubVisit && !isRemote) {
+          const clubName = clubInfo?.name || log.center_name || null;
+          if (clubName && !ua.clubs.find(c => c.id === clubId && clubId)) {
+            ua.clubs.push({ id: clubId, name: clubName });
+          }
+        } else {
+          ua.remoteCount += 1;
+        }
+        ua.timestamps.push(log.CreatedAt);
+      });
+    }
 
     const getAttendanceMetrics = (uid) => {
       const a = attendanceMap.get(uid);

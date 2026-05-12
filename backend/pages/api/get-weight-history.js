@@ -49,9 +49,8 @@ export default async function handler(req, res) {
       : 0;
     const useLimit = Number.isFinite(parsedLimit) && parsedLimit > 0;
 
-    let query = supabase
     // Step 1: Fetch ALL records without images (lightweight)
-    const { data: rows, error } = await supabase
+    let query = supabase
       .from('weight_records_table')
       .select('ID, UserId, Weight, Bmi, BodyFat, MuscleMass, Bmr, CreatedAt')
       .eq('UserId', userId)
