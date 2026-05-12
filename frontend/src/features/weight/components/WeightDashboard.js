@@ -12,7 +12,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { getUserId } from '../../../services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../../../utils/timezoneUtils';
-import '../LazyLoadStyles.css';
+import '../../../LazyLoadStyles.css';
 
 // ✅ LAZY LOADING: Load heavy components only when needed
 const WeightCard = lazy(() => import('./WeightCard'));
