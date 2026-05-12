@@ -1042,7 +1042,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             forceExpandedState={expandOverride}
             defaultExpanded={expandOverride === "expanded"}
             defaultShowDetails={true}
-            onProfileClick={setProfileModalEmail}
           />
         </>
       ) : !loading && !error ? (
@@ -1063,13 +1062,6 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         onClose={() => setShowSettings(false)}
         onUpdate={() => fetchData(true)}
         userEmail={user?.email}
-      />
-
-      {/* Member Profile Viewer */}
-      <TeamMemberProfileModal
-        isOpen={!!profileModalEmail}
-        onClose={() => setProfileModalEmail(null)}
-        memberEmail={profileModalEmail}
       />
 
     </HierarchicalReportLayout>

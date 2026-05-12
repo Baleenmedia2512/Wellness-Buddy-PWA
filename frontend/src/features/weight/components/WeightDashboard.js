@@ -1300,7 +1300,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
           <div className="flex flex-col items-center justify-center text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
             {isIOS ? (
               <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center mb-4">
-                <Scale className="w-9 h-9 text-gray-400" />
+                <BathroomScaleIcon className="w-9 h-9 text-gray-400" />
               </div>
             ) : (
               <div className="text-6xl mb-4">âš–ï¸</div>
