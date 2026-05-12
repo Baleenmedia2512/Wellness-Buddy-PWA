@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useState,
   useEffect,
   useCallback,
@@ -16,7 +16,7 @@ import LEADERBOARD_CONFIG from "../../../config/leaderboardConfig";
  * - Shows rank, profile avatar, user name, coach name, discipline %
  * - Smooth marquee animation (continuous horizontal scroll)
  * - Pause on hover for better UX
- * - Color-coded badges: Gold (≥90%), Silver (80-89%), Bronze (70-79%), Green (<70%)
+ * - Color-coded badges: Gold (ΓëÑ90%), Silver (80-89%), Bronze (70-79%), Green (<70%)
  * - Hides completely if no eligible users
  * - Exposes refresh method via ref for manual updates
  *
@@ -31,10 +31,10 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      console.log(
-        "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
-        `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
-      );
+      // console.log(
+      //   "Γ¡É [DISCIPLINE-LEADERBOARD] Fetching data from:",
+      //   `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
+      // );
 
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}&t=${Date.now()}`,
@@ -47,31 +47,31 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log(
-        "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
-        response.status,
-      );
+      // console.log(
+      //   "Γ¡É [DISCIPLINE-LEADERBOARD] Response status:",
+      //   response.status,
+      // );
       const result = await response.json();
-      console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
+      // console.log("Γ¡É [DISCIPLINE-LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        console.log(
-          "✅ [DISCIPLINE-LEADERBOARD] Data found:",
-          result.data.length,
-          "users",
-        );
+        // console.log(
+        //   "Γ£à [DISCIPLINE-LEADERBOARD] Data found:",
+        //   result.data.length,
+        //   "users",
+        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {
         console.log(
-          "⚠️ [DISCIPLINE-LEADERBOARD] No data available:",
+          "ΓÜá∩╕Å [DISCIPLINE-LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
         setIsVisible(false);
       }
     } catch (error) {
-      console.error("❌ [DISCIPLINE-LEADERBOARD] Error fetching data:", error);
+      console.error("Γ¥î [DISCIPLINE-LEADERBOARD] Error fetching data:", error);
       setLeaderboardData([]);
       setIsVisible(false);
     }
@@ -225,7 +225,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         {/* Title */}
         <div className="flex items-center justify-between mb-1.5">
           {/* <span className="text-xs sm:text-sm font-semibold text-purple-700">
-            🌟 Discipline Champions
+            ≡ƒîƒ Discipline Champions
           </span> */}
           <span className="text-[10px] sm:text-xs text-purple-600">
             (Last 10 Days)

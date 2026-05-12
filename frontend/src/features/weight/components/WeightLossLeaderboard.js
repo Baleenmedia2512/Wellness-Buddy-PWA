@@ -1,4 +1,4 @@
-import React, {
+﻿import React, {
   useState,
   useEffect,
   useCallback,
@@ -29,10 +29,10 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      console.log(
-        "🏆 [LEADERBOARD] Fetching data from:",
-        `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
-      );
+      // console.log(
+      //   "≡ƒÅå [LEADERBOARD] Fetching data from:",
+      //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
+      // );
 
       const response = await fetch(
         `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}&t=${Date.now()}`,
@@ -45,28 +45,28 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      console.log("🏆 [LEADERBOARD] Response status:", response.status);
+      // console.log("≡ƒÅå [LEADERBOARD] Response status:", response.status);
       const result = await response.json();
-      console.log("🏆 [LEADERBOARD] Result:", result);
+      // console.log("≡ƒÅå [LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        console.log(
-          "✅ [LEADERBOARD] Data found:",
-          result.data.length,
-          "users",
-        );
+        // console.log(
+        //   "Γ£à [LEADERBOARD] Data found:",
+        //   result.data.length,
+        //   "users",
+        // );
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {
         console.log(
-          "⚠️ [LEADERBOARD] No data available:",
+          "ΓÜá∩╕Å [LEADERBOARD] No data available:",
           result.message || "Empty data",
         );
         setLeaderboardData([]);
         setIsVisible(false);
       }
     } catch (error) {
-      console.error("❌ [LEADERBOARD] Error fetching data:", error);
+      console.error("Γ¥î [LEADERBOARD] Error fetching data:", error);
       setLeaderboardData([]);
       setIsVisible(false);
     }
@@ -239,7 +239,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         {/* Title */}
         <div className="flex items-center justify-between mb-1.5">
           {/* <span className="text-xs sm:text-sm font-semibold text-green-700">
-            🏅 Weight Loss Marathon
+            ≡ƒÅà Weight Loss Marathon
           </span> */}
           <span className="text-[10px] sm:text-xs text-green-600">
             (Today vs Yesterday)

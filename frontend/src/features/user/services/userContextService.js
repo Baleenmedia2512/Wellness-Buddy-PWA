@@ -1,4 +1,4 @@
-/**
+﻿/**
  * User Context Service
  * Manages loading and caching of user's personalized AI context
  * Includes: corrections, global patterns, diet preference, recent meals
@@ -22,18 +22,18 @@ const contextUpdateListeners = new Set();
  */
 export const getUserContext = async (userId, forceRefresh = false) => {
   if (!userId) {
-    console.warn('[USER CONTEXT] ⚠️ No userId provided');
+    console.warn('[USER CONTEXT] ΓÜá∩╕Å No userId provided');
     return null;
   }
 
   // Return cached data if still valid (unless force refresh)
   if (!forceRefresh && cachedContext && cacheTimestamp && (Date.now() - cacheTimestamp < CACHE_DURATION_MS)) {
-    console.log('[USER CONTEXT] ✅ Returning cached context');
+    // console.log('[USER CONTEXT] Γ£à Returning cached context');
     return cachedContext;
   }
 
   try {
-    console.log('[USER CONTEXT] 🔄 Fetching user context...');
+    // console.log('[USER CONTEXT] ≡ƒöä Fetching user context...');
     const startTime = Date.now();
 
     const response = await fetch(
@@ -48,19 +48,19 @@ export const getUserContext = async (userId, forceRefresh = false) => {
 
     if (result.success && result.data) {
       const loadTime = Date.now() - startTime;
-      console.log(`[USER CONTEXT] ✅ Context loaded in ${loadTime}ms:`, {
-        personalCorrections: result.data.personalCorrections.length,
-        globalPatterns: result.data.globalPatterns.length,
-        dietPreference: result.data.dietPreference,
-        recentMeals: result.data.recentMeals.length
-      });
+      // console.log(`[USER CONTEXT] Γ£à Context loaded in ${loadTime}ms:`, {
+      //   personalCorrections: result.data.personalCorrections.length,
+      //   globalPatterns: result.data.globalPatterns.length,
+      //   dietPreference: result.data.dietPreference,
+      //   recentMeals: result.data.recentMeals.length
+      // });
       
       // Debug: Log actual data to see what we got
       if (result.data.recentMeals.length === 0) {
-        console.log('[USER CONTEXT] ℹ️ No recent meals found - you may need to upload food images');
+        // console.log('[USER CONTEXT] Γä╣∩╕Å No recent meals found - you may need to upload food images');
       }
       if (result.data.globalPatterns.length === 0) {
-        console.log('[USER CONTEXT] ℹ️ No global patterns found - need 3+ users making same correction');
+        // console.log('[USER CONTEXT] Γä╣∩╕Å No global patterns found - need 3+ users making same correction');
       }
 
       // Cache the result
@@ -75,11 +75,11 @@ export const getUserContext = async (userId, forceRefresh = false) => {
       throw new Error(result.error || 'Failed to fetch user context');
     }
   } catch (error) {
-    console.error('[USER CONTEXT] ❌ Error fetching context:', error);
+    console.error('[USER CONTEXT] Γ¥î Error fetching context:', error);
     
     // Return cached data as fallback even if expired
     if (cachedContext) {
-      console.log('[USER CONTEXT] ⚠️ Returning stale cache as fallback');
+      console.log('[USER CONTEXT] ΓÜá∩╕Å Returning stale cache as fallback');
       return cachedContext;
     }
     
@@ -104,7 +104,7 @@ export const getUserContext = async (userId, forceRefresh = false) => {
  * Clear cached context (useful for logout or manual refresh)
  */
 export const clearContextCache = () => {
-  console.log('[USER CONTEXT] 🗑️ Cache cleared');
+  console.log('[USER CONTEXT] ≡ƒùæ∩╕Å Cache cleared');
   cachedContext = null;
   cacheTimestamp = null;
 };
@@ -131,7 +131,7 @@ export const formatContextForAI = (context) => {
   if (context.personalCorrections && context.personalCorrections.length > 0) {
     const corrections = context.personalCorrections
       .slice(0, 5) // Top 5
-      .map(c => `"${c.ai_detected}" → "${c.user_corrected}" (${c.times_corrected}x)`)
+      .map(c => `"${c.ai_detected}" ΓåÆ "${c.user_corrected}" (${c.times_corrected}x)`)
       .join('\n  ');
     parts.push(`User's food corrections:\n  ${corrections}`);
   }
@@ -154,7 +154,7 @@ export const formatContextForAI = (context) => {
   if (context.globalPatterns && context.globalPatterns.length > 0) {
     const patterns = context.globalPatterns
       .slice(0, 3) // Top 3
-      .map(p => `"${p.ai_detected}" → "${p.user_corrected}" (${p.user_count} users)`)
+      .map(p => `"${p.ai_detected}" ΓåÆ "${p.user_corrected}" (${p.user_count} users)`)
       .join('\n  ');
     parts.push(`Common corrections:\n  ${patterns}`);
   }
