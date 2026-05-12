@@ -889,7 +889,7 @@ const UserProfileModal = ({
                     ? `${idealMin} kg`
                     : isLoss
                     ? `${idealMax} kg`
-                    : `${idealMin} – ${idealMax} kg`;
+                    : `${idealMax} kg`;
                   return (
                     <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-xl px-4 py-3">
                       <div className="flex items-center gap-2">
@@ -945,7 +945,7 @@ const UserProfileModal = ({
                     <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl px-4 py-3">
                       <div>
                         <p className="text-xs font-semibold text-green-600">✅ At Ideal Weight</p>
-                        <p className="text-xs text-green-400">You're at your target!</p>
+                        {/* <p className="text-xs text-green-400">You're at your target!</p> */}
                       </div>
                       <span className="text-lg font-bold text-green-500">🎯</span>
                     </div>
