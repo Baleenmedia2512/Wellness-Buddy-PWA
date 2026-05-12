@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { getUserCorrections } from '../features/nutrition/services/foodCorrectionService';
-import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../features/user/services/userContextService';
-import { geminiService } from '../services/geminiService';
+import { getUserCorrections } from '../../nutrition/services/foodCorrectionService';
+import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../../user/services/userContextService';
+import { geminiService } from '../../../services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
-import { istToLocalDate } from '../utils/timezoneUtils';
+import { istToLocalDate } from '../../../utils/timezoneUtils';
 /**
  * Debug panel to view user's food corrections
  * Only visible in development mode

@@ -21,7 +21,7 @@ import ImageUpload from "./components/ImageUpload";
 import NutritionCard from "./features/nutrition/components/NutritionCard";
 import EducationLogCard from "./features/education/components/EducationLogCard";
 import WatchActivityCard from "./features/activity/components/WatchActivityCard";
-import TestImageGuide from "./components/TestImageGuide";
+import TestImageGuide from "./features/admin/components/TestImageGuide";
 import LoadingSpinner from "./components/LoadingSpinner";
 import Login from "./features/user/components/Login";
 import InactiveUserModal from "./features/user/components/InactiveUserModal";
@@ -84,7 +84,7 @@ const PersonalDisciplineScore = lazy(() => import("./components/PersonalDiscipli
 
 // ✅ ANDROID OPTIMIZATION: Lazy load heavy components
 const Dashboard = lazy(() => import("./components/Dashboard"));
-const AdminDashboard = lazy(() => import("./components/AdminDashboard"));
+const AdminDashboard = lazy(() => import("./features/admin/components/AdminDashboard"));
 const DisciplineReport = lazy(() => import("./features/leaderboard/components/DisciplineReport"));
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./components/AttendanceReport"));
