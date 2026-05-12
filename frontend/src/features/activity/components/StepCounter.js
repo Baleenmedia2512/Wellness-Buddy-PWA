@@ -5,6 +5,8 @@ import { Geolocation } from '@capacitor/geolocation';
 import { StepCounterPlugin } from '../../../shared/plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../../../shared/plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
+import { getServerTime } from '../../misc/services/misc.api';
+import { lookup as lookupUser } from '../../user/services/user.api';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import LocationGuard from '../../../shared/components/LocationGuard';
 
@@ -320,10 +322,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const checkDeviceDateVsServer = useCallback(async () => {
     try {
-      const baseURL = process.env.REACT_APP_API_BASE_URL || '';
-      const resp = await fetch(`${baseURL}/api/misc/server-time`, { cache: 'no-store' });
-      if (!resp.ok) return; // silently ignore network failures
-      const data = await resp.json();
+      const data = await getServerTime();
       const serverDate = data?.date;  // "YYYY-MM-DD" in IST
       const deviceDate = toDateKey(); // "YYYY-MM-DD" from device clock
       if (serverDate && serverDate !== deviceDate) {
@@ -368,13 +367,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const email = localStorage.getItem('userEmail');
       if (email) {
         try {
-          const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-          const res  = await fetch(`${apiBaseUrl}/api/user/lookup`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email })
-          });
-          const data = await res.json();
+          const data = await lookupUser(email);
           if (data.success && data.userId) {
             console.log('âœ… [StepCounter] userId from API fallback:', data.userId);
             localStorage.setItem('dbUserId', String(data.userId));
