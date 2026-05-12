@@ -74,30 +74,46 @@
 
 export const APP_VERSION = {
   // Current version number (displayed to users)
-  VERSION: '3.0',
+  VERSION: '3.1',
   
   // Version code (for Android builds - must match build.gradle)
   // Also used as CFBundleVersion for iOS builds - must match Info.plist
-  VERSION_CODE: 37,
+  VERSION_CODE: 38,
   
   // iOS build number (CFBundleVersion in Info.plist) - must match VERSION_CODE
-  IOS_BUILD_NUMBER: 38,
+  IOS_BUILD_NUMBER: 39,
   
   // Release name (for Play Store / App Store)
-  RELEASE_NAME: 'Version 3.0',
+  RELEASE_NAME: 'Account Deletion & Ideal Weight',
   
   // Build date
-  BUILD_DATE: '2026-05-06',
+  BUILD_DATE: '2026-05-12',
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 37, versionName: '3.0' },
-    IOS: { buildNumber: 38, versionName: '3.0' },
+    ANDROID: { versionCode: 38, versionName: '3.1' },
+    IOS: { buildNumber: 39, versionName: '3.1' },
   },
 };
 
 /**
  * 📋 CHANGE LOG
+ * 
+ * Version 3.1 (Code 38) - 2026-05-12 [ANDROID + iOS RELEASE]
+ *   🗑️ Account Deletion - Full OTP-verified account deletion flow
+ *   🔐 OTP Keypad - Inline numeric keypad for OTP input on native platforms (iOS/Android)
+ *   ⚖️ Ideal Weight Display - Ideal weight from height shown in profile, share card & team member profile
+ *   📈 BMI-based Ideal Weight - Ideal weight calculation updated to reflect BMI healthy range
+ *   🖼️ Weight Image Lazy Load - Weight history images fetched separately for improved performance
+ *   📚 Education Logs Lazy Load - Pagination and lazy loading added for education logs
+ *   👤 Team Member Profile Modal - TeamMemberProfileModal added across Dashboard and TeamMemberSearch
+ *   📋 Attendance Fix - Corrected user ID variable in attendance tracking logic
+ *   📖 Education Log Fix - Fixed query syntax and deferred fetch until user is fully loaded
+ *   🏋️ Profile Completion - Enhanced profile completion checks with improved loading indicators
+ *   🔧 Discipline Report - All dates included to evaluate days with no food logged
+ *   🍎 iOS Emoji Fix - Replaced broken emoji icons with Lucide SVGs for iOS compatibility
+ *   🔍 Food Correction - Enhanced liquid identification and improved fuzzy matching logic
+ *   🏢 Club Attendance - Refactored hierarchical club attendance API to use shared team hierarchy builder
  * 
  * Version 3.0 (Code 37) - 2026-05-06 [ANDROID + iOS RELEASE]
  *   🚀 Major Release - Version 3.0 milestone release
