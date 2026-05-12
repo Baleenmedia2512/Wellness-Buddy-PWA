@@ -321,7 +321,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const checkDeviceDateVsServer = useCallback(async () => {
     try {
       const baseURL = process.env.REACT_APP_API_BASE_URL || '';
-      const resp = await fetch(`${baseURL}/api/server-time`, { cache: 'no-store' });
+      const resp = await fetch(`${baseURL}/api/misc/server-time`, { cache: 'no-store' });
       if (!resp.ok) return; // silently ignore network failures
       const data = await resp.json();
       const serverDate = data?.date;  // "YYYY-MM-DD" in IST

@@ -1269,7 +1269,7 @@ function WellnessValleyApp() {
   useEffect(() => {
     const fetchEducationWindow = async () => {
       try {
-        const res = await fetch(`${apiBaseUrl}/api/get-time-windows`);
+        const res = await fetch(`${apiBaseUrl}/api/misc/time-windows`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
