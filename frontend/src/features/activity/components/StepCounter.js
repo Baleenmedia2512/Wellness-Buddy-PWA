@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
-import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
-import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
+import { StepCounterPlugin } from '../../../plugins/stepCounterPlugin';
+import { GalleryMonitorPlugin } from '../../../plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
-import LoadingSpinner from './LoadingSpinner';
-import LocationGuard from './LocationGuard';
+import LoadingSpinner from '../../../components/LoadingSpinner';
+import LocationGuard from '../../../components/LocationGuard';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS

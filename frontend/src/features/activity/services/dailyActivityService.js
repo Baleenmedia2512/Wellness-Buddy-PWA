@@ -1,4 +1,4 @@
-import { apiClient } from './apiClient';
+import { apiClient } from '../../../services/apiClient';
 
 export async function fetchDailyActivity(userId, days = 7, activityType = null, targetDate = null) {
   const typeParam = activityType ? `&activityType=${encodeURIComponent(activityType)}` : '';
