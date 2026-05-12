@@ -1,8 +1,13 @@
 // src/components/DeleteAccountModal.js
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2, X, CheckCircle, Loader, Mail, ShieldCheck } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import TouchFeedbackButton from './TouchFeedbackButton';
+import InlineNumericKeypad from './InlineNumericKeypad';
 import { deleteFirebaseUser } from '../services/firebase';
+
+// Use inline custom numeric keypad on native (Capacitor) builds only
+const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 /**
  * DeleteAccountModal — Apple Guideline 5.1.1(v) compliant
@@ -152,6 +157,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
 
   // ── OTP input handling ────────────────────────────────────────────────────
   const handleOtpChange = (index, value) => {
+    if (USE_CUSTOM_KEYPAD) return;
     if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
@@ -161,9 +167,30 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   };
 
   const handleOtpKeyDown = (index, e) => {
+    if (USE_CUSTOM_KEYPAD) return;
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+  };
+
+  // ── Custom keypad handlers (native only) ─────────────────────────────────
+  const handleKeypadDigit = (digit) => {
+    const currentIndex = otp.findIndex((d) => d === '');
+    const index = currentIndex === -1 ? 5 : currentIndex;
+    if (otp[index] !== '' && currentIndex === -1) return;
+    const newOtp = [...otp];
+    newOtp[index] = digit;
+    setOtp(newOtp);
+    setErrorMessage('');
+  };
+
+  const handleKeypadBackspace = () => {
+    const lastFilled = [...otp].map((d, i) => (d ? i : -1)).filter((i) => i !== -1).pop();
+    if (lastFilled === undefined) return;
+    const newOtp = [...otp];
+    newOtp[lastFilled] = '';
+    setOtp(newOtp);
+    setErrorMessage('');
   };
 
   const handleOtpPaste = (e) => {
@@ -381,17 +408,31 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
                   <input
                     key={i}
                     ref={(el) => (otpRefs.current[i] = el)}
-                    type="text"
-                    inputMode="numeric"
+                    type={USE_CUSTOM_KEYPAD ? 'text' : 'tel'}
+                    inputMode={USE_CUSTOM_KEYPAD ? 'none' : 'numeric'}
+                    pattern="[0-9]*"
+                    readOnly={USE_CUSTOM_KEYPAD}
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px]"
+                    onFocus={USE_CUSTOM_KEYPAD ? (e) => e.target.blur() : undefined}
+                    onContextMenu={USE_CUSTOM_KEYPAD ? (e) => e.preventDefault() : undefined}
+                    className={`w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px] ${USE_CUSTOM_KEYPAD ? 'caret-transparent' : ''}`}
                     style={{ borderColor: digit ? '#dc2626' : '#e5e7eb' }}
                   />
                 ))}
               </div>
+
+              {/* Inline numeric keypad (native apps only) */}
+              {USE_CUSTOM_KEYPAD && (
+                <div className="mb-3">
+                  <InlineNumericKeypad
+                    onDigit={handleKeypadDigit}
+                    onBackspace={handleKeypadBackspace}
+                  />
+                </div>
+              )}
 
               {/* Resend */}
               <div className="text-center mb-3">
