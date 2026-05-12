@@ -123,9 +123,17 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     return "text-red-600 bg-red-50 border-red-200";
   };
 
-  // Icons for each category
+  // Score → variant for non-tintable icons (the PNG-based scale)
+  const getScoreVariant = (score) => (score >= 80 ? "green" : "red");
+
+  // Icons for each category (weight is a function so it can react to score)
   const categoryIcons = {
-    weight: <BathroomScaleIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
+    weight: (score) => (
+      <BathroomScaleIcon
+        className="w-3.5 h-3.5 sm:w-4 sm:h-4"
+        variant={getScoreVariant(score)}
+      />
+    ),
     education: <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     breakfast: <Coffee className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
     lunch: <Utensils className="w-3.5 h-3.5 sm:w-4 sm:h-4" />,
@@ -170,7 +178,9 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
                     data.percentage,
                   )}`}
                 >
-                  {categoryIcons[key]}
+                  {typeof categoryIcons[key] === "function"
+                    ? categoryIcons[key](data.percentage)
+                    : categoryIcons[key]}
                 </div>
                 <span
                   className={`text-[11px] font-bold mt-0.5 ${
