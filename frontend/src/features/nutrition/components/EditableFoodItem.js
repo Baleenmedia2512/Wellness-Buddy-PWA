@@ -681,7 +681,7 @@ const EditableFoodItem = forwardRef(
       try {
         if (!userIdRef.current && user) {
           console.log("[CORRECTION DEBUG] Caching userId for later...");
-          const { getUserId } = await import("../services/getUserId");
+          const { getUserId } = await import("../../user/services/getUserId");
           const userId = await getUserId(user);
           if (userId) {
             userIdRef.current = userId;
@@ -1182,7 +1182,7 @@ const EditableFoodItem = forwardRef(
           correctionSavedRef.current = true; // Mark as saved
 
           // Refresh user context
-          const { getUserContext } = await import("../services/userContextService");
+          const { getUserContext } = await import("../../user/services/userContextService");
           getUserContext(userId)
             .then(() => console.log("✅ User context refreshed"))
             .catch((error) => console.error("❌ Failed to refresh context:", error));

@@ -89,10 +89,10 @@ const DisciplineReport = lazy(() => import("./features/leaderboard/components/Di
 const ActivityTimeReport = lazy(() => import("./features/activity/components/ActivityTimeReport"));
 const AttendanceReport = lazy(() => import("./features/team/components/AttendanceReport"));
 const NutritionCentersMap = lazy(() =>
-  import("./components/NutritionCentersMap"),
+  import("./features/nutrition-centers/components/NutritionCentersMap"),
 );
 const NutritionCenterRegistration = lazy(() =>
-  import("./components/NutritionCenterRegistration"),
+  import("./features/nutrition-centers/components/NutritionCenterRegistration"),
 );
 const SetupWizard = lazy(() => import("./pages/SetupWizard"));
 const ValidateOTP = lazy(() => import("./pages/ValidateOTP"));
@@ -1245,7 +1245,7 @@ function WellnessValleyApp() {
 
     const {
       subscribeToContextUpdates,
-    } = require("./services/userContextService");
+    } = require("./features/user/services/userContextService");
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
       console.log("✅ [App] User context updated in state:", {
         corrections: updatedContext?.personalCorrections?.length || 0,
