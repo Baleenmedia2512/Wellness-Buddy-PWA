@@ -17,12 +17,12 @@
       }
     ],
     "no-restricted-imports": [
-      "warn",
+      "error",
       {
         "patterns": [
           {
             "group": ["**/features/*/**", "../features/*/**", "../../features/*/**", "../../../features/*/**"],
-            "message": "VSA: a feature must not import from another feature. Move shared code to src/shared/."
+            "message": "VSA: do not deep-import into a feature. Use the feature barrel: '<scope>/features/<slice>'."
           }
         ]
       }
@@ -37,7 +37,7 @@
       "files": ["src/features/*/components/**/*.{js,jsx}", "src/shared/components/**/*.{js,jsx}"],
       "rules": {
         "no-restricted-imports": [
-          "warn",
+          "error",
           {
             "paths": [
               { "name": "axios", "message": "VSA: components are presentational. Move HTTP calls to a feature service or hook." }
@@ -45,13 +45,13 @@
             "patterns": [
               {
                 "group": ["**/features/*/**", "../features/*/**"],
-                "message": "VSA: a feature must not import from another feature."
+                "message": "VSA: do not deep-import into a feature. Use the feature barrel: '<scope>/features/<slice>'."
               }
             ]
           }
         ],
         "no-restricted-globals": [
-          "warn",
+          "error",
           { "name": "fetch", "message": "VSA: components must not call fetch. Use a feature service or hook." }
         ]
       }
