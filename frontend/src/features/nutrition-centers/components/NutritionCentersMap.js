@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
-import LoadingSpinner from '../../../components/LoadingSpinner';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
 
 // --- Single Day Picker ---
@@ -245,10 +245,10 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
   // Open Street View for a center
   const openStreetView = (center) => {
-    console.log('🗺️ Opening Street View for:', center.center_name, center);
-    console.log('📍 Coordinates:', center.latitude, center.longitude);
-    console.log('🔍 Google Maps available:', !!window.google?.maps);
-    console.log('🔍 StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
+    console.log('ðŸ—ºï¸ Opening Street View for:', center.center_name, center);
+    console.log('ðŸ“ Coordinates:', center.latitude, center.longitude);
+    console.log('ðŸ” Google Maps available:', !!window.google?.maps);
+    console.log('ðŸ” StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
     
     if (!window.google || !window.google.maps) {
       alert('Google Maps is not loaded yet. Please wait a moment and try again.');
@@ -262,7 +262,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   // Initialize Street View when overlay is shown
   useEffect(() => {
     if (showStreetView && selectedCenter && panoramaRef.current && window.google && window.google.maps) {
-      console.log('🏗️ Initializing Street View...');
+      console.log('ðŸ—ï¸ Initializing Street View...');
       
       const position = {
         lat: parseFloat(selectedCenter.latitude),
@@ -290,7 +290,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           map: panorama,
           title: selectedCenter.center_name,
           label: {
-            text: '📍',
+            text: 'ðŸ“',
             fontSize: '24px',
           },
           icon: {
@@ -323,9 +323,9 @@ const NutritionCentersMap = ({ user, onBack }) => {
         }, 500);
 
         streetViewRef.current = panorama;
-        console.log('✅ Street View initialized successfully with marker');
+        console.log('âœ… Street View initialized successfully with marker');
       } catch (err) {
-        console.error('❌ Error initializing Street View:', err);
+        console.error('âŒ Error initializing Street View:', err);
       }
     }
   }, [showStreetView, selectedCenter]);
@@ -445,7 +445,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
               onclick="window.openStreetViewForCenter(${center.id})" 
               style="padding: 8px 12px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 13px; cursor: pointer; font-weight: 500;"
             >
-              👁️ View Street View
+              ðŸ‘ï¸ View Street View
             </button>
             ${center.owner_phone ? `
               <div style="display: flex; gap: 8px; justify-content: center;">
@@ -588,7 +588,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </AnimatePresence>
         </div>
 
-        {/* Row 3: Team tabs — white pill segment */}
+        {/* Row 3: Team tabs â€” white pill segment */}
         <div className="max-w-4xl mx-auto px-4 pb-2">
           <div className="bg-white rounded-xl px-2 py-1.5 flex gap-1">
             {[['self','My Club'],['direct','Direct Team'],['full','Full Team'],['all','All']].map(([val, label]) => (
@@ -649,7 +649,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </div>
         ) : (
           <>
-            {/* Map — compact by default, fullscreen overlay when expanded */}
+            {/* Map â€” compact by default, fullscreen overlay when expanded */}
             <div
               className={mapFullscreen
                 ? 'fixed inset-0 z-[55] flex flex-col bg-black'
@@ -669,7 +669,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                 </div>
               )}
 
-              {/* The actual map div — always mounted so Google Maps stays attached */}
+              {/* The actual map div â€” always mounted so Google Maps stays attached */}
               <div
                 ref={mapRef}
                 className={mapFullscreen ? 'flex-1 w-full' : 'w-full h-52'}
@@ -746,7 +746,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                       </div>
                     </div>
 
-                    {/* Action pills — wrapping row */}
+                    {/* Action pills â€” wrapping row */}
                     <div
                       className="flex flex-wrap gap-2 px-4 pb-4"
                       onClick={(e) => e.stopPropagation()}

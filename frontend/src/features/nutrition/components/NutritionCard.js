@@ -1,10 +1,10 @@
-//src\components\NutritionCard.js
+﻿//src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../user/services/getUserId";
-import { geminiService } from "../../../services/geminiService";
+import { geminiService } from "../../../shared/services/geminiService";
 import { captureAndShare, shareImageDirectly } from "../../../utils/shareUtils";
 
 const NutritionCard = ({
@@ -49,7 +49,7 @@ const NutritionCard = ({
       // Create object URL from original file (no compression)
       const url = URL.createObjectURL(selectedImage);
       setHighResImageUrl(url);
-      console.log("📸 Created high-res image URL for sharing");
+      console.log("ðŸ“¸ Created high-res image URL for sharing");
 
       // Cleanup on unmount
       return () => {
@@ -71,7 +71,7 @@ const NutritionCard = ({
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
-    console.log("🔄 [NutritionCard] Data prop changed, syncing local state");
+    console.log("ðŸ”„ [NutritionCard] Data prop changed, syncing local state");
     console.log("   New nutrition values:", data?.nutrition);
     console.log("   New detailedItems count:", data?.detailedItems?.length);
 
@@ -272,7 +272,7 @@ const NutritionCard = ({
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
     console.log(
-      "🧮 [NutritionCard] recalculateTotals - Processing items:",
+      "ðŸ§® [NutritionCard] recalculateTotals - Processing items:",
       items.length,
     );
 
@@ -284,7 +284,7 @@ const NutritionCard = ({
         const itemFat = item.nutrition?.fat || item.fat || 0;
         const itemFiber = item.nutrition?.fiber || item.fiber || 0;
 
-        console.log(`   📊 Item ${index + 1}: ${item.name}`);
+        console.log(`   ðŸ“Š Item ${index + 1}: ${item.name}`);
         console.log(
           `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
         );
@@ -315,7 +315,7 @@ const NutritionCard = ({
       fiber: Math.round(totals.fiber * 10) / 10,
     };
 
-    console.log("   ✅ Final totals:", rounded);
+    console.log("   âœ… Final totals:", rounded);
     return rounded;
   };
 
@@ -335,7 +335,7 @@ const NutritionCard = ({
   const saveMealUpdate = async (newItems, newTotals) => {
     // Phase 5: Auto-save update to backend
     if (!savedMealId) {
-      console.warn("⚠️ [NutritionCard] No saved meal ID - skipping auto-save");
+      console.warn("âš ï¸ [NutritionCard] No saved meal ID - skipping auto-save");
       return;
     }
 
@@ -398,7 +398,7 @@ const NutritionCard = ({
     };
 
     console.log(
-      "🔍 [NutritionCard] Sending to API - Foods with weights:",
+      "ðŸ” [NutritionCard] Sending to API - Foods with weights:",
       analysisData.foods.map((f) => ({
         name: f.name,
         weight_g: f.weight_g,
@@ -410,7 +410,7 @@ const NutritionCard = ({
       })),
     );
 
-    console.log("📝 [NutritionCard] Auto-saving update to meal ID:", savedMealId);
+    console.log("ðŸ“ [NutritionCard] Auto-saving update to meal ID:", savedMealId);
 
     const response = await fetch(`${apiBaseUrl}/api/food-corrections/nutrition`, {
       method: "PUT",
@@ -684,7 +684,7 @@ const NutritionCard = ({
 
     // Early return if already sharing
     if (isSharing) {
-      console.log("⚠️ Share already in progress, ignoring duplicate call");
+      console.log("âš ï¸ Share already in progress, ignoring duplicate call");
       return;
     }
 
@@ -700,21 +700,21 @@ const NutritionCard = ({
 
       // Build detailed breakdown text
       let breakdownText = `My ${mealName}\n`;
-      breakdownText += `${Math.round(calories)} kcal 🍎\n\n`;
+      breakdownText += `${Math.round(calories)} kcal ðŸŽ\n\n`;
 
       // Add nutrition summary
-      breakdownText += `📊 Nutrition Summary:\n`;
-      breakdownText += `• Calories: ${Math.round(
+      breakdownText += `ðŸ“Š Nutrition Summary:\n`;
+      breakdownText += `â€¢ Calories: ${Math.round(
         localNutrition.calories,
       )} kcal\n`;
-      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
-      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
-      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
-      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
+      breakdownText += `â€¢ Protein: ${localNutrition.protein}g\n`;
+      breakdownText += `â€¢ Carbs: ${localNutrition.carbs}g\n`;
+      breakdownText += `â€¢ Fat: ${localNutrition.fat}g\n`;
+      breakdownText += `â€¢ Fiber: ${localNutrition.fiber}g\n\n`;
 
       // Add food breakdown if multiple items
       if (localDetailedItems.length > 0) {
-        breakdownText += `🍽️ Food Breakdown:\n`;
+        breakdownText += `ðŸ½ï¸ Food Breakdown:\n`;
         localDetailedItems.forEach((item, index) => {
           const itemCals = item.nutrition?.calories || item.calories || 0;
           const portion =
@@ -727,17 +727,17 @@ const NutritionCard = ({
             breakdownText += ` (${portion})`;
           }
           breakdownText += `\n   ${Math.round(itemCals)} kcal`;
-          breakdownText += ` • Protein: ${Math.round(
+          breakdownText += ` â€¢ Protein: ${Math.round(
             item.nutrition?.protein || item.protein || 0,
           )}g`;
-          breakdownText += ` • Carbs: ${Math.round(
+          breakdownText += ` â€¢ Carbs: ${Math.round(
             item.nutrition?.carbs || item.carbs || 0,
           )}g`;
-          breakdownText += ` • Fat: ${Math.round(
+          breakdownText += ` â€¢ Fat: ${Math.round(
             item.nutrition?.fat || item.fat || 0,
           )}g`;
           if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
-            breakdownText += ` • Fiber: ${Math.round(
+            breakdownText += ` â€¢ Fiber: ${Math.round(
               item.nutrition?.fiber || item.fiber || 0,
             )}g`;
           }
@@ -754,7 +754,7 @@ const NutritionCard = ({
           .replace(/\s+/g, "-")}.png`,
       });
     } catch (error) {
-      console.error("❌ Failed to share:", error);
+      console.error("âŒ Failed to share:", error);
       // Show error to user if it's not a cancellation
       if (!error?.message?.toLowerCase().includes("cancel")) {
         alert(
@@ -1152,7 +1152,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-400">â€¢</span>
                           <span className="text-yellow-600">
                             Carbs{" "}
                             {Math.round(
@@ -1160,7 +1160,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-400">â€¢</span>
                           <span className="text-green-600">
                             Fiber{" "}
                             {Math.round(
@@ -1168,7 +1168,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">•</span>
+                          <span className="text-gray-400">â€¢</span>
                           <span className="text-purple-600">
                             Fat{" "}
                             {Math.round(item.nutrition?.fat || item.fat || 0)}g
@@ -1433,7 +1433,7 @@ const NutritionCard = ({
 
                             <div className="text-xs text-gray-600 mt-0.5">
                               {/* {food.defaultServing?.nutrition?.calories || 0} kcal
-                              {" · "}
+                              {" Â· "}
                               {food.defaultServing?.description || "1 serving"} */}
                             </div>
                           </button>

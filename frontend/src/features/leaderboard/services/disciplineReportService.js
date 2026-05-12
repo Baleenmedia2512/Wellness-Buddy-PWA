@@ -1,6 +1,6 @@
-// src/services/disciplineReportService.js
+﻿// src/services/disciplineReportService.js
 import axios from "axios";
-import { cacheManager } from "../../../services/cacheManager";
+import { cacheManager } from "../../../shared/services/cacheManager";
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
@@ -19,7 +19,7 @@ const getCacheKey = (type, userId, dateRange, customRange) => {
  */
 export const clearDisciplineReportCache = () => {
   cacheManager.clearPattern("disciplineReport");
-  console.log("🗑️ [CACHE] Cleared discipline report cache");
+  console.log("ðŸ—‘ï¸ [CACHE] Cleared discipline report cache");
 };
 
 export const disciplineReportService = {
@@ -59,7 +59,7 @@ export const disciplineReportService = {
         cacheManager.ttls.disciplineReport,
       )
       .catch((error) => {
-        console.error("❌ Error fetching discipline report:", error);
+        console.error("âŒ Error fetching discipline report:", error);
         throw error;
       });
   },
@@ -100,7 +100,7 @@ export const disciplineReportService = {
         cacheManager.ttls.disciplineReport,
       )
       .catch((error) => {
-        console.error("❌ Error fetching all members discipline report:", error);
+        console.error("âŒ Error fetching all members discipline report:", error);
         throw error;
       });
   },

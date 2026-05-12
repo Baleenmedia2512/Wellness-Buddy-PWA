@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Users,
   BookOpen,
@@ -18,12 +18,12 @@ import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { Share } from "@capacitor/share";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
-} from "../../../components/common/HierarchicalReportLayout";
-import HierarchicalNode from "../../../components/common/HierarchicalNode";
-import { teamHierarchyService } from "../../../services/teamHierarchyService";
-import TimeWindowSettingsModal from "../../../components/TimeWindowSettingsModal";
+} from "../../../shared/components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
+import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
+import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
 
-// ───Constants ────────────────────────────────────────────────────────────────
+// â”€â”€â”€Constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
@@ -51,7 +51,7 @@ const STATUS_TEXT = {
   "no-data": { text: "text-gray-400",  bg: "bg-gray-50",   border: "border-gray-200"  },
 };
 
-// Binary activities (no time, just goal met/not) — show neutral gray instead of red when missed
+// Binary activities (no time, just goal met/not) â€” show neutral gray instead of red when missed
 const BINARY_ACTIVITY_KEYS = new Set(["water", "caloriesBurned"]);
 function resolveStatus(key, status) {
   if (BINARY_ACTIVITY_KEYS.has(key) && status === "missed") return "no-data";
@@ -69,7 +69,7 @@ const FILTER_OPTIONS = [
   { value: "caloriesBurned", label: "Calories"       },
 ];
 
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
+// â”€â”€â”€ Pure helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function mapRoleForApi(userRole) {
   const n = String(userRole || "member").toLowerCase();
@@ -131,7 +131,7 @@ function fmt12(hhmm) {
   return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
 }
 
-/** Score: on-time=100, late=50, missed=0  →  averaged across all activity×day cells */
+/** Score: on-time=100, late=50, missed=0  â†’  averaged across all activityÃ—day cells */
 function computeUserScore(entry) {
   let total = 0, count = 0;
   (entry.days || []).forEach((day) => {
@@ -148,7 +148,7 @@ function computeUserScore(entry) {
  * Sort key for a node based on selected activity filter.
  * desc = correct takers first (higher on-time count).
  * asc  = complete untakers (missed) first, then late, then on-time.
- * Weighted: on-time = 2pts, late = 1pt, missed = 0pts — summed across all days.
+ * Weighted: on-time = 2pts, late = 1pt, missed = 0pts â€” summed across all days.
  */
 function computeActivitySortKey(node, activity) {
   if (!activity || activity === "all") return node.__score ?? 0;
@@ -203,7 +203,7 @@ function buildHierarchyFromFlat(flatList, scoreMap, currentUserId) {
   return self || roots[0] || null;
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Coloured dot for a single activity status */
 function StatusDot({ status }) {
@@ -228,23 +228,23 @@ function DayHeatmapRow({ day }) {
         return (
           <div
             key={key}
-            title={`${ACTIVITY_META[key].label}: ${fmt12(t) ?? "—"} (${s})`}
+            title={`${ACTIVITY_META[key].label}: ${fmt12(t) ?? "â€”"} (${s})`}
             className={`flex flex-col items-center justify-center rounded-md border ${dotOnly ? "px-1 py-1 min-w-[28px]" : "px-1 py-0.5 min-w-[50px]"} ${st.bg} ${st.border}`}
           >
             <StatusDot status={s} />
             {!dotOnly && (
               <span className={`text-[9px] font-bold mt-0.5 ${st.text}`}>
-                {fmt12(t) ?? "—"}
+                {fmt12(t) ?? "â€”"}
               </span>
             )}
             {key === "water" && (
               <span className="text-[8px] font-bold mt-0.5 text-cyan-600">
-                {day.activities?.water?.totalLiters != null ? `${day.activities.water.totalLiters}L` : "—"}
+                {day.activities?.water?.totalLiters != null ? `${day.activities.water.totalLiters}L` : "â€”"}
               </span>
             )}
             {key === "caloriesBurned" && (
               <span className={`text-[8px] font-bold mt-0.5 ${st.text}`}>
-                {day.activities?.caloriesBurned?.calories != null ? `${day.activities.caloriesBurned.calories}kcal` : "—"}
+                {day.activities?.caloriesBurned?.calories != null ? `${day.activities.caloriesBurned.calories}kcal` : "â€”"}
               </span>
             )}
           </div>
@@ -270,7 +270,7 @@ function AvgTimeRow({ averageTimes, consistentlyLate }) {
           >
             <Icon className="w-3 h-3 text-gray-400 shrink-0" />
             <span className="text-[9px] font-semibold text-gray-500 uppercase">{short}</span>
-            <span className="text-[10px] font-bold text-gray-800">{fmt12(avg) ?? "—"}</span>
+            <span className="text-[10px] font-bold text-gray-800">{fmt12(avg) ?? "â€”"}</span>
             {late && (
               <Flame className="w-3 h-3 text-orange-500 shrink-0" title="Consistently late" />
             )}
@@ -373,18 +373,18 @@ function TimeReportDetails({ node, dateRange, filter }) {
                           <StatusDot status={s} />
                           {!dotOnly && (
                             <span className={`text-[9px] font-semibold ${st.text} whitespace-nowrap`}>
-                              {fmt12(act?.time) ?? "—"}
+                              {fmt12(act?.time) ?? "â€”"}
                             </span>
                           )}
                         </div>
                         {key === "water" && (
                           <span className="text-[8px] font-bold leading-tight text-cyan-600">
-                            {act?.totalLiters != null ? `${act.totalLiters}L` : "—"}
+                            {act?.totalLiters != null ? `${act.totalLiters}L` : "â€”"}
                           </span>
                         )}
                         {key === "caloriesBurned" && (
                           <span className={`text-[8px] font-bold leading-tight ${st.text}`}>
-                            {act?.calories != null ? `${act.calories}kcal` : "—"}
+                            {act?.calories != null ? `${act.calories}kcal` : "â€”"}
                           </span>
                         )}
                       </div>
@@ -400,7 +400,7 @@ function TimeReportDetails({ node, dateRange, filter }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// â”€â”€â”€ Main component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [loading, setLoading] = useState(true);
@@ -418,14 +418,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct");
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct â†” Full switch
   const [filterBehavior, setFilterBehavior] = useState("all");
   const [activityRowSortBy, setActivityRowSortBy] = useState("date"); // "date", "activity", "status"
   const [activityRowSortOrder, setActivityRowSortOrder] = useState("asc"); // "asc", "desc"
 
   const timezoneOffset = useMemo(() => new Date().getTimezoneOffset(), []);
 
-  // ── Fetch ──────────────────────────────────────────────────────────────────
+  // â”€â”€ Fetch â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const fetchData = useCallback(
     async (isBackground = false) => {
@@ -439,7 +439,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       try {
         // Fetch hierarchy first to determine if this user has team members.
         // If they do, treat them as "coach" for the activity report API so that
-        // all downline member data is returned — matching the behaviour of
+        // all downline member data is returned â€” matching the behaviour of
         // DisciplineReport and AttendanceReport.
         const hierarchyRes = await teamHierarchyService
           .getTeamHierarchy(user.id, false)
@@ -532,7 +532,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         if (hierarchyRes?.hierarchy) {
           setHierarchyData(enrichNode(hierarchyRes.hierarchy));
         } else if (flat.length > 0) {
-          // No hierarchy service — build synthetic tree from flat list
+          // No hierarchy service â€” build synthetic tree from flat list
           const syn = buildHierarchyFromFlat(flat, scoreMap, user.id);
           if (syn) setHierarchyData(enrichNode(syn));
         }
@@ -549,7 +549,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
   useEffect(() => { fetchData(false); }, [fetchData]);
 
-  // ── Activity sort (reacts to filter category + sort direction) ───────────
+  // â”€â”€ Activity sort (reacts to filter category + sort direction) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const sortedHierarchyData = useMemo(() => {
     if (!hierarchyData) return null;
@@ -572,7 +572,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     return sortNode(hierarchyData);
   }, [hierarchyData, filter, sortOrder, sortBy]);
 
-  // ── Filter / search / style helpers ───────────────────────────────────────
+  // â”€â”€ Filter / search / style helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   // Filter now controls sort category; filterBehavior controls member visibility
   const matchesFilter = useCallback((node) => {
@@ -642,7 +642,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     };
   }, []);
 
-  // ── HierarchicalNode render props ──────────────────────────────────────────
+  // â”€â”€ HierarchicalNode render props â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const renderStatus = useCallback(() => null, []);
 
@@ -650,7 +650,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
 
   const renderExpandedDetails = useCallback((node) => <TimeReportDetails node={node} dateRange={dateRange} filter={filter} />, [dateRange, filter]);
 
-  // ── Summary stats ──────────────────────────────────────────────────────────
+  // â”€â”€ Summary stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const summaryStats = useMemo(() => {
     if (flatData.length === 0) return null;
@@ -662,14 +662,14 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       title: "",
       items: [
         { label: "Avg Score", value: avgScore,            unit: "%", color: "text-green-700", bgColor: "bg-green-50" },
-        { label: "Top Star",  value: scores[topIdx] ?? 0, unit: "%", sub: String(flatData[topIdx]?.name || "—").split(" ")[0], color: "text-blue-700", bgColor: "bg-blue-50" },
+        { label: "Top Star",  value: scores[topIdx] ?? 0, unit: "%", sub: String(flatData[topIdx]?.name || "â€”").split(" ")[0], color: "text-blue-700", bgColor: "bg-blue-50" },
         { label: "At Risk",   value: atRisk,              unit: "",  sub: `of ${flatData.length}`, color: "text-red-700", bgColor: "bg-red-50" },
       ],
-      note: "Score: On-time = 100 pts · Late = 50 pts · Missed = 0 pts — averaged across all activities × days.",
+      note: "Score: On-time = 100 pts Â· Late = 50 pts Â· Missed = 0 pts â€” averaged across all activities Ã— days.",
     };
   }, [flatData]);
 
-  // ── Direct / Full hierarchy filter ────────────────────────────────────────
+  // â”€â”€ Direct / Full hierarchy filter â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const buildHierarchyForView = useCallback((view) => {
     if (!sortedHierarchyData) return null;
     if (view === "full") return sortedHierarchyData;
@@ -690,7 +690,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     return buildHierarchyForView(teamView);
   }, [buildHierarchyForView, teamView]);
 
-  // ── Count members in filtered hierarchy ────────────────────────────────────
+  // â”€â”€ Count members in filtered hierarchy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const visibleMemberCount = useMemo(() => {
     if (!filteredHierarchy) return 0;
@@ -706,7 +706,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     return countMembers(filteredHierarchy);
   }, [filteredHierarchy]);
 
-  const subtitle = `${visibleMemberCount} member${visibleMemberCount === 1 ? "" : "s"} • ${
+  const subtitle = `${visibleMemberCount} member${visibleMemberCount === 1 ? "" : "s"} â€¢ ${
     new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })
   }`;
 
@@ -714,7 +714,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     const isNative = Capacitor.isNativePlatform();
 
     if (isNative) {
-      // Write as UTF-8 text directly — no base64 needed for CSV files
+      // Write as UTF-8 text directly â€” no base64 needed for CSV files
       const result = await Filesystem.writeFile({
         path: fileName,
         data: content,
@@ -736,7 +736,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
       return;
     }
 
-    // Web Share API — works on Android Chrome PWA and iOS Safari PWA
+    // Web Share API â€” works on Android Chrome PWA and iOS Safari PWA
     const blob = new Blob([content], { type: mimeType });
     if (navigator.canShare && navigator.canShare({ files: [new File([blob], fileName, { type: mimeType })] })) {
       try {
@@ -746,7 +746,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         });
         return;
       } catch (err) {
-        if (err.name === "AbortError") return; // user cancelled — do nothing
+        if (err.name === "AbortError") return; // user cancelled â€” do nothing
         // fall through to anchor download
       }
     }
@@ -762,7 +762,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     window.URL.revokeObjectURL(url);
   }, []);
 
-  // ── Helper: Sort daily activity rows by date, activity, or status ────────────
+  // â”€â”€ Helper: Sort daily activity rows by date, activity, or status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const getSortedDailyActivities = useCallback((entry) => {
     if (!entry || !entry.days) return [];
@@ -869,7 +869,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             row.time ? fmt12(row.time) : "-",
             row.status === "on-time" ? "On-time" : row.status === "late" ? "Late" : "Missed",
           ];
-          // Don't run escapeCsv on the date cell (index 3) — it's already formatted
+          // Don't run escapeCsv on the date cell (index 3) â€” it's already formatted
           const csvLine = cells
             .map((cell, i) => (i === 3 ? cell : escapeCsv(cell)))
             .join(",");
@@ -908,7 +908,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
     setShowSettings((prev) => !prev);
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // â”€â”€ Render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <HierarchicalReportLayout
@@ -962,10 +962,10 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
               <div className="text-[10px] font-semibold text-blue-700 uppercase tracking-wide">Sort Daily Activities By:</div>
               <div className="flex gap-2 flex-wrap">
                 {[
-                  { value: "name", label: "👤 Name" },
-                  { value: "date", label: "📅 Date" },
-                  { value: "activity", label: "🍽️ Activity" },
-                  { value: "status", label: "✓ Status" },
+                  { value: "name", label: "ðŸ‘¤ Name" },
+                  { value: "date", label: "ðŸ“… Date" },
+                  { value: "activity", label: "ðŸ½ï¸ Activity" },
+                  { value: "status", label: "âœ“ Status" },
                 ].map((option) => (
                   <button
                     key={option.value}
@@ -984,11 +984,11 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
                     }`}
                     title={`Sort by ${option.label}${activityRowSortBy === option.value ? ` (${activityRowSortOrder === "asc" ? "ascending" : "descending"})` : ""}`}
                   >
-                    {option.label} {activityRowSortBy === option.value && (activityRowSortOrder === "asc" ? "↑" : "↓")}
+                    {option.label} {activityRowSortBy === option.value && (activityRowSortOrder === "asc" ? "â†‘" : "â†“")}
                   </button>
                 ))}
               </div>
-              <div className="text-[9px] text-blue-600">💡 Change sort order by clicking the same button again. CSV download will include sorted data.</div>
+              <div className="text-[9px] text-blue-600">ðŸ’¡ Change sort order by clicking the same button again. CSV download will include sorted data.</div>
             </div>
           </div> */}
 

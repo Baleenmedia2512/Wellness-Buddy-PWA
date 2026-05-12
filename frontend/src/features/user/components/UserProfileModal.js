@@ -1,4 +1,4 @@
-// src/components/UserProfileModal.js
+﻿// src/components/UserProfileModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Cropper from "react-easy-crop";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -21,8 +21,8 @@ import {
   XCircle,
   Loader,
 } from "lucide-react";
-import { getUserContext } from "../services/userContextService";
-import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
+import { getUserContext } from "../shared/services/userContextService";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 
 /** Crop a canvas region supporting rotation */
 const getCroppedImg = (imageSrc, pixelCrop, rotation = 0) => {
@@ -85,7 +85,7 @@ const UserProfileModal = ({
 
   // faceStatus: "idle" | "detecting" | "face_found" | "no_face" | "detection_error"
   const [faceStatus, setFaceStatus] = useState("idle");
-  // showFaceToast: controls toast visibility only — dismissing hides toast but keeps faceStatus
+  // showFaceToast: controls toast visibility only â€” dismissing hides toast but keeps faceStatus
   const [showFaceToast, setShowFaceToast] = useState(false);
 
   // Crop state
@@ -115,7 +115,7 @@ const UserProfileModal = ({
     try {
       const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
       if (!apiKey) {
-        console.warn("⚠️ [Face Detection] REACT_APP_GEMINI_API_KEY not set, skipping");
+        console.warn("âš ï¸ [Face Detection] REACT_APP_GEMINI_API_KEY not set, skipping");
         setFaceStatus("detection_error");
         faceDetectionResolveRef.current?.("detection_error");
         return;
@@ -136,12 +136,12 @@ const UserProfileModal = ({
       const text = result.response.text().trim().toLowerCase();
       const hasFace = text.startsWith("yes");
       const status = hasFace ? "face_found" : "no_face";
-      console.log(`✅ [Face Detection] Result: ${hasFace ? "face found" : "no face"} (raw: "${text}")`);
+      console.log(`âœ… [Face Detection] Result: ${hasFace ? "face found" : "no face"} (raw: "${text}")`);
       setFaceStatus(status);
       setShowFaceToast(true);
       faceDetectionResolveRef.current?.(status);
     } catch (err) {
-      console.error("❌ [Face Detection] Failed:", err.message);
+      console.error("âŒ [Face Detection] Failed:", err.message);
       setFaceStatus("detection_error");
       setShowFaceToast(true);
       faceDetectionResolveRef.current?.("detection_error");
@@ -181,20 +181,20 @@ const UserProfileModal = ({
       if (data.success && data.data) {
         let profile = data.data;
 
-        // 🔒 Demo account: load locally-saved profile if API returned empty fields
+        // ðŸ”’ Demo account: load locally-saved profile if API returned empty fields
         const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
         if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
           const stored = localStorage.getItem(`demo_profile_${user.email}`);
           if (stored) {
             try {
               const local = JSON.parse(stored);
-              console.log('💾 [Demo] Loading profile from localStorage:', local);
+              console.log('ðŸ’¾ [Demo] Loading profile from localStorage:', local);
               profile = { ...profile, ...local };
             } catch (e) { /* ignore */ }
           }
         }
 
-        console.log("📥 [UserProfileModal] Fetched profile data:", {
+        console.log("ðŸ“¥ [UserProfileModal] Fetched profile data:", {
           latestBmr: profile.latestBmr,
           latestWeight: profile.latestWeight,
           weightRecordDate: profile.weightRecordDate,
@@ -211,15 +211,15 @@ const UserProfileModal = ({
         if (profile.profileImage) {
           setProfileImagePreview(profile.profileImage);
         }
-        console.log("✅ [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
+        console.log("âœ… [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
       } else if (data.success && !data.data) {
-        // 🔒 Demo account bypass: API returns top-level fields (no data wrapper)
+        // ðŸ”’ Demo account bypass: API returns top-level fields (no data wrapper)
         // Load from localStorage instead
         const stored = localStorage.getItem(`demo_profile_${user.email}`);
         if (stored) {
           try {
             const local = JSON.parse(stored);
-            console.log('💾 [Demo] Loading profile from localStorage (no data wrapper):', local);
+            console.log('ðŸ’¾ [Demo] Loading profile from localStorage (no data wrapper):', local);
             setName(local.userName || user?.name || "");
             setHeight(local.height ? String(local.height) : "");
             setBmr(local.latestBmr ? String(Math.round(local.latestBmr)) : "");
@@ -228,12 +228,12 @@ const UserProfileModal = ({
             if (local.profileImage) setProfileImagePreview(local.profileImage);
           } catch (e) { /* ignore */ }
         } else {
-          // No stored data — use API top-level fields as fallback
+          // No stored data â€” use API top-level fields as fallback
           setName(data.userName || user?.name || "");
         }
       }
     } catch (err) {
-      console.error("❌ Error fetching user profile:", err);
+      console.error("âŒ Error fetching user profile:", err);
       // Fall back to user object data
       setName(user?.name || "");
       setHeight("");
@@ -292,7 +292,7 @@ const UserProfileModal = ({
     }
   }, [successMessage, onClose]);
 
-  // Handle profile image selection — opens cropper
+  // Handle profile image selection â€” opens cropper
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -387,7 +387,7 @@ const UserProfileModal = ({
         return;
       }
 
-      // Face detection check — only when a new profile photo is being saved
+      // Face detection check â€” only when a new profile photo is being saved
       if (profileImage) {
         let resolvedStatus = faceStatus;
         // If still detecting, wait for it to finish
@@ -422,13 +422,13 @@ const UserProfileModal = ({
         }),
       });
 
-      console.log("📤 [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
+      console.log("ðŸ“¤ [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
 
       // Check if response is JSON before parsing
       const contentType = response.headers.get("content-type");
       if (!contentType || !contentType.includes("application/json")) {
         const text = await response.text();
-        console.error("❌ Non-JSON response:", text);
+        console.error("âŒ Non-JSON response:", text);
         throw new Error(
           "Server returned an error. Please try with a smaller image.",
         );
@@ -443,7 +443,7 @@ const UserProfileModal = ({
       }
 
       if (data.success) {
-        // 🔒 Demo account: persist profile locally since no DB write happens
+        // ðŸ”’ Demo account: persist profile locally since no DB write happens
         const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
         if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
           const demoProfile = {
@@ -455,7 +455,7 @@ const UserProfileModal = ({
             profileImage: profileImagePreview || null,
           };
           localStorage.setItem(`demo_profile_${user.email}`, JSON.stringify(demoProfile));
-          console.log('💾 [Demo] Profile saved to localStorage');
+          console.log('ðŸ’¾ [Demo] Profile saved to localStorage');
         }
 
         // Notify parent component of the update
@@ -471,14 +471,14 @@ const UserProfileModal = ({
 
         // Refresh user context to update AI personalization (especially diet preference)
         if (user?.id) {
-          console.log("🔄 [Profile Update] Refreshing user context...");
+          console.log("ðŸ”„ [Profile Update] Refreshing user context...");
           getUserContext(user.id)
             .then(() =>
-              console.log("✅ [Profile Update] User context refreshed"),
+              console.log("âœ… [Profile Update] User context refreshed"),
             )
             .catch((error) =>
               console.error(
-                "❌ [Profile Update] Failed to refresh context:",
+                "âŒ [Profile Update] Failed to refresh context:",
                 error,
               ),
             );
@@ -486,7 +486,7 @@ const UserProfileModal = ({
 
         // Refetch profile data to show updated values immediately
         await fetchUserProfile();
-        console.log("✅ [Profile Update] Profile data refresched after save");
+        console.log("âœ… [Profile Update] Profile data refresched after save");
 
         // Show success message and keep modal open
         setSuccessMessage("Profile saved successfully!");
@@ -496,7 +496,7 @@ const UserProfileModal = ({
         throw new Error(data.message || "Failed to update profile");
       }
     } catch (err) {
-      console.error("❌ Error updating profile:", err);
+      console.error("âŒ Error updating profile:", err);
       setError(err.message || "Failed to save profile");
     } finally {
       setIsSaving(false);
@@ -557,7 +557,7 @@ const UserProfileModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
 
-      {/* ── Face Detection Toast Popup ─────────────────────── */}
+      {/* â”€â”€ Face Detection Toast Popup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showFaceToast && faceStatus !== "idle" && (
         <div
           className="fixed top-5 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-white rounded-2xl w-[92%] max-w-xs animate-[fadeSlideDown_0.25s_ease-out] overflow-hidden"
@@ -609,7 +609,7 @@ const UserProfileModal = ({
         </div>
       )}
 
-      {/* ── Crop Overlay ─────────────────────────────────────────── */}
+      {/* â”€â”€ Crop Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       {showCropper && rawImageSrc && (
         <div className="absolute inset-0 flex flex-col bg-black" style={{ zIndex: 60 }}>
           {/* Top bar */}
@@ -666,17 +666,17 @@ const UserProfileModal = ({
                 className="flex-1 h-2 accent-green-500"
               />
               <RotateCw className="w-4 h-4 text-white/60 flex-shrink-0" />
-              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{rotation}°</span>
+              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{rotation}Â°</span>
             </div>
 
-            {/* Icon buttons row — Rotate L / Reset / Rotate R */}
+            {/* Icon buttons row â€” Rotate L / Reset / Rotate R */}
             <div className="flex justify-center gap-2">
               <button
                 onClick={() => setRotation(r => r - 90)}
                 className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl bg-white/10 active:bg-white/25 border border-white/10"
               >
                 <RotateCcw className="w-4 h-4 text-white" />
-                <span className="text-white/80 text-xs font-medium">-90°</span>
+                <span className="text-white/80 text-xs font-medium">-90Â°</span>
               </button>
               <button
                 onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); setRotation(0); }}
@@ -690,7 +690,7 @@ const UserProfileModal = ({
                 className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl bg-white/10 active:bg-white/25 border border-white/10"
               >
                 <RotateCw className="w-4 h-4 text-white" />
-                <span className="text-white/80 text-xs font-medium">+90°</span>
+                <span className="text-white/80 text-xs font-medium">+90Â°</span>
               </button>
             </div>
           </div>
@@ -890,10 +890,10 @@ const UserProfileModal = ({
                         dietType ? "text-gray-900" : "text-gray-400"
                       }`}
                     >
-                      {dietType === "Vegetarian" && "🌱"}
-                      {dietType === "Non-Vegetarian" && "🍗"}
-                      {dietType === "Vegan" && "🥦"}
-                      {dietType === "Pescatarian" && "🐟"}
+                      {dietType === "Vegetarian" && "ðŸŒ±"}
+                      {dietType === "Non-Vegetarian" && "ðŸ—"}
+                      {dietType === "Vegan" && "ðŸ¥¦"}
+                      {dietType === "Pescatarian" && "ðŸŸ"}
                       {dietType || "Select diet preference"}
                     </span>
                     <ChevronDown
@@ -913,18 +913,18 @@ const UserProfileModal = ({
                         {
                           value: "Vegetarian",
                           label: "Vegetarian",
-                          icon: "🌱",
+                          icon: "ðŸŒ±",
                         },
                         {
                           value: "Non-Vegetarian",
                           label: "Non-Vegetarian",
-                          icon: "🍗",
+                          icon: "ðŸ—",
                         },
-                        { value: "Vegan", label: "Vegan", icon: "🥦" },
+                        { value: "Vegan", label: "Vegan", icon: "ðŸ¥¦" },
                         {
                           value: "Pescatarian",
                           label: "Pescatarian",
-                          icon: "🐟",
+                          icon: "ðŸŸ",
                         },
                       ].map((option) => (
                         <button

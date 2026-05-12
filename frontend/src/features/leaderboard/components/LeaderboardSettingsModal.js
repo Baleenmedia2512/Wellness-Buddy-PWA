@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { X, Settings, Trophy, Clock } from 'lucide-react';
-import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
 /**
  * Leaderboard Settings Modal

@@ -1,16 +1,16 @@
-/**
+﻿/**
  * ReminderSettingsPage.js
  *
- * Wellness Valley — Daily Activity Reminder Settings
+ * Wellness Valley â€” Daily Activity Reminder Settings
  *
  * Features:
- *  • Fetches activity time windows from the backend
- *  • Auto-computes default reminder = WindowStartTime − 15 min
- *  • Per-activity toggle + editable time (hour/minute scroll picker)
- *  • Master on/off toggle
- *  • Exact-alarm permission banner for Android 12+
- *  • Reset to defaults button
- *  • All changes saved to localStorage + scheduled via AlarmManager
+ *  â€¢ Fetches activity time windows from the backend
+ *  â€¢ Auto-computes default reminder = WindowStartTime âˆ’ 15 min
+ *  â€¢ Per-activity toggle + editable time (hour/minute scroll picker)
+ *  â€¢ Master on/off toggle
+ *  â€¢ Exact-alarm permission banner for Android 12+
+ *  â€¢ Reset to defaults button
+ *  â€¢ All changes saved to localStorage + scheduled via AlarmManager
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -32,7 +32,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Capacitor } from '@capacitor/core';
-import TouchFeedbackButton from '../components/TouchFeedbackButton';
+import TouchFeedbackButton from '../shared/components/TouchFeedbackButton';
 import {
   ACTIVITY_TYPES,
   ACTIVITY_LABELS,
@@ -49,9 +49,9 @@ import {
   formatReminderTime,
   subtractMinutes,
   parseTimeString,
-} from '../services/reminderService';
+} from '../shared/services/reminderService';
 
-// ── Activity icon/colour config ───────────────────────────────────────────────
+// â”€â”€ Activity icon/colour config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ACTIVITY_CONFIG = {
   weight: {
@@ -101,7 +101,7 @@ const ACTIVITY_CONFIG = {
   },
 };
 
-// ── Tiny Toggle component ─────────────────────────────────────────────────────
+// â”€â”€ Tiny Toggle component â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const Toggle = ({ enabled, onChange, disabled = false }) => (
   <button
@@ -119,14 +119,14 @@ const Toggle = ({ enabled, onChange, disabled = false }) => (
   </button>
 );
 
-// ── Scroll-wheel Time Picker ──────────────────────────────────────────────────
+// â”€â”€ Scroll-wheel Time Picker â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
   // 12-hour display values: 1..12
   const displayHours = Array.from({ length: 12 }, (_, i) => i + 1);
   const minutes      = Array.from({ length: 60 }, (_, i) => i);
 
-  // Convert 24h hour → 12h display & period
+  // Convert 24h hour â†’ 12h display & period
   const isPM         = hour >= 12;
   const display12    = hour % 12 === 0 ? 12 : hour % 12;
 
@@ -144,7 +144,7 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Convert selected 12h display + period → 24h and fire onChange
+  // Convert selected 12h display + period â†’ 24h and fire onChange
   function handleHourClick(h12) {
     let h24;
     if (isPM) {
@@ -180,12 +180,12 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
           onClick={onClose}
           className="text-xs font-bold text-green-600 px-3 py-1 rounded-lg bg-green-50 hover:bg-green-100 active:bg-green-200 transition-colors"
         >
-          ✓ Done
+          âœ“ Done
         </button>
       </div>
 
       <div className="flex h-44 p-3 gap-2">
-        {/* Hours (1–12) */}
+        {/* Hours (1â€“12) */}
         <div
           ref={hoursRef}
           className="flex-1 flex flex-col gap-1 overflow-y-auto no-scrollbar"
@@ -255,7 +255,7 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
   );
 };
 
-// ── Main Page ─────────────────────────────────────────────────────────────────
+// â”€â”€ Main Page â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 const ReminderSettingsPage = ({ onBack }) => {
   const [loading,       setLoading]       = useState(true);
@@ -269,7 +269,7 @@ const ReminderSettingsPage = ({ onBack }) => {
   const isNative   = Capacitor.isNativePlatform();
   const isAndroid  = Capacitor.getPlatform() === 'android';
 
-  // ── Load on mount ─────────────────────────────────────────────────────
+  // â”€â”€ Load on mount â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   const loadPreferences = useCallback(async () => {
     setLoading(true);
@@ -312,14 +312,14 @@ const ReminderSettingsPage = ({ onBack }) => {
     }
   }, [activePicker]);
 
-  // ── Toast helper ─────────────────────────────────────────────────────
+  // â”€â”€ Toast helper â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function showToast(type, msg) {
     setToast({ type, msg });
     setTimeout(() => setToast(null), 3000);
   }
 
-  // ── Preference mutations ─────────────────────────────────────────────
+  // â”€â”€ Preference mutations â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function setMaster(enabled) {
     setPrefs((prev) => ({ ...prev, masterEnabled: enabled }));
@@ -345,7 +345,7 @@ const ReminderSettingsPage = ({ onBack }) => {
     }));
   }
 
-  // ── Save ──────────────────────────────────────────────────────────────
+  // â”€â”€ Save â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleSave() {
     if (!prefs) return;
@@ -365,7 +365,7 @@ const ReminderSettingsPage = ({ onBack }) => {
     }
   }
 
-  // ── Reset to defaults ────────────────────────────────────────────────
+  // â”€â”€ Reset to defaults â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleReset() {
     setResetting(true);
@@ -381,7 +381,7 @@ const ReminderSettingsPage = ({ onBack }) => {
     }
   }
 
-  // ── Exact-alarm permission ───────────────────────────────────────────
+  // â”€â”€ Exact-alarm permission â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   async function handleGrantExactAlarm() {
     await openExactAlarmSettings();
@@ -392,7 +392,7 @@ const ReminderSettingsPage = ({ onBack }) => {
     }, 1500);
   }
 
-  // ── Compute "default reminder time" label ────────────────────────────
+  // â”€â”€ Compute "default reminder time" label â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   function getDefaultLabel(activity) {
   if (!activity?.windowEnd) return null;
@@ -402,7 +402,7 @@ const ReminderSettingsPage = ({ onBack }) => {
   return formatReminderTime(def.hour, def.minute);
   }
 
-  // ── Loading state ─────────────────────────────────────────────────────
+  // â”€â”€ Loading state â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   if (loading) {
     return (
@@ -417,14 +417,14 @@ const ReminderSettingsPage = ({ onBack }) => {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="w-14 h-14 border-4 border-green-400 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
-            <p className="text-sm font-medium text-gray-500">Loading reminders…</p>
+            <p className="text-sm font-medium text-gray-500">Loading remindersâ€¦</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── Main render ───────────────────────────────────────────────────────
+  // â”€â”€ Main render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div
@@ -433,7 +433,7 @@ const ReminderSettingsPage = ({ onBack }) => {
       onClick={() => setActivePicker(null)}
     >
 
-      {/* ── Header ───────────────────────────────────────────────────── */}
+      {/* â”€â”€ Header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div
         className="sticky top-0 z-40 shadow-sm"
         style={{ background: 'linear-gradient(135deg, #4caf79 0%, #2e7d52 100%)' }}
@@ -465,15 +465,15 @@ const ReminderSettingsPage = ({ onBack }) => {
             ariaLabel="Reset to defaults"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${resetting ? 'animate-spin' : ''}`} />
-            {resetting ? 'Resetting…' : 'Reset'}
+            {resetting ? 'Resettingâ€¦' : 'Reset'}
           </TouchFeedbackButton>
         </div>
       </div>
 
-      {/* ── Body ─────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div className="max-w-lg mx-auto w-full px-4 pt-5 space-y-3">
 
-        {/* ── Exact-alarm permission banner (Android 12 only) ──────── */}
+        {/* â”€â”€ Exact-alarm permission banner (Android 12 only) â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <AnimatePresence>
           {isAndroid && needsExactPerm && (
             <motion.div
@@ -503,7 +503,7 @@ const ReminderSettingsPage = ({ onBack }) => {
           )}
         </AnimatePresence>
 
-        {/* ── Master Toggle card ───────────────────────────────────── */}
+        {/* â”€â”€ Master Toggle card â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {prefs && (
           <div className={`rounded-2xl shadow-sm border px-4 py-4 flex items-center justify-between transition-all
             ${prefs.masterEnabled
@@ -521,7 +521,7 @@ const ReminderSettingsPage = ({ onBack }) => {
                   All Reminders
                 </p>
                 <p className={`text-xs ${prefs.masterEnabled ? 'text-green-100' : 'text-gray-500'}`}>
-                  {prefs.masterEnabled ? 'Notifications are on ✓' : 'All notifications off'}
+                  {prefs.masterEnabled ? 'Notifications are on âœ“' : 'All notifications off'}
                 </p>
               </div>
             </div>
@@ -529,7 +529,7 @@ const ReminderSettingsPage = ({ onBack }) => {
           </div>
         )}
 
-        {/* ── Per-activity cards ───────────────────────────────────── */}
+        {/* â”€â”€ Per-activity cards â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {prefs && ACTIVITY_TYPES.map((type) => {
           const activity = prefs.activities[type];
           if (!activity) return null;
@@ -562,7 +562,7 @@ const ReminderSettingsPage = ({ onBack }) => {
                   <p className="text-sm font-bold text-gray-900">{cfg.label}</p>
                   {activity.enabled && !masterOff ? (
                     <p className="text-xs font-semibold text-green-600">
-                      🔔 {formatReminderTime(activity.hour, activity.minute)}
+                      ðŸ”” {formatReminderTime(activity.hour, activity.minute)}
                     </p>
                   ) : (
                     activity.windowStart && (
@@ -652,8 +652,8 @@ const ReminderSettingsPage = ({ onBack }) => {
                         <p className={`text-[11px] font-medium mt-2 ml-1
                           ${isCustom ? 'text-amber-600' : 'text-green-600'}`}>
                           {isCustom
-                            ? `✏️ Custom — default is ${defaultTime}`
-                            : `⏰ ${REMINDER_OFFSET} min before ${cfg.label.toLowerCase()} window`}
+                            ? `âœï¸ Custom â€” default is ${defaultTime}`
+                            : `â° ${REMINDER_OFFSET} min before ${cfg.label.toLowerCase()} window`}
                         </p>
                       );
                     })()}
@@ -664,7 +664,7 @@ const ReminderSettingsPage = ({ onBack }) => {
           );
         })}
 
-        {/* ── Web notice ───────────────────────────────────────────── */}
+        {/* â”€â”€ Web notice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         {!isNative && (
           <div className="bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 flex gap-3 items-start">
             <Info className="h-4 w-4 text-gray-400 shrink-0 mt-0.5" />
@@ -676,7 +676,7 @@ const ReminderSettingsPage = ({ onBack }) => {
         )}
       </div>
 
-      {/* ── Sticky Save Button ───────────────────────────────────────────── */}
+      {/* â”€â”€ Sticky Save Button â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <div
         className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-6 pt-4"
         style={{ background: 'linear-gradient(to top, #f0faf2 65%, transparent)' }}
@@ -693,7 +693,7 @@ const ReminderSettingsPage = ({ onBack }) => {
             {saving ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                Saving…
+                Savingâ€¦
               </span>
             ) : (
               <span className="flex items-center justify-center gap-2">
@@ -705,7 +705,7 @@ const ReminderSettingsPage = ({ onBack }) => {
         </div>
       </div>
 
-      {/* ── Toast ────────────────────────────────────────────────────────── */}
+      {/* â”€â”€ Toast â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
       <AnimatePresence>
         {toast && (
           <motion.div

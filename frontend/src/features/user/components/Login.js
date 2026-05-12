@@ -1,8 +1,8 @@
-// src/components/Login.js
+﻿// src/components/Login.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
-import TermsAndConditions from '../../../components/TermsAndConditions';
-import PrivacyPolicy from '../../../components/PrivacyPolicy';
+import TermsAndConditions from '../../../shared/components/TermsAndConditions';
+import PrivacyPolicy from '../../../shared/components/PrivacyPolicy';
 import wellnessValleyIcon from '../../../assets/wellness-valley-icon.png';
 
 const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
@@ -81,14 +81,14 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
         setOtpVerified(true);
         setSuccessMessage('OTP verified successfully!');
 
-        // ✅ Save user info to localStorage (or state via prop)
+        // âœ… Save user info to localStorage (or state via prop)
         // Include isNewUser flag in the stored user data
         const userDataWithNewFlag = {
           ...data.user,
           isNewUser: data.isNewUser === true
         };
         localStorage.setItem('otpUser', JSON.stringify(userDataWithNewFlag));
-        console.log('📦 [Login] OTP verified, isNewUser:', data.isNewUser);
+        console.log('ðŸ“¦ [Login] OTP verified, isNewUser:', data.isNewUser);
 
         setTimeout(async () => {
           setSuccessMessage('');
@@ -235,7 +235,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                   <button
                     onClick={async () => {
                       sessionStorage.setItem('freshGoogleSignIn', 'true');
-                      console.log('🔐 [Login] Set freshGoogleSignIn flag before sign-in');
+                      console.log('ðŸ” [Login] Set freshGoogleSignIn flag before sign-in');
                       try {
                         await onSignIn();
                       } catch (error) {
@@ -351,7 +351,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 }}
                 className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200"
               >
-               ← Back to other options
+               â† Back to other options
               </button>
               */}
             </div>
@@ -441,7 +441,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
                 }}
                 className="w-full text-sm text-gray-500 hover:text-gray-700 transition-colors duration-200"
               >
-                ← Back to email entry
+                â† Back to email entry
               </button>
             </div>
           )}

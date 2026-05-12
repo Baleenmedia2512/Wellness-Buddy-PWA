@@ -1,14 +1,14 @@
-// src/pages/WellnessCounselling.js
+﻿// src/pages/WellnessCounselling.js
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
-import { SelfLogo, DirectLogo, FullTeamLogo } from "../components/common/DisciplineScoreLogos";
+import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { CapacitorHttp } from '@capacitor/core';
 import HierarchicalReportLayout, {
   LoadingSkeleton,
-} from "../components/common/HierarchicalReportLayout";
-import HierarchicalNode from "../components/common/HierarchicalNode";
-import WellnessCounsellingForm from "../components/WellnessCounselling/WellnessCounsellingForm";
-import TouchFeedbackButton from "../components/TouchFeedbackButton";
+} from "../shared/components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../shared/components/common/HierarchicalNode";
+import WellnessCounsellingForm from "../shared/components/WellnessCounselling/WellnessCounsellingForm";
+import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments
@@ -25,7 +25,7 @@ const WellnessCounselling = ({ user, onBack }) => {
   const [sortOrder, setSortOrder] = useState("asc"); // 'asc' = A-Z | 'desc' = Z-A
   
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct ↔ Full switch
+  const lastExpandState = useRef(null); // remembers last expand/collapse for Direct â†” Full switch
 
   // Form states
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -42,14 +42,14 @@ const WellnessCounselling = ({ user, onBack }) => {
       throw new Error("User email is required but not provided");
     }
     
-    console.log('🔍 [WellnessCounselling] Looking up user ID for:', email);
+    console.log('ðŸ” [WellnessCounselling] Looking up user ID for:', email);
     
     const response = await CapacitorHttp.get({
       url: `${apiBaseUrl}/api/user/lookup?email=${encodeURIComponent(email)}`
     });
     const data = response.data;
     
-    console.log('📋 [WellnessCounselling] Lookup response:', data);
+    console.log('ðŸ“‹ [WellnessCounselling] Lookup response:', data);
     
     if (!data.success) {
       throw new Error(data.message || "User not found");
@@ -59,17 +59,17 @@ const WellnessCounselling = ({ user, onBack }) => {
 
   const fetchData = async (isBackground = false) => {
     if (!user) {
-      console.warn('⚠️ [WellnessCounselling] No user object provided');
+      console.warn('âš ï¸ [WellnessCounselling] No user object provided');
       setError("User information not available. Please log in again.");
       return;    }
 
     if (!user.email) {
-      console.warn('⚠️ [WellnessCounselling] User object missing email:', user);
+      console.warn('âš ï¸ [WellnessCounselling] User object missing email:', user);
       setError("User email not available. Please log in again.");
       return;
     }
 
-    console.log('👤 [WellnessCounselling] User object:', { 
+    console.log('ðŸ‘¤ [WellnessCounselling] User object:', { 
       email: user.email, 
       name: user.name,
       id: user.id 
@@ -86,7 +86,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       const userId = await getUserId(user.email);
       
       // Use new dual coaching hierarchy endpoint that fetches both hierarchy and assessments
-      console.log('📋 [WellnessCounselling] Fetching hierarchical assessments...');
+      console.log('ðŸ“‹ [WellnessCounselling] Fetching hierarchical assessments...');
       const response = await CapacitorHttp.get({
         url: `${apiBaseUrl}/api/counselling/hierarchical-assessments?userId=${userId}`,
         headers: { "Cache-Control": "no-cache" }
@@ -98,7 +98,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       
       const result = response.data;
       
-      console.log('📋 [WellnessCounselling] Full API response:', result);
+      console.log('ðŸ“‹ [WellnessCounselling] Full API response:', result);
       
       if (!result.success) {
         throw new Error(result.message || "Failed to fetch team data");
@@ -108,8 +108,8 @@ const WellnessCounselling = ({ user, onBack }) => {
       const hierarchyData = result.data;
       const assessments = result.assessments || {};
       
-      console.log('✅ [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
-      console.log('🔍 [WellnessCounselling] Assessment userIds (types):', 
+      console.log('âœ… [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
+      console.log('ðŸ” [WellnessCounselling] Assessment userIds (types):', 
         Object.keys(assessments).map(k => `${k} (${typeof k})`).join(', '));
       
       // IMPORTANT: Ensure assessment keys are numbers to match node.userId
@@ -119,23 +119,23 @@ const WellnessCounselling = ({ user, onBack }) => {
         normalizedAssessments[numKey] = assessments[key];
       });
       
-      console.log('🔧 [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
+      console.log('ðŸ”§ [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
       
       // Set assessment data first
       setAssessmentData(normalizedAssessments);
       
       if (!hierarchyData) {
-        console.warn('⚠️ [WellnessCounselling] No hierarchy data returned');
+        console.warn('âš ï¸ [WellnessCounselling] No hierarchy data returned');
         setHierarchyData(null);
         return;
       }
       
-      console.log('📋 [WellnessCounselling] Raw hierarchy data:', hierarchyData);
+      console.log('ðŸ“‹ [WellnessCounselling] Raw hierarchy data:', hierarchyData);
 
       // Map field names for HierarchicalNode component
       const mapFields = (node) => {
         if (!node) {
-          console.warn('⚠️ [WellnessCounselling] mapFields received null/undefined node');
+          console.warn('âš ï¸ [WellnessCounselling] mapFields received null/undefined node');
           return null;
         }
         
@@ -145,7 +145,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         // Metrics already added by backend, but ensure consistency
         if (!mapped.metrics) {
           const hasCounselling = normalizedAssessments[node.userId];
-          console.log(`🔍 [WellnessCounselling] Checking userId ${node.userId} (${typeof node.userId}):`, hasCounselling ? 'HAS assessment' : 'NO assessment');
+          console.log(`ðŸ” [WellnessCounselling] Checking userId ${node.userId} (${typeof node.userId}):`, hasCounselling ? 'HAS assessment' : 'NO assessment');
           mapped.metrics = {
             hasCounselling: !!hasCounselling,
             counsellingDate: hasCounselling?.submittedAt,
@@ -167,7 +167,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         throw new Error("Failed to process team hierarchy data");
       }
       
-      console.log('✅ [WellnessCounselling] Mapped hierarchy:', mappedData);
+      console.log('âœ… [WellnessCounselling] Mapped hierarchy:', mappedData);
       
       setHierarchyData(mappedData);
       
@@ -368,7 +368,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {/* Assessment info */}
             <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
               <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
-              <span className="text-gray-400">•</span>
+              <span className="text-gray-400">â€¢</span>
               <span>{new Date(assessment.submittedAt).toLocaleDateString()}</span>
             </div>
             <TouchFeedbackButton
@@ -383,7 +383,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {/* Info note when starting assessment */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
               <p className="text-xs text-blue-800">
-                💡 Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
+                ðŸ’¡ Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
               </p>
             </div>
             <TouchFeedbackButton
@@ -509,7 +509,7 @@ const WellnessCounselling = ({ user, onBack }) => {
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <HierarchicalReportLayout
         title="Wellness Counselling"
-        subtitle={`${stats.total} Members • ${stats.counselled} Counselled`}
+        subtitle={`${stats.total} Members â€¢ ${stats.counselled} Counselled`}
         onBack={onBack}
         onRefresh={handleManualRefresh}
         loading={refreshing}
@@ -582,9 +582,9 @@ const WellnessCounselling = ({ user, onBack }) => {
         selectedMember={selectedMember}
         onSaveSuccess={async () => {
           // Refresh data from API first, THEN close form
-          console.log('💾 [WellnessCounselling] Assessment saved, refreshing data...');
+          console.log('ðŸ’¾ [WellnessCounselling] Assessment saved, refreshing data...');
           await fetchData(true);
-          console.log('✅ [WellnessCounselling] Data refreshed, closing form');
+          console.log('âœ… [WellnessCounselling] Data refreshed, closing form');
           setIsFormOpen(false);
           setSelectedMember(null);
         }}
@@ -623,7 +623,7 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
             className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
             ariaLabel="Close"
           >
-            ✕
+            âœ•
           </TouchFeedbackButton>
         </div>
 

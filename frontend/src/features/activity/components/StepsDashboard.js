@@ -1,11 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Footprints, Flame, TrendingUp, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import {
   LineChart, Line, XAxis, YAxis, LabelList, ReferenceLine, ResponsiveContainer
 } from 'recharts';
-import { fetchDailyActivity } from '../services/dailyActivityService';
-import LoadingSpinner from '../../../components/LoadingSpinner';
-import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
+import { fetchDailyActivity } from '../shared/services/dailyActivityService';
+import LoadingSpinner from '../../../shared/components/LoadingSpinner';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
 const CALORIES_PER_STEP = 0.04;
 const STEP_GOAL = 10000;
@@ -248,7 +248,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
   return (
     <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-3 md:px-4 pt-3 md:pt-5 pb-8 space-y-4">
 
-      {/* ── Date Navigation ── */}
+      {/* â”€â”€ Date Navigation â”€â”€ */}
       <div className="bg-white border-b border-gray-200 shadow-sm rounded-2xl">
         {!isControlled && (
           <div className="flex items-center justify-between px-4 pt-2 pb-0">
@@ -366,7 +366,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
         </div>
       </div>
 
-      {/* ── Inline Calendar ── */}
+      {/* â”€â”€ Inline Calendar â”€â”€ */}
       {!isControlled && (
       <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out rounded-2xl ${
         showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
@@ -456,7 +456,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
       </div>
       )}
 
-      {/* ── Summary / Trend Card ── */}
+      {/* â”€â”€ Summary / Trend Card â”€â”€ */}
       <div className={`w-full bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
         showContent ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-6'
       }`}>
@@ -493,7 +493,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
             className="flex items-start w-[200%] transition-transform duration-500 ease-out"
             style={{ transform: activePanel === 'summary' ? 'translateX(0%)' : 'translateX(-50%)' }}
           >
-            {/* ── Summary Panel ── */}
+            {/* â”€â”€ Summary Panel â”€â”€ */}
             <div ref={summaryRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-5">
               <div className="flex flex-col items-center mt-2">
                 {/* Ring */}
@@ -537,7 +537,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
                     />
                   </div>
                   {stepProgress >= 1 && (
-                    <p className="text-xs text-emerald-600 font-semibold text-center mt-1">🎉 Goal reached!</p>
+                    <p className="text-xs text-emerald-600 font-semibold text-center mt-1">ðŸŽ‰ Goal reached!</p>
                   )}
                 </div>
 
@@ -557,7 +557,7 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
               </div>
             </div>
 
-            {/* ── Trend Panel ── */}
+            {/* â”€â”€ Trend Panel â”€â”€ */}
             <div ref={trendRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-5">
               {/* Trend range selector */}
               <div className="flex items-center justify-between mt-2 mb-3">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import {
   ArrowLeft,
   TrendingUp,
@@ -17,8 +17,8 @@ import {
 import { Capacitor } from "@capacitor/core";
 import "../../../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
-import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
-import { geminiService } from "../../../services/geminiService";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
+import { geminiService } from "../../../shared/services/geminiService";
 import {
   LineChart,
   Line,
@@ -89,7 +89,7 @@ const NutritionDashboard = ({
   const [calorieTarget, setCalorieTarget] = useState(1500);
 
   // Burned calories split by source: steps (from DB) + watch (from DB via education_logs_table)
-  // const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity — STEP COUNTER DISABLED
+  // const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity â€” STEP COUNTER DISABLED
   const stepsBurned = 0; // Step counter disabled
   const [dbWatchBurned, setDbWatchBurned] = useState(0); // from education_logs_table (today's watch entries)
   // Use the highest of: DB watch value OR the just-uploaded prop (in case DB hasn't been committed yet)
@@ -113,7 +113,7 @@ const NutritionDashboard = ({
   const trendPanelRef = useRef(null);
 
   const resolveUserId = useCallback(async () => {
-    // 🔒 Demo account — return sentinel so dashboard renders empty instead of erroring
+    // ðŸ”’ Demo account â€” return sentinel so dashboard renders empty instead of erroring
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     if (DEMO_ACCOUNTS.includes((user?.email || '').toLowerCase().trim())) {
       return 'DEMO_USER';
@@ -143,8 +143,8 @@ const NutritionDashboard = ({
     if (selectedMeal) {
       const foodData = parseAnalysisData(selectedMeal.AnalysisData);
 
-      // 🔍 DEBUG: Log what we're loading from database
-      console.log("🔍 [NutritionDashboard] Loading from database:", {
+      // ðŸ” DEBUG: Log what we're loading from database
+      console.log("ðŸ” [NutritionDashboard] Loading from database:", {
         foods: foodData.detailedItems?.map((item) => ({
           name: item.name,
           weight_g: item.weight_g,
@@ -191,7 +191,7 @@ const NutritionDashboard = ({
           (item.volume_ml !== null && item.volume_ml !== undefined) ||
           isLiquidByName;
 
-        // ✅ Get the correct value based on liquid/solid
+        // âœ… Get the correct value based on liquid/solid
         const actualGrams = isLiquid
           ? item.volume_ml || item.grams || item.weight_g || 100
           : item.weight_g || item.grams || item.volume_ml || 100;
@@ -220,8 +220,8 @@ const NutritionDashboard = ({
           grams: actualGrams,
           unit: unit,
           isLiquid: isLiquid,
-          per100g: per100g, // ✅ Add per100g for editing calculations
-          // 🔴 CRITICAL: Preserve correction metadata if it exists
+          per100g: per100g, // âœ… Add per100g for editing calculations
+          // ðŸ”´ CRITICAL: Preserve correction metadata if it exists
           // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
           originalAiName: item.originalAiName || null, // Use null instead of fallback
           wasAutoCorrected:
@@ -231,7 +231,7 @@ const NutritionDashboard = ({
           // Flag to indicate this item needs reverse-lookup
           needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
         };
-        console.log("🔍 [NutritionDashboard] Transformed item:", {
+        console.log("ðŸ” [NutritionDashboard] Transformed item:", {
           name: item.name,
           originalAiName: transformed.originalAiName,
           wasAutoCorrected: transformed.wasAutoCorrected,
@@ -297,7 +297,7 @@ const NutritionDashboard = ({
         const itemRef = itemRefs.current[index];
         // Check if this item is currently editing
         if (itemRef && editingStates[index] && itemRef.save) {
-          console.log(`💾 Saving item ${index} before closing...`);
+          console.log(`ðŸ’¾ Saving item ${index} before closing...`);
           return itemRef.save();
         }
         return Promise.resolve();
@@ -305,9 +305,9 @@ const NutritionDashboard = ({
 
       // Wait for all saves to complete
       await Promise.all(savePromises);
-      console.log("✅ All items saved successfully");
+      console.log("âœ… All items saved successfully");
     } catch (error) {
-      console.error("❌ Error saving items:", error);
+      console.error("âŒ Error saving items:", error);
       // Continue to close even if save fails - items already handle errors
     } finally {
       setIsSaving(false);
@@ -356,7 +356,7 @@ const NutritionDashboard = ({
         (item.volume_ml !== null && item.volume_ml !== undefined) ||
         isLiquidByName;
 
-      // ✅ Get the correct value based on liquid/solid
+      // âœ… Get the correct value based on liquid/solid
       const actualGrams = isLiquid
         ? item.volume_ml || item.grams || item.weight_g || 100
         : item.weight_g || item.grams || item.volume_ml || 100;
@@ -375,7 +375,7 @@ const NutritionDashboard = ({
         grams: actualGrams,
         unit: unit,
         isLiquid: isLiquid,
-        // 🔴 CRITICAL: Preserve correction metadata if it exists
+        // ðŸ”´ CRITICAL: Preserve correction metadata if it exists
         originalAiName: item.originalAiName || null, // Use null instead of fallback
         wasAutoCorrected:
           item.wasAutoCorrected || (item.originalAiName ? true : false),
@@ -856,7 +856,7 @@ const NutritionDashboard = ({
           return;
         }
 
-        // ✅ TIMEZONE FIX: Use local date formatting instead of toISOString()
+        // âœ… TIMEZONE FIX: Use local date formatting instead of toISOString()
         // toISOString() converts to UTC which can shift the date for users in positive UTC offsets
         const dateString =
           date.getFullYear() +
@@ -881,7 +881,7 @@ const NutritionDashboard = ({
         if (data.success) {
           let list = data.data || [];
 
-          // 🔒 Demo account — merge localStorage meals for the selected date
+          // ðŸ”’ Demo account â€” merge localStorage meals for the selected date
           if (actualUserId === 'DEMO_USER') {
             try {
               const demoMeals = JSON.parse(localStorage.getItem('demo_meals') || '[]');
@@ -910,8 +910,8 @@ const NutritionDashboard = ({
     if (user) fetchDayAnalyses(selectedDate);
   }, [user, selectedDate, fetchDayAnalyses]);
 
-  // ─── Fetch burned calories from daily_step_activity for the selected date ────
-  // STEP COUNTER DISABLED — entire fetchBurnedCalories function commented out
+  // â”€â”€â”€ Fetch burned calories from daily_step_activity for the selected date â”€â”€â”€â”€
+  // STEP COUNTER DISABLED â€” entire fetchBurnedCalories function commented out
   /*
   const fetchBurnedCalories = useCallback(
     async (date) => {
@@ -931,7 +931,7 @@ const NutritionDashboard = ({
           { cache: "no-store", headers: { "Cache-Control": "no-cache", Pragma: "no-cache" } },
         );
         const json = await res.json();
-        // API returns { trend/data: [...] } — find the entry matching today's date
+        // API returns { trend/data: [...] } â€” find the entry matching today's date
         const rows = json?.trend || json?.data || [];
         const todayRow = rows.find((r) => r.date === dateStr || r.activityDate === dateStr);
         const burned = todayRow?.caloriesBurned ?? todayRow?.CaloriesBurned ?? 0;
@@ -951,7 +951,7 @@ const NutritionDashboard = ({
   }, [user, selectedDate, fetchBurnedCalories]);
   */
 
-  // ─── Fetch watch-burned calories from education_logs_table for the selected date ─
+  // â”€â”€â”€ Fetch watch-burned calories from education_logs_table for the selected date â”€
   const fetchWatchBurnedCalories = useCallback(
     async (date) => {
       if (!user) return;
@@ -981,9 +981,9 @@ const NutritionDashboard = ({
   useEffect(() => {
     if (user) fetchWatchBurnedCalories(selectedDate);
   }, [user, selectedDate, fetchWatchBurnedCalories, watchBurnedCalories]);
-  // ↑ also re-fetch when watchBurnedCalories changes (just saved a new watch image)
+  // â†‘ also re-fetch when watchBurnedCalories changes (just saved a new watch image)
 
-  // ─── Smartwatch screenshot handler ───────────────────────────────────────
+  // â”€â”€â”€ Smartwatch screenshot handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleWatchScreenshot = useCallback(
     async (e) => {
       const file = e.target.files?.[0];
@@ -996,9 +996,9 @@ const NutritionDashboard = ({
         const result = await geminiService.analyzeWatchScreenshot(file);
         if (result.caloriesBurned > 0) {
           // NOTE: watch calories are managed via App.js watchBurnedCalories state (prop).
-          // This legacy handler is no longer used — upload happens on main page via WatchActivityCard.
+          // This legacy handler is no longer used â€” upload happens on main page via WatchActivityCard.
           console.log(
-            `[BurnToBalance] 📷 Extracted ${result.caloriesBurned} kcal burned from ${result.source} (confidence: ${result.confidence})`,
+            `[BurnToBalance] ðŸ“· Extracted ${result.caloriesBurned} kcal burned from ${result.source} (confidence: ${result.confidence})`,
           );
         } else {
           console.warn("[BurnToBalance] Could not extract calories from screenshot.");
@@ -1164,18 +1164,18 @@ const NutritionDashboard = ({
             // Use BMR from profile, fallback to 1500 if not available
             setCalorieTarget(Math.round(data.data.latestBmr));
             console.log(
-              "🔥 [NutritionDashboard] BMR loaded from profile:",
+              "ðŸ”¥ [NutritionDashboard] BMR loaded from profile:",
               data.data.latestBmr,
             );
           } else {
             console.log(
-              "⚠️ [NutritionDashboard] No BMR in profile, using default 1500",
+              "âš ï¸ [NutritionDashboard] No BMR in profile, using default 1500",
             );
             setCalorieTarget(1500);
           }
         }
       } catch (err) {
-        console.error("❌ [NutritionDashboard] Failed to fetch BMR:", err);
+        console.error("âŒ [NutritionDashboard] Failed to fetch BMR:", err);
         // Keep default fallback of 1500
       }
     };
@@ -1194,14 +1194,14 @@ const NutritionDashboard = ({
     };
   }, [user?.email, apiBaseUrl, bmrUpdateKey]);
 
-  // ✅ UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
+  // âœ… UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {
     const initialMeals = analyses.slice(0, MEALS_PER_PAGE);
     setDisplayedMeals(initialMeals);
     setHasMoreMeals(analyses.length > MEALS_PER_PAGE);
   }, [analyses]);
 
-  // ✅ INFINITE SCROLL: Load more meals when sentinel is visible
+  // âœ… INFINITE SCROLL: Load more meals when sentinel is visible
   useEffect(() => {
     if (!sentinelRef.current || !hasMoreMeals || loadingMore) return;
 
@@ -1286,7 +1286,7 @@ const NutritionDashboard = ({
       CreatedAt: mealToDelete.CreatedAt,
     };
 
-    // Replace in place (critical for no flicker / no “floating delete”)
+    // Replace in place (critical for no flicker / no â€œfloating deleteâ€)
     setAnalyses((prev) => {
       const idx = prev.findIndex((m) => m.ID === mealToDelete.ID);
       if (idx === -1) return prev;
@@ -1488,7 +1488,7 @@ const NutritionDashboard = ({
 
         <div className="flex-1 min-w-0">
           <p className="text-sm text-gray-800 truncate">
-            <span className="font-medium">Removed</span> “{foodName}”
+            <span className="font-medium">Removed</span> â€œ{foodName}â€
           </p>
           <p className="text-[11px] text-amber-700/80">
             Undo available for {remainingSecs}s
@@ -1575,7 +1575,7 @@ const NutritionDashboard = ({
           {undoing ? (
             <>
               <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-              Restoring…
+              Restoringâ€¦
             </>
           ) : (
             <>
@@ -1625,7 +1625,7 @@ const NutritionDashboard = ({
             hint: `${Math.abs(caloriesDelta)} kcal below target`,
           };
 
-  // ─── Burn-to-Balance derived values ──────────────────────────────────────
+  // â”€â”€â”€ Burn-to-Balance derived values â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isOverTarget   = consumedCalories > calorieTarget;
   const extraCalories  = isOverTarget ? Math.round(consumedCalories - calorieTarget) : 0;
   const burnProgress   = extraCalories > 0
@@ -2057,7 +2057,7 @@ const NutritionDashboard = ({
                 }
 
                 // Add days from next month to fill the grid
-                const remainingCells = 42 - days.length; // 6 rows × 7 days
+                const remainingCells = 42 - days.length; // 6 rows Ã— 7 days
                 for (let day = 1; day <= remainingCells; day++) {
                   const nextDate = new Date(year, month + 1, day);
                   days.push({
@@ -2177,7 +2177,7 @@ const NutritionDashboard = ({
                   <AlertCircle className="w-9 h-9 md:w-11 md:h-11 text-red-400" />
                 </div>
               ) : (
-                <div className="text-5xl md:text-7xl mb-4 md:mb-6">😔</div>
+                <div className="text-5xl md:text-7xl mb-4 md:mb-6">ðŸ˜”</div>
               )}
               <div className="text-red-600 mb-3 md:mb-4 text-lg md:text-xl font-semibold">
                 {error}
@@ -2289,7 +2289,7 @@ const NutritionDashboard = ({
                         />
                       </div>
 
-                      {/* ── Burn to Balance (always visible) ── */}
+                      {/* â”€â”€ Burn to Balance (always visible) â”€â”€ */}
                       {(isOverTarget || burnedCalories > 0 || true) && (
                         <div className="mb-4 rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-red-50 p-3">
                           <div className="flex items-center justify-between mb-2">
@@ -2298,10 +2298,10 @@ const NutritionDashboard = ({
                                 Burn to Balance
                               </p>
                             </div>
-                            {/* Status badge — only show when balanced */}
+                            {/* Status badge â€” only show when balanced */}
                             {isBalanced && (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-100 text-emerald-700">
-                                ✅ Balanced
+                                âœ… Balanced
                               </span>
                             )}
                           </div>
@@ -2325,21 +2325,21 @@ const NutritionDashboard = ({
                                 </p>
                               )}
                               {/* Show breakdown when both sources have data */}
-                              {/* STEP COUNTER DISABLED — steps breakdown hidden
+                              {/* STEP COUNTER DISABLED â€” steps breakdown hidden
                               {stepsBurned > 0 && watchBurned > 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
-                                  👟 {stepsBurned} steps + ⌚ {watchBurned} watch
+                                  ðŸ‘Ÿ {stepsBurned} steps + âŒš {watchBurned} watch
                                 </p>
                               )}
                               {stepsBurned > 0 && watchBurned === 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
-                                  👟 From daily steps
+                                  ðŸ‘Ÿ From daily steps
                                 </p>
                               )}
                               */}
                               {watchBurned > 0 && stepsBurned === 0 && (
                                 <p className="text-[10px] text-gray-400 mt-0.5">
-                                  ⌚ From smartwatch
+                                  âŒš From smartwatch
                                 </p>
                               )}
                             </div>
@@ -2603,7 +2603,7 @@ const NutritionDashboard = ({
                           </div>
                         </div>
                       ) : (
-                        <div className="text-6xl mb-4">🥗</div>
+                        <div className="text-6xl mb-4">ðŸ¥—</div>
                       )}
                       <h3 className="text-xl font-semibold text-gray-800 mb-2">
                         No Meals Logged
@@ -2616,7 +2616,7 @@ const NutritionDashboard = ({
                   );
                 }
 
-                // ✅ GROUP DISPLAYED MEALS (not all analyses)
+                // âœ… GROUP DISPLAYED MEALS (not all analyses)
                 const groupedDisplayedMeals = displayedMeals.reduce(
                   (acc, analysis) => {
                     const category = getMealCategory(analysis.CreatedAt);
@@ -2731,7 +2731,7 @@ const NutritionDashboard = ({
                       );
                     })}
 
-                    {/* ✅ INFINITE SCROLL SENTINEL */}
+                    {/* âœ… INFINITE SCROLL SENTINEL */}
                     {hasMoreMeals && (
                       <div
                         ref={sentinelRef}
@@ -3238,7 +3238,7 @@ const NutritionDashboard = ({
                         {deletingId === selectedMeal?.ID ? (
                           <>
                             <span className="inline-block h-4 w-4 rounded-full border-2 border-white/70 border-t-white animate-spin" />
-                            Deleting…
+                            Deletingâ€¦
                           </>
                         ) : (
                           <>
@@ -3300,7 +3300,7 @@ const MealCard = ({
   const elRef = React.useRef(null);
   const draggingRef = React.useRef(false);
   const armedRef = React.useRef(false);
-  const touchBlockedRef = React.useRef(false); // vertical scroll — ignore this card
+  const touchBlockedRef = React.useRef(false); // vertical scroll â€” ignore this card
 
   const cancelRAF = () => {
     if (rafRef.current) {
@@ -3357,7 +3357,7 @@ const MealCard = ({
     });
   };
 
-  // ── Touch Events (iOS primary path) ──────────────────────────────────────
+  // â”€â”€ Touch Events (iOS primary path) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onTouchStart = (e) => {
     if (leaving) return;
     touchBlockedRef.current = false;
@@ -3376,7 +3376,7 @@ const MealCard = ({
     const deltaX = t.clientX - startXRef.current;
     const deltaY = t.clientY - startYRef.current;
 
-    // If movement is more vertical than horizontal, treat as scroll — cancel swipe
+    // If movement is more vertical than horizontal, treat as scroll â€” cancel swipe
     if (!touchBlockedRef.current && Math.abs(deltaY) > Math.abs(deltaX) + 5) {
       touchBlockedRef.current = true;
       draggingRef.current = false;
@@ -3395,7 +3395,7 @@ const MealCard = ({
   const onTouchEnd = () => { finishGesture(); };
   const onTouchCancel = () => { finishGesture(); };
 
-  // ── Pointer Events (Android / desktop fallback) ───────────────────────────
+  // â”€â”€ Pointer Events (Android / desktop fallback) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const onPointerDown = (e) => {
     if (!e.isPrimary || leaving || e.pointerType === "touch") return;
     cancelRAF();
@@ -3422,7 +3422,7 @@ const MealCard = ({
   const scale = leaving ? 1 : 1 - Math.min(0.03, Math.abs(dx) / 1000);
 
   return (
-    // Keep a fixed height so layout doesn’t jump while swapping for placeholder
+    // Keep a fixed height so layout doesnâ€™t jump while swapping for placeholder
     <div
       className="relative w-full"
       style={{ touchAction: dragging ? "none" : "pan-y", height: 84 }}
@@ -3537,7 +3537,7 @@ const MealCard = ({
                 }}
               />
             ) : (
-              <span className="text-2xl">🍽️</span>
+              <span className="text-2xl">ðŸ½ï¸</span>
             )}
           </div>
 

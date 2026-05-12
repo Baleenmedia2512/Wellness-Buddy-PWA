@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   DollarSign,
@@ -20,11 +20,11 @@ import {
   Edit3,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getUsdToInrRate } from "../../../services/tokenCost/tokenCostConfig";
-import { clearUserPricingCache } from "../../../services/tokenCost/userPricingManager";
-import { clearPricingCache } from "../../../services/tokenCost/tokenCostConfig";
+import { getUsdToInrRate } from "../../../shared/services/tokenCost/tokenCostConfig";
+import { clearUserPricingCache } from "../../../shared/services/tokenCost/userPricingManager";
+import { clearPricingCache } from "../../../shared/services/tokenCost/tokenCostConfig";
 import { App as CapacitorApp } from "@capacitor/app";
-import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
+import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 import { istToLocalDate, formatISTToLocalDate } from "../../../utils/timezoneUtils";
 
 const DateRangePicker = ({ startDate, endDate, onSelect, onClose }) => {
@@ -453,13 +453,13 @@ const AdminDashboard = ({ user, onClose }) => {
               inputPerMillion: pricing.inputPerMillion.toFixed(2),
               outputPerMillion: pricing.outputPerMillion.toFixed(2),
             });
-            console.log("📊 Loaded pricing from DB on mount:", pricing);
+            console.log("ðŸ“Š Loaded pricing from DB on mount:", pricing);
           }
         } else {
-          console.warn("⚠️ Failed to fetch pricing from DB");
+          console.warn("âš ï¸ Failed to fetch pricing from DB");
         }
       } catch (error) {
-        console.error("❌ Error fetching pricing from DB:", error);
+        console.error("âŒ Error fetching pricing from DB:", error);
       }
     };
 
@@ -517,7 +517,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputPerMillion: pricing.inputPerMillion.toFixed(2),
                 outputPerMillion: pricing.outputPerMillion.toFixed(2),
               });
-              console.log("📊 Loaded pricing config:", pricing);
+              console.log("ðŸ“Š Loaded pricing config:", pricing);
             }
           }
 
@@ -537,7 +537,7 @@ const AdminDashboard = ({ user, onClose }) => {
           }
 
           console.log(
-            `🔍 Checking for saved correction (timeRange: ${timeRange})`,
+            `ðŸ” Checking for saved correction (timeRange: ${timeRange})`,
           );
 
           // Check if there's a saved correction in the database for this time range
@@ -562,7 +562,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
               // Use saved correction (always use it for this timeRange if it exists)
               console.log(
-                "✅ Found saved correction for timeRange:",
+                "âœ… Found saved correction for timeRange:",
                 timeRange,
               );
               const costs = {
@@ -594,13 +594,13 @@ const AdminDashboard = ({ user, onClose }) => {
               return; // Exit early - we found saved correction
             } else {
               console.log(
-                "⚠️ No saved correction found for timeRange:",
+                "âš ï¸ No saved correction found for timeRange:",
                 timeRange,
               );
             }
           } else {
             console.log(
-              "⚠️ Failed to fetch correction:",
+              "âš ï¸ Failed to fetch correction:",
               correctionResponse.status,
             );
           }
@@ -608,7 +608,7 @@ const AdminDashboard = ({ user, onClose }) => {
           // No saved correction found - use dashboard summary data if available
           if (tokenData && tokenData.summary) {
             console.log(
-              "📊 Using current dashboard summary data (no saved correction)",
+              "ðŸ“Š Using current dashboard summary data (no saved correction)",
             );
             const summaryData = tokenData.summary;
             const costs = {
@@ -638,7 +638,7 @@ const AdminDashboard = ({ user, onClose }) => {
           }
 
           // No saved correction and no dashboard summary - fetch calculated totals
-          console.log("📊 Fetching calculated totals from API");
+          console.log("ðŸ“Š Fetching calculated totals from API");
 
           // Helper function for formatting dates
           const formatLocalDate = (date) => {
@@ -748,13 +748,13 @@ const AdminDashboard = ({ user, onClose }) => {
             : originalINRCosts.inputCost.toFixed(4),
       }));
       console.log(
-        "🔄 Restored original Input INR cost:",
+        "ðŸ”„ Restored original Input INR cost:",
         originalINRCosts.inputCost.toFixed(4),
       );
       return;
     }
 
-    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
+    // Calculate INR cost: (tokens / 1,000,000) Ã— USD_per_million Ã— exchange_rate
     const newInputCost =
       (totalTokenCounts.inputTokens / 1000000) * inputPerMillion * exchangeRate;
 
@@ -768,7 +768,7 @@ const AdminDashboard = ({ user, onClose }) => {
       inputCost: newInputCost === 0 ? "0" : newInputCost.toFixed(4),
     }));
 
-    console.log("🔄 Recalculated Input INR cost:", {
+    console.log("ðŸ”„ Recalculated Input INR cost:", {
       inputTokens: totalTokenCounts.inputTokens,
       inputPerMillion,
       exchangeRate,
@@ -803,13 +803,13 @@ const AdminDashboard = ({ user, onClose }) => {
             : originalINRCosts.outputCost.toFixed(4),
       }));
       console.log(
-        "🔄 Restored original Output INR cost:",
+        "ðŸ”„ Restored original Output INR cost:",
         originalINRCosts.outputCost.toFixed(4),
       );
       return;
     }
 
-    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
+    // Calculate INR cost: (tokens / 1,000,000) Ã— USD_per_million Ã— exchange_rate
     const newOutputCost =
       (totalTokenCounts.outputTokens / 1000000) *
       outputPerMillion *
@@ -825,7 +825,7 @@ const AdminDashboard = ({ user, onClose }) => {
       outputCost: newOutputCost === 0 ? "0" : newOutputCost.toFixed(4),
     }));
 
-    console.log("🔄 Recalculated Output INR cost:", {
+    console.log("ðŸ”„ Recalculated Output INR cost:", {
       outputTokens: totalTokenCounts.outputTokens,
       outputPerMillion,
       exchangeRate,
@@ -862,7 +862,7 @@ const AdminDashboard = ({ user, onClose }) => {
         endDate: timeRange === "custom" ? formatLocalDate(customEndDate) : null,
       };
 
-      console.log("💾 Saving correction for time range:", timeRange);
+      console.log("ðŸ’¾ Saving correction for time range:", timeRange);
 
       const response = await fetch(`${apiBaseUrl}/api/token/correction`, {
         method: "POST",
@@ -878,12 +878,12 @@ const AdminDashboard = ({ user, onClose }) => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        console.log("✅ Token correction saved successfully:", data.data);
+        console.log("âœ… Token correction saved successfully:", data.data);
 
         // Clear ALL pricing caches so new pricing is fetched on next use
         clearUserPricingCache(user?.email);
         clearPricingCache(user?.email);
-        console.log("🗑️ All pricing caches cleared");
+        console.log("ðŸ—‘ï¸ All pricing caches cleared");
 
         // Refetch pricing configuration from database to confirm it was saved
         try {
@@ -916,11 +916,11 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputPerMillion: pricing.inputPerMillion.toFixed(2),
                 outputPerMillion: pricing.outputPerMillion.toFixed(2),
               });
-              console.log("✅ Pricing reloaded from DB after save:", pricing);
+              console.log("âœ… Pricing reloaded from DB after save:", pricing);
             }
           }
         } catch (pricingError) {
-          console.error("⚠️ Error reloading pricing after save:", pricingError);
+          console.error("âš ï¸ Error reloading pricing after save:", pricingError);
         }
 
         // Update the original costs to the newly saved values
@@ -1014,7 +1014,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return "Custom Range";
   };
 
-  const formatCurrency = (val) => `₹${Number(val).toFixed(4)}`;
+  const formatCurrency = (val) => `â‚¹${Number(val).toFixed(4)}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     return formatISTToLocalDate(dateString, { month: "short", day: "numeric" });
@@ -1582,7 +1582,7 @@ const AdminDashboard = ({ user, onClose }) => {
                               <div className="px-4 pb-4 pt-0 text-center">
                                 <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
                                   Total: {formatNumber(user.totalTokens)} tokens
-                                  • {formatCurrency(user.totalCost)}
+                                  â€¢ {formatCurrency(user.totalCost)}
                                 </p>
                               </div>
                             </motion.div>
@@ -1661,7 +1661,7 @@ const AdminDashboard = ({ user, onClose }) => {
                               {/* Show ellipsis if there's a gap */}
                               {index > 0 && array[index - 1] !== page - 1 && (
                                 <span className="px-1.5 text-gray-400 text-sm select-none">
-                                  •••
+                                  â€¢â€¢â€¢
                                 </span>
                               )}
                               <button
@@ -1804,7 +1804,7 @@ const AdminDashboard = ({ user, onClose }) => {
                   </h2>
                   {currentExchangeRate && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Current Rate: $1 USD = ₹{currentExchangeRate.toFixed(2)}{" "}
+                      Current Rate: $1 USD = â‚¹{currentExchangeRate.toFixed(2)}{" "}
                       INR
                     </p>
                   )}
@@ -1958,7 +1958,7 @@ const AdminDashboard = ({ user, onClose }) => {
                   </div>
                   {manuallyEditedINR.input && (
                     <p className="text-xs text-orange-600 mt-1">
-                      ⚠️ Manual value - won't auto-update from USD changes
+                      âš ï¸ Manual value - won't auto-update from USD changes
                     </p>
                   )}
                 </div>
@@ -2017,7 +2017,7 @@ const AdminDashboard = ({ user, onClose }) => {
                   </div>
                   {manuallyEditedINR.output && (
                     <p className="text-xs text-orange-600 mt-1">
-                      ⚠️ Manual value - won't auto-update from USD changes
+                      âš ï¸ Manual value - won't auto-update from USD changes
                     </p>
                   )}
                 </div>

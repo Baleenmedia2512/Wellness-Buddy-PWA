@@ -1,16 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
 import { StepCounterPlugin } from '../../../plugins/stepCounterPlugin';
 import { GalleryMonitorPlugin } from '../../../plugins/galleryMonitorPlugin';
-import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
-import LoadingSpinner from '../../../components/LoadingSpinner';
-import LocationGuard from '../../../components/LocationGuard';
+import { fetchDailyActivity, saveDailyActivity } from '../shared/services/dailyActivityService';
+import LoadingSpinner from '../../../shared/components/LoadingSpinner';
+import LocationGuard from '../../../shared/components/LocationGuard';
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CONSTANTS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const CALORIES_PER_STEP    = 0.04;
 const UPDATE_THROTTLE_MS   = 1000;        // Max one UI update per second
 const ACTIVITY_TYPE        = 'walking';
@@ -23,32 +23,32 @@ const RING_CIRCUMFERENCE   = 2 * Math.PI * RING_RADIUS;
 const GPS_MIN_MOVE_METERS = 10;      // minimum gap to count distance
 const GPS_MAX_JUMP_METERS = 120;     // reject teleport glitches
 const GPS_MAX_WALK_SPEED_MPS = 4;   // reject vehicle/cycling
-// ── GPS distance accuracy ──────────────────────────────────────────────────
+// â”€â”€ GPS distance accuracy â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GPS_PATH_ACCURACY_METERS = 20; // min GPS accuracy required to count distance
-// ── Anti-fake step detection ───────────────────────────────────────────────
-const GPS_VEHICLE_SPEED_MPS = 6;         // ≥ 6 m/s (~22 kph) → likely vehicle/cycling
+// â”€â”€ Anti-fake step detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+const GPS_VEHICLE_SPEED_MPS = 6;         // â‰¥ 6 m/s (~22 kph) â†’ likely vehicle/cycling
 const ANTI_FAKE_MAX_STEPS_PER_MIN = 260; // beyond human sprint capability
 const ANTI_FAKE_WINDOW_MS = 30_000;      // 30-second sliding measurement window
 
-// ── Pro-level Anti-Cheat Engine constants ─────────────────────────────────
-// Layer 1: Step cadence burst — phone shaking produces inhuman bursts
+// â”€â”€ Pro-level Anti-Cheat Engine constants â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Layer 1: Step cadence burst â€” phone shaking produces inhuman bursts
 const AC_BURST_WINDOW_MS         = 10_000;  // 10-second burst window
 const AC_BURST_MAX_STEPS         = 60;      // > 60 steps in 10 s = impossible burst (360/min)
-// Layer 2: Variance signature — real walking has natural rhythm variation;
+// Layer 2: Variance signature â€” real walking has natural rhythm variation;
 //          shaking produces unnaturally uniform inter-event gaps
 const AC_VARIANCE_WINDOW         = 12;      // last 12 sensor events
-const AC_VARIANCE_MIN_REAL_WALK  = 0.08;   // real walking variance floor (seconds²)
-// Layer 3: Sustained impossible rate — > 220 steps/min for > 20 consecutive seconds
+const AC_VARIANCE_MIN_REAL_WALK  = 0.08;   // real walking variance floor (secondsÂ²)
+// Layer 3: Sustained impossible rate â€” > 220 steps/min for > 20 consecutive seconds
 const AC_SUSTAINED_RATE_SPM      = 220;    // steps/min threshold
 const AC_SUSTAINED_RATE_SECS     = 20;     // must last this many seconds to flag
-// Layer 4: GPS contradiction — steps accumulating fast while GPS shows stationary
+// Layer 4: GPS contradiction â€” steps accumulating fast while GPS shows stationary
 const AC_GPS_STATIONARY_FAST_SPM = 140;    // rapid steps while GPS reports no movement
-// Layer 5: Score decay — each clean window reduces cheat score
+// Layer 5: Score decay â€” each clean window reduces cheat score
 const AC_SCORE_DECAY_PER_CLEAN   = 15;    // points cleared per clean 10-s window
-const AC_SCORE_BLOCK_THRESHOLD   = 70;    // score ≥ 70 → block save
-const AC_SCORE_WARN_THRESHOLD    = 40;    // score ≥ 40 → show warning (but still save)
-// Layer 6: Suspicious steps quarantine — fake steps are quarantined, not added to DB
-const AC_QUARANTINE_RATIO        = 0.6;   // if cheat score ≥ block, quarantine 60% of new steps
+const AC_SCORE_BLOCK_THRESHOLD   = 70;    // score â‰¥ 70 â†’ block save
+const AC_SCORE_WARN_THRESHOLD    = 40;    // score â‰¥ 40 â†’ show warning (but still save)
+// Layer 6: Suspicious steps quarantine â€” fake steps are quarantined, not added to DB
+const AC_QUARANTINE_RATIO        = 0.6;   // if cheat score â‰¥ block, quarantine 60% of new steps
 const STEP_TIME_GUARD_LAST_TS_KEY = 'step_time_guard_last_seen_ts';
 const STEP_TIME_GUARD_LAST_DATE_KEY = 'step_time_guard_last_seen_date';
 const STEP_TIME_DRIFT_BACK_MS = 5 * 60 * 1000; // 5 minutes
@@ -56,9 +56,9 @@ const STEP_TIME_JUMP_WINDOW_MS = 36 * 60 * 60 * 1000; // 36 hours
 // Interval (ms) between server-date checks (re-check every 5 minutes while app is open)
 const SERVER_DATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // PURE UTILITY FUNCTIONS (no React state, safe to call anywhere)
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 /** Returns YYYY-MM-DD string for a given Date (or today). */
 const toDateKey = (date = new Date()) => {
@@ -119,9 +119,9 @@ const distanceInMeters = (a, b) => {
   return 2 * R * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // OUTDOOR DISTANCE PERSISTENCE
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const getDistanceStorageKey = (dateKey) => `step_outdoor_dist_${dateKey}`;
 
 const readPersistedDistance = (dateKey) => {
@@ -140,9 +140,9 @@ const persistDistance = (dateKey, totalMeters) => {
 };
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // COMPONENT
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 /**
  * Main Step Counter Component
  */
@@ -150,7 +150,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const isNativePlatform = Capacitor.isNativePlatform();
   const isCoach = userRole === 'coach' || userRole === 'coCoach' || userRole === 'admin' || userRole === 'developer';
 
-  // ── UI State (display-only; mutated via setters, never read by callbacks) ──
+  // â”€â”€ UI State (display-only; mutated via setters, never read by callbacks) â”€â”€
   const [ready, setReady]                   = useState(false);
   const [loading, setLoading]               = useState(true);
   const [sensorAvailable, setSensorAvailable] = useState(false);
@@ -168,20 +168,20 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   });
   const [historyView, setHistoryView]       = useState('week');
   const [refreshing, setRefreshing]         = useState(false); // manual refresh button
-  const [refreshDone, setRefreshDone]       = useState(false); // brief "✓" toast after refresh
+  const [refreshDone, setRefreshDone]       = useState(false); // brief "âœ“" toast after refresh
   // null = no problem; string = server date (e.g. "2026-03-27") that differs from device date
   const [wrongDateWarning, setWrongDateWarning] = useState(null);
-  // Ref mirror — Effect closures (unmount, pause) can't read state directly
+  // Ref mirror â€” Effect closures (unmount, pause) can't read state directly
   const wrongDateWarningRef = useRef(null);
   useEffect(() => { wrongDateWarningRef.current = wrongDateWarning; }, [wrongDateWarning]);
 
-  // ── GPS State ──────────────────────────────────────────────────
+  // â”€â”€ GPS State â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [gpsPermission, setGpsPermission] = useState('unknown'); // 'unknown'|'granted'|'denied'
-  // Last known GPS position (updated on every fix — used for indoor/outdoor status strip)
+  // Last known GPS position (updated on every fix â€” used for indoor/outdoor status strip)
   const [lastGpsPos, setLastGpsPos]     = useState(null); // {lat, lng, isOutdoor}
   // Anti-fake activity warning: null | 'high_step_rate' | 'vehicle_detected'
   const [suspiciousActivity, setSuspiciousActivity] = useState(null);
-  // Outdoor walked distance (meters) — independent accumulator, no map array
+  // Outdoor walked distance (meters) â€” independent accumulator, no map array
   const [outdoorDistance, setOutdoorDistance] = useState(() => readPersistedDistance(toDateKey()));
   const outdoorDistanceRef    = useRef(readPersistedDistance(toDateKey())); // running total in meters
   const lastAcceptedGpsPtRef  = useRef(null);     // last accepted GPS point for incremental Haversine
@@ -191,15 +191,15 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const stepRateWindowRef              = useRef([]);   // anti-fake: [{steps, ts}] ring buffer
   const suspiciousActivityRef          = useRef(null); // ref mirror of suspiciousActivity state
 
-  // ── Pro Anti-Cheat Engine refs ─────────────────────────────────────────────
-  const acScoreRef              = useRef(0);    // cumulative cheat score (0–100)
+  // â”€â”€ Pro Anti-Cheat Engine refs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const acScoreRef              = useRef(0);    // cumulative cheat score (0â€“100)
   const acEventTimesRef         = useRef([]);   // timestamps of each sensor stepUpdate event
   const acLastGpsMovedRef       = useRef(true); // did GPS report movement in the last window?
   const acQuarantinedStepsRef   = useRef(0);    // steps withheld from DB due to cheat flag
   const acSustainedStartRef     = useRef(null); // timestamp when high-rate started (Layer 3)
   const acLastCleanWindowRef    = useRef(0);    // timestamp of last clean (decay) window
 
-  // ── Outdoor steps tracking ─────────────────────────────────────────────────
+  // â”€â”€ Outdoor steps tracking â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // Counts steps taken only while GPS confirms outdoor (accuracy < threshold).
   // Technique: record todaySteps when isOutdoor flips true ("session start"),
   // then add the delta when isOutdoor flips false or on day rollover.
@@ -209,7 +209,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const outdoorLastIsOutdoorRef                 = useRef(false); // previous isOutdoor state
 
 
-  // ── Viewing other member (coaches only) ───────────────────────────────────
+  // â”€â”€ Viewing other member (coaches only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const [selectedMember, setSelectedMember] = useState(null);
   const [memberData, setMemberData]         = useState({ steps: 0, calories: 0, history: [], loading: false });
 
@@ -220,13 +220,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     return stored ? Number(stored) : null;
   });
 
-  // ── Refs: always-current mirrors / stable handles ──────────────────────────
+  // â”€â”€ Refs: always-current mirrors / stable handles â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   //
   // FIX (core): All mutable values that callbacks (save, poll, cleanup) need are
   // mirrored into refs. This means those callbacks can have stable references
   // (no state in their dep arrays), which stops the chain reaction where every
-  // step increments todaySteps → recreates saveStepsToDatabase → recreates
-  // setupAutoSave → re-runs the main useEffect → tears down and rebuilds the
+  // step increments todaySteps â†’ recreates saveStepsToDatabase â†’ recreates
+  // setupAutoSave â†’ re-runs the main useEffect â†’ tears down and rebuilds the
   // sensor listener and poll on EVERY step.
   //
   const todayStepsRef        = useRef(0);    // mirror of todaySteps state
@@ -253,11 +253,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   const autoSaveTimerRef   = useRef(null);
   const midnightTimerRef   = useRef(null);
   const resolveIntervalRef = useRef(null);
-  const lastPushTimestampRef = useRef(0);  // track last push event time — used to skip redundant polls
+  const lastPushTimestampRef = useRef(0);  // track last push event time â€” used to skip redundant polls
   const lastResumeTimeRef    = useRef(0);  // debounce double-resume (Capacitor 'resume' + window 'focus')
   const driftDetectedRef     = useRef(false); // silent flag: true when device date/time likely changed manually
 
-  // Stable function refs — intervals/cleanup always call the LATEST function
+  // Stable function refs â€” intervals/cleanup always call the LATEST function
   // version without needing it in their dependency arrays.
   const saveStepsToDatabaseRef  = useRef(null);
   const processSensorValueRef   = useRef(null);
@@ -313,11 +313,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     }
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // SERVER DATE CHECK — detects manual device date/time manipulation
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // SERVER DATE CHECK â€” detects manual device date/time manipulation
   // Compares server's current date (IST) against the device's local date.
   // Sets wrongDateWarning to the server date if they don't match.
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const checkDeviceDateVsServer = useCallback(async () => {
     try {
       const baseURL = process.env.REACT_APP_API_BASE_URL || '';
@@ -327,13 +327,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const serverDate = data?.date;  // "YYYY-MM-DD" in IST
       const deviceDate = toDateKey(); // "YYYY-MM-DD" from device clock
       if (serverDate && serverDate !== deviceDate) {
-        console.warn(`⚠️ [StepCounter] Device date mismatch: device=${deviceDate} server=${serverDate}`);
+        console.warn(`âš ï¸ [StepCounter] Device date mismatch: device=${deviceDate} server=${serverDate}`);
         setWrongDateWarning(serverDate);
       } else {
         setWrongDateWarning(null);
       }
     } catch (e) {
-      // Network error or offline — do nothing, don't show false warning
+      // Network error or offline â€” do nothing, don't show false warning
       console.warn('[StepCounter] Server date check failed (offline?):', e.message);
     }
   }, []);
@@ -346,9 +346,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     return () => clearInterval(timer);
   }, [detectSilentTimeDrift, checkDeviceDateVsServer]);
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // USER-ID RESOLUTION (multi-source fallback: prop → localStorage → API)
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // USER-ID RESOLUTION (multi-source fallback: prop â†’ localStorage â†’ API)
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (resolvedUserId) return; // already resolved
 
@@ -361,7 +361,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       }
       const stored = localStorage.getItem('dbUserId');
       if (stored) {
-        console.log('✅ [StepCounter] userId from localStorage:', stored);
+        console.log('âœ… [StepCounter] userId from localStorage:', stored);
         if (!cancelled) setResolvedUserId(Number(stored));
         return true;
       }
@@ -376,7 +376,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           });
           const data = await res.json();
           if (data.success && data.userId) {
-            console.log('✅ [StepCounter] userId from API fallback:', data.userId);
+            console.log('âœ… [StepCounter] userId from API fallback:', data.userId);
             localStorage.setItem('dbUserId', String(data.userId));
             if (!cancelled) setResolvedUserId(data.userId);
             return true;
@@ -410,16 +410,16 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     };
   }, [userId, resolvedUserId]);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // SENSOR VALUE PROCESSOR
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * FIX 1: No DB floor logic.
    *   Old code: dailySteps = Math.max(sensorSteps, dbStepsFloor)
    *   This caused the counter to freeze whenever dbStepsFloor > sensorSteps
    *   (e.g. after a reboot, reinstall, or when the auto-save failed to run).
    *
-   *   New code: dailySteps = sensor − baseline  (pure, always live)
+   *   New code: dailySteps = sensor âˆ’ baseline  (pure, always live)
    *   If the sensor resets below the stored baseline, we detect it and update
    *   the baseline, so the counter starts fresh from 0 for that session.
    *
@@ -428,27 +428,27 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
    *   cleanup) reads the correct current value even if React hasn't re-rendered.
    */
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // PRO ANTI-CHEAT ENGINE
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Called on every sensor event BEFORE updating step counts.
    * Returns { score, shouldBlock, shouldWarn, reason }
    *
    * Scoring layers (additive):
-   *   L1 — burst:       +50  if > AC_BURST_MAX_STEPS in AC_BURST_WINDOW_MS
-   *   L2 — variance:    +35  if inter-event timing is unnaturally uniform
-   *   L3 — sustained:   +30  if high rate held for > AC_SUSTAINED_RATE_SECS
-   *   L4 — GPS contra:  +25  if fast steps but GPS shows no movement
-   *   Decay:            −AC_SCORE_DECAY_PER_CLEAN per clean window
+   *   L1 â€” burst:       +50  if > AC_BURST_MAX_STEPS in AC_BURST_WINDOW_MS
+   *   L2 â€” variance:    +35  if inter-event timing is unnaturally uniform
+   *   L3 â€” sustained:   +30  if high rate held for > AC_SUSTAINED_RATE_SECS
+   *   L4 â€” GPS contra:  +25  if fast steps but GPS shows no movement
+   *   Decay:            âˆ’AC_SCORE_DECAY_PER_CLEAN per clean window
    *
-   * Does NOT block saves on its own — `processSensorValue` consults the score
+   * Does NOT block saves on its own â€” `processSensorValue` consults the score
    * to decide whether to quarantine the new steps.
    */
   const runAntiCheatEngine = useCallback((newDailySteps) => {
     const now = Date.now();
 
-    // ── Record this event timestamp (for variance + burst analysis) ─────────
+    // â”€â”€ Record this event timestamp (for variance + burst analysis) â”€â”€â”€â”€â”€â”€â”€â”€â”€
     acEventTimesRef.current.push(now);
     // Keep only events within the last 30 s (largest window we analyse)
     acEventTimesRef.current = acEventTimesRef.current.filter(t => now - t <= 30_000);
@@ -456,17 +456,17 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     let scoreDelta = 0;
     const reasons  = [];
 
-    // ── Layer 1: Burst detection ─────────────────────────────────────────────
+    // â”€â”€ Layer 1: Burst detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Count sensor events in the last AC_BURST_WINDOW_MS (10 s).
     // Each sensor event = 1 step update from Android hardware pedometer.
-    // Normal walking: ~1–2 events/sec. Phone shaking: 5–10+ events/sec.
+    // Normal walking: ~1â€“2 events/sec. Phone shaking: 5â€“10+ events/sec.
     const burstEvents = acEventTimesRef.current.filter(t => now - t <= AC_BURST_WINDOW_MS);
     if (burstEvents.length > AC_BURST_MAX_STEPS) {
       scoreDelta += 50;
       reasons.push(`burst:${burstEvents.length}events/10s`);
     }
 
-    // ── Layer 2: Timing variance signature ───────────────────────────────────
+    // â”€â”€ Layer 2: Timing variance signature â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Real walking produces steps with natural rhythm variance (stride-to-stride).
     // Shaking a phone produces unnaturally regular or irregular ultra-fast bursts.
     // We measure the variance of inter-event gaps in the last AC_VARIANCE_WINDOW events.
@@ -490,7 +490,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       }
     }
 
-    // ── Layer 3: Sustained impossible rate ───────────────────────────────────
+    // â”€â”€ Layer 3: Sustained impossible rate â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // If steps-per-minute has been above AC_SUSTAINED_RATE_SPM for at least
     // AC_SUSTAINED_RATE_SECS, it cannot be real exercise.
     const window30 = acEventTimesRef.current.filter(t => now - t <= 30_000);
@@ -509,7 +509,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       }
     }
 
-    // ── Layer 4: GPS contradiction ────────────────────────────────────────────
+    // â”€â”€ Layer 4: GPS contradiction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // If GPS reports the user is stationary but steps are accumulating fast,
     // the steps are likely fake (phone shaking while sitting still).
     // acLastGpsMovedRef is set by processPosition in the GPS useEffect.
@@ -520,7 +520,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       reasons.push(`gps_stationary+fast:${recentBurstSpm.toFixed(0)}spm`);
     }
 
-    // ── Score decay: clean window reduces suspicion ───────────────────────────
+    // â”€â”€ Score decay: clean window reduces suspicion â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     if (scoreDelta === 0) {
       if (now - acLastCleanWindowRef.current >= AC_BURST_WINDOW_MS) {
         acLastCleanWindowRef.current = now;
@@ -528,7 +528,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       }
     }
 
-    // Apply new delta (capped 0–100)
+    // Apply new delta (capped 0â€“100)
     acScoreRef.current = Math.min(100, Math.max(0, acScoreRef.current + scoreDelta));
 
     const score       = acScoreRef.current;
@@ -536,25 +536,25 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     const shouldWarn  = score >= AC_SCORE_WARN_THRESHOLD;
 
     if (reasons.length > 0) {
-      console.warn(`⚠️ [AntiCheat] score=${score} delta=+${scoreDelta} reasons=[${reasons.join(', ')}]`);
+      console.warn(`âš ï¸ [AntiCheat] score=${score} delta=+${scoreDelta} reasons=[${reasons.join(', ')}]`);
     }
 
     return { score, shouldBlock, shouldWarn, reasons };
-  }, []); // Stable — reads/writes only refs
+  }, []); // Stable â€” reads/writes only refs
 
   const processSensorValue = useCallback((totalSteps) => {
     if (!Number.isFinite(totalSteps)) {
-      console.warn('⚠️ [StepCounter] Invalid sensor value:', totalSteps);
+      console.warn('âš ï¸ [StepCounter] Invalid sensor value:', totalSteps);
       return;
     }
 
     const todayKey = toDateKey();
 
-    // ── Midnight / day-rollover detection ────────────────────────────────────
+    // â”€â”€ Midnight / day-rollover detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Handles the case where the app is open (or resumed) across midnight and
     // the midnight timer never fired (background kill, Doze, etc.).
     if (todayKey !== currentDateRef.current) {
-      console.log('🌙 [StepCounter] Day rollover detected:', currentDateRef.current, '→', todayKey);
+      console.log('ðŸŒ™ [StepCounter] Day rollover detected:', currentDateRef.current, 'â†’', todayKey);
       currentDateRef.current    = todayKey;
       dbOffsetRef.current       = 0;
       dbOffsetLoadedRef.current = true;  // new day = 0 DB offset, safe to show
@@ -564,21 +564,21 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       setTodaySteps(0);
       setTodayCalories(0);
     }
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     let baseline = readBaseline(todayKey);
 
-    // First reading of the day → establish baseline
+    // First reading of the day â†’ establish baseline
     if (!baseline) {
       writeBaseline(todayKey, totalSteps);
       baseline = { sensorTotal: totalSteps };
-      console.log('✅ [StepCounter] Baseline established:', totalSteps);
+      console.log('âœ… [StepCounter] Baseline established:', totalSteps);
     }
 
     // Sensor reset detection: hardware counter was cleared (device reboot / reinstall).
-    // totalSteps is now smaller than our stored baseline → update baseline to match.
+    // totalSteps is now smaller than our stored baseline â†’ update baseline to match.
     if (totalSteps < baseline.sensorTotal) {
-      console.log('🔄 [StepCounter] Sensor reset — updating baseline from', baseline.sensorTotal, 'to', totalSteps);
+      console.log('ðŸ”„ [StepCounter] Sensor reset â€” updating baseline from', baseline.sensorTotal, 'to', totalSteps);
       writeBaseline(todayKey, totalSteps);
       baseline = { sensorTotal: totalSteps };
     }
@@ -590,7 +590,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     // we still display the correct cumulative daily total (e.g. 3311 + new steps).
     const rawDailySteps = dbOffsetRef.current + sensorSteps;
 
-    // ── Pro Anti-Cheat Engine ─────────────────────────────────────────────────
+    // â”€â”€ Pro Anti-Cheat Engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // Run before committing steps to refs/state/DB.
     // `runAntiCheatEngine` is read from ref so processSensorValue stays stable.
     const acResult = runAntiCheatEngineRef.current?.(rawDailySteps) ?? { score: 0, shouldBlock: false, shouldWarn: false };
@@ -606,7 +606,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         const allowed          = Math.floor(newRaw * (1 - AC_QUARANTINE_RATIO));
         acQuarantinedStepsRef.current += (newRaw - allowed);
         dailySteps = prevCommitted + allowed;
-        console.warn(`🚫 [AntiCheat] Quarantine: +${newRaw} new steps → only +${allowed} committed (score=${acResult.score})`);
+        console.warn(`ðŸš« [AntiCheat] Quarantine: +${newRaw} new steps â†’ only +${allowed} committed (score=${acResult.score})`);
       }
     }
 
@@ -622,19 +622,19 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     }
 
     const calories = calcCalories(dailySteps);
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
     // Update refs synchronously FIRST so any concurrent callback sees the latest values
     latestSensorTotalRef.current = totalSteps;
     todayStepsRef.current        = dailySteps;
     todayCaloriesRef.current     = calories;
 
-    // Hold UI update until DB offset is loaded — avoids showing a wrong value
+    // Hold UI update until DB offset is loaded â€” avoids showing a wrong value
     // on first open while the DB fetch is still in-flight.
     if (!dbOffsetLoadedRef.current) return;
 
-    // ── Auto-save trigger: save whenever steps increase by ≥ 10 ─────────────
-    // Runs synchronously in the sensor callback — saveStepsToDatabase has its
+    // â”€â”€ Auto-save trigger: save whenever steps increase by â‰¥ 10 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Runs synchronously in the sensor callback â€” saveStepsToDatabase has its
     // own 30-second throttle so this never causes a burst of DB writes.
     saveStepsToDatabaseRef.current?.();
 
@@ -648,22 +648,22 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       setLoading(false);
     }
 
-    console.log('🚶 [StepCounter]', { dailySteps, calories, totalSteps, baseline: baseline.sensorTotal });
-  }, []); // Stable — reads/writes only refs and localStorage, no state deps
+    console.log('ðŸš¶ [StepCounter]', { dailySteps, calories, totalSteps, baseline: baseline.sensorTotal });
+  }, []); // Stable â€” reads/writes only refs and localStorage, no state deps
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // DATABASE: SAVE
-  // ─────────────────────────────────────────────────────────────────────────
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // DATABASE: AUTO-SAVE STEPS
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Called by the 30-second timer AND by processSensorValue when steps increase
-   * by ≥ AUTO_SAVE_STEP_DELTA (10).
+   * by â‰¥ AUTO_SAVE_STEP_DELTA (10).
    * Rules:
-   *   - Only saves when steps actually increased by ≥ 10 since last save
+   *   - Only saves when steps actually increased by â‰¥ 10 since last save
    *   - Throttled: at most once per 30 s (prevents burst on fast walks)
-   *   - forceWrite: false → backend Math.max guard keeps DB from ever going down
+   *   - forceWrite: false â†’ backend Math.max guard keeps DB from ever going down
    */
   const saveStepsToDatabase = useCallback(async () => {
     const userId = resolvedUserIdRef.current;
@@ -673,7 +673,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     // Block saves when the device clock has been manually set to a wrong date.
     // Background service continues independently and is protected by Math.max.
     if (wrongDateWarningRef.current) {
-      console.warn('⚠️ [StepCounter] Auto-save blocked — device date mismatch (device ≠', wrongDateWarningRef.current, ')');
+      console.warn('âš ï¸ [StepCounter] Auto-save blocked â€” device date mismatch (device â‰ ', wrongDateWarningRef.current, ')');
       return;
     }
 
@@ -695,7 +695,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         steps,
         activityType:   ACTIVITY_TYPE,
         caloriesBurned: calcCalories(steps),
-        forceWrite:     false // Math.max in API — DB never decreases
+        forceWrite:     false // Math.max in API â€” DB never decreases
       });
       // Keep reopen baseline math aligned with the last successful foreground save.
       const sensorAtSave = latestSensorTotalRef.current;
@@ -703,17 +703,17 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         localStorage.setItem(getSaveSensorKey(todayKey), String(sensorAtSave));
         localStorage.setItem(getSaveStepsKey(todayKey),  String(steps));
       }
-      console.log('💾 [StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
+      console.log('ðŸ’¾ [StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
     } catch (err) {
       // Roll back optimistic update so next tick retries
       lastSavedStepsRef.current = lastSaved;
-      console.warn('⚠️ [StepCounter] Auto-save failed:', err?.message || err);
+      console.warn('âš ï¸ [StepCounter] Auto-save failed:', err?.message || err);
     }
-  }, []); // Stable — reads only refs
+  }, []); // Stable â€” reads only refs
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // DATABASE: FETCH HISTORY
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const loadDailyHistory = useCallback(async () => {
     const userId = resolvedUserIdRef.current;
     if (!userId) return;
@@ -725,13 +725,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         setDailyHistory(trend.map(d => ({ ...d, calories: d.caloriesBurned ?? d.calories ?? 0 })));
       }
     } catch (err) {
-      console.error('❌ [StepCounter] Load history failed:', err);
+      console.error('âŒ [StepCounter] Load history failed:', err);
     }
-  }, []); // Stable — reads userId from ref
+  }, []); // Stable â€” reads userId from ref
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // MEMBER DATA FETCH (coaches viewing a team member)
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!selectedMember || selectedMember.isSelf) {
       setMemberData({ steps: 0, calories: 0, history: [], loading: false });
@@ -756,9 +756,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     });
   }, [selectedMember]);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // MANUAL REFRESH (Requirement 6)
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Fallback for when Android Doze or background throttle delays sensor events.
    * User taps the refresh icon in the header to force an immediate sensor read.
@@ -814,11 +814,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
         processSensorValueRef.current?.(val);
 
-        // ── Direct DB save from in-app step count ─────────────────────────
-        // Blocked when device date is wrong — saving under a wrong date key
+        // â”€â”€ Direct DB save from in-app step count â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // Blocked when device date is wrong â€” saving under a wrong date key
         // would corrupt history. Background service is the safety net.
         if (wrongDateWarningRef.current) {
-          console.warn('⚠️ [StepCounter] Refresh DB save blocked — device date mismatch (device ≠', wrongDateWarningRef.current, ')');
+          console.warn('âš ï¸ [StepCounter] Refresh DB save blocked â€” device date mismatch (device â‰ ', wrongDateWarningRef.current, ')');
         } else {
           const stepsToSave = todayStepsRef.current;
           if (resolvedUserIdRef.current && stepsToSave > 0) {
@@ -830,9 +830,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                 steps:         stepsToSave,
                 activityType:  ACTIVITY_TYPE,
                 caloriesBurned: calcCalories(stepsToSave),
-                forceWrite:    false   // Math.max in API — DB never decreases
+                forceWrite:    false   // Math.max in API â€” DB never decreases
               });
-              console.log('💾 [StepCounter] Refresh direct save:', stepsToSave, 'steps');
+              console.log('ðŸ’¾ [StepCounter] Refresh direct save:', stepsToSave, 'steps');
             } catch (saveErr) {
               console.warn('[StepCounter] Refresh direct save failed:', saveErr?.message || saveErr);
             }
@@ -858,17 +858,17 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               writeBaseline(todayKey, val);
               localStorage.setItem(getSaveSensorKey(todayKey), String(val));
               processSensorValueRef.current?.(val);
-              console.log('🔄 [StepCounter] DB offset synced after refresh:', freshEntry.steps);
+              console.log('ðŸ”„ [StepCounter] DB offset synced after refresh:', freshEntry.steps);
             }
           } catch (syncErr) {
             console.warn('[StepCounter] Post-refresh DB sync failed:', syncErr?.message || syncErr);
           }
         }
         await loadDailyHistoryRef.current?.();
-        console.log('🔄 [StepCounter] Manual refresh complete — sensor total:', val);
+        console.log('ðŸ”„ [StepCounter] Manual refresh complete â€” sensor total:', val);
       }
     } catch (err) {
-      console.error('❌ [StepCounter] Manual refresh failed:', err);
+      console.error('âŒ [StepCounter] Manual refresh failed:', err);
     } finally {
       setRefreshing(false);
       // Show a brief "Done" indicator for 1.5 s so the user sees feedback
@@ -877,20 +877,20 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     }
   }, [isNativePlatform, syncLastSavedFromEntry]);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // SENSOR INITIALIZATION
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * FIX 4: Uses processSensorValueRef.current inside the listener and poll
    * callbacks instead of capturing processSensorValue directly (which would
    * create a dependency chain). With this pattern:
-   *   - initStepTracking has NO state deps → it is stable (deps: [])
+   *   - initStepTracking has NO state deps â†’ it is stable (deps: [])
    *   - The listener and poll always call the latest processSensorValue via ref
    *   - Re-calling initStepTracking (e.g. after permission grant) safely
    *     removes the old listener before adding a new one
    */
   const initStepTracking = useCallback(async () => {
-    console.log('🔧 [StepCounter] Initializing step tracking...');
+    console.log('ðŸ”§ [StepCounter] Initializing step tracking...');
     try {
       const availability = await StepCounterPlugin.isAvailable();
       const available    = !!availability?.available;
@@ -926,7 +926,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           lastPushTimestampRef.current = Date.now(); // record push time so poll can skip
           processSensorValueRef.current?.(steps);
         } else {
-          console.warn('⚠️ [StepCounter] Invalid stepUpdate payload:', event);
+          console.warn('âš ï¸ [StepCounter] Invalid stepUpdate payload:', event);
         }
       });
 
@@ -947,28 +947,28 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       // Skipped when push events are actively firing to avoid redundant native bridge calls.
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       pollIntervalRef.current = setInterval(async () => {
-        // If a push event fired within the last 2 poll cycles, the sensor is active — skip poll
+        // If a push event fired within the last 2 poll cycles, the sensor is active â€” skip poll
         if (Date.now() - lastPushTimestampRef.current < POLL_INTERVAL_MS * 2) return;
         try {
           const c = await StepCounterPlugin.getCurrentStepCount();
           const v = Number.parseInt(c?.totalSteps, 10);
           if (Number.isFinite(v)) processSensorValueRef.current?.(v);
         } catch (e) {
-          console.warn('⚠️ [StepCounter] Poll failed:', e.message);
+          console.warn('âš ï¸ [StepCounter] Poll failed:', e.message);
         }
       }, POLL_INTERVAL_MS);
 
-      console.log('✅ [StepCounter] Sensor initialized with push + poll fallback');
+      console.log('âœ… [StepCounter] Sensor initialized with push + poll fallback');
     } catch (err) {
-      console.error('❌ [StepCounter] initStepTracking failed:', err);
+      console.error('âŒ [StepCounter] initStepTracking failed:', err);
       setError('Failed to initialize step counter');
       setLoading(false);
     }
-  }, []); // Stable — no state deps; uses processSensorValueRef internally
+  }, []); // Stable â€” no state deps; uses processSensorValueRef internally
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // PERMISSION REQUEST
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const requestPermission = useCallback(async () => {
     try {
       const permission = await StepCounterPlugin.requestPermission();
@@ -976,14 +976,14 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       setPermissionGranted(granted);
       if (granted) await initStepTracking();
     } catch (err) {
-      console.error('❌ [StepCounter] Permission request failed:', err);
+      console.error('âŒ [StepCounter] Permission request failed:', err);
       setError('Failed to get permission');
     }
   }, [initStepTracking]); // initStepTracking is stable
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // AUTO-SAVE TIMER
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * Kept only to preserve existing component lifecycle shape.
    * saveStepsToDatabaseRef is a no-op under single-writer architecture.
@@ -993,12 +993,12 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     autoSaveTimerRef.current = setInterval(() => {
       saveStepsToDatabaseRef.current?.();
     }, AUTO_SAVE_INTERVAL_MS);
-    console.log(`ℹ️ [StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
-  }, []); // Stable — interval body only references a ref
+    console.log(`â„¹ï¸ [StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
+  }, []); // Stable â€” interval body only references a ref
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // MIDNIGHT RESET TIMER
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const setupMidnightReset = useCallback(() => {
     const now             = new Date();
     const tomorrow        = new Date(now);
@@ -1009,7 +1009,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     if (midnightTimerRef.current) clearTimeout(midnightTimerRef.current);
 
     midnightTimerRef.current = setTimeout(async () => {
-      console.log('🌙 [StepCounter] Midnight reset');
+      console.log('ðŸŒ™ [StepCounter] Midnight reset');
 
       // Service performs DB save on day rollover; React stays read-only.
 
@@ -1035,12 +1035,12 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       setupMidnightReset();
     }, msUntilMidnight);
 
-    console.log(`⏰ [StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
-  }, []); // Stable — uses only refs and reschedules itself
+    console.log(`â° [StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
+  }, []); // Stable â€” uses only refs and reschedules itself
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // SYNC FUNCTION REFS (runs synchronously on every render, before effects)
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // This ensures that intervals, listeners, and cleanup closures always invoke
   // the most up-to-date version of each callback, even if the reference changed.
   saveStepsToDatabaseRef.current = saveStepsToDatabase;
@@ -1048,15 +1048,15 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
   loadDailyHistoryRef.current    = loadDailyHistory;
   runAntiCheatEngineRef.current  = runAntiCheatEngine;
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // EFFECT 1: SENSOR LIFECYCLE — runs ONCE on mount / cleans up on unmount
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // EFFECT 1: SENSOR LIFECYCLE â€” runs ONCE on mount / cleans up on unmount
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   /**
    * FIX 6 (root cause): Empty deps array.
    *   Old code had todaySteps and saveStepsToDatabase in the dep array.
-   *   Every step update → todaySteps changed → saveStepsToDatabase recreated →
-   *   setupAutoSave recreated → this effect re-ran → sensor listener torn down
-   *   and rebuilt → counter appeared stuck mid-walk during the re-init window.
+   *   Every step update â†’ todaySteps changed â†’ saveStepsToDatabase recreated â†’
+   *   setupAutoSave recreated â†’ this effect re-ran â†’ sensor listener torn down
+   *   and rebuilt â†’ counter appeared stuck mid-walk during the re-init window.
    *
    *   All callbacks called here are stable (deps: []) so listing them in deps
    *   would be equivalent to []. We use [] explicitly and suppress the lint
@@ -1064,7 +1064,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
    */
   useEffect(() => {
     // Cleanup localStorage keys older than 7 days to prevent unbounded accumulation.
-    // Runs once on mount — safe to do synchronously since localStorage access is cheap.
+    // Runs once on mount â€” safe to do synchronously since localStorage access is cheap.
     const cleanupOldKeys = () => {
       const now = Date.now();
       const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -1079,7 +1079,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         }
       }
       keysToRemove.forEach(k => localStorage.removeItem(k));
-      if (keysToRemove.length > 0) console.log(`🧹 [StepCounter] Cleaned up ${keysToRemove.length} old localStorage key(s)`);
+      if (keysToRemove.length > 0) console.log(`ðŸ§¹ [StepCounter] Cleaned up ${keysToRemove.length} old localStorage key(s)`);
     };
     cleanupOldKeys();
 
@@ -1092,8 +1092,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     setReady(true);
 
     return () => {
-      // ── Save steps before teardown (user navigates away / back press) ─────
-      // Blocked when device date is wrong — background service is the safety net.
+      // â”€â”€ Save steps before teardown (user navigates away / back press) â”€â”€â”€â”€â”€
+      // Blocked when device date is wrong â€” background service is the safety net.
       const stepsOnClose = todayStepsRef.current;
       const userOnClose  = resolvedUserIdRef.current;
       if (userOnClose && stepsOnClose > 0 && !wrongDateWarningRef.current) {
@@ -1112,9 +1112,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           }
         }).catch(() => {});
         GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
-        console.log('💾 [StepCounter] Unmount save:', stepsOnClose, 'steps');
+        console.log('ðŸ’¾ [StepCounter] Unmount save:', stepsOnClose, 'steps');
       } else if (wrongDateWarningRef.current) {
-        console.warn('⚠️ [StepCounter] Unmount save blocked — device date mismatch');
+        console.warn('âš ï¸ [StepCounter] Unmount save blocked â€” device date mismatch');
       }
       // Tear down all timers and the native sensor listener
       if (midnightTimerRef.current)  clearTimeout(midnightTimerRef.current);
@@ -1126,11 +1126,11 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       }
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Intentionally empty — sensor lifecycle tied to component mount only
+  }, []); // Intentionally empty â€” sensor lifecycle tied to component mount only
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // EFFECT 2: DB + AUTO-SAVE — runs once when userId resolves
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // EFFECT 2: DB + AUTO-SAVE â€” runs once when userId resolves
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!resolvedUserId) return;
 
@@ -1151,8 +1151,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             // Update lastSavedStepsRef so the first auto-save doesn't
             // re-save the same DB value we just loaded.
             lastSavedStepsRef.current = todayEntry.steps;
-            console.log('🗄️ [StepCounter] DB offset loaded:', todayEntry.steps);
-            // Unlock UI — from this point processSensorValue will update the display
+            console.log('ðŸ—„ï¸ [StepCounter] DB offset loaded:', todayEntry.steps);
+            // Unlock UI â€” from this point processSensorValue will update the display
             dbOffsetLoadedRef.current = true;
             if (latestSensorTotalRef.current !== null) {
               const currentSensor  = latestSensorTotalRef.current;
@@ -1168,7 +1168,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                 const MAX_UNSAVED = 3_000;
                 const unsavedIfTrusted = Math.max(0, currentSensor - (savedSensor ?? currentSensor));
                 // How many steps did the background service add to DB while app was closed?
-                // e.g. JS last saved 4431, DB now shows 4494 → bgAdded = 63
+                // e.g. JS last saved 4431, DB now shows 4494 â†’ bgAdded = 63
                 // Those 63 steps are already in dbOffset, so shift baseline forward
                 // by 63 to prevent processSensorValue from counting them again.
                 const bgAddedSteps = (savedSteps !== null && Number.isFinite(savedSteps))
@@ -1185,15 +1185,15 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                     ? adjustedSensor
                     : currentSensor;
                 if (bgAddedSteps > 0) {
-                  console.log('🔧 [StepCounter] BG correction: savedSensor', savedSensor,
-                    '+ bgAdded', bgAddedSteps, '→ baseline', baselineToUse);
+                  console.log('ðŸ”§ [StepCounter] BG correction: savedSensor', savedSensor,
+                    '+ bgAdded', bgAddedSteps, 'â†’ baseline', baselineToUse);
                 }
               }
               writeBaseline(toDateKey(), baselineToUse);
               // Reprocess with the corrected baseline
               processSensorValueRef.current?.(currentSensor);
             } else {
-              // Sensor hasn't fired yet — seed UI directly from DB
+              // Sensor hasn't fired yet â€” seed UI directly from DB
               const offsetCalories = calcCalories(todayEntry.steps);
               todayStepsRef.current    = todayEntry.steps;
               todayCaloriesRef.current = offsetCalories;
@@ -1202,7 +1202,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               setLoading(false);
             }
           } else {
-            // New day or first use — DB has 0 steps (or no entry yet).
+            // New day or first use â€” DB has 0 steps (or no entry yet).
             // dbOffset stays 0; just unlock the UI so sensor steps are shown.
             dbOffsetLoadedRef.current = true;
             if (latestSensorTotalRef.current !== null) {
@@ -1214,8 +1214,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         }
       })
       .catch((err) => {
-        console.warn('⚠️ [StepCounter] Failed to load DB offset:', err);
-        // DB fetch failed — unlock UI anyway so sensor value is shown
+        console.warn('âš ï¸ [StepCounter] Failed to load DB offset:', err);
+        // DB fetch failed â€” unlock UI anyway so sensor value is shown
         dbOffsetLoadedRef.current = true;
         if (latestSensorTotalRef.current !== null) {
           processSensorValueRef.current?.(latestSensorTotalRef.current);
@@ -1227,12 +1227,12 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     loadDailyHistoryRef.current?.();
     setupAutoSave(); // no-op timer under single-writer rule
 
-    // ── Background service backfill + correction ─────────────────────────────
+    // â”€â”€ Background service backfill + correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     // GalleryMonitorService records per-day steps in SharedPreferences.
     // On app open we:
     //   (a) Fill any DB days that show 0 steps (app was never opened that day)
     //   (b) Correct any DB days that are inflated beyond what the background
-    //       service actually measured — those are corrupted by the old
+    //       service actually measured â€” those are corrupted by the old
     //       double-counting bug (multiple sessions pre-fix) and should be reset
     //       to the accurate value from SharedPreferences.
     if (isNativePlatform) {
@@ -1249,23 +1249,23 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             const todayKey = toDateKey();
 
             // Fix days where:
-            //   (a) DB has 0 steps — app was never opened that day, OR
-            //   (b) Background service recorded MORE steps than DB — app was
+            //   (a) DB has 0 steps â€” app was never opened that day, OR
+            //   (b) Background service recorded MORE steps than DB â€” app was
             //       opened briefly then kept walking after close.
             //
             // We do NOT update if DB already has a HIGHER value than background
-            // service — that means in-app sensor saved more (trust higher DB value).
+            // service â€” that means in-app sensor saved more (trust higher DB value).
             // We also never overwrite today's non-zero DB value from background
             // service (today is handled by the live sensor + dbOffset path).
             const MAX_BACKFILL_DELTA = 5000; // kept for today-stale-SharedPrefs checks below
             const toFix = bgDays.filter(e => {
               const dbSteps = dbMap.get(e.date) || 0;
               if (e.steps <= dbSteps) return false;
-              // For today: only skip if the delta is suspiciously large (> 5 000) —
+              // For today: only skip if the delta is suspiciously large (> 5 000) â€”
               // that indicates stale phantom SharedPreferences data (e.g. manual date
               // testing), not legitimate background walking.
               // The stale-data correction block below will reset SharedPrefs in that case.
-              // For a normal "app closed → walked → reopened" scenario the delta is
+              // For a normal "app closed â†’ walked â†’ reopened" scenario the delta is
               // well under 5 000, so we DO want to backfill today.
               if (e.date === todayKey && dbSteps > 0 && (e.steps - dbSteps) > MAX_BACKFILL_DELTA) return false;
               // For all past days, trust background service unconditionally.
@@ -1274,7 +1274,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               return true;
             });
 
-            // ── Stale SharedPreferences correction ─────────────────────────
+            // â”€â”€ Stale SharedPreferences correction â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
             // If today's background service value is much larger than DB (and DB
             // has a real value), it means SharedPreferences has phantom/stale data
             // (e.g. from manual date testing). Fix it NOW so the background service
@@ -1283,8 +1283,8 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             if (todayBg) {
               const todayDb = dbMap.get(todayKey) || 0;
               if (todayDb > 0 && (todayBg.steps - todayDb) > MAX_BACKFILL_DELTA) {
-                console.warn('🔧 [StepCounter] Correcting stale bgService baseline for today:',
-                  todayBg.steps, '→', todayDb);
+                console.warn('ðŸ”§ [StepCounter] Correcting stale bgService baseline for today:',
+                  todayBg.steps, 'â†’', todayDb);
                 GalleryMonitorPlugin.syncDailySteps(todayKey, todayDb).catch(() => {});
               }
 
@@ -1294,27 +1294,27 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               // would permanently destroy the user's real step history.
               // The service catches up to the DB value naturally as new steps are saved.
             }
-            // ───────────────────────────────────────────────────────────────
+            // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
             if (toFix.length === 0) return;
 
-            console.log('🔄 [StepCounter] Fixing', toFix.length, 'day(s) from background service:', toFix);
+            console.log('ðŸ”„ [StepCounter] Fixing', toFix.length, 'day(s) from background service:', toFix);
             // Send sequentially so service-side in-flight guard never drops a day.
             toFix.reduce(
               (chain, e) => chain.then(() => GalleryMonitorPlugin.syncDailySteps(e.date, e.steps)),
               Promise.resolve()
             ).then(() => {
-              console.log('✅ [StepCounter] Backfill/correction complete');
+              console.log('âœ… [StepCounter] Backfill/correction complete');
               loadDailyHistoryRef.current?.(); // refresh chart
 
-              // ── Critical fix: if TODAY was backfilled, update dbOffset immediately.
+              // â”€â”€ Critical fix: if TODAY was backfilled, update dbOffset immediately.
               // Without this, the in-app session still thinks dbOffset = 0 and will
               // overwrite the backfilled value on next auto-save (e.g. saves 20 in-app
               // steps instead of the correct 2000 + 20).
               const todayKey = toDateKey();
               const todayBackfill = toFix.find(e => e.date === todayKey);
               if (todayBackfill && todayBackfill.steps > dbOffsetRef.current) {
-                console.log('🔄 [StepCounter] Updating dbOffset after today backfill:', dbOffsetRef.current, '→', todayBackfill.steps);
+                console.log('ðŸ”„ [StepCounter] Updating dbOffset after today backfill:', dbOffsetRef.current, 'â†’', todayBackfill.steps);
                 dbOffsetRef.current       = todayBackfill.steps;
                 lastSavedStepsRef.current = todayBackfill.steps;
                 // Re-anchor baseline to current sensor so only steps walked AFTER
@@ -1324,24 +1324,24 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                   writeBaseline(todayKey, latestSensorTotalRef.current);
                   processSensorValueRef.current?.(latestSensorTotalRef.current);
                 } else {
-                  // Sensor hasn't fired yet — seed UI directly from backfill value
+                  // Sensor hasn't fired yet â€” seed UI directly from backfill value
                   todayStepsRef.current    = todayBackfill.steps;
                   todayCaloriesRef.current = calcCalories(todayBackfill.steps);
                   setTodaySteps(todayBackfill.steps);
                   setTodayCalories(calcCalories(todayBackfill.steps));
                 }
               }
-            }).catch(err => console.warn('⚠️ [StepCounter] Backfill failed:', err));
+            }).catch(err => console.warn('âš ï¸ [StepCounter] Backfill failed:', err));
           })
-          .catch(err => console.warn('⚠️ [StepCounter] Backfill DB fetch failed:', err));
+          .catch(err => console.warn('âš ï¸ [StepCounter] Backfill DB fetch failed:', err));
       });
     }
-    // ─────────────────────────────────────────────────────────────────────────
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   }, [resolvedUserId, setupAutoSave, syncLastSavedFromEntry]); // setupAutoSave is stable (deps: [])
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // EFFECT 3: APP RESUME / FOREGROUND HANDLER (Requirement 7)
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!isNativePlatform) return;
 
@@ -1352,9 +1352,9 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
       const now = Date.now();
       if (now - lastResumeTimeRef.current < 2000) return;
       lastResumeTimeRef.current = now;
-      console.log('📱 [StepCounter] App resumed — refreshing sensor + re-syncing DB offset');
+      console.log('ðŸ“± [StepCounter] App resumed â€” refreshing sensor + re-syncing DB offset');
       try {
-        // ── Re-fetch DB offset so this session continues from the latest saved value ──
+        // â”€â”€ Re-fetch DB offset so this session continues from the latest saved value â”€â”€
         // Critical for multiple opens in one day: each open must start from the
         // most recent DB total (which background service may have updated while
         // the app was closed), not the stale value from the first open.
@@ -1366,7 +1366,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             const dbEntry    = dbTrend.find(d => d.date === todayKey);
             const latestDb   = dbEntry?.steps || 0;
             if (latestDb > dbOffsetRef.current) {
-              console.log('🔄 [StepCounter] Resume: DB offset updated', dbOffsetRef.current, '→', latestDb);
+              console.log('ðŸ”„ [StepCounter] Resume: DB offset updated', dbOffsetRef.current, 'â†’', latestDb);
               dbOffsetRef.current       = latestDb;
               lastSavedStepsRef.current = latestDb;
               syncLastSavedFromEntry(dbEntry);
@@ -1389,18 +1389,18 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         // Re-check device date on every resume (user may have changed date while app was away)
         checkDeviceDateVsServer();
       } catch (err) {
-        console.error('❌ [StepCounter] Resume handler failed:', err);
+        console.error('âŒ [StepCounter] Resume handler failed:', err);
       }
     };
 
-    // ── Save on app pause/background (home button, switch app) ─────────────
-    // Blocked when device date is wrong — background service is the safety net.
+    // â”€â”€ Save on app pause/background (home button, switch app) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // Blocked when device date is wrong â€” background service is the safety net.
     const handlePause = () => {
       const steps  = todayStepsRef.current;
       const userId = resolvedUserIdRef.current;
       if (!userId || steps <= 0) return;
       if (wrongDateWarningRef.current) {
-        console.warn('⚠️ [StepCounter] Pause save blocked — device date mismatch');
+        console.warn('âš ï¸ [StepCounter] Pause save blocked â€” device date mismatch');
         return;
       }
       const dateOnPause = toDateKey();
@@ -1418,7 +1418,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         }
       }).catch(() => {});
       GalleryMonitorPlugin.forceSaveTodaySteps().catch(() => {});
-      console.log('💾 [StepCounter] Pause save:', steps, 'steps');
+      console.log('ðŸ’¾ [StepCounter] Pause save:', steps, 'steps');
     };
 
     document.addEventListener('resume', handleResume);
@@ -1455,7 +1455,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     routeDateRef.current = todayKey;
 
     // Restore last known GPS position (for indoor/outdoor status strip on reopen)
-    // Only restore if it was saved today — discard stale positions from a previous day
+    // Only restore if it was saved today â€” discard stale positions from a previous day
     try {
       const raw = localStorage.getItem('step_last_gps_pos');
       if (raw) {
@@ -1473,18 +1473,18 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     return () => { cancelled = true; };
   }, []);
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // GPS TRACKING
-  // Primary  : Geolocation.watchPosition — fires on every GPS fix (1–3 s on Android).
+  // Primary  : Geolocation.watchPosition â€” fires on every GPS fix (1â€“3 s on Android).
   //            This draws the polyline smoothly in real-time as the user walks.
-  // Secondary: SharedPrefs poll every 5 s — picks up GPS written by
+  // Secondary: SharedPrefs poll every 5 s â€” picks up GPS written by
   //            GalleryMonitorService while the screen was off / app backgrounded.
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (Capacitor.isNativePlatform()) {
       let watchId = null;
 
-      // ── On mount: restore today's distance from native route_points ─────
+      // â”€â”€ On mount: restore today's distance from native route_points â”€â”€â”€â”€â”€
       // GalleryMonitorService accumulates GPS points in SharedPrefs even when
       // the app is closed. On open, compute the canonical day total from those
       // points so the stat card is correct regardless of background walking.
@@ -1520,10 +1520,10 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               timestamp: lastPt.timestamp || Date.now(),
             };
           }
-        } catch (e) { /* silent — native not available or JSON parse error */ }
+        } catch (e) { /* silent â€” native not available or JSON parse error */ }
       })();
 
-      // ── Shared processor (called by both watchPosition and the poll) ────
+      // â”€â”€ Shared processor (called by both watchPosition and the poll) â”€â”€â”€â”€
       // speed: GPS Doppler speed m/s from watchPosition; null = unknown (poll path)
       const processPosition = (lat, lng, accuracy, timestamp, speed = null) => {
         if (!isValidLatLng(lat, lng)) return;
@@ -1545,21 +1545,21 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           if (previousDateKey) localStorage.removeItem(getDistanceStorageKey(previousDateKey));
         }
 
-        // watchPosition (speed known): use 25 m threshold — outdoor GPS gives 5–20 m;
+        // watchPosition (speed known): use 25 m threshold â€” outdoor GPS gives 5â€“20 m;
         //   indoor GPS rarely drops below 25 m, preventing fake routes when indoors.
         // SharedPrefs poll (speed=null): keep Android's 50 m threshold.
         const outdoorAccuracyThreshold = speed !== null ? 25 : 50;
         const isOutdoor = accuracy < outdoorAccuracyThreshold;
 
-        // ── Outdoor steps: track transitions ────────────────────────────────
-        // When GPS flips outdoor→indoor (or indoor→outdoor), compute the delta.
+        // â”€â”€ Outdoor steps: track transitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+        // When GPS flips outdoorâ†’indoor (or indoorâ†’outdoor), compute the delta.
         const wasOutdoor = outdoorLastIsOutdoorRef.current;
         if (!wasOutdoor && isOutdoor) {
-          // Just went outdoor — start a new session
+          // Just went outdoor â€” start a new session
           outdoorSessionStartStepsRef.current = todayStepsRef.current;
           outdoorLastIsOutdoorRef.current = true;
         } else if (wasOutdoor && !isOutdoor) {
-          // Just went indoor — close the session and add delta
+          // Just went indoor â€” close the session and add delta
           if (outdoorSessionStartStepsRef.current !== null) {
             const delta = Math.max(0, todayStepsRef.current - outdoorSessionStartStepsRef.current);
             outdoorStepsRef.current += delta;
@@ -1568,7 +1568,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           outdoorSessionStartStepsRef.current = null;
           outdoorLastIsOutdoorRef.current = false;
         } else if (wasOutdoor && isOutdoor) {
-          // Still outdoor — update display with running delta so it ticks up live
+          // Still outdoor â€” update display with running delta so it ticks up live
           if (outdoorSessionStartStepsRef.current !== null) {
             const liveDelta = Math.max(0, todayStepsRef.current - outdoorSessionStartStepsRef.current);
             setOutdoorSteps(outdoorStepsRef.current + liveDelta);
@@ -1579,23 +1579,23 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         setLastGpsPos(pos);
         localStorage.setItem('step_last_gps_pos', JSON.stringify(pos));
 
-        // ── Vehicle / cycling speed detection ─────────────────────────────
+        // â”€â”€ Vehicle / cycling speed detection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         // GPS Doppler speed > 6 m/s (~22 kph) while steps accumulate = likely in a vehicle.
         if (speed !== null && speed > GPS_VEHICLE_SPEED_MPS) {
           if (suspiciousActivityRef.current !== 'vehicle_detected') {
             suspiciousActivityRef.current = 'vehicle_detected';
             setSuspiciousActivity('vehicle_detected');
-            console.warn(`⚠️ [AntiCheat] Vehicle speed detected: ${(speed * 3.6).toFixed(1)} kph`);
+            console.warn(`âš ï¸ [AntiCheat] Vehicle speed detected: ${(speed * 3.6).toFixed(1)} kph`);
           }
         } else if (speed !== null && speed <= GPS_VEHICLE_SPEED_MPS
           && suspiciousActivityRef.current === 'vehicle_detected') {
           suspiciousActivityRef.current = null;
           setSuspiciousActivity(null);
         }
-        // ─────────────────────────────────────────────────────────────────
+        // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
         if (isOutdoor && accuracy <= GPS_PATH_ACCURACY_METERS) {
-          // GPS Doppler speed = 0 when stationary — rejects shaking/sitting still.
+          // GPS Doppler speed = 0 when stationary â€” rejects shaking/sitting still.
           // Only guard when speed is actually available from watchPosition.
           if (speed !== null && speed < 0.3) {
             acLastGpsMovedRef.current = false;
@@ -1610,13 +1610,13 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             const speedMps = gapMeters / dtSec;
 
             if (gapMeters < GPS_MIN_MOVE_METERS) {
-              acLastGpsMovedRef.current = false; // stationary — feed anti-cheat
+              acLastGpsMovedRef.current = false; // stationary â€” feed anti-cheat
             } else if (gapMeters > GPS_MAX_JUMP_METERS && dtSec <= 10) {
-              // teleport glitch — ignore
+              // teleport glitch â€” ignore
             } else if (speedMps > GPS_MAX_WALK_SPEED_MPS) {
-              // vehicle speed — ignore
+              // vehicle speed â€” ignore
             } else {
-              // Valid walking segment — accumulate distance
+              // Valid walking segment â€” accumulate distance
               outdoorDistanceRef.current += gapMeters;
               setOutdoorDistance(outdoorDistanceRef.current);
               persistDistance(todayKey, outdoorDistanceRef.current);
@@ -1624,19 +1624,19 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               lastAcceptedGpsPtRef.current = incoming;
             }
           } else {
-            // First point — just record it
+            // First point â€” just record it
             lastAcceptedGpsPtRef.current = incoming;
           }
         }
       };
 
-      // ── Primary: watchPosition — continuous real-time GPS ───────────────
+      // â”€â”€ Primary: watchPosition â€” continuous real-time GPS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
       Geolocation.watchPosition(
         { enableHighAccuracy: true, timeout: 10000, maximumAge: 3000 },
         (position, err) => {
           if (err || !position) return;
           try {
-            // coords.speed: GPS Doppler m/s — 0 when still, ~1.2 when walking, null if unavailable
+            // coords.speed: GPS Doppler m/s â€” 0 when still, ~1.2 when walking, null if unavailable
             const speed = typeof position.coords.speed === 'number' ? position.coords.speed : null;
             processPosition(
               position.coords.latitude,
@@ -1649,7 +1649,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         }
       ).then(id => { watchId = id; }).catch(() => {});
 
-      // ── Secondary: SharedPrefs poll — catches background-written GPS ────
+      // â”€â”€ Secondary: SharedPrefs poll â€” catches background-written GPS â”€â”€â”€â”€
       const poll = async () => {
         try {
           const loc = await StepCounterPlugin.getLastGpsLocation();
@@ -1672,14 +1672,14 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         if (gpsIntervalRef.current) clearInterval(gpsIntervalRef.current);
       };
     } else {
-      // Web view — GPS/route tracking not available; no dummy data shown
+      // Web view â€” GPS/route tracking not available; no dummy data shown
       return () => {};
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // DERIVED DISPLAY VALUES
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const isViewingOther  = !!(selectedMember && !selectedMember.isSelf);
   const displaySteps    = isViewingOther ? memberData.steps    : todaySteps;
   const displayCalories = isViewingOther ? memberData.calories : todayCalories;
@@ -1694,14 +1694,14 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
     return <LoadingSpinner context="steps" />;
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   // RENDER
-  // ─────────────────────────────────────────────────────────────────────────
+  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <LocationGuard>
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-teal-50/40">
 
-      {/* ──── Header ──── */}
+      {/* â”€â”€â”€â”€ Header â”€â”€â”€â”€ */}
       <div className="bg-white/90 backdrop-blur-lg border-b border-emerald-100/50 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           {onBack && (
@@ -1747,7 +1747,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                   }`}
                 />
                 <span>
-                  {refreshing ? 'Refreshing…' : refreshDone ? '✓ Updated' : 'Refresh'}
+                  {refreshing ? 'Refreshingâ€¦' : refreshDone ? 'âœ“ Updated' : 'Refresh'}
                 </span>
               </button>
             )}
@@ -1758,7 +1758,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
         </div>
       </div>
 
-      {/* ──── My Steps Content ──── */}
+      {/* â”€â”€â”€â”€ My Steps Content â”€â”€â”€â”€ */}
       <div className="max-w-lg mx-auto px-4 pt-5 pb-8 space-y-4 sm:space-y-5">
 
         {/* Error banner */}
@@ -1781,7 +1781,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                 Step data shown may not match the correct day.
               </p>
               <p className="text-xs text-orange-600 mt-1">
-                Please correct your device date in Settings → Date &amp; Time.
+                Please correct your device date in Settings â†’ Date &amp; Time.
               </p>
             </div>
             <button
@@ -1789,12 +1789,12 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               className="text-orange-400 hover:text-orange-600 active:text-orange-700 text-lg leading-none font-bold flex-shrink-0 -mt-0.5"
               aria-label="Dismiss"
             >
-              ×
+              Ã—
             </button>
           </div>
         )}
 
-        {/* ── Anti-fake suspicious activity warning ── */}
+        {/* â”€â”€ Anti-fake suspicious activity warning â”€â”€ */}
         {suspiciousActivity && suspiciousActivity !== 'vehicle_detected' && !isViewingOther && (
           <div className={`border rounded-2xl p-4 flex items-start gap-3 ${
             suspiciousActivity === 'fake_detected'
@@ -1809,7 +1809,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
                 suspiciousActivity === 'fake_detected' ? 'text-red-900' : 'text-amber-900'
               }`}>
                 {suspiciousActivity === 'fake_detected'
-                  ? '⚠ Fake Steps Detected — Saving Reduced'
+                  ? 'âš  Fake Steps Detected â€” Saving Reduced'
                   : 'Unusual Step Rate'}
               </p>
               <p className={`text-xs mt-0.5 ${
@@ -1828,7 +1828,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
               className="text-gray-400 hover:text-gray-600 text-lg leading-none font-bold flex-shrink-0 -mt-0.5"
               aria-label="Dismiss"
             >
-              ×
+              Ã—
             </button>
           </div>
         )}
@@ -1852,7 +1852,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
           </div>
         )}
 
-        {/* ──── Circular Progress Ring + Stats ──── */}
+        {/* â”€â”€â”€â”€ Circular Progress Ring + Stats â”€â”€â”€â”€ */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
           <div className="flex flex-col items-center">
             {/* Ring */}
@@ -1893,7 +1893,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
             {!displayLoading && (
               <p className="text-sm text-gray-500 font-medium mb-1">
                 {stepProgress >= 1
-                  ? '🎉 Goal reached!'
+                  ? 'ðŸŽ‰ Goal reached!'
                   : `${Math.round(stepProgress * 100)}% of daily goal`}
               </p>
             )}
@@ -1926,7 +1926,7 @@ const StepCounter = ({ onBack, userId, userRole = 'user', user }) => {
 
 
 
-        {/* ──── History Section ──── */}
+        {/* â”€â”€â”€â”€ History Section â”€â”€â”€â”€ */}
         <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-5 sm:p-7">
           {/* Header + Toggle */}
           <div className="flex items-center justify-between mb-4">

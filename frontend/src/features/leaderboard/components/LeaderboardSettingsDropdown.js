@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { Settings, Trophy } from 'lucide-react';
-import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 
 /**
  * Leaderboard Settings Dropdown
@@ -75,9 +75,9 @@ const LeaderboardSettingsDropdown = () => {
   };
 
   const options = [
-    { value: 1, label: 'Top 1', icon: '🏆', desc: 'Scrolling' },
-    { value: 3, label: 'Top 3', icon: '🥈', desc: 'Balanced' },
-    { value: 7, label: 'Top 7', icon: '📊', desc: 'Extended' }
+    { value: 1, label: 'Top 1', icon: 'ðŸ†', desc: 'Scrolling' },
+    { value: 3, label: 'Top 3', icon: 'ðŸ¥ˆ', desc: 'Balanced' },
+    { value: 7, label: 'Top 7', icon: 'ðŸ“Š', desc: 'Extended' }
   ];
 
   return (

@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
-import TouchFeedbackButton from '../../../components/TouchFeedbackButton';
-import LoadingSpinner from '../../../components/LoadingSpinner';
-import CustomAlertModal from '../../../components/CustomAlertModal';
+import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import LoadingSpinner from '../../../shared/components/LoadingSpinner';
+import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
@@ -308,7 +308,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       // Add click/tap listener to place marker
       // Using 'click' event which Google Maps handles for both mouse clicks and touch taps
       map.addListener('click', (event) => {
-        console.log('📍 Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
+        console.log('ðŸ“ Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
         if (event.latLng) {
           placeMarker(event.latLng);
         }
@@ -326,11 +326,11 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
   const placeMarker = (location) => {
     if (!window.google || !window.google.maps) {
-      console.error('❌ Google Maps not available');
+      console.error('âŒ Google Maps not available');
       return;
     }
 
-    console.log('✅ Placing marker at:', location.lat(), location.lng());
+    console.log('âœ… Placing marker at:', location.lat(), location.lng());
 
     // Remove existing marker
     if (markerRef.current && markerRef.current.setMap) {
@@ -357,7 +357,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     const lng = location.lng().toFixed(8);
     setLatitude(lat);
     setLongitude(lng);
-    console.log('📍 Coordinates updated:', lat, lng);
+    console.log('ðŸ“ Coordinates updated:', lat, lng);
 
     // Add drag listener
     marker.addListener('dragend', (event) => {
@@ -365,7 +365,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       const newLng = event.latLng.lng().toFixed(8);
       setLatitude(newLat);
       setLongitude(newLng);
-      console.log('📍 Marker dragged to:', newLat, newLng);
+      console.log('ðŸ“ Marker dragged to:', newLat, newLng);
     });
   };
 
@@ -463,7 +463,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
       const result = await response.json();
       if (result.success) {
-        // Backend handles co-coach partnership — returns clubs for both coach & co-coach
+        // Backend handles co-coach partnership â€” returns clubs for both coach & co-coach
         setMyCenters(result.data || []);
       }
     } catch (err) {
@@ -555,7 +555,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     setCenterToDelete(centerId);
     setAlertModal({
       isOpen: true,
-      title: '⚠️ Delete Nutrition Centre',
+      title: 'âš ï¸ Delete Nutrition Centre',
       message: 'Are you sure you want to unregister this nutrition centre? This action cannot be undone.',
       type: 'warning',
       confirmText: 'Yes, Delete',
@@ -692,16 +692,16 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                   }}
                   className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
                 >
-                  <option value="+91">🇮🇳 +91</option>
-                  <option value="+1">🇺🇸 +1</option>
-                  <option value="+44">🇬🇧 +44</option>
-                  <option value="+61">🇦🇺 +61</option>
-                  <option value="+81">🇯🇵 +81</option>
-                  <option value="+86">🇨🇳 +86</option>
-                  <option value="+971">🇦🇪 +971</option>
-                  <option value="+966">🇸🇦 +966</option>
-                  <option value="+65">🇸🇬 +65</option>
-                  <option value="+60">🇲🇾 +60</option>
+                  <option value="+91">ðŸ‡®ðŸ‡³ +91</option>
+                  <option value="+1">ðŸ‡ºðŸ‡¸ +1</option>
+                  <option value="+44">ðŸ‡¬ðŸ‡§ +44</option>
+                  <option value="+61">ðŸ‡¦ðŸ‡º +61</option>
+                  <option value="+81">ðŸ‡¯ðŸ‡µ +81</option>
+                  <option value="+86">ðŸ‡¨ðŸ‡³ +86</option>
+                  <option value="+971">ðŸ‡¦ðŸ‡ª +971</option>
+                  <option value="+966">ðŸ‡¸ðŸ‡¦ +966</option>
+                  <option value="+65">ðŸ‡¸ðŸ‡¬ +65</option>
+                  <option value="+60">ðŸ‡²ðŸ‡¾ +60</option>
                 </select>
                 
                 {/* Phone Number Input */}

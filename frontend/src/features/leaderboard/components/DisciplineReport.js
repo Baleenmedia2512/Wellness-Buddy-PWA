@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+﻿import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -15,19 +15,19 @@ import {
 } from "lucide-react";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
-} from "../../../components/common/HierarchicalReportLayout";
-import HierarchicalNode from "../../../components/common/HierarchicalNode";
+} from "../../../shared/components/common/HierarchicalReportLayout";
+import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
 import {
   SelfLogo,
   DirectLogo,
   FullTeamLogo,
-} from "../../../components/common/DisciplineScoreLogos";
-import TimeWindowSettingsModal from "../../../components/TimeWindowSettingsModal";
+} from "../../../shared/components/common/DisciplineScoreLogos";
+import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
 import {
   disciplineReportService,
   clearDisciplineReportCache,
-} from "../services/disciplineReportService";
-import { teamHierarchyService } from "../../../services/teamHierarchyService";
+} from "../shared/services/disciplineReportService";
+import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 
 const DisciplineReport = ({ user, onBack, userRole }) => {
   const [loading, setLoading] = useState(true);
@@ -46,12 +46,12 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
-  const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct ↔ Full switch
+  const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct â†” Full switch
 
   // Load data
   const fetchData = async (isBackground = false) => {
     if (!user?.id) {
-      // Keep loading=true (show skeleton) — wait for user.id to be populated
+      // Keep loading=true (show skeleton) â€” wait for user.id to be populated
       // useEffect will re-fire once user.id is available
       return;
     }
@@ -343,7 +343,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             sa = a.fullTeamDiscipline?.percentage || 0;
             sb = b.fullTeamDiscipline?.percentage || 0;
           } else {
-            // 'self' or 'all' → sort by self score
+            // 'self' or 'all' â†’ sort by self score
             sa = a.periodDiscipline?.percentage || 0;
             sb = b.periodDiscipline?.percentage || 0;
           }
@@ -359,7 +359,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   // Filter options
   const filterOptions = [
     { value: "all", label: "All Scores", icon: null },
-    { value: "high", label: "High (≥80%)", icon: TrendingUp },
+    { value: "high", label: "High (â‰¥80%)", icon: TrendingUp },
     { value: "medium", label: "Medium (50-79%)", icon: null },
     { value: "low", label: "Low (<50%)", icon: TrendingDown },
   ];
@@ -823,7 +823,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   return (
     <HierarchicalReportLayout
       title="Discipline Report"
-      subtitle={`${teamCounts.total} member • ${new Date()
+      subtitle={`${teamCounts.total} member â€¢ ${new Date()
         .toLocaleTimeString("en-US", {
           hour: "numeric",
           minute: "2-digit",

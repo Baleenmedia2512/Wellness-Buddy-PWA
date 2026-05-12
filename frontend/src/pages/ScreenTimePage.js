@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Smartphone, ArrowLeft, ShieldAlert, Clock, Calendar, TrendingUp, RefreshCw, ChevronDown, ChevronUp, ThumbsUp, Ban } from 'lucide-react';
 import {
@@ -12,7 +12,7 @@ import {
   backfillMissingScreenTimeDays,
   getAccurateScreenTimeHistory,
 } from '../features/screen/services/screenTimeService';
-import LoadingSpinner from '../components/LoadingSpinner';
+import LoadingSpinner from '../shared/components/LoadingSpinner';
 
 const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit (in seconds)
 const RING_RADIUS = 80;
@@ -157,7 +157,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
         } catch (err) {
           console.warn('[ScreenTime] History fetch failed:', err.message);
         }
-        // Save using already-fetched deviceData — no second plugin call
+        // Save using already-fetched deviceData â€” no second plugin call
         if (deviceData?.totalScreenTimeSeconds > 0) {
           const localDate = deviceData.date || toDateKey();
           try {
@@ -223,7 +223,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
         setPermissionIssue(null);
         await loadData();
 
-        // On every resume, backfill only missing/zero days (smart — skips already-saved days).
+        // On every resume, backfill only missing/zero days (smart â€” skips already-saved days).
         if (resolvedUserId) {
           try {
             await backfillMissingScreenTimeDays(resolvedUserId);
@@ -233,7 +233,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
               setAvgSeconds(h.summary?.averageSeconds || 0);
             }
           } catch (err) {
-            console.warn('⚠️ [ScreenTime] Resume sync failed:', err);
+            console.warn('âš ï¸ [ScreenTime] Resume sync failed:', err);
           }
         }
       } else {
@@ -258,7 +258,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
     }
   }, [resolvedUserId, permissionGranted]);
 
-  // On app open: backfill only days missing from DB (or saved as 0) from install date → today.
+  // On app open: backfill only days missing from DB (or saved as 0) from install date â†’ today.
   // Today + yesterday are always refreshed with fresh accurate OS readings.
   useEffect(() => {
     if (!isNative || !permissionGranted || !resolvedUserId) return;
@@ -274,7 +274,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
           });
         }
       })
-      .catch(err => console.warn('⚠️ [ScreenTime] Backfill failed:', err));
+      .catch(err => console.warn('âš ï¸ [ScreenTime] Backfill failed:', err));
   }, [resolvedUserId, permissionGranted, isNative]);
 
   const handleRefresh = async () => {
@@ -406,12 +406,12 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
     return segments;
   })();
 
-  // Ring progress (fills up to limit — over limit means overflow)
+  // Ring progress (fills up to limit â€” over limit means overflow)
   const usageRatio = Math.min(todaySeconds / SCREEN_TIME_LIMIT, 1);
   const ringOffset = RING_CIRCUMFERENCE * (1 - usageRatio);
   const isOverLimit = todaySeconds > SCREEN_TIME_LIMIT;
 
-  // History slicing — deduplicate by Date first (keep highest seconds per date)
+  // History slicing â€” deduplicate by Date first (keep highest seconds per date)
   const deduplicatedHistory = Object.values(
     rawHistoryData
       .filter(r => r.Date)
@@ -426,7 +426,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
   const sortedHistory = deduplicatedHistory.sort((a, b) => a.Date.localeCompare(b.Date));
   const displayHistory = historyView === 'week' ? sortedHistory.slice(-7) : sortedHistory;
 
-  // Weekly avg: sum last 7 days ÷ 7 (zero for days with no data — true average)
+  // Weekly avg: sum last 7 days Ã· 7 (zero for days with no data â€” true average)
   const last7 = sortedHistory.slice(-7);
   const weeklyAvgSeconds = Math.round(
     last7.reduce((s, r) => s + (r.TotalScreenTimeSeconds || 0), 0) / 7
@@ -438,7 +438,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-emerald-50/30 to-green-50/40">
-      {/* ──── Header ──── */}
+      {/* â”€â”€â”€â”€ Header â”€â”€â”€â”€ */}
       <div className="bg-white/90 backdrop-blur-lg border-b border-emerald-100/50 sticky top-0 z-10">
         <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
           {onBack && (
@@ -468,7 +468,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
         </div>
       </div>
 
-      {/* ──── Content ──── */}
+      {/* â”€â”€â”€â”€ Content â”€â”€â”€â”€ */}
       <div className="max-w-lg mx-auto px-3 sm:px-4 pt-4 pb-8 space-y-3 sm:space-y-4">
 
         {/* Error */}
@@ -511,11 +511,11 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
           </div>
         )}
 
-        {/* ──── Circular Progress Ring + Stats ──── */}
+        {/* â”€â”€â”€â”€ Circular Progress Ring + Stats â”€â”€â”€â”€ */}
         {(isViewingOther || !isNative || permissionGranted) && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-4 sm:p-6">
             <div className="flex flex-col items-center">
-              {/* Ring — py adds vertical breathing room for top/bottom labels */}
+              {/* Ring â€” py adds vertical breathing room for top/bottom labels */}
               <div className="relative w-56 h-56 sm:w-64 sm:h-64 mx-auto pb-1">
                 {displayLoading ? (
                   <div className="absolute inset-[14%] rounded-full bg-gradient-to-br from-emerald-100 to-green-100 animate-pulse" />
@@ -594,7 +594,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
               {!displayLoading && (
                 <p className={`text-sm font-medium mb-1 ${isOverLimit ? 'text-red-500' : 'text-gray-500'}`}>
                   {isOverLimit
-                    ? `⚠️ Over limit by ${formatScreenTime(todaySeconds - SCREEN_TIME_LIMIT)}`
+                    ? `âš ï¸ Over limit by ${formatScreenTime(todaySeconds - SCREEN_TIME_LIMIT)}`
                     : todaySeconds === 0
                       ? 'No screen time recorded yet'
                       : `${formatScreenTime(SCREEN_TIME_LIMIT - todaySeconds)} remaining`}
@@ -641,7 +641,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
           </div>
         )}
 
-        {/* ──── App Breakdown ──── */}
+        {/* â”€â”€â”€â”€ App Breakdown â”€â”€â”€â”€ */}
         {!isViewingOther && isNative && permissionGranted && appUsage.length > 0 && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-4 sm:p-6">
             <button
@@ -671,7 +671,7 @@ const ScreenTimePage = ({ userId, onBack, user, userRole = 'user' }) => {
           </div>
         )}
 
-        {/* ──── History Section ──── */}
+        {/* â”€â”€â”€â”€ History Section â”€â”€â”€â”€ */}
         {(isViewingOther || !isNative || permissionGranted) && (
           <div className="bg-white rounded-3xl shadow-sm border border-gray-100/80 p-4 sm:p-6">
             <div className="flex items-center justify-between mb-3">
