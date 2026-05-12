@@ -145,12 +145,111 @@ export async function saveWeight(input) {
   };
 }
 
-export async function getHistory({ userId, includeImage }) {
-  const rows = await repo.listHistory(userId, includeImage);
-  const formatted = rows.map(formatRow);
+function getISTDateStr(ts) {
+  if (!ts) return null;
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return String(ts).substring(0, 10);
+  const istTime = new Date(d.getTime() + 5.5 * 60 * 60 * 1000);
+  return istTime.toISOString().substring(0, 10);
+}
+
+export async function getHistory({ userId, includeImage, limit = null, offset = 0 }) {
+  const useLimit = Number.isFinite(limit) && limit > 0;
+
+  // Step 1: lightweight rows (no image when not requested)
+  const rows = await repo.listHistory(userId, false, { limit, offset });
+
+  // Step 2: latest 10 image map (only when client wants images)
+  let imageMap = {};
+  if (includeImage) {
+    const imageRows = await repo.listLatestImages(userId, 10);
+    imageRows.forEach((r) => {
+      if (r.WeightImageBase64) imageMap[r.ID] = r.WeightImageBase64;
+    });
+  }
+
+  // Step 3: merge image into rows
+  const merged = rows.map((row) => ({
+    ...row,
+    WeightImageBase64: imageMap[row.ID] || null,
+  }));
+
+  // Step 4: format CreatedAt
+  const formattedRows = merged.map(formatRow);
+
+  // Step 5: stats — paginating uses a separate lightweight query for accurate global stats
+  let globalMin = null, globalMax = null, globalAvg = null;
+  let totalCount = formattedRows.length;
+  let latestRow = formattedRows[0] || null;
+  let previousRow = formattedRows[1] || null;
+
+  if (useLimit) {
+    const allRows = await repo.listAllWeightsForStats(userId);
+    const allWeights = allRows.map((r) => parseFloat(r.Weight)).filter((w) => !isNaN(w));
+    globalMin = allWeights.length ? Math.min(...allWeights) : null;
+    globalMax = allWeights.length ? Math.max(...allWeights) : null;
+    globalAvg = allWeights.length ? allWeights.reduce((a, b) => a + b, 0) / allWeights.length : null;
+    totalCount = allRows.length;
+    latestRow = allRows[0] || null;
+    previousRow = allRows[1] || null;
+  } else {
+    const weights = formattedRows.map((r) => parseFloat(r.Weight)).filter((w) => !isNaN(w));
+    globalMin = weights.length ? Math.min(...weights) : null;
+    globalMax = weights.length ? Math.max(...weights) : null;
+    globalAvg = weights.length ? weights.reduce((a, b) => a + b, 0) / weights.length : null;
+  }
+
+  const stats = {
+    totalEntries: totalCount,
+    latestWeight: null,
+    previousWeight: null,
+    weightChange: null,
+    averageWeight: globalAvg,
+    minWeight: globalMin,
+    maxWeight: globalMax,
+  };
+
+  if (latestRow) {
+    stats.latestWeight = { value: parseFloat(latestRow.Weight), date: latestRow.CreatedAt };
+    if (formattedRows[0]) {
+      const latestDateStr = getISTDateStr(formattedRows[0].CreatedAt);
+      const prevEntry = formattedRows.find(
+        (r, idx) => idx > 0 && getISTDateStr(r.CreatedAt) !== latestDateStr,
+      );
+      if (prevEntry) {
+        stats.previousWeight = { value: parseFloat(prevEntry.Weight), date: prevEntry.CreatedAt };
+        stats.weightChange = parseFloat(formattedRows[0].Weight) - parseFloat(prevEntry.Weight);
+      }
+    }
+  }
+
+  const returnedOffset = useLimit && Number.isFinite(offset) && offset >= 0 ? offset : 0;
+  const hasMore = useLimit ? returnedOffset + formattedRows.length < totalCount : false;
+
   return {
     httpStatus: 200,
-    body: { success: true, data: formatted, stats: buildStats(formatted) },
+    body: {
+      success: true,
+      data: formattedRows,
+      stats,
+      pagination: {
+        limit: useLimit ? limit : null,
+        offset: returnedOffset,
+        total: totalCount,
+        hasMore,
+      },
+    },
+  };
+}
+
+export async function getImage({ userId, id }) {
+  const row = await repo.getImageById(userId, id);
+  if (!row) {
+    return { httpStatus: 404, body: { success: false, message: 'Not found' } };
+  }
+  return {
+    httpStatus: 200,
+    body: { success: true, id: row.ID, image: row.WeightImageBase64 || null },
   };
 }
 

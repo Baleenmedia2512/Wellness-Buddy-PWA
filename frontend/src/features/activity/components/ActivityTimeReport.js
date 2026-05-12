@@ -10,8 +10,8 @@ import {
   TrendingUp,
   TrendingDown,
   Droplets,
-  Scale,
 } from "lucide-react";
+import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { motion, AnimatePresence } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
@@ -28,7 +28,7 @@ import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettin
 const ACTIVITY_KEYS = ["weight", "education", "breakfast", "lunch", "dinner", "water", "caloriesBurned"];
 
 const ACTIVITY_META = {
-  weight:         { label: "Weight",    short: "WGT", Icon: Scale, color: "blue"   },
+  weight:         { label: "Weight",    short: "WGT", Icon: BathroomScaleIcon, color: "blue"   },
   breakfast:      { label: "Breakfast", short: "BRK", Icon: Coffee,   color: "orange" },
   lunch:          { label: "Lunch",     short: "LUN", Icon: Utensils, color: "green"  },
   dinner:         { label: "Dinner",    short: "DIN", Icon: Moon,     color: "purple" },
@@ -515,6 +515,16 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
           if (!hasPartnership) {
             enriched.uplineCoachName = node.coachName ?? node.uplineCoachName ?? null;
             enriched.uplineCoCoachName = node.coCoachName ?? node.uplineCoCoachName ?? null;
+          }
+          
+          // Enrich coCoachInfo with timeData if it exists
+          if (hasPartnership) {
+            const coCoachUid = node.coCoachInfo.userId;
+            enriched.coCoachInfo = {
+              ...node.coCoachInfo,
+              __timeData: dataMap.get(coCoachUid) || null,
+              __score: scoreMap.get(coCoachUid) ?? 0,
+            };
           }
           
           enriched.teamMembers = (node.teamMembers || []).map(enrichNode);
@@ -1032,6 +1042,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
             forceExpandedState={expandOverride}
             defaultExpanded={expandOverride === "expanded"}
             defaultShowDetails={true}
+            onProfileClick={setProfileModalEmail}
           />
         </>
       ) : !loading && !error ? (
@@ -1054,6 +1065,12 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         userEmail={user?.email}
       />
 
+      {/* Member Profile Viewer */}
+      <TeamMemberProfileModal
+        isOpen={!!profileModalEmail}
+        onClose={() => setProfileModalEmail(null)}
+        memberEmail={profileModalEmail}
+      />
 
     </HierarchicalReportLayout>
   );

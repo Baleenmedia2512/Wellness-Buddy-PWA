@@ -1,4 +1,4 @@
-﻿// src/components/EditableFoodItem.js
+// src/components/EditableFoodItem.js
 import React, {
   useState,
   useRef,
@@ -19,7 +19,6 @@ import {
   Edit2,
   Save,
   X,
-  Scale,
   Utensils,
   Flame,
   Beef,
@@ -28,6 +27,7 @@ import {
   Leaf,
   Trash2,
 } from "lucide-react";
+import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 
 const DELETE_UNDO_SECONDS = 5;
 
@@ -1268,6 +1268,25 @@ const EditableFoodItem = forwardRef(
       const unit = isLiquid ? "ml" : "g";
       console.log("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
       
+      // ≡ƒöä REVERSAL DETECTION:
+      // If the user has edited the food name back to the ORIGINAL AI-detected
+      // name, treat this entry as a reversal of the auto-correction. The
+      // global/personal correction in the DB stays intact (other entries /
+      // other users keep getting auto-corrected) ΓÇö but THIS entry must NOT
+      // show the "AUTO-CORRECTED" badge anymore.
+      const editedNameNorm = (foodToSave.name || '').trim().toLowerCase();
+      const originalAiNorm = (foodItem.originalAiName || '').trim().toLowerCase();
+      const isAutoCorrectionReversal =
+        !!foodItem.wasAutoCorrected &&
+        !!originalAiNorm &&
+        editedNameNorm === originalAiNorm;
+
+      if (isAutoCorrectionReversal) {
+        console.log(
+          `≡ƒöü [REVERSAL] User reverted auto-correction back to original AI name "${foodItem.originalAiName}" ΓÇö clearing wasAutoCorrected for this entry`,
+        );
+      }
+
       const updatedFood = {
         name: foodToSave.name,
         category: foodToSave.category,
@@ -2005,7 +2024,7 @@ const EditableFoodItem = forwardRef(
           {/* Custom Grams/ML Input - Always visible */}
           <div>
             <label className="text-xs font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
-              <Scale className="w-3.5 h-3.5 text-gray-500" />
+              <BathroomScaleIcon className="w-3.5 h-3.5 text-gray-500" />
               <span>{selectedFood?.isLiquid ? "Volume" : "Weight"}</span>
             </label>
             <div className="relative">

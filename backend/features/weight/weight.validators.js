@@ -28,10 +28,24 @@ export function validateSaveInput(body) {
 
 export function validateHistoryInput(query) {
   if (!query?.userId) throw new ValidationError(400, 'Missing required field: userId');
+  const parsedLimit = query.limit !== undefined && query.limit !== null && query.limit !== ''
+    ? parseInt(query.limit, 10)
+    : null;
+  const parsedOffset = query.offset !== undefined && query.offset !== null && query.offset !== ''
+    ? parseInt(query.offset, 10)
+    : 0;
   return {
     userId: query.userId,
     includeImage: query.includeImage === 'true' || query.includeImage === true,
+    limit: Number.isFinite(parsedLimit) && parsedLimit > 0 ? parsedLimit : null,
+    offset: Number.isFinite(parsedOffset) && parsedOffset >= 0 ? parsedOffset : 0,
   };
+}
+
+export function validateImageInput(query) {
+  const { userId, id } = query || {};
+  if (!userId || !id) throw new ValidationError(400, 'Missing required fields: userId, id');
+  return { userId, id };
 }
 
 export function validateDeleteInput(body) {

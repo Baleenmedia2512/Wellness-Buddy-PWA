@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+﻿import React, { useState } from "react";
 import {
   ChevronRight,
   ChevronDown,
@@ -7,7 +7,6 @@ import {
   Users,
   Crown,
   Shield,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -15,6 +14,7 @@ import {
   Droplets,
   Flame,
 } from "lucide-react";
+import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { motion, AnimatePresence } from "framer-motion";
 
 /**
@@ -125,7 +125,7 @@ const TeamNode = ({
 
   // Activity icons matching DisciplineReport.js
   const activityIcons = {
-    weight: <Scale className="w-4 h-4" />,
+    weight: <BathroomScaleIcon className="w-4 h-4" />,
     education: <BookOpen className="w-4 h-4" />,
     breakfast: <Coffee className="w-4 h-4" />,
     lunch: <Utensils className="w-4 h-4" />,

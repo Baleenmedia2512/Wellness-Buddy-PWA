@@ -2,7 +2,6 @@
 import {
   TrendingUp,
   TrendingDown,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -13,6 +12,7 @@ import {
   ArrowUpDown,
   Users,
 } from "lucide-react";
+import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from "../../../shared/components/common/HierarchicalReportLayout";
@@ -45,6 +45,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   const [sortBy, setSortBy] = useState("name"); // always name-based for A-Z / Z-A
   const [showSettings, setShowSettings] = useState(false);
   const [teamView, setTeamView] = useState("direct"); // 'direct' or 'full'
+  const [profileModalEmail, setProfileModalEmail] = useState(null);
   const [expandOverride, setExpandOverride] = useState("collapsed"); // "expanded" | "collapsed" | null
   const lastExpandState = useRef("collapsed"); // remembers last expand/collapse for Direct â†” Full switch
 
@@ -450,10 +451,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
   };
 
   // Render stats strip
-  const renderStats = (node, level, isCurrentUser) => {
+  const renderStats = (node, level, isCurrentUser, coCoach = null) => {
     const selfScore = node.periodDiscipline?.percentage || 0;
     const directScore = node.directTeamDiscipline?.percentage || 0;
     const fullScore = node.fullTeamDiscipline?.percentage || 0;
+
+    // Co-coach partner data
+    const coCoachSelfScore = coCoach?.periodDiscipline?.percentage || 0;
 
     const ALL_COLS = [
       { key: "self",   score: selfScore,   Logo: SelfLogo,     color: "text-blue-500",   label: "Self",   padding: "pr-2" },
@@ -466,28 +470,62 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
 
     return (
       <>
-        {cols.map((col) => (
-          <div
-            key={col.key}
-            className={`flex-1 flex flex-col items-center gap-0.5 ${
-              isSingle ? "" : col.padding
-            }`}
-          >
-            <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
-            <span
-              className={`text-[8px] font-semibold ${col.color} uppercase tracking-wide leading-none`}
+        {!isSingle && coCoach ? (
+          /* Co-coach partnership - show TWO SELF entries */
+          <>
+            {/* Coach SELF */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 pr-1">
+              <SelfLogo className="w-4 h-4 text-blue-500" />
+              <span className="text-[8px] font-semibold text-blue-500 uppercase tracking-wide leading-none">
+                {node.userName || node.name}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{selfScore}%</span>
+            </div>
+            {/* Co-Coach SELF */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 pr-2">
+              <SelfLogo className="w-4 h-4 text-purple-500" />
+              <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">
+                {coCoach.userName || coCoach.name}
+              </span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{coCoachSelfScore}%</span>
+            </div>
+            {/* DIRECT and FULL */}
+            <div className="flex-1 flex flex-col items-center gap-0.5 px-2">
+              <DirectLogo className="w-4 h-4 text-green-500" />
+              <span className="text-[8px] font-semibold text-green-500 uppercase tracking-wide leading-none">Direct</span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{directScore}%</span>
+            </div>
+            <div className="flex-1 flex flex-col items-center gap-0.5 pl-2">
+              <FullTeamLogo className="w-4 h-4 text-purple-500" />
+              <span className="text-[8px] font-semibold text-purple-500 uppercase tracking-wide leading-none">Full</span>
+              <span className="text-sm sm:text-base font-bold text-gray-900">{fullScore}%</span>
+            </div>
+          </>
+        ) : (
+          /* Normal display - single coach or focused view */
+          cols.map((col) => (
+            <div
+              key={col.key}
+              className={`flex-1 flex flex-col items-center gap-0.5 ${
+                isSingle ? "" : col.padding
+              }`}
             >
-              {col.label}
-            </span>
-            <span
-              className={`${
-                isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
-              } font-bold text-gray-900`}
-            >
-              {col.score}%
-            </span>
-          </div>
-        ))}
+              <col.Logo className={`${isSingle ? "w-5 h-5" : "w-4 h-4"} ${col.color}`} />
+              <span
+                className={`text-[8px] font-semibold ${col.color} uppercase tracking-wide leading-none`}
+              >
+                {col.label}
+              </span>
+              <span
+                className={`${
+                  isSingle ? "text-base sm:text-lg" : "text-sm sm:text-base"
+                } font-bold text-gray-900`}
+              >
+                {col.score}%
+              </span>
+            </div>
+          ))
+        )}
       </>
     );
   };
@@ -540,10 +578,9 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
             {[
               {
                 icon: (
-                  <Scale
-                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1 ${getIconColor(
-                      weight,
-                    )}`}
+                  <BathroomScaleIcon
+                    className="h-3.5 w-3.5 sm:h-4 sm:w-4 mb-0.5 sm:mb-1"
+                    variant={weight > 0 ? "green" : "red"}
                   />
                 ),
                 val: weight,
@@ -948,6 +985,7 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           matchesSearch={matchesSearch}
           forceExpandedState={expandOverride}
           defaultExpanded={expandOverride === "expanded"}
+          onProfileClick={setProfileModalEmail}
         />
       ) : (
         <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
@@ -978,6 +1016,13 @@ const DisciplineReport = ({ user, onBack, userRole }) => {
           fetchData(true);
         }}
         userEmail={user?.email}
+      />
+
+      {/* Member Profile Viewer */}
+      <TeamMemberProfileModal
+        isOpen={!!profileModalEmail}
+        onClose={() => setProfileModalEmail(null)}
+        memberEmail={profileModalEmail}
       />
     </HierarchicalReportLayout>
   );

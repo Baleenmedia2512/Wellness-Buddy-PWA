@@ -1,10 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+﻿import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Clock,
   Save,
   AlertCircle,
-  Scale,
   BookOpen,
   Coffee,
   Utensils,
@@ -15,6 +14,7 @@ import {
   ChevronLeft,
   Check,
 } from "lucide-react";
+import BathroomScaleIcon from "./icons/BathroomScaleIcon";
 import { motion, AnimatePresence } from "framer-motion";
 import axios from "axios";
 import {
@@ -306,7 +306,7 @@ const TimeWindowSettingsModal = ({ isOpen, onClose, onUpdate, userEmail }) => {
     const configs = {
       weight: {
         name: "Weight",
-        icon: Scale,
+        icon: BathroomScaleIcon,
         color: "text-purple-600",
         bg: "bg-purple-50",
         border: "border-purple-100",
