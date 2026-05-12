@@ -50,6 +50,25 @@ const Header = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const menuPanelRef = useRef(null);
 
+  // ✅ Auto-reopen delete modal if user closed app mid-OTP flow
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('deleteAccountOtpPending');
+      if (saved) {
+        const { sentAt } = JSON.parse(saved);
+        const age = Date.now() - sentAt;
+        if (age < 10 * 60 * 1000) {
+          // OTP still valid — reopen modal so user can enter it
+          setShowDeleteModal(true);
+        } else {
+          localStorage.removeItem('deleteAccountOtpPending');
+        }
+      }
+    } catch {
+      localStorage.removeItem('deleteAccountOtpPending');
+    }
+  }, []);
+
   // Auto-scale menu panel to fit screen without scroll
   useEffect(() => {
     if (!menuOpen) return;

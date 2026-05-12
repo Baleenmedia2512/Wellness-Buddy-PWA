@@ -13,6 +13,10 @@ import { deleteFirebaseUser } from '../services/firebase';
  *   Step 3 — User must type "DELETE" to confirm
  *   Step 4 — Success / error feedback → auto sign-out
  */
+
+// ✅ Key used to persist OTP pending state across app close/reopen
+const DELETE_OTP_PENDING_KEY = 'deleteAccountOtpPending';
+
 const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSignOut }) => {
   const [step, setStep] = useState(1);
 
@@ -35,6 +39,34 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   const otpValue = otp.join('');
   const isOtpComplete = otpValue.length === 6;
 
+  // ✅ Restore pending OTP step when modal opens (survives app close/reopen)
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const saved = localStorage.getItem(DELETE_OTP_PENDING_KEY);
+      if (saved) {
+        const { email, sentAt } = JSON.parse(saved);
+        const age = Date.now() - sentAt;
+        // Only restore if same user and OTP sent within 10 minutes
+        if (email === userEmail && age < 10 * 60 * 1000) {
+          const elapsed = Math.floor(age / 1000);
+          const remaining = Math.max(0, 60 - elapsed);
+          setStep(2);
+          setOtpSent(true);
+          setCountdown(remaining);
+          setCanResend(remaining === 0);
+          console.log('🔄 [DeleteAccount] Restored pending OTP step, countdown:', remaining);
+          setTimeout(() => otpRefs.current[0]?.focus(), 300);
+        } else {
+          // Expired or different user — clear it
+          localStorage.removeItem(DELETE_OTP_PENDING_KEY);
+        }
+      }
+    } catch {
+      localStorage.removeItem(DELETE_OTP_PENDING_KEY);
+    }
+  }, [isOpen, userEmail]);
+
   // Countdown timer for OTP resend
   useEffect(() => {
     if (!otpSent || countdown <= 0) {
@@ -56,6 +88,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setConfirmText('');
     setIsDeleting(false);
     setErrorMessage('');
+    // ✅ Clear persisted state when user cancels
+    localStorage.removeItem(DELETE_OTP_PENDING_KEY);
   };
 
   const handleClose = () => {
@@ -80,6 +114,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
         setStep(2);
         setCountdown(60);
         setCanResend(false);
+        // ✅ Persist OTP pending state so it survives app close/reopen
+        localStorage.setItem(DELETE_OTP_PENDING_KEY, JSON.stringify({ email: userEmail, sentAt: Date.now() }));
         setTimeout(() => otpRefs.current[0]?.focus(), 300);
       } else {
         setErrorMessage(data.message || 'Failed to send OTP. Try again.');
@@ -155,6 +191,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
       if (data.success) {
         setStep(3);
         setErrorMessage('');
+        // ✅ OTP verified — no longer need to restore to step 2
+        localStorage.removeItem(DELETE_OTP_PENDING_KEY);
       } else {
         setErrorMessage(data.message || 'Invalid OTP. Please try again.');
       }
