@@ -106,6 +106,15 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
   const educationTrendRef = useRef(null);
   const educationTrendChartRef = useRef(null);
 
+  // ✅ PAGINATION: Lazy-load education logs in pages of 10 (mirrors WeightDashboard)
+  const EDUCATION_PAGE_SIZE = 10;
+  const [hasMoreLogs, setHasMoreLogs] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreSentinelRef = useRef(null);
+  const loadingMoreRef = useRef(false);
+  const hasMoreRef = useRef(false);
+  const offsetRef = useRef(0);
+
   const toDateKey = (value) => {
     const d = new Date(value);
     const y = d.getFullYear();
@@ -282,7 +291,12 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
   useEffect(() => {
     // Clear cached userId when user changes
     userIdRef.current = null;
-    fetchEducationLogs();
+    // Reset pagination
+    setEducationLogs([]);
+    setHasMoreLogs(false);
+    offsetRef.current = 0;
+    hasMoreRef.current = false;
+    fetchEducationLogs({ reset: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id, user?.email, refreshKey]);
 
@@ -317,73 +331,146 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
   };
 
   /**
-   * Fetch education logs from API
+   * Fetch education logs page (limit=10). Set reset=true to load first page.
+   * Mirrors the WeightDashboard infinite-scroll pattern.
    */
-  const fetchEducationLogs = async () => {
+  const fetchEducationLogs = async ({ reset = false } = {}) => {
     try {
-      setLoading(true);
+      if (reset) {
+        setLoading(true);
+      } else {
+        if (loadingMoreRef.current || !hasMoreRef.current) return;
+        loadingMoreRef.current = true;
+        setLoadingMore(true);
+      }
       setError(null);
 
       if (!userIdRef.current) {
         userIdRef.current = user?.id || await getUserId(user);
       }
       const userId = userIdRef.current;
-      
+
       if (!userId) {
         throw new Error('User not authenticated');
       }
-      
-      // Fetch logs and summary in parallel
-      const cacheBuster = Date.now();
-      const [logsResponse, summaryResponse] = await Promise.all([
-        fetch(`${apiBaseUrl}/api/get-education-logs?userId=${userId}&_t=${cacheBuster}`, {
-          method: 'GET',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          cache: 'no-store'
-        }),
-        fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
-          method: 'GET',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-          },
-          cache: 'no-store'
-        })
-      ]);
 
+      const currentOffset = reset ? 0 : offsetRef.current;
+      const cacheBuster = Date.now();
+
+      // Logs page
+      const logsParams = new URLSearchParams({
+        userId,
+        limit: String(EDUCATION_PAGE_SIZE),
+        offset: String(currentOffset),
+        // Cards lazy-fetch full image via /api/get-education-log-image,
+        // so the list payload stays small.
+        includeImage: 'false',
+        _t: String(cacheBuster),
+      });
+
+      // First page also fetches summary in parallel (cheap & needed up-front).
+      const requests = [
+        fetch(`${apiBaseUrl}/api/get-education-logs?${logsParams}`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+          },
+          cache: 'no-store',
+        }),
+      ];
+      if (reset) {
+        requests.push(
+          fetch(`${apiBaseUrl}/api/get-education-summary?userId=${userId}&_t=${cacheBuster}`, {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            },
+            cache: 'no-store',
+          })
+        );
+      }
+
+      const [logsResponse, summaryResponse] = await Promise.all(requests);
       const logsData = await logsResponse.json();
-      
+
       if (!logsResponse.ok || !logsData.success) {
         throw new Error(logsData.message || 'Failed to fetch education logs');
       }
 
-      setEducationLogs(logsData.logs || []);
+      const newRows = Array.isArray(logsData.logs) ? logsData.logs : [];
 
-      // Handle summary data
-      if (summaryResponse.ok) {
-        const summaryData = await summaryResponse.json();
-        if (summaryData.success) {
-          setSummary(summaryData.summary);
-          setSummaryLoading(false);
-        }
+      if (reset) {
+        setEducationLogs(newRows);
       } else {
-        console.warn('Summary fetch failed, will use loaded logs for stats');
+        setEducationLogs(prev => {
+          // Avoid duplicates if a refresh races with infinite scroll
+          const seen = new Set(prev.map(e => e?.Id));
+          const merged = prev.slice();
+          for (const r of newRows) {
+            if (!seen.has(r.Id)) merged.push(r);
+          }
+          return merged;
+        });
+      }
+
+      const nextOffset = currentOffset + newRows.length;
+      const more = logsData.pagination
+        ? !!logsData.pagination.hasMore
+        : newRows.length === EDUCATION_PAGE_SIZE;
+      offsetRef.current = nextOffset;
+      hasMoreRef.current = more;
+      setHasMoreLogs(more);
+
+      // Summary (only fetched on reset)
+      if (summaryResponse) {
+        if (summaryResponse.ok) {
+          const summaryData = await summaryResponse.json();
+          if (summaryData.success) {
+            setSummary(summaryData.summary);
+          }
+        } else {
+          console.warn('Summary fetch failed, will use loaded logs for stats');
+        }
         setSummaryLoading(false);
       }
 
     } catch (err) {
       console.error('❌ Fetch education logs error:', err);
       setError(err.message || 'Failed to load education logs');
-      setSummaryLoading(false);
+      if (reset) setSummaryLoading(false);
     } finally {
-      setLoading(false);
+      if (reset) {
+        setLoading(false);
+      } else {
+        loadingMoreRef.current = false;
+        setLoadingMore(false);
+      }
     }
   };
+
+  /**
+   * ✅ INFINITE SCROLL: observe sentinel and load next page when visible
+   */
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        if (entry && entry.isIntersecting && hasMoreRef.current && !loadingMoreRef.current) {
+          fetchEducationLogs({ reset: false });
+        }
+      },
+      { rootMargin: '300px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMoreLogs, loading]);
 
   /**
    * Handle delete education log with undo support
@@ -1175,6 +1262,20 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
                 </div>
               );
             }))}
+
+          {/* ✅ INFINITE SCROLL: sentinel + loading indicator for next page */}
+          {(hasMoreLogs || loadingMore) && (
+            <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
+              {loadingMore ? (
+                <div className="flex items-center gap-2 text-sm text-gray-500">
+                  <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
+                  Loading more entries…
+                </div>
+              ) : (
+                <span className="text-xs text-gray-400">Scroll to load more</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>

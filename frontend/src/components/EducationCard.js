@@ -71,6 +71,9 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
   const [leaving, setLeaving] = useState(false);
   const [deletedOnce, setDeletedOnce] = useState(false);
   const [thumbnailSrc, setThumbnailSrc] = useState(null);
+  // ✅ Only fetch the image once the card is actually scrolled into view
+  const [imageVisible, setImageVisible] = useState(false);
+  const imgWrapRef = useRef(null);
 
   const startXRef = useRef(0);
   const startYRef = useRef(0);
@@ -90,13 +93,34 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
   useEffect(() => () => cancelRAF(), []);
 
+  // ✅ Observe image slot — only request the image when scrolled into view
+  useEffect(() => {
+    const el = imgWrapRef.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setImageVisible(true);
+          observer.disconnect();
+        }
+      },
+      { rootMargin: '150px', threshold: 0 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
   // Lazy-load thumbnail: fetch full image from API and use it as thumbnail
   useEffect(() => {
+    if (!imageVisible) return;
     if (!data?.hasFullImage || !apiBaseUrl || !userId || !data?.Id) return;
+    if (thumbnailSrc) return;
 
+    let cancelled = false;
     fetch(`${apiBaseUrl}/api/get-education-log-image?logId=${data.Id}&userId=${userId}`)
       .then((r) => r.json())
       .then((res) => {
+        if (cancelled) return;
         if (res.success && res.imageBase64) {
           const src = res.imageBase64.startsWith('data:')
             ? res.imageBase64
@@ -105,7 +129,8 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
         }
       })
       .catch(() => {/* silently ignore */});
-  }, [data?.Id, data?.hasFullImage, apiBaseUrl, userId]);
+    return () => { cancelled = true; };
+  }, [imageVisible, data?.Id, data?.hasFullImage, apiBaseUrl, userId, thumbnailSrc]);
 
   if (!data || !data.CreatedAt) {
     console.warn('EducationCard received invalid data:', data);
@@ -294,7 +319,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
         <div className="flex items-center gap-2 xs:gap-3 sm:gap-4 p-2.5 xs:p-3 sm:p-4">
           {/* Screenshot Image or Platform Icon */}
           {thumbnailSrc ? (
-            <div className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
+            <div ref={imgWrapRef} className="flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg overflow-hidden shadow-md">
               <img
                 src={thumbnailSrc}
                 alt={data.Topic || 'Meeting Screenshot'}
@@ -304,11 +329,11 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
             </div>
           ) : data.hasFullImage ? (
             // Image exists but not yet loaded — show a placeholder gradient
-            <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
+            <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md animate-pulse`}>
               {platformIcon}
             </div>
           ) : (
-            <div className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md`}>
+            <div ref={imgWrapRef} className={`flex-shrink-0 w-14 h-14 sm:w-16 sm:h-16 rounded-lg bg-gradient-to-br ${platformColor} flex items-center justify-center text-white shadow-md`}>
               {platformIcon}
             </div>
           )}

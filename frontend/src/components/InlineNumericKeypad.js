@@ -7,31 +7,37 @@ import React, { useRef, useState } from 'react';
  * Props:
  *   onDigit(d: string): void   // called with "0".."9"
  *   onBackspace(): void
- *   typingDelayMs?: number     // throttle between key presses (default 120ms)
  *   className?: string         // optional wrapper className
  */
 const InlineNumericKeypad = ({
   onDigit,
   onBackspace,
-  typingDelayMs = 120,
   className = '',
 }) => {
-  const lastTapRef = useRef(0);
   const [pressed, setPressed] = useState(null);
+  // Guard against a single tap producing both pointerdown AND a synthetic
+  // mousedown/click on some Android WebViews. We accept only ONE event per
+  // physical tap.
+  const tapHandledRef = useRef(false);
+  const releaseTimerRef = useRef(null);
 
-  const throttle = (fn, key) => {
-    const now = Date.now();
-    if (now - lastTapRef.current < typingDelayMs) return;
-    lastTapRef.current = now;
+  const fire = (action, key) => {
+    if (tapHandledRef.current) return;
+    tapHandledRef.current = true;
     setPressed(key);
-    setTimeout(() => setPressed((p) => (p === key ? null : p)), 100);
-    fn();
+    action();
+    if (releaseTimerRef.current) clearTimeout(releaseTimerRef.current);
+    releaseTimerRef.current = setTimeout(() => {
+      setPressed((p) => (p === key ? null : p));
+      tapHandledRef.current = false;
+    }, 120);
   };
 
-  const handleTap = (e, action, key) => {
+  const handlePointerDown = (e, action, key) => {
+    // Prevent the browser from firing a follow-up mousedown/click for this tap
     e.preventDefault();
     e.stopPropagation();
-    throttle(action, key);
+    fire(action, key);
   };
 
   const btnBase =
@@ -41,15 +47,15 @@ const InlineNumericKeypad = ({
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
   return (
-    <div className={`w-full ${className}`}>
+    <div className={`w-full ${className}`} style={{ touchAction: 'manipulation' }}>
       <div className="grid grid-cols-3 gap-3">
         {keys.map((k) => (
           <button
             key={k}
             type="button"
             tabIndex={-1}
-            onMouseDown={(e) => handleTap(e, () => onDigit(k), k)}
-            onTouchStart={(e) => handleTap(e, () => onDigit(k), k)}
+            onPointerDown={(e) => handlePointerDown(e, () => onDigit(k), k)}
+            style={{ touchAction: 'manipulation' }}
             className={`${btnBase} ${
               pressed === k ? 'bg-gray-200 scale-95' : 'active:bg-gray-100'
             }`}
@@ -65,8 +71,8 @@ const InlineNumericKeypad = ({
         <button
           type="button"
           tabIndex={-1}
-          onMouseDown={(e) => handleTap(e, () => onDigit('0'), '0')}
-          onTouchStart={(e) => handleTap(e, () => onDigit('0'), '0')}
+          onPointerDown={(e) => handlePointerDown(e, () => onDigit('0'), '0')}
+          style={{ touchAction: 'manipulation' }}
           className={`${btnBase} ${
             pressed === '0' ? 'bg-gray-200 scale-95' : 'active:bg-gray-100'
           }`}
@@ -78,8 +84,8 @@ const InlineNumericKeypad = ({
         <button
           type="button"
           tabIndex={-1}
-          onMouseDown={(e) => handleTap(e, onBackspace, 'back')}
-          onTouchStart={(e) => handleTap(e, onBackspace, 'back')}
+          onPointerDown={(e) => handlePointerDown(e, onBackspace, 'back')}
+          style={{ touchAction: 'manipulation' }}
           className={`${btnBase} ${
             pressed === 'back' ? 'bg-gray-200 scale-95' : 'active:bg-gray-100'
           }`}
