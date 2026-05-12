@@ -1,8 +1,13 @@
 ﻿// src/components/DeleteAccountModal.js
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2, X, CheckCircle, Loader, Mail, ShieldCheck } from 'lucide-react';
+import { Capacitor } from '@capacitor/core';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import InlineNumericKeypad from './InlineNumericKeypad';
 import { deleteFirebaseUser } from '../../../shared/services/firebase';
+
+// Use inline custom numeric keypad on native (Capacitor) builds only
+const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 /**
  * DeleteAccountModal â€” Apple Guideline 5.1.1(v) compliant
@@ -13,6 +18,10 @@ import { deleteFirebaseUser } from '../../../shared/services/firebase';
  *   Step 3 â€” User must type "DELETE" to confirm
  *   Step 4 â€” Success / error feedback â†’ auto sign-out
  */
+
+// Γ£à Key used to persist OTP pending state across app close/reopen
+const DELETE_OTP_PENDING_KEY = 'deleteAccountOtpPending';
+
 const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSignOut }) => {
   const [step, setStep] = useState(1);
 
@@ -35,6 +44,34 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   const otpValue = otp.join('');
   const isOtpComplete = otpValue.length === 6;
 
+  // Γ£à Restore pending OTP step when modal opens (survives app close/reopen)
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const saved = localStorage.getItem(DELETE_OTP_PENDING_KEY);
+      if (saved) {
+        const { email, sentAt } = JSON.parse(saved);
+        const age = Date.now() - sentAt;
+        // Only restore if same user and OTP sent within 10 minutes
+        if (email === userEmail && age < 10 * 60 * 1000) {
+          const elapsed = Math.floor(age / 1000);
+          const remaining = Math.max(0, 60 - elapsed);
+          setStep(2);
+          setOtpSent(true);
+          setCountdown(remaining);
+          setCanResend(remaining === 0);
+          console.log('≡ƒöä [DeleteAccount] Restored pending OTP step, countdown:', remaining);
+          setTimeout(() => otpRefs.current[0]?.focus(), 300);
+        } else {
+          // Expired or different user ΓÇö clear it
+          localStorage.removeItem(DELETE_OTP_PENDING_KEY);
+        }
+      }
+    } catch {
+      localStorage.removeItem(DELETE_OTP_PENDING_KEY);
+    }
+  }, [isOpen, userEmail]);
+
   // Countdown timer for OTP resend
   useEffect(() => {
     if (!otpSent || countdown <= 0) {
@@ -56,6 +93,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setConfirmText('');
     setIsDeleting(false);
     setErrorMessage('');
+    // Γ£à Clear persisted state when user cancels
+    localStorage.removeItem(DELETE_OTP_PENDING_KEY);
   };
 
   const handleClose = () => {
@@ -80,6 +119,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
         setStep(2);
         setCountdown(60);
         setCanResend(false);
+        // Γ£à Persist OTP pending state so it survives app close/reopen
+        localStorage.setItem(DELETE_OTP_PENDING_KEY, JSON.stringify({ email: userEmail, sentAt: Date.now() }));
         setTimeout(() => otpRefs.current[0]?.focus(), 300);
       } else {
         setErrorMessage(data.message || 'Failed to send OTP. Try again.');
@@ -116,6 +157,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
 
   // â”€â”€ OTP input handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleOtpChange = (index, value) => {
+    if (USE_CUSTOM_KEYPAD) return;
     if (!/^\d*$/.test(value)) return;
     const newOtp = [...otp];
     newOtp[index] = value.slice(-1);
@@ -125,9 +167,30 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   };
 
   const handleOtpKeyDown = (index, e) => {
+    if (USE_CUSTOM_KEYPAD) return;
     if (e.key === 'Backspace' && !otp[index] && index > 0) {
       otpRefs.current[index - 1]?.focus();
     }
+  };
+
+  // ΓöÇΓöÇ Custom keypad handlers (native only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  const handleKeypadDigit = (digit) => {
+    const currentIndex = otp.findIndex((d) => d === '');
+    const index = currentIndex === -1 ? 5 : currentIndex;
+    if (otp[index] !== '' && currentIndex === -1) return;
+    const newOtp = [...otp];
+    newOtp[index] = digit;
+    setOtp(newOtp);
+    setErrorMessage('');
+  };
+
+  const handleKeypadBackspace = () => {
+    const lastFilled = [...otp].map((d, i) => (d ? i : -1)).filter((i) => i !== -1).pop();
+    if (lastFilled === undefined) return;
+    const newOtp = [...otp];
+    newOtp[lastFilled] = '';
+    setOtp(newOtp);
+    setErrorMessage('');
   };
 
   const handleOtpPaste = (e) => {
@@ -155,6 +218,8 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
       if (data.success) {
         setStep(3);
         setErrorMessage('');
+        // Γ£à OTP verified ΓÇö no longer need to restore to step 2
+        localStorage.removeItem(DELETE_OTP_PENDING_KEY);
       } else {
         setErrorMessage(data.message || 'Invalid OTP. Please try again.');
       }
@@ -343,17 +408,31 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
                   <input
                     key={i}
                     ref={(el) => (otpRefs.current[i] = el)}
-                    type="text"
-                    inputMode="numeric"
+                    type={USE_CUSTOM_KEYPAD ? 'text' : 'tel'}
+                    inputMode={USE_CUSTOM_KEYPAD ? 'none' : 'numeric'}
+                    pattern="[0-9]*"
+                    readOnly={USE_CUSTOM_KEYPAD}
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleOtpChange(i, e.target.value)}
                     onKeyDown={(e) => handleOtpKeyDown(i, e)}
-                    className="w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px]"
+                    onFocus={USE_CUSTOM_KEYPAD ? (e) => e.target.blur() : undefined}
+                    onContextMenu={USE_CUSTOM_KEYPAD ? (e) => e.preventDefault() : undefined}
+                    className={`w-11 h-12 text-center text-lg font-bold border-2 rounded-xl focus:outline-none focus:border-red-500 transition-colors text-[16px] ${USE_CUSTOM_KEYPAD ? 'caret-transparent' : ''}`}
                     style={{ borderColor: digit ? '#dc2626' : '#e5e7eb' }}
                   />
                 ))}
               </div>
+
+              {/* Inline numeric keypad (native apps only) */}
+              {USE_CUSTOM_KEYPAD && (
+                <div className="mb-3">
+                  <InlineNumericKeypad
+                    onDigit={handleKeypadDigit}
+                    onBackspace={handleKeypadBackspace}
+                  />
+                </div>
+              )}
 
               {/* Resend */}
               <div className="text-center mb-3">
