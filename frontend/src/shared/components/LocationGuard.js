@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { MapPin } from 'lucide-react';
-import { StepCounterPlugin } from '../../plugins/stepCounterPlugin';
+import { StepCounterPlugin } from '../plugins/stepCounterPlugin';
 
 const POLL_INTERVAL_MS = 2000;
 

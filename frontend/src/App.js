@@ -735,7 +735,7 @@ function WellnessValleyApp() {
       // Request ACTIVITY_RECOGNITION so the background step sensor works from day 1
       // FEATURE DISABLED â€” Step Counter commented out
       // try {
-      //   const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+      //   const { StepCounterPlugin } = await import('./shared/plugins/stepCounterPlugin');
       //   const av = await StepCounterPlugin.isAvailable();
       //   if (av?.available) {
       //     await StepCounterPlugin.requestPermission();
@@ -804,7 +804,7 @@ function WellnessValleyApp() {
           if (isActive) {
             GalleryMonitor.checkGallery();
             // Re-start step tracking in case Android killed the service while app was in background
-            import('./plugins/stepCounterPlugin').then(({ StepCounterPlugin }) => {
+            import('./shared/plugins/stepCounterPlugin').then(({ StepCounterPlugin }) => {
               StepCounterPlugin.isAvailable().then(av => {
                 if (av?.available) {
                   StepCounterPlugin.getPermissionStatus().then(perm => {
@@ -825,7 +825,7 @@ function WellnessValleyApp() {
         });
 
         const { GalleryMonitorPlugin } = await import(
-          "./plugins/galleryMonitorPlugin"
+          "./shared/plugins/galleryMonitorPlugin"
         );
         const listener = await GalleryMonitorPlugin.addListener(
           "notificationClicked",
@@ -858,7 +858,7 @@ function WellnessValleyApp() {
   //   if (!user || !isUserActive || !Capacitor.isNativePlatform()) return;
   //   const startStepTrackingIfPermitted = async () => {
   //     try {
-  //       const { StepCounterPlugin } = await import('./plugins/stepCounterPlugin');
+  //       const { StepCounterPlugin } = await import('./shared/plugins/stepCounterPlugin');
   //       const availability = await StepCounterPlugin.isAvailable();
   //       if (!availability?.available) return;
   //       const permission = await StepCounterPlugin.getPermissionStatus();

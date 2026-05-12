@@ -2,8 +2,8 @@
 import { Capacitor } from '@capacitor/core';
 import { Activity, Footprints, Flame, ArrowLeft, ShieldAlert, Calendar, TrendingUp, RefreshCw } from 'lucide-react';
 import { Geolocation } from '@capacitor/geolocation';
-import { StepCounterPlugin } from '../../../plugins/stepCounterPlugin';
-import { GalleryMonitorPlugin } from '../../../plugins/galleryMonitorPlugin';
+import { StepCounterPlugin } from '../../../shared/plugins/stepCounterPlugin';
+import { GalleryMonitorPlugin } from '../../../shared/plugins/galleryMonitorPlugin';
 import { fetchDailyActivity, saveDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import LocationGuard from '../../../shared/components/LocationGuard';

@@ -1,6 +1,6 @@
 ﻿import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
-import { GalleryMonitorPlugin } from '../../plugins/galleryMonitorPlugin';
+import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
 
 export const GalleryMonitor = {
   _isInitialized: false,

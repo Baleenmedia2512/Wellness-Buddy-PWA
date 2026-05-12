@@ -1,4 +1,4 @@
-import { registerPlugin } from '@capacitor/core';
+﻿import { registerPlugin } from '@capacitor/core';
 
 /**
  * Android In-App Update Plugin Interface
@@ -109,7 +109,7 @@ export const removeUpdateListeners = async (eventName) => {
  * Example usage:
  * 
  * // Check for updates on app start
- * import { checkForUpdate, addUpdateListener, InAppUpdateEvents, UpdateType } from './plugins/inAppUpdatePlugin';
+ * import { checkForUpdate, addUpdateListener, InAppUpdateEvents, UpdateType } from './shared/plugins/inAppUpdatePlugin';
  * 
  * // Add listeners
  * addUpdateListener(InAppUpdateEvents.UPDATE_AVAILABLE, (data) => {
