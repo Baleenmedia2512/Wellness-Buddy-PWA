@@ -7,13 +7,13 @@ import React, {
   useImperativeHandle,
   forwardRef,
 } from "react";
-import { geminiService } from "../services/geminiService";
+import { geminiService } from "../../../services/geminiService";
 import {
   saveFoodCorrection,
   reverseLookupOriginalAiName,
 } from "../services/foodCorrectionService";
-import { getUserContext } from "../services/userContextService";
-import TouchFeedbackButton from "./TouchFeedbackButton";
+import { getUserContext } from "../../../services/userContextService";
+import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
 import {
   Search,
   Edit2,

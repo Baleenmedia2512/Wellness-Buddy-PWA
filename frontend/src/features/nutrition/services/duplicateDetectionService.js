@@ -1,5 +1,5 @@
 // src/services/duplicateDetectionService.js
-import { istToLocalDate } from "../utils/timezoneUtils";
+import { istToLocalDate } from "../../../utils/timezoneUtils";
 
 /**
  * Get the meal category based on current time

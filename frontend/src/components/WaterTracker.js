@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import { Droplets, CheckCircle, AlertCircle, RefreshCw, Plus } from "lucide-react";
-import { saveNutritionAnalysis } from "../services/nutritionSaveService";
+import { saveNutritionAnalysis } from "../features/nutrition/services/nutritionSaveService";
 
 // Quick-log amounts in ml
 const QUICK_AMOUNTS = [

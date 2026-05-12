@@ -50,7 +50,7 @@ const EducationIcon = ({ className }) => (
 );
 
 // ✅ LAZY LOADING: Load tab components on-demand (only one visible at a time)
-const NutritionDashboard = lazy(() => import('./NutritionDashboard'));
+const NutritionDashboard = lazy(() => import('../features/nutrition/components/NutritionDashboard'));
 const WeightDashboard = lazy(() => import('../features/weight/components/WeightDashboard'));
 const EducationDashboard = lazy(() => import('../features/education/components/EducationDashboard'));
 // FEATURE DISABLED: const StepsDashboard = lazy(() => import('./StepsDashboard'));

@@ -41,9 +41,7 @@
           {
             "paths": [
               { "name": "axios", "message": "VSA: components are presentational. Move HTTP calls to a feature service or hook." }
-            ]
-          },
-          {
+            ],
             "patterns": [
               {
                 "group": ["**/features/*/**", "../features/*/**"],

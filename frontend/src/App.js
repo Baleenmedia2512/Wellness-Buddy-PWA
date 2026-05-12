@@ -18,7 +18,7 @@ import { Camera } from "@capacitor/camera";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./components/ImageUpload";
-import NutritionCard from "./components/NutritionCard";
+import NutritionCard from "./features/nutrition/components/NutritionCard";
 import EducationLogCard from "./features/education/components/EducationLogCard";
 import WatchActivityCard from "./components/WatchActivityCard";
 import TestImageGuide from "./components/TestImageGuide";
@@ -40,22 +40,22 @@ import { getVersionString } from "./config/version";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
-} from "./services/nutritionSaveService";
+} from "./features/nutrition/services/nutritionSaveService";
 import { geminiService } from "./services/geminiService";
 import { imageTypeDetector } from "./services/imageTypeDetector";
 import { weightDetectionService } from "./features/weight/services/weightDetectionService";
 import { educationDetectionService } from "./features/education/services/educationDetectionService";
-import { duplicateDetectionService } from "./services/duplicateDetectionService";
-import { applyUserCorrections } from "./services/foodCorrectionService";
+import { duplicateDetectionService } from "./features/nutrition/services/duplicateDetectionService";
+import { applyUserCorrections } from "./features/nutrition/services/foodCorrectionService";
 import { captureAndShare } from "./utils/shareUtils";
 import { locationAttendanceService } from "./services/locationAttendanceService";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./services/reminderService";
 import { validateImageFreshness } from "./utils/imageValidator";
 import ManualWeightEntryModal from "./features/weight/components/ManualWeightEntryModal";
-import SmartFoodSearchModal from "./components/SmartFoodSearchModal";
+import SmartFoodSearchModal from "./features/nutrition/components/SmartFoodSearchModal";
 import ManualEducationEntryModal from "./features/education/components/ManualEducationEntryModal";
 import ManualWatchEntryModal from "./components/ManualWatchEntryModal";
-import DuplicateFoodModal from "./components/DuplicateFoodModal";
+import DuplicateFoodModal from "./features/nutrition/components/DuplicateFoodModal";
 import UserProfileModal from "./components/UserProfileModal";
 import CompleteProfilePage from "./components/CompleteProfilePage";
 import MandatoryProfilePictureModal from "./components/MandatoryProfilePictureModal";

@@ -15,10 +15,10 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
-import "../LazyLoadStyles.css";
+import "../../../LazyLoadStyles.css";
 import EditableFoodItem from "./EditableFoodItem";
-import TouchFeedbackButton from "./TouchFeedbackButton";
-import { geminiService } from "../services/geminiService";
+import TouchFeedbackButton from "../../../components/TouchFeedbackButton";
+import { geminiService } from "../../../services/geminiService";
 import {
   LineChart,
   Line,
