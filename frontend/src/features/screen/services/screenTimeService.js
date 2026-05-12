@@ -1,5 +1,5 @@
-import { apiClient } from './apiClient';
-import { ScreenTimePlugin } from '../plugins/screenTimePlugin';
+import { apiClient } from '../../../services/apiClient';
+import { ScreenTimePlugin } from '../../../plugins/screenTimePlugin';
 
 /**
  * Check if screen time permission is granted
