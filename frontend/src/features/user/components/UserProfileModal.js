@@ -1,4 +1,4 @@
-﻿// src/components/UserProfileModal.js
+// src/components/UserProfileModal.js
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Cropper from "react-easy-crop";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -86,7 +86,7 @@ const UserProfileModal = ({
 
   // faceStatus: "idle" | "detecting" | "face_found" | "no_face" | "detection_error"
   const [faceStatus, setFaceStatus] = useState("idle");
-  // showFaceToast: controls toast visibility only â€” dismissing hides toast but keeps faceStatus
+  // showFaceToast: controls toast visibility only — dismissing hides toast but keeps faceStatus
   const [showFaceToast, setShowFaceToast] = useState(false);
 
   // Crop state
@@ -137,7 +137,7 @@ const UserProfileModal = ({
       const text = result.response.text().trim().toLowerCase();
       const hasFace = text.startsWith("yes");
       const status = hasFace ? "face_found" : "no_face";
-      console.log(`âœ… [Face Detection] Result: ${hasFace ? "face found" : "no face"} (raw: "${text}")`);
+      console.log(`✅ [Face Detection] Result: ${hasFace ? "face found" : "no face"} (raw: "${text}")`);
       setFaceStatus(status);
       setShowFaceToast(true);
       faceDetectionResolveRef.current?.(status);
@@ -182,20 +182,20 @@ const UserProfileModal = ({
       if (data.success && data.data) {
         let profile = data.data;
 
-        // ðŸ”’ Demo account: load locally-saved profile if API returned empty fields
+        // 🔒 Demo account: load locally-saved profile if API returned empty fields
         const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
         if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
           const stored = localStorage.getItem(`demo_profile_${user.email}`);
           if (stored) {
             try {
               const local = JSON.parse(stored);
-              console.log('ðŸ’¾ [Demo] Loading profile from localStorage:', local);
+              console.log('💾 [Demo] Loading profile from localStorage:', local);
               profile = { ...profile, ...local };
             } catch (e) { /* ignore */ }
           }
         }
 
-        console.log("ðŸ“¥ [UserProfileModal] Fetched profile data:", {
+        console.log("📥 [UserProfileModal] Fetched profile data:", {
           latestBmr: profile.latestBmr,
           latestWeight: profile.latestWeight,
           weightRecordDate: profile.weightRecordDate,
@@ -213,15 +213,15 @@ const UserProfileModal = ({
         if (profile.profileImage) {
           setProfileImagePreview(profile.profileImage);
         }
-        console.log("âœ… [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
+        console.log("✅ [UserProfileModal] BMR set to state:", profile.latestBmr ? String(Math.round(profile.latestBmr)) : "(empty)");
       } else if (data.success && !data.data) {
-        // ðŸ”’ Demo account bypass: API returns top-level fields (no data wrapper)
+        // 🔒 Demo account bypass: API returns top-level fields (no data wrapper)
         // Load from localStorage instead
         const stored = localStorage.getItem(`demo_profile_${user.email}`);
         if (stored) {
           try {
             const local = JSON.parse(stored);
-            console.log('ðŸ’¾ [Demo] Loading profile from localStorage (no data wrapper):', local);
+            console.log('💾 [Demo] Loading profile from localStorage (no data wrapper):', local);
             setName(local.userName || user?.name || "");
             setHeight(local.height ? String(local.height) : "");
             setBmr(local.latestBmr ? String(Math.round(local.latestBmr)) : "");
@@ -230,7 +230,7 @@ const UserProfileModal = ({
             if (local.profileImage) setProfileImagePreview(local.profileImage);
           } catch (e) { /* ignore */ }
         } else {
-          // No stored data â€” use API top-level fields as fallback
+          // No stored data — use API top-level fields as fallback
           setName(data.userName || user?.name || "");
         }
       }
@@ -294,7 +294,7 @@ const UserProfileModal = ({
     }
   }, [successMessage, onClose]);
 
-  // Handle profile image selection â€” opens cropper
+  // Handle profile image selection — opens cropper
   const handleImageSelect = (e) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -389,7 +389,7 @@ const UserProfileModal = ({
         return;
       }
 
-      // Face detection check â€” only when a new profile photo is being saved
+      // Face detection check — only when a new profile photo is being saved
       if (profileImage) {
         let resolvedStatus = faceStatus;
         // If still detecting, wait for it to finish
@@ -424,7 +424,7 @@ const UserProfileModal = ({
         }),
       });
 
-      console.log("ðŸ“¤ [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
+      console.log("📤 [UserProfileModal] Sent BMR to backend:", bmr && bmr.trim() !== "" ? parseFloat(bmr) : undefined);
 
       // Check if response is JSON before parsing
       const contentType = response.headers.get("content-type");
@@ -445,7 +445,7 @@ const UserProfileModal = ({
       }
 
       if (data.success) {
-        // ðŸ”’ Demo account: persist profile locally since no DB write happens
+        // 🔒 Demo account: persist profile locally since no DB write happens
         const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
         if (DEMO_ACCOUNTS.includes((user.email || '').toLowerCase().trim())) {
           const demoProfile = {
@@ -457,7 +457,7 @@ const UserProfileModal = ({
             profileImage: profileImagePreview || null,
           };
           localStorage.setItem(`demo_profile_${user.email}`, JSON.stringify(demoProfile));
-          console.log('ðŸ’¾ [Demo] Profile saved to localStorage');
+          console.log('💾 [Demo] Profile saved to localStorage');
         }
 
         // Notify parent component of the update
@@ -473,10 +473,10 @@ const UserProfileModal = ({
 
         // Refresh user context to update AI personalization (especially diet preference)
         if (user?.id) {
-          console.log("ðŸ”„ [Profile Update] Refreshing user context...");
+          console.log("🔄 [Profile Update] Refreshing user context...");
           getUserContext(user.id)
             .then(() =>
-              console.log("âœ… [Profile Update] User context refreshed"),
+              console.log("✅ [Profile Update] User context refreshed"),
             )
             .catch((error) =>
               console.error(
@@ -488,7 +488,7 @@ const UserProfileModal = ({
 
         // Refetch profile data to show updated values immediately
         await fetchUserProfile();
-        console.log("âœ… [Profile Update] Profile data refresched after save");
+        console.log("✅ [Profile Update] Profile data refresched after save");
 
         // Show success message and keep modal open
         setSuccessMessage("Profile saved successfully!");
@@ -559,7 +559,7 @@ const UserProfileModal = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md">
 
-      {/* â”€â”€ Face Detection Toast Popup â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Face Detection Toast Popup ─────────────────────── */}
       {showFaceToast && faceStatus !== "idle" && (
         <div
           className="fixed top-5 left-1/2 -translate-x-1/2 z-[70] flex items-center gap-3 bg-white rounded-2xl w-[92%] max-w-xs animate-[fadeSlideDown_0.25s_ease-out] overflow-hidden"
@@ -611,7 +611,7 @@ const UserProfileModal = ({
         </div>
       )}
 
-      {/* â”€â”€ Crop Overlay â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Crop Overlay ─────────────────────────────────────────── */}
       {showCropper && rawImageSrc && (
         <div className="absolute inset-0 flex flex-col bg-black" style={{ zIndex: 60 }}>
           {/* Top bar */}
@@ -668,17 +668,17 @@ const UserProfileModal = ({
                 className="flex-1 h-2 accent-green-500"
               />
               <RotateCw className="w-4 h-4 text-white/60 flex-shrink-0" />
-              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{rotation}Â°</span>
+              <span className="text-white/40 text-xs w-8 text-right flex-shrink-0">{rotation}°</span>
             </div>
 
-            {/* Icon buttons row â€” Rotate L / Reset / Rotate R */}
+            {/* Icon buttons row — Rotate L / Reset / Rotate R */}
             <div className="flex justify-center gap-2">
               <button
                 onClick={() => setRotation(r => r - 90)}
                 className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl bg-white/10 active:bg-white/25 border border-white/10"
               >
                 <RotateCcw className="w-4 h-4 text-white" />
-                <span className="text-white/80 text-xs font-medium">-90Â°</span>
+                <span className="text-white/80 text-xs font-medium">-90°</span>
               </button>
               <button
                 onClick={() => { setCrop({ x: 0, y: 0 }); setZoom(1); setRotation(0); }}
@@ -692,7 +692,7 @@ const UserProfileModal = ({
                 className="flex items-center justify-center gap-1.5 flex-1 py-2.5 rounded-xl bg-white/10 active:bg-white/25 border border-white/10"
               >
                 <RotateCw className="w-4 h-4 text-white" />
-                <span className="text-white/80 text-xs font-medium">+90Â°</span>
+                <span className="text-white/80 text-xs font-medium">+90°</span>
               </button>
             </div>
           </div>
@@ -967,9 +967,9 @@ const UserProfileModal = ({
                         dietType ? "text-gray-900" : "text-gray-400"
                       }`}
                     >
-                      {dietType === "Vegetarian" && "ðŸŒ±"}
+                      {dietType === "Vegetarian" && "🌱"}
                       {dietType === "Non-Vegetarian" && "ðŸ—"}
-                      {dietType === "Vegan" && "ðŸ¥¦"}
+                      {dietType === "Vegan" && "🥦"}
                       {dietType === "Pescatarian" && "ðŸŸ"}
                       {dietType || "Select diet preference"}
                     </span>
@@ -990,14 +990,14 @@ const UserProfileModal = ({
                         {
                           value: "Vegetarian",
                           label: "Vegetarian",
-                          icon: "ðŸŒ±",
+                          icon: "🌱",
                         },
                         {
                           value: "Non-Vegetarian",
                           label: "Non-Vegetarian",
                           icon: "ðŸ—",
                         },
-                        { value: "Vegan", label: "Vegan", icon: "ðŸ¥¦" },
+                        { value: "Vegan", label: "Vegan", icon: "🥦" },
                         {
                           value: "Pescatarian",
                           label: "Pescatarian",

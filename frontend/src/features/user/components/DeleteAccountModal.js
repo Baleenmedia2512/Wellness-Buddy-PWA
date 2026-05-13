@@ -1,4 +1,4 @@
-﻿// src/components/DeleteAccountModal.js
+// src/components/DeleteAccountModal.js
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Trash2, X, CheckCircle, Loader, Mail, ShieldCheck } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
@@ -10,22 +10,22 @@ import { deleteFirebaseUser } from '../../../shared/services/firebase';
 const USE_CUSTOM_KEYPAD = Capacitor.isNativePlatform();
 
 /**
- * DeleteAccountModal â€” Apple Guideline 5.1.1(v) compliant
+ * DeleteAccountModal — Apple Guideline 5.1.1(v) compliant
  *
  * 4-step self-service account deletion:
- *   Step 1 â€” Warning screen with data list
- *   Step 2 â€” OTP sent to registered email, user enters it
- *   Step 3 â€” User must type "DELETE" to confirm
- *   Step 4 â€” Success / error feedback â†’ auto sign-out
+ *   Step 1 — Warning screen with data list
+ *   Step 2 — OTP sent to registered email, user enters it
+ *   Step 3 — User must type "DELETE" to confirm
+ *   Step 4 — Success / error feedback → auto sign-out
  */
 
-// Γ£à Key used to persist OTP pending state across app close/reopen
+// ✅ Key used to persist OTP pending state across app close/reopen
 const DELETE_OTP_PENDING_KEY = 'deleteAccountOtpPending';
 
 const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSignOut }) => {
   const [step, setStep] = useState(1);
 
-  // Step 2 â€” OTP
+  // Step 2 — OTP
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [otpSending, setOtpSending] = useState(false);
   const [otpVerifying, setOtpVerifying] = useState(false);
@@ -34,7 +34,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   const [canResend, setCanResend] = useState(false);
   const otpRefs = useRef([]);
 
-  // Step 3 â€” type DELETE
+  // Step 3 — type DELETE
   const [confirmText, setConfirmText] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -44,7 +44,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   const otpValue = otp.join('');
   const isOtpComplete = otpValue.length === 6;
 
-  // Γ£à Restore pending OTP step when modal opens (survives app close/reopen)
+  // ✅ Restore pending OTP step when modal opens (survives app close/reopen)
   useEffect(() => {
     if (!isOpen) return;
     try {
@@ -60,10 +60,10 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           setOtpSent(true);
           setCountdown(remaining);
           setCanResend(remaining === 0);
-          console.log('≡ƒöä [DeleteAccount] Restored pending OTP step, countdown:', remaining);
+          console.log('🔄 [DeleteAccount] Restored pending OTP step, countdown:', remaining);
           setTimeout(() => otpRefs.current[0]?.focus(), 300);
         } else {
-          // Expired or different user ΓÇö clear it
+          // Expired or different user — clear it
           localStorage.removeItem(DELETE_OTP_PENDING_KEY);
         }
       }
@@ -93,7 +93,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     setConfirmText('');
     setIsDeleting(false);
     setErrorMessage('');
-    // Γ£à Clear persisted state when user cancels
+    // ✅ Clear persisted state when user cancels
     localStorage.removeItem(DELETE_OTP_PENDING_KEY);
   };
 
@@ -102,7 +102,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     onClose();
   };
 
-  // â”€â”€ Step 1 â†’ 2: Send OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Step 1 → 2: Send OTP ─────────────────────────────────────────────────
   const handleSendOtp = async () => {
     setOtpSending(true);
     setErrorMessage('');
@@ -119,7 +119,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
         setStep(2);
         setCountdown(60);
         setCanResend(false);
-        // Γ£à Persist OTP pending state so it survives app close/reopen
+        // ✅ Persist OTP pending state so it survives app close/reopen
         localStorage.setItem(DELETE_OTP_PENDING_KEY, JSON.stringify({ email: userEmail, sentAt: Date.now() }));
         setTimeout(() => otpRefs.current[0]?.focus(), 300);
       } else {
@@ -155,7 +155,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     }
   };
 
-  // â”€â”€ OTP input handling â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── OTP input handling ────────────────────────────────────────────────────
   const handleOtpChange = (index, value) => {
     if (USE_CUSTOM_KEYPAD) return;
     if (!/^\d*$/.test(value)) return;
@@ -173,7 +173,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     }
   };
 
-  // ΓöÇΓöÇ Custom keypad handlers (native only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+  // ── Custom keypad handlers (native only) ─────────────────────────────────
   const handleKeypadDigit = (digit) => {
     const currentIndex = otp.findIndex((d) => d === '');
     const index = currentIndex === -1 ? 5 : currentIndex;
@@ -202,7 +202,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     }
   };
 
-  // â”€â”€ Step 2 â†’ 3: Verify OTP â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Step 2 → 3: Verify OTP ───────────────────────────────────────────────
   const handleVerifyOtp = async () => {
     if (!isOtpComplete) return;
     setOtpVerifying(true);
@@ -218,7 +218,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
       if (data.success) {
         setStep(3);
         setErrorMessage('');
-        // Γ£à OTP verified ΓÇö no longer need to restore to step 2
+        // ✅ OTP verified — no longer need to restore to step 2
         localStorage.removeItem(DELETE_OTP_PENDING_KEY);
       } else {
         setErrorMessage(data.message || 'Invalid OTP. Please try again.');
@@ -230,7 +230,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
     }
   };
 
-  // â”€â”€ Step 3 â†’ 4: Delete Account â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Step 3 → 4: Delete Account ───────────────────────────────────────────
   const handleDeleteAccount = async () => {
     if (!isConfirmValid) return;
     setIsDeleting(true);
@@ -254,7 +254,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           }
           keysToRemove.forEach((key) => localStorage.removeItem(key));
 
-          // âœ… CRITICAL: Re-set the sign-out block flag IMMEDIATELY after clearing localStorage.
+          // ✅ CRITICAL: Re-set the sign-out block flag IMMEDIATELY after clearing localStorage.
           // Without this, Firebase's onAuthStateChanged can silently re-authenticate
           // the user in the gap between localStorage clear and signOutUser() being called.
           localStorage.setItem('userSignedOut', 'true');
@@ -273,7 +273,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           console.warn('[DeleteAccountModal] Cache clear error (non-critical):', clearErr);
         }
 
-        // âœ… Delete the Firebase Auth user so the token is permanently invalidated.
+        // ✅ Delete the Firebase Auth user so the token is permanently invalidated.
         // This prevents the app from silently re-logging in on next open.
         try {
           await deleteFirebaseUser();
@@ -281,7 +281,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           console.warn('[DeleteAccountModal] Firebase user delete error (non-fatal):', fbErr);
         }
 
-        // âœ… Sign out IMMEDIATELY so background app state clears before step 4 shows
+        // ✅ Sign out IMMEDIATELY so background app state clears before step 4 shows
         try {
           if (onSignOut) onSignOut();
         } catch (signOutErr) {
@@ -306,10 +306,10 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
       {/* Bottom sheet on mobile, centered card on sm+ screens */}
       <div className="bg-white w-full sm:max-w-sm sm:rounded-2xl rounded-t-3xl shadow-2xl overflow-hidden flex flex-col max-h-[92dvh] sm:max-h-[90vh]">
 
-        {/* â•â• STEP 1 â€” Warning â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* â•â• STEP 1 — Warning â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {step === 1 && (
           <>
-            {/* Drag handle â€” visible on mobile only */}
+            {/* Drag handle — visible on mobile only */}
             <div className="flex justify-center pt-3 pb-1 sm:hidden">
               <div className="w-10 h-1 rounded-full bg-gray-300" />
             </div>
@@ -341,7 +341,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
                   'All other app data associated with your account',
                 ].map((item, i) => (
                   <li key={i} className="flex items-start gap-2 text-xs text-gray-600">
-                    <span className="mt-0.5 h-4 w-4 rounded-full bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">âœ•</span>
+                    <span className="mt-0.5 h-4 w-4 rounded-full bg-red-100 text-red-600 flex items-center justify-center flex-shrink-0 text-[10px] font-bold">✕</span>
                     {item}
                   </li>
                 ))}
@@ -373,7 +373,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           </>
         )}
 
-        {/* â•â• STEP 2 â€” OTP Verification â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* â•â• STEP 2 — OTP Verification â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {step === 2 && (
           <>
             {/* Drag handle */}
@@ -468,7 +468,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           </>
         )}
 
-        {/* â•â• STEP 3 â€” Type DELETE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* â•â• STEP 3 — Type DELETE â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {step === 3 && (
           <>
             {/* Drag handle */}
@@ -526,7 +526,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
           </>
         )}
 
-        {/* â•â• STEP 4 â€” Success â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
+        {/* â•â• STEP 4 — Success â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â• */}
         {step === 4 && (
           <div className="px-5 pt-8 pb-6 text-center" style={{ paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom))' }}>
             <div className="flex justify-center mb-4">

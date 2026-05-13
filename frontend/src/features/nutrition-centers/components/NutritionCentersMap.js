@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, RefreshCw, MapPin, X, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
@@ -323,7 +323,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
         }, 500);
 
         streetViewRef.current = panorama;
-        console.log('âœ… Street View initialized successfully with marker');
+        console.log('✅ Street View initialized successfully with marker');
       } catch (err) {
         console.error('âŒ Error initializing Street View:', err);
       }
@@ -588,7 +588,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </AnimatePresence>
         </div>
 
-        {/* Row 3: Team tabs â€” white pill segment */}
+        {/* Row 3: Team tabs — white pill segment */}
         <div className="max-w-4xl mx-auto px-4 pb-2">
           <div className="bg-white rounded-xl px-2 py-1.5 flex gap-1">
             {[['self','My Club'],['direct','Direct Team'],['full','Full Team'],['all','All']].map(([val, label]) => (
@@ -649,7 +649,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
           </div>
         ) : (
           <>
-            {/* Map â€” compact by default, fullscreen overlay when expanded */}
+            {/* Map — compact by default, fullscreen overlay when expanded */}
             <div
               className={mapFullscreen
                 ? 'fixed inset-0 z-[55] flex flex-col bg-black'
@@ -669,7 +669,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                 </div>
               )}
 
-              {/* The actual map div â€” always mounted so Google Maps stays attached */}
+              {/* The actual map div — always mounted so Google Maps stays attached */}
               <div
                 ref={mapRef}
                 className={mapFullscreen ? 'flex-1 w-full' : 'w-full h-52'}
@@ -746,7 +746,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
                       </div>
                     </div>
 
-                    {/* Action pills â€” wrapping row */}
+                    {/* Action pills — wrapping row */}
                     <div
                       className="flex flex-wrap gap-2 px-4 pb-4"
                       onClick={(e) => e.stopPropagation()}

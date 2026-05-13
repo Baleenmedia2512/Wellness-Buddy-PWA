@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
+import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { BookOpen, Calendar, RotateCcw, Monitor, Clock, Layers, TrendingUp, Video, CheckCircle2, Flame, Sun, Moon, Sunset, Check } from 'lucide-react';
 import { getUserId } from '../../user/services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
@@ -63,7 +63,7 @@ const UndoRow = ({ pid, originalLog, expiresAt, ttlSeconds = UNDO_SECONDS, onRes
         {undoing ? (
           <>
             <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-            Restoringâ€¦
+            Restoring…
           </>
         ) : (
           <>
@@ -527,7 +527,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         throw new Error(data.message || 'Failed to delete education log');
       }
 
-      console.log('âœ… Education log soft-deleted:', logToDelete.Id);
+      console.log('✅ Education log soft-deleted:', logToDelete.Id);
       
       // Refresh summary to reflect the delete
       fetchSummary();
@@ -588,7 +588,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         throw new Error(data.message || 'Failed to restore log');
       }
 
-      console.log('âœ… Education log restored:', originalLog.Id);
+      console.log('✅ Education log restored:', originalLog.Id);
       
       // Refresh summary to reflect the restore
       fetchSummary();
@@ -1178,7 +1178,7 @@ const EducationDashboard = ({ user, apiBaseUrl, hideHeader, refreshKey = 0 }) =>
         {/* New user message - only show when no entries */}
         {monthlyGroups.length === 0 && (
           <div className="text-center py-12 px-6 bg-white/60 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100">
-            <div className="text-6xl mb-4">ðŸ“š</div>
+            <div className="text-6xl mb-4">📚</div>
             <h3 className="text-xl font-semibold text-gray-800 mb-2">No Education Sessions</h3>
             <p className="text-gray-500 text-sm max-w-xs mx-auto">
               Upload meeting screenshots to automatically track your education sessions.

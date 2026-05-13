@@ -1,4 +1,4 @@
-﻿// src/services/duplicateDetectionService.js
+// src/services/duplicateDetectionService.js
 import { istToLocalDate } from "../../../shared/utils/timezoneUtils";
 
 /**
@@ -518,7 +518,7 @@ export async function checkForDuplicateWeight({
       }
     });
 
-    // console.log('ðŸ“Š Weight entries today:', todayEntries.length);
+    // console.log('📊 Weight entries today:', todayEntries.length);
 
     // Edge case: No weight entries today
     if (todayEntries.length === 0) {
@@ -575,7 +575,7 @@ export async function checkForDuplicateWeight({
             timeDifference = "just now";
           }
 
-          console.log("âœ… Duplicate weight found:", {
+          console.log("✅ Duplicate weight found:", {
             newWeight,
             existingWeight,
             weightDiff,

@@ -1,4 +1,4 @@
-﻿// src/components/Login.js
+// src/components/Login.js
 import React, { useState, useRef, useEffect } from 'react';
 import { Capacitor } from '@capacitor/core';
 import TermsAndConditions from '../../../shared/components/TermsAndConditions';
@@ -84,14 +84,14 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
         setOtpVerified(true);
         setSuccessMessage('OTP verified successfully!');
 
-        // âœ… Save user info to localStorage (or state via prop)
+        // ✅ Save user info to localStorage (or state via prop)
         // Include isNewUser flag in the stored user data
         const userDataWithNewFlag = {
           ...data.user,
           isNewUser: data.isNewUser === true
         };
         localStorage.setItem('otpUser', JSON.stringify(userDataWithNewFlag));
-        console.log('ðŸ“¦ [Login] OTP verified, isNewUser:', data.isNewUser);
+        console.log('📦 [Login] OTP verified, isNewUser:', data.isNewUser);
 
         setTimeout(async () => {
           setSuccessMessage('');
@@ -385,7 +385,7 @@ const Login = ({ onSignIn, loading, onOtpVerified, forceOtpVerification }) => {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* OTP Display Cells ΓÇö native keyboard on web, inline custom keypad on native apps */}
+              {/* OTP Display Cells — native keyboard on web, inline custom keypad on native apps */}
               <div className="flex justify-center gap-2 xs:gap-3">
                 {otp.map((digit, index) => {
                   const isNative = Capacitor.isNativePlatform();

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Monitor, Calendar, Clock, BookOpen, X } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import { istToLocalDate, formatISTToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
@@ -40,14 +40,14 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
       .then((r) => r.json())
       .then((data) => {
         if (data.success && data.imageBase64) {
-          // imageBase64 from DB is the raw base64 string â€” prefix it for <img src>
+          // imageBase64 from DB is the raw base64 string — prefix it for <img src>
           const src = data.imageBase64.startsWith('data:')
             ? data.imageBase64
             : `data:image/jpeg;base64,${data.imageBase64}`;
           setFullImage(src);
         }
       })
-      .catch(() => {/* silently ignore â€” thumbnail fallback still works */})
+      .catch(() => {/* silently ignore — thumbnail fallback still works */})
       .finally(() => setImageLoading(false));
   }, [log?.Id]);
 
@@ -149,10 +149,10 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
                 <span className="text-sm font-semibold text-gray-900">{formatTime(log.CreatedAt)}</span>
               </div>
 
-              {/* Calories Burned row â€” only for smartwatch activity logs */}
+              {/* Calories Burned row — only for smartwatch activity logs */}
               {log.Topic && log.Topic.toLowerCase().startsWith('calories burned:') && (
                 <div className="flex justify-between items-center pt-1 border-t border-gray-100 mt-1">
-                  <span className="text-sm text-orange-600 font-medium">âŒš Calories Burned</span>
+                  <span className="text-sm text-orange-600 font-medium">⌚ Calories Burned</span>
                   <span className="text-sm font-bold text-orange-700">
                     {log.Topic.replace(/^calories burned:\s*/i, '')}
                   </span>
@@ -176,7 +176,7 @@ const EducationCardModal = ({ log, onClose, onDelete, isDeleting, apiBaseUrl, us
             {isDeleting ? (
               <>
                 <span className="inline-block h-4 w-4 rounded-full border-2 border-white/70 border-t-white animate-spin" />
-                Deletingâ€¦
+                Deleting…
               </>
             ) : (
               <>

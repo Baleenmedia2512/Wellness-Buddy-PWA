@@ -1,4 +1,4 @@
-﻿import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "../../features/user";
 import { applyGlobalAutoCorrections } from "../../features/nutrition";
 
@@ -159,7 +159,7 @@ class GeminiService {
     });
   }
 
-  // âš¡ OPTIMIZED: Skip preprocessing - image already compressed by App.js
+  // ⚡ OPTIMIZED: Skip preprocessing - image already compressed by App.js
   async preprocessImage(imageFile) {
     // Images are now pre-compressed in App.js to 800px @ 60-70% quality
     // Skip duplicate compression to save 2-3 seconds
@@ -168,7 +168,7 @@ class GeminiService {
 
     // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
-      console.log('âš¡ Skipping preprocessing (already compressed)');
+      console.log('⚡ Skipping preprocessing (already compressed)');
       return imageFile;
     }
 
@@ -248,20 +248,20 @@ class GeminiService {
           "1. COLOR MATTERS: Yellow shake = likely Mango/Banana, Pink = Strawberry, Brown = Chocolate",
         );
         promptParts.push(
-          "   Even if user previously corrected Mangoâ†’Strawberry, trust the COLOR you see now",
+          "   Even if user previously corrected Mango→Strawberry, trust the COLOR you see now",
         );
         promptParts.push(
-          "2. TEXTURE MATTERS: Plain white idly â‰  Rava idly (which has visible grains)",
+          "2. TEXTURE MATTERS: Plain white idly ≠ Rava idly (which has visible grains)",
         );
         promptParts.push(
-          "3. SHAPE/FORM MATTERS: Round roti â‰  triangular paratha",
+          "3. SHAPE/FORM MATTERS: Round roti ≠ triangular paratha",
         );
         promptParts.push("");
         promptParts.push(
           "Apply corrections ONLY when visual evidence is insufficient or matches the correction.",
         );
         promptParts.push(
-          'Example: If you see a YELLOW shake, detect "Mango Shake" even if past correction was Mangoâ†’Strawberry.',
+          'Example: If you see a YELLOW shake, detect "Mango Shake" even if past correction was Mango→Strawberry.',
         );
         promptParts.push(
           "Example: If you see PINK/RED shake, then apply the Strawberry correction.",
@@ -354,7 +354,7 @@ class GeminiService {
   async analyzeImageForNutrition(imageFile, userId = null, userContext = null) {
     const startTime = Date.now();
     // console.log('ðŸ” GeminiService: Starting optimized image analysis...');
-    // console.log('ðŸ“¸ Original image:', imageFile.name, imageFile.type, imageFile.size);
+    // console.log('📸 Original image:', imageFile.name, imageFile.type, imageFile.size);
 
     if (!this.model) {
       throw new Error("Gemini API key is not configured");
@@ -365,11 +365,11 @@ class GeminiService {
       if (!userContext && userId) {
         try {
           console.log(
-            "ðŸŽ¯ [AI Personalization] Fetching user context for userId:",
+            "🎯 [AI Personalization] Fetching user context for userId:",
             userId,
           );
           userContext = await getUserContext(userId);
-          console.log("âœ… [AI Personalization] Context fetched:", {
+          console.log("✅ [AI Personalization] Context fetched:", {
             corrections: userContext?.personalCorrections?.length || 0,
             diet: userContext?.dietPreference,
             patterns: userContext?.globalPatterns?.length || 0,
@@ -381,7 +381,7 @@ class GeminiService {
           );
         }
       } else if (userContext) {
-        console.log("âœ… [AI Personalization] Using pre-loaded context:", {
+        console.log("✅ [AI Personalization] Using pre-loaded context:", {
           corrections: userContext?.personalCorrections?.length || 0,
           diet: userContext?.dietPreference,
           patterns: userContext?.globalPatterns?.length || 0,
@@ -390,7 +390,7 @@ class GeminiService {
 
       // Preprocess image for faster processing
       const processedImage = await this.preprocessImage(imageFile);
-      // console.log('ðŸ“¸ Processed image size:', processedImage.size);
+      // console.log('📸 Processed image size:', processedImage.size);
 
       // Convert to base64 with timeout
       const imageBase64 = await Promise.race([
@@ -398,7 +398,7 @@ class GeminiService {
         this.timeoutPromise(10000, "Image processing timeout"),
       ]);
 
-      // console.log('ðŸ“‹ Image converted to base64, length:', imageBase64.length);
+      // console.log('📋 Image converted to base64, length:', imageBase64.length);
 
       // Build personalized prompt with user context
       const prompt = this.buildPersonalizedPrompt(userContext);
@@ -429,7 +429,7 @@ class GeminiService {
       // Log token usage
       this.logTokenUsage(response, "image_analysis", processingTime);
 
-      // ðŸŽ¯ APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
+      // 🎯 APPLY HYBRID AUTO-CORRECTIONS (Global + User-Specific)
       // - Herbalife Formula 1: Auto-corrects for ALL users (global)
       // - Other foods: Auto-corrects only for specific user (personal)
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
@@ -440,7 +440,7 @@ class GeminiService {
       }
 
       // ðŸ” LOG AI DETECTION RESULTS (AFTER AUTO-CORRECTIONS FOR ACCURACY)
-      console.log("ðŸ¤– ========== AI DETECTION RESULTS ==========");
+      console.log("🤖 ========== AI DETECTION RESULTS ==========");
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
         nutritionData.foods.forEach((food, index) => {
           console.log(`ðŸ” AI Detected Food ${index + 1}:`, {
@@ -509,7 +509,7 @@ USDA values. JSON only.`;
       // Log token usage
       this.logTokenUsage(response, "text_analysis", processingTime);
 
-      // console.log(`âœ… Text analysis completed in ${processingTime}ms`);
+      // console.log(`✅ Text analysis completed in ${processingTime}ms`);
 
       return this.transformOptimizedResponse(nutritionData, "text");
     } catch (error) {
@@ -571,8 +571,8 @@ USDA values. JSON only.`;
 
     if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
       const cacheTime = Date.now() - startTime;
-      console.log(`ðŸ’¾ Using cached result (${cacheTime}ms)`);
-      console.log(`âœ… Food search completed in ${cacheTime}ms (CACHED)`);
+      console.log(`💾 Using cached result (${cacheTime}ms)`);
+      console.log(`✅ Food search completed in ${cacheTime}ms (CACHED)`);
       return cached.data;
     }
 
@@ -587,7 +587,7 @@ RULES:
 4. Return defaultServing nutrition + per100g nutrition
 Note: Serving options generated locally, don't include servingOptions array.`;
 
-      console.log("ðŸ“¤ Sending search request to Gemini...");
+      console.log("📤 Sending search request to Gemini...");
 
       // Make API call with timeout
       const result = await Promise.race([
@@ -601,7 +601,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       const response = await result.response;
       const text = response.text();
 
-      console.log("ðŸ“¥ Received response from Gemini, parsing...");
+      console.log("📥 Received response from Gemini, parsing...");
 
       const searchResults = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
@@ -609,9 +609,9 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       // Log token usage
       this.logTokenUsage(response, "food_search", processingTime);
 
-      console.log(`âœ… Food search completed in ${processingTime}ms`);
+      console.log(`✅ Food search completed in ${processingTime}ms`);
       console.log(
-        `ðŸ“Š Found ${
+        `📊 Found ${
           searchResults.results?.length || 0
         } results for "${foodQuery}"`,
       );
@@ -624,7 +624,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // Log first result for debugging
       if (searchResults.results.length > 0) {
-        console.log("ðŸ”Ž First result:", {
+        console.log("🔎 First result:", {
           name: searchResults.results[0].name,
           category: searchResults.results[0].category,
           defaultCalories:
@@ -637,7 +637,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
         data: searchResults,
         timestamp: Date.now(),
       });
-      console.log(`ðŸ’¾ Cached results for "${cacheKey}" (expires in 24h)`);
+      console.log(`💾 Cached results for "${cacheKey}" (expires in 24h)`);
 
       return searchResults;
     } catch (error) {
@@ -682,7 +682,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           for (let i = 0; i < openBrackets - closeBrackets; i++)
             cleanText += "]";
 
-          console.log("ðŸ”§ Attempted fix, trying parse again...");
+          console.log("🔧 Attempted fix, trying parse again...");
           parsed = JSON.parse(cleanText);
         } else {
           throw firstError;
@@ -691,19 +691,19 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // Handle both formats: {results: [...]} or directly [...]
       if (Array.isArray(parsed)) {
-        console.log("âœ… Parsed array format, wrapping in results object");
+        console.log("✅ Parsed array format, wrapping in results object");
         return { results: parsed };
       }
 
       // If already has results property, return as-is
       if (parsed.results) {
-        console.log("âœ… Parsed object with results property");
+        console.log("✅ Parsed object with results property");
         return parsed;
       }
 
       // If it has foods property (nutrition analysis format), return as-is
       if (parsed.foods) {
-        console.log("âœ… Parsed nutrition analysis with foods property");
+        console.log("✅ Parsed nutrition analysis with foods property");
         return parsed;
       }
 
@@ -782,21 +782,21 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       this.sessionMetrics.requestsByType[requestType]++;
 
       // Log to console with nice formatting
-      console.log(`ðŸ“Š Token Usage [${requestType}]:`, {
-        "ðŸ”¤ Prompt Tokens": tokenData.promptTokens,
-        "ðŸ’¬ Response Tokens (Output)": tokenData.completionTokens,
-        "ðŸ“ˆ Total Tokens": tokenData.totalTokens,
+      console.log(`📊 Token Usage [${requestType}]:`, {
+        "🔤 Prompt Tokens": tokenData.promptTokens,
+        "💬 Response Tokens (Output)": tokenData.completionTokens,
+        "📈 Total Tokens": tokenData.totalTokens,
         "â±ï¸ Processing Time": `${processingTime}ms`,
-        "ðŸ’° Cost Estimate": `$${totalCost.toFixed(6)}`,
+        "💰 Cost Estimate": `$${totalCost.toFixed(6)}`,
       });
 
       // Log response quality
       console.log(`ðŸ” Response Quality [${requestType}]:`, {
-        "âœ… Finish Reason": tokenData.finishReason,
+        "✅ Finish Reason": tokenData.finishReason,
         "ðŸ›¡ï¸ Safety Ratings":
           tokenData.safetyRatings.length > 0 ? "Passed" : "N/A",
         "ðŸ“ Response Length": `${tokenData.responseLength} chars`,
-        "ðŸŽ¯ Candidates": tokenData.candidateCount,
+        "🎯 Candidates": tokenData.candidateCount,
       });
 
       // // Log safety ratings detail
@@ -805,7 +805,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       // }
 
       // // Log session summary
-      // console.log(`ðŸ“ˆ Session Summary:`, {
+      // console.log(`📈 Session Summary:`, {
       //   'Total Requests': this.sessionMetrics.totalRequests,
       //   'Total Tokens': this.sessionMetrics.totalTokens,
       //   'Total Cost': `$${this.sessionMetrics.totalCost.toFixed(6)}`,
@@ -825,7 +825,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       //   session: this.sessionMetrics
       // };
 
-      // console.log('ðŸ“‹ Structured Token Data:', JSON.stringify(structuredLog));
+      // console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
     } catch (error) {
       console.warn("âš ï¸ Could not extract token usage:", error.message);
     }
@@ -891,7 +891,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           estimatedWeight: food.weight_g || food.volume_ml || "Unknown",
           unit: food.unit || (food.volume_ml ? "ml" : "g"),
           isLiquid: food.isLiquid || false,
-          // ðŸ”´ CRITICAL: Preserve volume_ml for water discipline tracking
+          // 🔴 CRITICAL: Preserve volume_ml for water discipline tracking
           volume_ml: food.volume_ml || null,
           weight_g: food.weight_g || null,
           calories: Math.round(food.nutrition.calories || 0),
@@ -899,7 +899,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           carbs: Math.round(food.nutrition.carbs || 0),
           fat: Math.round(food.nutrition.fat || 0),
           fiber: Math.round(food.nutrition.fiber || 0),
-          // ðŸ”´ CRITICAL: Preserve correction metadata for UI display
+          // 🔴 CRITICAL: Preserve correction metadata for UI display
           originalAiName: food.originalAiName || food.name,
           wasAutoCorrected: food.wasAutoCorrected || false,
           correctionSource: food.correctionSource || null,
@@ -985,7 +985,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
    * Supports: Apple Health, Samsung Health, Google Fit, Garmin Connect,
    * Fitbit, Mi Fitness, and generic fitness app UIs.
    *
-   * @param {File} imageFile  â€” The screenshot image file (JPEG / PNG / WEBP)
+   * @param {File} imageFile  — The screenshot image file (JPEG / PNG / WEBP)
    * @returns {{ caloriesBurned: number, confidence: string, source: string }}
    */
   async analyzeWatchScreenshot(imageFile) {
@@ -1016,7 +1016,7 @@ Common labels to look for (any of these count):
 
 Rules:
 1. Return ONLY the single best numeric value for total calories burned today (or for the workout shown).
-2. Do NOT return "calories in" or "calories consumed" values â€” only calories BURNED / active energy.
+2. Do NOT return "calories in" or "calories consumed" values — only calories BURNED / active energy.
 3. If there are multiple calorie values, prefer the one labeled "Active Calories", "Calories Burned", or "Total".
 4. If NO calorie-burned value is visible, return 0.
 5. Round to the nearest whole number.

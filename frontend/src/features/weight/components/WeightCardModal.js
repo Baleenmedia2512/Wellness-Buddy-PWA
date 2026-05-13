@@ -1,4 +1,4 @@
-﻿// src/components/WeightCardModal.js
+// src/components/WeightCardModal.js
 import React, { useState, useEffect } from 'react';
 import { X, Pencil, Check, XCircle } from 'lucide-react';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
@@ -13,7 +13,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
   const [editWeight, setEditWeight] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editError, setEditError] = useState('');
-  // Γ£à Lazy-fetched scale image (list endpoint omits base64 for speed)
+  // ✅ Lazy-fetched scale image (list endpoint omits base64 for speed)
   const [lazyImage, setLazyImage] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
 
@@ -26,7 +26,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
     setEditError('');
   }, [data?.ID, data?.Weight]);
 
-  // Γ£à Fetch full-size image on demand when modal opens (if not already provided)
+  // ✅ Fetch full-size image on demand when modal opens (if not already provided)
   useEffect(() => {
     if (!data?.ID) return;
     if (data?.WeightImageBase64) return; // already provided
@@ -66,7 +66,7 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
     setEditError('');
     try {
       const entryId = data.ID ?? data.id;
-      if (!entryId) throw new Error('Entry ID not found â€“ cannot update');
+      if (!entryId) throw new Error('Entry ID not found – cannot update');
       await onUpdate(entryId, weightValue);
       setIsEditing(false);
     } catch (err) {
@@ -150,19 +150,19 @@ const WeightCardModal = ({ data, onClose, onDelete, onUpdate, previousWeight = n
             {/* Metrics Pills */}
             {/* <div className="flex flex-wrap gap-2 pt-1">
               <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
-                <span className="text-xl mr-1.5">ðŸ“Š</span>
+                <span className="text-xl mr-1.5">📊</span>
                 <span className="text-xs font-medium text-white">{data.Bmi ? parseFloat(data.Bmi).toFixed(1) : '--'}</span>
               </div>
               <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
-                <span className="text-xl mr-1.5">ðŸ’§</span>
+                <span className="text-xl mr-1.5">💧</span>
                 <span className="text-xs font-medium text-white">{data.BodyFat ? parseFloat(data.BodyFat).toFixed(1) + '%' : '--'}</span>
               </div>
               <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
-                <span className="text-xl mr-1.5">ðŸ’ª</span>
+                <span className="text-xl mr-1.5">💪</span>
                 <span className="text-xs font-medium text-white">{data.MuscleMass ? parseFloat(data.MuscleMass).toFixed(1) + 'kg' : '--'}</span>
               </div>
               <div className="flex items-center bg-white/15 backdrop-blur-sm rounded-full px-3 py-1.5 shadow-sm border border-white/10">
-                <span className="text-xl mr-1.5">ðŸ”¥</span>
+                <span className="text-xl mr-1.5">🔥</span>
                 <span className="text-xs font-medium text-white">{data.Bmr || '--'}</span>
               </div>
             </div> */}

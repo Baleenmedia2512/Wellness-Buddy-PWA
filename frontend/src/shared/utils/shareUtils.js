@@ -1,4 +1,4 @@
-﻿// src/utils/shareUtils.js
+// src/utils/shareUtils.js
 import html2canvas from "html2canvas";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
@@ -48,11 +48,11 @@ export const precaptureShareImage = (element, options = {}) => {
         });
         const dataUrl = canvas.toDataURL("image/jpeg", quality);
         console.log(
-          `≡ƒƒó Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
+          `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
         );
         resolve(dataUrl);
       } catch (err) {
-        console.warn("ΓÜá∩╕Å Pre-capture failed (will fall back to live capture):", err);
+        console.warn("⚠️ Pre-capture failed (will fall back to live capture):", err);
         resolve(null);
       }
     };
@@ -68,9 +68,9 @@ export const precaptureShareImage = (element, options = {}) => {
 
 /**
  * Share a previously pre-captured data URL via the fastest available channel.
- * On Android this hits the custom WhatsAppShare plugin directly ΓÇö no
- * html2canvas, no toBlob, no FileReader. Tap ΓåÆ share sheet is typically
- * 200ΓÇô400 ms instead of several seconds.
+ * On Android this hits the custom WhatsAppShare plugin directly — no
+ * html2canvas, no toBlob, no FileReader. Tap → share sheet is typically
+ * 200–400 ms instead of several seconds.
  *
  * Returns true on success, false if the caller should fall back to a live
  * captureAndShare on the original element.
@@ -89,7 +89,7 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
   const mimeType = dataUrl.substring(5, dataUrl.indexOf(";")) || "image/jpeg";
   const finalFileName = fileName.replace(/\.png$/i, ".jpg");
 
-  // Android fast path ΓÇö custom plugin accepts base64 directly.
+  // Android fast path — custom plugin accepts base64 directly.
   if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === "android") {
     try {
       const { WhatsAppShare } = Capacitor.Plugins;
@@ -104,7 +104,7 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
         mimeType,
       });
       console.log(
-        `ΓÜí Cached share dispatched in ${Math.round(performance.now() - start)} ms`,
+        `⚡ Cached share dispatched in ${Math.round(performance.now() - start)} ms`,
       );
       return true;
     } catch (err) {
@@ -112,15 +112,15 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
         err?.message?.toLowerCase().includes("cancel") ||
         err?.message?.toLowerCase().includes("cancelled");
       if (isCanceled) {
-        console.log("Γä╣∩╕Å User cancelled cached share");
+        console.log("ℹ️ User cancelled cached share");
         return true; // treat as handled
       }
-      console.warn("ΓÜá∩╕Å Cached share failed, will fall back:", err);
+      console.warn("⚠️ Cached share failed, will fall back:", err);
       return false;
     }
   }
 
-  // iOS / web ΓÇö convert dataURL to blob and reuse existing pipeline.
+  // iOS / web — convert dataURL to blob and reuse existing pipeline.
   try {
     const resp = await fetch(dataUrl);
     const blob = await resp.blob();
@@ -143,7 +143,7 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
     }
     return true;
   } catch (err) {
-    console.warn("ΓÜá∩╕Å Cached share dataURLΓåÆblob path failed:", err);
+    console.warn("⚠️ Cached share dataURL→blob path failed:", err);
     return false;
   }
 };
@@ -166,10 +166,10 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
   } = options;
 
   try {
-    console.log("≡ƒô╕ Starting direct image share...");
+    console.log("📸 Starting direct image share...");
     const isNative = isNativePlatform();
     console.log(
-      "≡ƒô▒ Platform check - Native:",
+      "📱 Platform check - Native:",
       isNative,
       "| Capacitor.platform:",
       Capacitor.getPlatform(),
@@ -191,21 +191,21 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
       blob = await response.blob();
     }
 
-    console.log("Γ£à Image blob created:", blob.size, "bytes", blob.type);
+    console.log("✅ Image blob created:", blob.size, "bytes", blob.type);
 
     if (isNative) {
       // Native mobile sharing (Capacitor)
-      console.log("≡ƒô▒ Using native share (Android/iOS app)");
+      console.log("📱 Using native share (Android/iOS app)");
       await shareNativeImage(blob, { title, text, fileName, shareAsDocument });
     } else {
       // Web browser - try share with fallback to download
-      console.log("≡ƒÆ╗ Web browser detected, attempting share with fallback...");
+      console.log("💻 Web browser detected, attempting share with fallback...");
       await shareWithRetryAndFallback(blob, { title, text, fileName, shareAsDocument });
     }
 
-    console.log("Γ£à Direct image share completed successfully");
+    console.log("✅ Direct image share completed successfully");
   } catch (error) {
-    console.error("Γ¥î Direct image share failed:", error);
+    console.error("❌ Direct image share failed:", error);
     throw new Error("Failed to share image. Please try again.");
   }
 };
@@ -238,24 +238,24 @@ export const captureAndShare = async (element, options = {}) => {
   } = options;
 
   try {
-    console.log("≡ƒô╕ Starting capture and share process...");
+    console.log("📸 Starting capture and share process...");
     const isNative = isNativePlatform();
     console.log(
-      "≡ƒô▒ Platform check - Native:",
+      "📱 Platform check - Native:",
       isNative,
       "| Capacitor.platform:",
       Capacitor.getPlatform(),
     );
 
     // Ensure all images in the element are fully loaded before capture
-    // On web browser, skip waiting ΓÇö images are already rendered on screen.
+    // On web browser, skip waiting — images are already rendered on screen.
     // Waiting breaks the user gesture window needed for navigator.share().
     const images = element.querySelectorAll("img");
-    console.log("≡ƒû╝∩╕Å Found", images.length, "images in element");
+    console.log("🖼️ Found", images.length, "images in element");
 
     if (isNative) {
       // Native app: only wait for images that aren't ready yet, with a tight cap.
-      // Most of the time every image is already decoded ΓÇö don't pay any latency for them.
+      // Most of the time every image is already decoded — don't pay any latency for them.
       const pending = Array.from(images).filter(
         (img) => !(img.complete && img.naturalWidth > 0),
       );
@@ -266,19 +266,19 @@ export const captureAndShare = async (element, options = {}) => {
               new Promise((resolve) => {
                 img.onload = resolve;
                 img.onerror = resolve;
-                setTimeout(resolve, 600); // hard cap ΓÇö don't block share sheet
+                setTimeout(resolve, 600); // hard cap — don't block share sheet
               }),
           ),
         );
       }
     } else {
-      // Web browser: skip all waits ΓÇö every ms counts for the gesture window.
+      // Web browser: skip all waits — every ms counts for the gesture window.
       // Images visible on screen are already decoded by the browser.
-      console.log("≡ƒÆ╗ Web: skipping image-load wait to preserve gesture context for navigator.share()");
+      console.log("💻 Web: skipping image-load wait to preserve gesture context for navigator.share()");
     }
 
     // Log element dimensions
-    console.log("≡ƒôÅ Element dimensions:", {
+    console.log("📏 Element dimensions:", {
       scrollWidth: element.scrollWidth,
       scrollHeight: element.scrollHeight,
       offsetWidth: element.offsetWidth,
@@ -287,17 +287,17 @@ export const captureAndShare = async (element, options = {}) => {
     });
 
     // Step 1: Capture the element as canvas
-    // Native app: scale 1.5. Phone DPR (2ΓÇô3x) already makes the on-screen DOM
-    //   crisp; 1.5├ù of that is more than enough for WhatsApp/share targets and
+    // Native app: scale 1.5. Phone DPR (2–3x) already makes the on-screen DOM
+    //   crisp; 1.5× of that is more than enough for WhatsApp/share targets and
     //   roughly halves html2canvas paint time + JPEG encode time + bridge
-    //   transfer size compared to scale 2 ΓÇö the single biggest cut to the
-    //   "tap Share ΓåÆ sheet appears" latency.
-    // Web browser: scale 2 ΓÇö Web Share API on Android Chrome rejects files >5 MB,
-    //   but on web there's no Capacitor bridge cost so 2├ù is fine.
+    //   transfer size compared to scale 2 — the single biggest cut to the
+    //   "tap Share → sheet appears" latency.
+    // Web browser: scale 2 — Web Share API on Android Chrome rejects files >5 MB,
+    //   but on web there's no Capacitor bridge cost so 2× is fine.
     const webScale = 2;
     const nativeScale = 1.5;
     const captureScale = isNative ? nativeScale : webScale;
-    console.log(`≡ƒôÉ Capture scale: ${captureScale}x`);
+    console.log(`📐 Capture scale: ${captureScale}x`);
 
     const captureStart = performance.now();
     const canvas = await html2canvas(element, {
@@ -315,17 +315,17 @@ export const captureAndShare = async (element, options = {}) => {
       // and risky (could balloon the captured canvas to many MB and cause layout
       // shifts). Images already render at their on-screen size, which is what we want.
     });
-    console.log(`ΓÅ▒∩╕Å html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
+    console.log(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
 
     console.log(
-      "Γ£à Canvas created successfully with dimensions:",
+      "✅ Canvas created successfully with dimensions:",
       canvas.width,
       "x",
       canvas.height,
     );
 
     // FAST PATH (Android native): skip toBlob + FileReader round-trip.
-    //   canvas.toDataURL() returns base64 in a single pass ΓÇö exactly the format
+    //   canvas.toDataURL() returns base64 in a single pass — exactly the format
     //   the custom WhatsAppShare plugin needs. This removes one full image
     //   re-encode and the async FileReader, which together can add hundreds of
     //   ms on mid-range Android devices and is the single biggest contributor
@@ -338,7 +338,7 @@ export const captureAndShare = async (element, options = {}) => {
       const dataUrlStart = performance.now();
       const dataUrl = canvas.toDataURL(dataUrlMime, dataUrlQuality);
       console.log(
-        `ΓÅ▒∩╕Å canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
+        `⏱️ canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
       );
 
       try {
@@ -356,7 +356,7 @@ export const captureAndShare = async (element, options = {}) => {
           mimeType: dataUrlMime,
         });
         console.log(
-          `Γ£à Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
+          `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
           result,
         );
         return;
@@ -365,11 +365,11 @@ export const captureAndShare = async (element, options = {}) => {
           pluginError?.message?.toLowerCase().includes("cancel") ||
           pluginError?.message?.toLowerCase().includes("cancelled");
         if (isCanceled) {
-          console.log("Γä╣∩╕Å User cancelled share (fast path)");
+          console.log("ℹ️ User cancelled share (fast path)");
           return;
         }
         console.warn(
-          "ΓÜá∩╕Å Fast path failed, falling back to standard toBlob path:",
+          "⚠️ Fast path failed, falling back to standard toBlob path:",
           pluginError,
         );
         // Fall through to standard path below.
@@ -377,7 +377,7 @@ export const captureAndShare = async (element, options = {}) => {
     }
 
     // Step 2: Convert canvas to blob
-    // Native + web both use JPEG @ 0.85 ΓÇö visually indistinguishable from 0.95 for UI
+    // Native + web both use JPEG @ 0.85 — visually indistinguishable from 0.95 for UI
     // screenshots but roughly half the file size, which directly cuts base64 encoding,
     // Capacitor bridge transfer time, disk write time, and the receiving app's read time.
     const webMimeType = "image/jpeg";
@@ -403,7 +403,7 @@ export const captureAndShare = async (element, options = {}) => {
 
     const fileSizeKB = Math.round(blob.size / 1024);
     console.log(
-      `Γ£à Blob created (${isNative ? "JPEG native-optimised" : "JPEG web-optimised"}):`,
+      `✅ Blob created (${isNative ? "JPEG native-optimised" : "JPEG web-optimised"}):`,
       blob.size,
       "bytes (",
       fileSizeKB,
@@ -414,21 +414,21 @@ export const captureAndShare = async (element, options = {}) => {
     // Step 3: Share based on platform (native or web browser)
     if (isNative) {
       // Native mobile sharing (Capacitor)
-      console.log("≡ƒô▒ Using native share (Android/iOS app)");
+      console.log("📱 Using native share (Android/iOS app)");
       await shareNative(blob, { title, text, fileName: finalFileName, shareAsDocument, mimeType });
     } else {
       // Web browser - try Web Share API with fallback to download
-      console.log("≡ƒÆ╗ Web browser detected, attempting share with fallback...");
+      console.log("💻 Web browser detected, attempting share with fallback...");
       await shareWithRetryAndFallback(blob, { title, text, fileName: finalFileName, shareAsDocument });
     }
 
-    console.log("Γ£à Share completed successfully");
+    console.log("✅ Share completed successfully");
   } catch (error) {
-    console.error("Γ¥î Share failed:", error);
+    console.error("❌ Share failed:", error);
 
     // Show user-friendly error message
     if (error.message && error.message.includes("Share canceled")) {
-      console.log("Γä╣∩╕Å User canceled share");
+      console.log("ℹ️ User canceled share");
     } else {
       throw new Error("Failed to share image. Please try again.");
     }
@@ -449,13 +449,13 @@ const shareNative = async (
     const b64Start = performance.now();
     const base64Data = await blobToBase64(blob);
     console.log(
-      `≡ƒô¥ Base64 ready in ${Math.round(performance.now() - b64Start)} ms (${Math.round(base64Data.length / 1024)} KB string)`,
+      `📝 Base64 ready in ${Math.round(performance.now() - b64Start)} ms (${Math.round(base64Data.length / 1024)} KB string)`,
     );
 
     // For Android, use custom WhatsAppSharePlugin for better quality
     if (Capacitor.getPlatform() === "android") {
       console.log(
-        "≡ƒô▒ Android detected - using custom WhatsAppSharePlugin for high-quality sharing",
+        "📱 Android detected - using custom WhatsAppSharePlugin for high-quality sharing",
       );
 
       try {
@@ -467,7 +467,7 @@ const shareNative = async (
         }
 
         console.log(
-          `≡ƒÆ╛ Sharing via custom plugin (${mimeType})...`,
+          `💾 Sharing via custom plugin (${mimeType})...`,
         );
         console.log(
           "   File size:",
@@ -484,12 +484,12 @@ const shareNative = async (
           mimeType: mimeType,
         });
         console.log(
-          `Γ£à Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms`,
+          `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms`,
           result,
         );
         return;
       } catch (pluginError) {
-        console.error("Γ¥î Custom plugin share failed:", pluginError);
+        console.error("❌ Custom plugin share failed:", pluginError);
 
         // Check if user canceled
         const isCanceled =
@@ -497,12 +497,12 @@ const shareNative = async (
           pluginError?.message?.toLowerCase().includes("cancelled");
 
         if (isCanceled) {
-          console.log("Γä╣∩╕Å User cancelled share");
+          console.log("ℹ️ User cancelled share");
           return;
         }
 
         // Fall back to standard Capacitor share method
-        console.log("ΓÜá∩╕Å Falling back to standard Capacitor share...");
+        console.log("⚠️ Falling back to standard Capacitor share...");
         // Continue to fallback method below
       }
     }
@@ -511,7 +511,7 @@ const shareNative = async (
     // For Android, use external storage for better sharing compatibility
     const platform = Capacitor.getPlatform();
     if (platform === "android" || platform === "ios") {
-      console.log("≡ƒô▒ Using standard Capacitor share method");
+      console.log("📱 Using standard Capacitor share method");
 
       try {
         const timestamp = Date.now();
@@ -520,9 +520,9 @@ const shareNative = async (
         const base64String = base64Data.split(",")[1];
 
         // Write to Cache directory (always exists, no permission issues)
-        console.log("≡ƒÆ╛ Writing file to cache storage...");
+        console.log("💾 Writing file to cache storage...");
         console.log(
-          "≡ƒôä Document mode:",
+          "📄 Document mode:",
           shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED",
         );
         const writeResult = await Filesystem.writeFile({
@@ -531,19 +531,19 @@ const shareNative = async (
           directory: Directory.Cache,
         });
 
-        console.log("Γ£à File written:", writeResult.uri);
+        console.log("✅ File written:", writeResult.uri);
 
         // Get the content URI
         let fileUri = writeResult.uri;
 
         // Log the URI for debugging
-        console.log("≡ƒöì Original URI from writeFile:", fileUri);
+        console.log("🔍 Original URI from writeFile:", fileUri);
         console.log(
-          "≡ƒöì URI starts with content://:",
+          "🔍 URI starts with content://:",
           fileUri.startsWith("content://"),
         );
         console.log(
-          "≡ƒöì URI starts with file://:",
+          "🔍 URI starts with file://:",
           fileUri.startsWith("file://"),
         );
 
@@ -557,15 +557,15 @@ const shareNative = async (
         };
 
         console.log(
-          "≡ƒÆí Share mode:",
+          "💡 Share mode:",
           shareAsDocument ? "Document (full quality)" : "Image (may compress)",
         );
 
-        console.log("≡ƒôñ Share options:", JSON.stringify(shareOptions, null, 2));
+        console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
 
         // Check if Share API is available
         const canShare = await Share.canShare().catch(() => ({ value: false }));
-        console.log("≡ƒôè Can share:", canShare);
+        console.log("📊 Can share:", canShare);
 
         if (!canShare.value) {
           throw new Error("Share API not available on this device");
@@ -573,16 +573,16 @@ const shareNative = async (
 
         // Perform the share
         console.log(
-          "≡ƒÜÇ Calling Share.share() with options:",
+          "🚀 Calling Share.share() with options:",
           JSON.stringify(shareOptions, null, 2),
         );
         const shareResult = await Share.share(shareOptions);
 
-        console.log("Γ£à Share completed:", shareResult);
+        console.log("✅ Share completed:", shareResult);
 
         // Log activity type if available (iOS specific)
         if (shareResult && shareResult.activityType) {
-          console.log("≡ƒô▒ Shared via:", shareResult.activityType);
+          console.log("📱 Shared via:", shareResult.activityType);
         }
 
         // Clean up the file from Cache after 2 minutes
@@ -592,14 +592,14 @@ const shareNative = async (
               path: uniqueFileName,
               directory: Directory.Cache,
             });
-            console.log("Γ£à Temporary file cleaned up from Cache");
+            console.log("✅ Temporary file cleaned up from Cache");
           } catch (cleanupError) {
-            console.warn("ΓÜá∩╕Å Failed to clean up temporary file:", cleanupError);
+            console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }
         }, 120000);
       } catch (shareError) {
-        console.error("Γ¥î Share error:", shareError);
-        console.error("Γ¥î Share error details:", JSON.stringify(shareError));
+        console.error("❌ Share error:", shareError);
+        console.error("❌ Share error details:", JSON.stringify(shareError));
 
         // Check if user canceled the share
         const isCanceled =
@@ -609,7 +609,7 @@ const shareNative = async (
           shareError === "Share canceled";
 
         if (isCanceled) {
-          console.log("Γä╣∩╕Å User cancelled share");
+          console.log("ℹ️ User cancelled share");
           // Don't throw error for user cancellation
           return;
         }
@@ -629,7 +629,7 @@ const shareNative = async (
       }
     }
   } catch (error) {
-    console.error("Γ¥î Native share failed:", error);
+    console.error("❌ Native share failed:", error);
 
     // Only alert if we haven't already shown an error
     if (!error?.message?.includes("cancelled")) {
@@ -648,7 +648,7 @@ const shareNative = async (
  * @param {string} fileName - Name for the downloaded file
  */
 const downloadImage = async (blob, fileName) => {
-  console.log("≡ƒÆ╛ Downloading image...");
+  console.log("💾 Downloading image...");
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -658,7 +658,7 @@ const downloadImage = async (blob, fileName) => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  console.log("Γ£à Image downloaded successfully");
+  console.log("✅ Image downloaded successfully");
   
   // Show helpful message
   alert(
@@ -671,13 +671,13 @@ const downloadImage = async (blob, fileName) => {
  * Handles edge cases like Windows share dialog errors
  * 
  * FIX NOTES (Web Mobile Browser):
- * 1. Removed canShare() gate ΓÇö it returns false on many mobile browsers even when
+ * 1. Removed canShare() gate — it returns false on many mobile browsers even when
  *    file sharing IS supported, causing silent fallback to download.
- * 2. Removed text+files combination ΓÇö mixing files+text causes NotAllowedError on
+ * 2. Removed text+files combination — mixing files+text causes NotAllowedError on
  *    iOS Safari and some Android browsers.
  * 3. navigator.share() is called as early as possible to stay within the user
  *    gesture context window. The blob is passed in pre-built to avoid async delays.
- * 4. WhatsApp on mobile web restricts file sharing via Web Share API ΓÇö when this
+ * 4. WhatsApp on mobile web restricts file sharing via Web Share API — when this
  *    happens we fall back to download with a clear instruction to the user.
  * 
  * @param {Blob} blob - Image blob to share (pre-built before user gesture)
@@ -688,66 +688,66 @@ const shareWithRetryAndFallback = async (blob, options) => {
 
   // Check if Web Share API exists at all
   if (!navigator.share) {
-    console.log("Γ¥î Web Share API not supported in this browser, falling back to download");
+    console.log("❌ Web Share API not supported in this browser, falling back to download");
     await downloadImage(blob, fileName);
     return;
   }
 
   try {
-    console.log("≡ƒôñ Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
+    console.log("📤 Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
 
-    // Γ£à Use blob.type so MIME matches the actual content (JPEG on web, PNG on native fallback)
+    // ✅ Use blob.type so MIME matches the actual content (JPEG on web, PNG on native fallback)
     const file = new File([blob], fileName, { type: blob.type });
-    console.log(`≡ƒôä File prepared: ${fileName} | type: ${blob.type} | size: ${Math.round(blob.size / 1024)} KB`);
+    console.log(`📄 File prepared: ${fileName} | type: ${blob.type} | size: ${Math.round(blob.size / 1024)} KB`);
 
-    // Share with files + title only ΓÇö DO NOT include text when sharing files.
+    // Share with files + title only — DO NOT include text when sharing files.
     // Mixing files+text breaks sharing on iOS Safari and many Android browsers.
     await navigator.share({
       files: [file],
       title: title,
     });
 
-    console.log("Γ£à Web Share API: share completed successfully!");
+    console.log("✅ Web Share API: share completed successfully!");
     return;
 
   } catch (error) {
-    console.warn("ΓÜá∩╕Å Web Share API failed:", error.name, "-", error.message);
+    console.warn("⚠️ Web Share API failed:", error.name, "-", error.message);
 
-    // User deliberately cancelled ΓÇö no fallback, no alert
+    // User deliberately cancelled — no fallback, no alert
     if (error.name === "AbortError" ||
         error.message?.toLowerCase().includes("cancel")) {
-      console.log("Γä╣∩╕Å User cancelled share");
+      console.log("ℹ️ User cancelled share");
       return;
     }
 
     // NotAllowedError = gesture chain broken OR browser blocked.
     // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      console.log("ΓÜá∩╕Å NotAllowedError ΓÇö gesture context may have expired. Falling back to download.");
+      console.log("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
       await downloadImage(blob, fileName);
       alert(
-        "Image saved to your downloads! ≡ƒôÑ\n\n" +
+        "Image saved to your downloads! 📥\n\n" +
         "To share on WhatsApp:\n" +
         "1. Open WhatsApp\n" +
         "2. Open the chat\n" +
-        "3. Tap ≡ƒôÄ ΓåÆ Gallery ΓåÆ select the downloaded image"
+        "3. Tap 📎 → Gallery → select the downloaded image"
       );
       return;
     }
 
-    // File sharing not supported by this browser build ΓÇö fall back to download
+    // File sharing not supported by this browser build — fall back to download
     if (error.name === "TypeError" || error.name === "DataError") {
-      console.log("ΓÜá∩╕Å Browser does not support file sharing via Web Share API. Downloading instead.");
+      console.log("⚠️ Browser does not support file sharing via Web Share API. Downloading instead.");
       await downloadImage(blob, fileName);
       return;
     }
 
-    // Any other unexpected error ΓÇö still fall back gracefully
-    console.error("Γ¥î Unexpected share error, falling back to download:", error);
+    // Any other unexpected error — still fall back gracefully
+    console.error("❌ Unexpected share error, falling back to download:", error);
     try {
       await downloadImage(blob, fileName);
     } catch (downloadError) {
-      console.error("Γ¥î Download also failed:", downloadError);
+      console.error("❌ Download also failed:", downloadError);
       alert("Unable to share or download. Please try again or check your browser settings.");
       throw downloadError;
     }
@@ -804,7 +804,7 @@ export const shareToWhatsApp = async (element, message = "") => {
       dialogTitle: "Share to WhatsApp",
     });
 
-    console.log("Γ£à Shared to WhatsApp:", shareResult);
+    console.log("✅ Shared to WhatsApp:", shareResult);
 
     // Clean up
     setTimeout(async () => {
@@ -814,11 +814,11 @@ export const shareToWhatsApp = async (element, message = "") => {
           directory: Directory.Cache,
         });
       } catch (error) {
-        console.warn("ΓÜá∩╕Å Failed to clean up temporary file:", error);
+        console.warn("⚠️ Failed to clean up temporary file:", error);
       }
     }, 5000);
   } catch (error) {
-    console.error("Γ¥î WhatsApp share failed:", error);
+    console.error("❌ WhatsApp share failed:", error);
     throw new Error(
       "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
     );

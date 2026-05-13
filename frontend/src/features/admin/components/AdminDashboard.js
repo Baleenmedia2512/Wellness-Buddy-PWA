@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   DollarSign,
@@ -453,7 +453,7 @@ const AdminDashboard = ({ user, onClose }) => {
               inputPerMillion: pricing.inputPerMillion.toFixed(2),
               outputPerMillion: pricing.outputPerMillion.toFixed(2),
             });
-            console.log("ðŸ“Š Loaded pricing from DB on mount:", pricing);
+            console.log("📊 Loaded pricing from DB on mount:", pricing);
           }
         } else {
           console.warn("âš ï¸ Failed to fetch pricing from DB");
@@ -517,7 +517,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputPerMillion: pricing.inputPerMillion.toFixed(2),
                 outputPerMillion: pricing.outputPerMillion.toFixed(2),
               });
-              console.log("ðŸ“Š Loaded pricing config:", pricing);
+              console.log("📊 Loaded pricing config:", pricing);
             }
           }
 
@@ -562,7 +562,7 @@ const AdminDashboard = ({ user, onClose }) => {
 
               // Use saved correction (always use it for this timeRange if it exists)
               console.log(
-                "âœ… Found saved correction for timeRange:",
+                "✅ Found saved correction for timeRange:",
                 timeRange,
               );
               const costs = {
@@ -608,7 +608,7 @@ const AdminDashboard = ({ user, onClose }) => {
           // No saved correction found - use dashboard summary data if available
           if (tokenData && tokenData.summary) {
             console.log(
-              "ðŸ“Š Using current dashboard summary data (no saved correction)",
+              "📊 Using current dashboard summary data (no saved correction)",
             );
             const summaryData = tokenData.summary;
             const costs = {
@@ -638,7 +638,7 @@ const AdminDashboard = ({ user, onClose }) => {
           }
 
           // No saved correction and no dashboard summary - fetch calculated totals
-          console.log("ðŸ“Š Fetching calculated totals from API");
+          console.log("📊 Fetching calculated totals from API");
 
           // Helper function for formatting dates
           const formatLocalDate = (date) => {
@@ -748,13 +748,13 @@ const AdminDashboard = ({ user, onClose }) => {
             : originalINRCosts.inputCost.toFixed(4),
       }));
       console.log(
-        "ðŸ”„ Restored original Input INR cost:",
+        "🔄 Restored original Input INR cost:",
         originalINRCosts.inputCost.toFixed(4),
       );
       return;
     }
 
-    // Calculate INR cost: (tokens / 1,000,000) Ã— USD_per_million Ã— exchange_rate
+    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newInputCost =
       (totalTokenCounts.inputTokens / 1000000) * inputPerMillion * exchangeRate;
 
@@ -768,7 +768,7 @@ const AdminDashboard = ({ user, onClose }) => {
       inputCost: newInputCost === 0 ? "0" : newInputCost.toFixed(4),
     }));
 
-    console.log("ðŸ”„ Recalculated Input INR cost:", {
+    console.log("🔄 Recalculated Input INR cost:", {
       inputTokens: totalTokenCounts.inputTokens,
       inputPerMillion,
       exchangeRate,
@@ -803,13 +803,13 @@ const AdminDashboard = ({ user, onClose }) => {
             : originalINRCosts.outputCost.toFixed(4),
       }));
       console.log(
-        "ðŸ”„ Restored original Output INR cost:",
+        "🔄 Restored original Output INR cost:",
         originalINRCosts.outputCost.toFixed(4),
       );
       return;
     }
 
-    // Calculate INR cost: (tokens / 1,000,000) Ã— USD_per_million Ã— exchange_rate
+    // Calculate INR cost: (tokens / 1,000,000) × USD_per_million × exchange_rate
     const newOutputCost =
       (totalTokenCounts.outputTokens / 1000000) *
       outputPerMillion *
@@ -825,7 +825,7 @@ const AdminDashboard = ({ user, onClose }) => {
       outputCost: newOutputCost === 0 ? "0" : newOutputCost.toFixed(4),
     }));
 
-    console.log("ðŸ”„ Recalculated Output INR cost:", {
+    console.log("🔄 Recalculated Output INR cost:", {
       outputTokens: totalTokenCounts.outputTokens,
       outputPerMillion,
       exchangeRate,
@@ -862,7 +862,7 @@ const AdminDashboard = ({ user, onClose }) => {
         endDate: timeRange === "custom" ? formatLocalDate(customEndDate) : null,
       };
 
-      console.log("ðŸ’¾ Saving correction for time range:", timeRange);
+      console.log("💾 Saving correction for time range:", timeRange);
 
       const response = await fetch(`${apiBaseUrl}/api/token/correction`, {
         method: "POST",
@@ -878,7 +878,7 @@ const AdminDashboard = ({ user, onClose }) => {
       const data = await response.json();
 
       if (response.ok && data.success) {
-        console.log("âœ… Token correction saved successfully:", data.data);
+        console.log("✅ Token correction saved successfully:", data.data);
 
         // Clear ALL pricing caches so new pricing is fetched on next use
         clearUserPricingCache(user?.email);
@@ -916,7 +916,7 @@ const AdminDashboard = ({ user, onClose }) => {
                 inputPerMillion: pricing.inputPerMillion.toFixed(2),
                 outputPerMillion: pricing.outputPerMillion.toFixed(2),
               });
-              console.log("âœ… Pricing reloaded from DB after save:", pricing);
+              console.log("✅ Pricing reloaded from DB after save:", pricing);
             }
           }
         } catch (pricingError) {
@@ -1014,7 +1014,7 @@ const AdminDashboard = ({ user, onClose }) => {
     return "Custom Range";
   };
 
-  const formatCurrency = (val) => `â‚¹${Number(val).toFixed(4)}`;
+  const formatCurrency = (val) => `₹${Number(val).toFixed(4)}`;
   const formatNumber = (val) => Number(val).toLocaleString();
   const formatDate = (dateString) => {
     return formatISTToLocalDate(dateString, { month: "short", day: "numeric" });
@@ -1582,7 +1582,7 @@ const AdminDashboard = ({ user, onClose }) => {
                               <div className="px-4 pb-4 pt-0 text-center">
                                 <p className="text-[11px] sm:text-xs text-gray-400 font-medium">
                                   Total: {formatNumber(user.totalTokens)} tokens
-                                  â€¢ {formatCurrency(user.totalCost)}
+                                  • {formatCurrency(user.totalCost)}
                                 </p>
                               </div>
                             </motion.div>
@@ -1661,7 +1661,7 @@ const AdminDashboard = ({ user, onClose }) => {
                               {/* Show ellipsis if there's a gap */}
                               {index > 0 && array[index - 1] !== page - 1 && (
                                 <span className="px-1.5 text-gray-400 text-sm select-none">
-                                  â€¢â€¢â€¢
+                                  •••
                                 </span>
                               )}
                               <button
@@ -1804,7 +1804,7 @@ const AdminDashboard = ({ user, onClose }) => {
                   </h2>
                   {currentExchangeRate && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Current Rate: $1 USD = â‚¹{currentExchangeRate.toFixed(2)}{" "}
+                      Current Rate: $1 USD = ₹{currentExchangeRate.toFixed(2)}{" "}
                       INR
                     </p>
                   )}

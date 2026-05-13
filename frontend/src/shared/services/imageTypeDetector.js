@@ -1,4 +1,4 @@
-﻿// src/services/imageTypeDetector.js
+// src/services/imageTypeDetector.js
 import { weightDetectionService } from '../../features/weight';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
@@ -23,7 +23,7 @@ class ImageTypeDetector {
   async initialize() {
     if (this.initialized) return;
     
-    console.log('ðŸ”§ Initializing Image Type Detector (Gemini AI)...');
+    console.log('🔧 Initializing Image Type Detector (Gemini AI)...');
     
     try {
       // Initialize own Gemini model for detection
@@ -36,7 +36,7 @@ class ImageTypeDetector {
       // Also initialize sub-services for detailed analysis
       await weightDetectionService.initialize();
       this.initialized = true;
-      console.log('âœ… Image Type Detector initialized with Gemini AI');
+      console.log('✅ Image Type Detector initialized with Gemini AI');
     } catch (error) {
       console.error('âŒ Failed to initialize Gemini AI:', error);
       throw new Error('Failed to initialize image type detector');
@@ -60,8 +60,8 @@ class ImageTypeDetector {
     
     try {
       console.log('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
-      console.log('ðŸš€ [IMAGE-DETECTOR] Starting image analysis...');
-      console.log('ðŸ“‹ [IMAGE-DETECTOR] Input:', {
+      console.log('🚀 [IMAGE-DETECTOR] Starting image analysis...');
+      console.log('📋 [IMAGE-DETECTOR] Input:', {
         imageType: typeof image,
         isDataURL: typeof image === 'string' && image.startsWith('data:'),
         hasImageFile: !!imageFile,
@@ -72,7 +72,7 @@ class ImageTypeDetector {
 
       // Initialize if not already done
       if (!this.initialized) {
-        console.log('ðŸ”§ [IMAGE-DETECTOR] Not initialized, initializing now...');
+        console.log('🔧 [IMAGE-DETECTOR] Not initialized, initializing now...');
         await this.initialize();
       }
 
@@ -83,7 +83,7 @@ class ImageTypeDetector {
       }
 
       const imageBase64 = await this.fileToBase64(imgFile);
-      console.log('ðŸ“¸ [IMAGE-DETECTOR] Image prepared:', {
+      console.log('📸 [IMAGE-DETECTOR] Image prepared:', {
         mimeType: imgFile.type || 'image/jpeg',
         base64Length: imageBase64.length,
         sizeKB: `${(imageBase64.length / 1024).toFixed(1)}KB`,
@@ -96,14 +96,14 @@ class ImageTypeDetector {
       };
 
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // âš¡ OPTIMIZED: UNIFIED DETECTION & ANALYSIS IN SINGLE API CALL
+      // ⚡ OPTIMIZED: UNIFIED DETECTION & ANALYSIS IN SINGLE API CALL
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
       const unifiedPrompt = `Analyze this image and classify it into ONE category, then extract relevant data.
 
 STEP 1 - CLASSIFY:
 - "education" - Online meeting screenshot (Zoom, Meet, Teams, WebEx) OR in-person gathering photo (group of people at club/nutrition center/classroom/wellness center)
-- "weight" - âš¡ HIGHEST PRIORITY: Physical weighing scale device OR smart scale app screenshot/result (Huawei Health, Mi Fit, Fitdays, Renpho, Garmin Connect, iHealth, Yunmai, FitTrack, Eufy, body composition report showing Weight + any of: BMI, Body Fat, BMR, Muscle Mass, Skeletal Muscle, Visceral Fat, Bone Mass, Protein %, Body Water, Body Age)
-- "smartwatch" - Smartwatch or fitness band ACTIVITY screen (Apple Watch, Samsung Galaxy Watch, Fitbit, Garmin, Mi Band, Google Fit, Apple Health, Samsung Health) showing steps/calories BURNED/heart rate rings â€” NOT a body composition results screen
+- "weight" - ⚡ HIGHEST PRIORITY: Physical weighing scale device OR smart scale app screenshot/result (Huawei Health, Mi Fit, Fitdays, Renpho, Garmin Connect, iHealth, Yunmai, FitTrack, Eufy, body composition report showing Weight + any of: BMI, Body Fat, BMR, Muscle Mass, Skeletal Muscle, Visceral Fat, Bone Mass, Protein %, Body Water, Body Age)
+- "smartwatch" - Smartwatch or fitness band ACTIVITY screen (Apple Watch, Samsung Galaxy Watch, Fitbit, Garmin, Mi Band, Google Fit, Apple Health, Samsung Health) showing steps/calories BURNED/heart rate rings — NOT a body composition results screen
 - "food" - Food, meal, or drink (DEFAULT if none of the above)
 
 STEP 2 - EXTRACT DATA based on classification:
@@ -123,12 +123,12 @@ IF WEIGHT (physical scale OR smart scale app screenshot):
   "type": "weight",
   "confidence": 0.0-1.0,
   "reason": "brief explanation",
-  "weight": number (20-300 kg or 44-660 lbs) â€” REQUIRED,
+  "weight": number (20-300 kg or 44-660 lbs) — REQUIRED,
   "unit": "kg"|"lbs",
   "bmi": number|null,
   "bodyFat": number|null,
   "muscleMass": number|null,
-  "bmr": number|null   â† CRITICAL: extract integer calorie value (e.g. "1703kcal" â†’ 1703, "BMR: 1703" â†’ 1703)
+  "bmr": number|null   â† CRITICAL: extract integer calorie value (e.g. "1703kcal" → 1703, "BMR: 1703" → 1703)
 }
 
 IF SMARTWATCH:
@@ -159,23 +159,23 @@ IF FOOD (default):
   "total": {"calories": num, "protein": num, "carbs": num, "fat": num, "fiber": num}
 }
 
-ðŸ‹ï¸ WEIGHT SCALE DETECTION â€” READ CAREFULLY:
+ðŸ‹ï¸ WEIGHT SCALE DETECTION — READ CAREFULLY:
 CLASSIFY AS "weight" if you see ANY of these:
-âœ… Physical digital/analog bathroom scale or body composition scale device
-âœ… Smart scale app result screen (Huawei Health, Mi Fit, Fitdays, Renpho, iHealth, Yunmai, FitTrack, Eufy, etc.)
-âœ… Mobile app screenshot showing a table/list of body metrics: Weight, BMI, Body Fat %, Muscle Mass, BMR, Skeletal Muscle, Visceral Fat, Bone Mass, Body Water, Protein %, Body Age, Subcutaneous Fat
-âœ… Screenshot from a health app showing a body composition measurement result (even if no physical scale is visible)
+✅ Physical digital/analog bathroom scale or body composition scale device
+✅ Smart scale app result screen (Huawei Health, Mi Fit, Fitdays, Renpho, iHealth, Yunmai, FitTrack, Eufy, etc.)
+✅ Mobile app screenshot showing a table/list of body metrics: Weight, BMI, Body Fat %, Muscle Mass, BMR, Skeletal Muscle, Visceral Fat, Bone Mass, Body Water, Protein %, Body Age, Subcutaneous Fat
+✅ Screenshot from a health app showing a body composition measurement result (even if no physical scale is visible)
 
 âš ï¸ BMR EXTRACTION RULES (CRITICAL for smart scale screenshots):
-- Look for "BMR" label in the metrics list â€” value is in kcal (e.g. "1703kcal" or "1703 kcal")
-- Extract ONLY the numeric integer part: "1703kcal" â†’ bmr: 1703
+- Look for "BMR" label in the metrics list — value is in kcal (e.g. "1703kcal" or "1703 kcal")
+- Extract ONLY the numeric integer part: "1703kcal" → bmr: 1703
 - BMR is typically between 800 and 4000 kcal for adults
-- If visible, ALWAYS populate the bmr field â€” do NOT return null if you can read the number
+- If visible, ALWAYS populate the bmr field — do NOT return null if you can read the number
 
 âš ï¸ DO NOT classify as "smartwatch" if the screenshot shows body composition results (BMI, Body Fat, BMR, etc.)
 âš ï¸ DO NOT classify as "food" if the image is a body metrics report/table
 
-ðŸ”¥ NUTRITION ESTIMATION RULES (CRITICAL â€” for food only):
+🔥 NUTRITION ESTIMATION RULES (CRITICAL — for food only):
 - NEVER return 0 for calories UNLESS truly zero-calorie (water, black tea, black coffee only)
 - If unsure about exact values, provide REASONABLE ESTIMATES based on typical serving sizes
 - Indian food examples:
@@ -187,9 +187,9 @@ CLASSIFY AS "weight" if you see ANY of these:
 
 Return ONLY JSON matching ONE of the above formats.`;
 
-      console.log('âš¡ [UNIFIED API] Single call for detection + analysis');
-      console.log('âš¡ Model: gemini-2.5-flash-lite');
-      console.log('âš¡ Calling Gemini API...');
+      console.log('⚡ [UNIFIED API] Single call for detection + analysis');
+      console.log('⚡ Model: gemini-2.5-flash-lite');
+      console.log('⚡ Calling Gemini API...');
       
       const apiCallStart = Date.now();
       const apiResult = await Promise.race([
@@ -197,16 +197,16 @@ Return ONLY JSON matching ONE of the above formats.`;
         this.timeoutPromise(this.timeout, 'Unified API timeout after 50s')
       ]);
       const apiCallTime = Date.now() - apiCallStart;
-      console.log(`â±ï¸ [PERF] ðŸŽ¯ Gemini API response received: ${apiCallTime}ms`);
+      console.log(`â±ï¸ [PERF] 🎯 Gemini API response received: ${apiCallTime}ms`);
       
       const apiResponse = await apiResult.response;
       const apiText = apiResponse.text();
-      console.log('âš¡ [UNIFIED API] Raw response:', apiText.substring(0, 300) + '...');
+      console.log('⚡ [UNIFIED API] Raw response:', apiText.substring(0, 300) + '...');
       
       const parseStart = Date.now();
       const analysisData = this.parseJsonResponse(apiText);
       console.log(`â±ï¸ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);
-      console.log('ðŸ¤– [DEBUG] Parsed Result:', {
+      console.log('🤖 [DEBUG] Parsed Result:', {
         type: analysisData.type,
         confidence: analysisData.confidence,
         hasFoods: !!analysisData.foods,
@@ -216,13 +216,13 @@ Return ONLY JSON matching ONE of the above formats.`;
       
       // ðŸ” LOG RAW AI NUTRITION DATA (before any fallback)
       if (analysisData.type === 'food' && analysisData.foods) {
-        console.log('ðŸ¤– [RAW AI NUTRITION] What AI returned BEFORE fallback:');
+        console.log('🤖 [RAW AI NUTRITION] What AI returned BEFORE fallback:');
         analysisData.foods.forEach((food, idx) => {
           const cal = food.nutrition?.calories;
           const protein = food.nutrition?.protein;
           const carbs = food.nutrition?.carbs;
           const fat = food.nutrition?.fat;
-          const status = (cal === 0 || cal === undefined) ? 'âŒ NEEDS FALLBACK' : 'âœ… HAS DATA';
+          const status = (cal === 0 || cal === undefined) ? 'âŒ NEEDS FALLBACK' : '✅ HAS DATA';
           console.log(`   ${idx + 1}. "${food.name}": ${cal || 0} cal, ${carbs || 0}g carbs, ${protein || 0}g protein, ${fat || 0}g fat ${status}`);
         });
       }
@@ -255,9 +255,9 @@ Return ONLY JSON matching ONE of the above formats.`;
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
       // Return result based on detected type
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
-      // âŒš SMARTWATCH / FITNESS APP â€” highest specificity check first
+      // ⌚ SMARTWATCH / FITNESS APP — highest specificity check first
       if (analysisData.type === 'smartwatch' && analysisData.confidence > 0.5) {
-        console.log('âŒš [RESULT] Returning SMARTWATCH result:', analysisData.caloriesBurned, 'kcal from', analysisData.source);
+        console.log('⌚ [RESULT] Returning SMARTWATCH result:', analysisData.caloriesBurned, 'kcal from', analysisData.source);
         return {
           type: 'smartwatch',
           confidence: analysisData.confidence,
@@ -310,10 +310,10 @@ Return ONLY JSON matching ONE of the above formats.`;
       console.log('ðŸ½ï¸ [RESULT] Total calories:', analysisData.total?.calories || 0);
       console.log('ðŸ½ï¸ [RESULT] Confidence:', analysisData.confidence || 0.5);
       
-      // ðŸ”´ CRITICAL: Apply fallback nutrition for foods with 0 or missing nutrition
+      // 🔴 CRITICAL: Apply fallback nutrition for foods with 0 or missing nutrition
       let foodsWithNutrition = analysisData.foods || [];
       if (foodsWithNutrition.length > 0) {
-        console.log('ðŸ”§ [NUTRITION-CHECK] Checking for missing nutrition values...');
+        console.log('🔧 [NUTRITION-CHECK] Checking for missing nutrition values...');
         const beforeFallback = foodsWithNutrition.map(f => ({
           name: f.name,
           calories: f.nutrition?.calories || 0
@@ -327,12 +327,12 @@ Return ONLY JSON matching ONE of the above formats.`;
           source: f.nutritionSource || 'ai'
         }));
         
-        console.log('ðŸ”§ [NUTRITION-CHECK] Before fallback:', beforeFallback);
-        console.log('ðŸ”§ [NUTRITION-CHECK] After fallback:', afterFallback);
+        console.log('🔧 [NUTRITION-CHECK] Before fallback:', beforeFallback);
+        console.log('🔧 [NUTRITION-CHECK] After fallback:', afterFallback);
       }
       console.log('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
       
-      // ðŸ”´ CRITICAL: Set originalAiName for each food BEFORE returning
+      // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
       // This ensures debug logging shows the correct AI detected name
       const foodsWithOriginalName = foodsWithNutrition.map(food => ({
         ...food,

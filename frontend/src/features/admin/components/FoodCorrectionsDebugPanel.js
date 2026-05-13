@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { getUserCorrections } from '../../nutrition/services/foodCorrectionService';
 import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../../user/services/userContextService';
 import { geminiService } from '../../../shared/services/geminiService';
@@ -34,7 +34,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
       setUserContext(context);
       
       if (forceRefresh) {
-        console.log('âœ… [Debug Panel] Force refreshed context:', context);
+        console.log('✅ [Debug Panel] Force refreshed context:', context);
       }
     } catch (err) {
       console.error('Error loading data:', err);
@@ -56,7 +56,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
     if (!isOpen || !userId) return;
     
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
-      console.log('âœ… [Debug Panel] Context updated automatically:', updatedContext);
+      console.log('✅ [Debug Panel] Context updated automatically:', updatedContext);
       setUserContext(updatedContext);
       // Also refresh corrections in case food name was corrected
       getUserCorrections(userId).then(response => {
@@ -103,7 +103,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                     // Refresh prompt
                     const promptData = geminiService.getLastPrompt();
                     setLastPrompt(promptData);
-                    console.log('ðŸ”„ [Debug Panel] Refreshed prompt:', promptData);
+                    console.log('🔄 [Debug Panel] Refreshed prompt:', promptData);
                   } else {
                     // Refresh corrections and context
                     loadData(true);
@@ -199,7 +199,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                         <span className="text-red-600 line-through text-xs md:text-sm truncate">
                           {correction.ai_detected}
                         </span>
-                        <span className="text-gray-400 text-xs">â†’</span>
+                        <span className="text-gray-400 text-xs">→</span>
                         <span className="text-green-600 font-medium text-xs md:text-sm truncate">
                           {correction.user_corrected}
                         </span>
@@ -214,7 +214,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                       </div>
                     </div>
                     <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium whitespace-nowrap">
-                      {correction.times_corrected}Ã—
+                      {correction.times_corrected}×
                     </span>
                   </div>
                 </div>
@@ -280,9 +280,9 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                   <div className="text-xs text-blue-800 leading-relaxed">
                     <p className="font-semibold mb-1">How this prompt is built:</p>
                     <ul className="space-y-0.5 ml-2">
-                      <li>â€¢ Your <strong>personal corrections</strong> (top 5 by frequency)</li>
-                      <li>â€¢ Your <strong>diet preference</strong> (if not Non-Vegetarian)</li>
-                      <li>â€¢ <strong>Global patterns</strong> from 3+ users with same corrections</li>
+                      <li>• Your <strong>personal corrections</strong> (top 5 by frequency)</li>
+                      <li>• Your <strong>diet preference</strong> (if not Non-Vegetarian)</li>
+                      <li>• <strong>Global patterns</strong> from 3+ users with same corrections</li>
                     </ul>
                     <p className="mt-1.5 text-blue-700">This context is automatically added to every AI food detection request.</p>
                   </div>
@@ -299,7 +299,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                   <div className="bg-green-50 rounded-lg p-3 border border-green-200">
                     <div className="flex items-start gap-2 mb-2">
                       <div className="flex-shrink-0 w-5 h-5 bg-green-100 rounded-full flex items-center justify-center mt-0.5">
-                        <span className="text-green-600 text-xs font-bold">âœ“</span>
+                        <span className="text-green-600 text-xs font-bold">✓</span>
                       </div>
                       <div className="text-xs text-green-800">
                         <p className="font-semibold mb-1">Last Sent to Gemini:</p>
@@ -334,11 +334,11 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                   
                   <div className="bg-blue-50 rounded-lg p-3 border border-blue-200">
                     <div className="text-xs text-blue-800">
-                      <p className="font-semibold mb-1">ðŸ“Š Prompt Stats:</p>
+                      <p className="font-semibold mb-1">📊 Prompt Stats:</p>
                       <ul className="space-y-0.5 ml-2">
-                        <li>â€¢ Characters: <strong>{lastPrompt.prompt.length.toLocaleString()}</strong></li>
-                        <li>â€¢ Lines: <strong>{lastPrompt.prompt.split('\n').length}</strong></li>
-                        <li>â€¢ Approx. Tokens: <strong>~{Math.ceil(lastPrompt.prompt.length / 4)}</strong></li>
+                        <li>• Characters: <strong>{lastPrompt.prompt.length.toLocaleString()}</strong></li>
+                        <li>• Lines: <strong>{lastPrompt.prompt.split('\n').length}</strong></li>
+                        <li>• Approx. Tokens: <strong>~{Math.ceil(lastPrompt.prompt.length / 4)}</strong></li>
                       </ul>
                     </div>
                   </div>

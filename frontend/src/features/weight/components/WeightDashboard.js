@@ -1,4 +1,4 @@
-﻿// src/components/WeightDashboard.js
+// src/components/WeightDashboard.js
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef, useCallback } from 'react';
 import { 
   RotateCcw,
@@ -14,14 +14,14 @@ import { getUserId } from '../../user/services/getUserId';
 import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
 import '../../../LazyLoadStyles.css';
 
-// âœ… LAZY LOADING: Load heavy components only when needed
+// ✅ LAZY LOADING: Load heavy components only when needed
 const WeightCard = lazy(() => import('./WeightCard'));
 const WeightCardModal = lazy(() => import('./WeightCardModal'));
 
 const UNDO_SECONDS = 10; // undo countdown duration
 
 /**
-//  * âœ… PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
+//  * ✅ PERFORMANCE: LazyLoadWrapper - Only render children when visible in viewport
  */
 const LazyLoadWrapper = ({ children, fallback, rootMargin = '100px' }) => {
   const [isVisible, setIsVisible] = useState(false);
@@ -113,7 +113,7 @@ const UndoRow = ({ pid, originalEntry, expiresAt, ttlSeconds = UNDO_SECONDS, onR
         {undoing ? (
           <>
             <span className="inline-block h-4 w-4 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />
-            Restoringâ€¦
+            Restoring…
           </>
         ) : (
           <>
@@ -168,11 +168,11 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   // Undo placeholders: key -> { originalEntry, expiresAt, ttlSeconds }
   const [undoState, setUndoState] = useState({});
 
-  // âœ… CACHE: Store userId to avoid repeated lookups
+  // ✅ CACHE: Store userId to avoid repeated lookups
   const userIdRef = useRef(null);
   const weightSwipeRef = useRef({ active: false, startX: 0, lastX: 0 });
 
-  // Γ£à PAGINATION: Lazy-load weight history in pages of 10
+  // ✅ PAGINATION: Lazy-load weight history in pages of 10
   const WEIGHT_PAGE_SIZE = 10;
   const [weightOffset, setWeightOffset] = useState(0);
   const [hasMoreWeights, setHasMoreWeights] = useState(false);
@@ -186,13 +186,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   const weightTrendChartRef = useRef(null);
 
   /**
-   * âœ… MEMOIZED: Group weight entries by month
+   * ✅ MEMOIZED: Group weight entries by month
    * Note: Placeholders are handled separately in the render logic
    */
   const monthlyGroups = useMemo(() => {
     const grouped = {};
     
-    // console.log('ðŸ“Š Processing weightHistory:', weightHistory.length, 'entries');
+    // console.log('📊 Processing weightHistory:', weightHistory.length, 'entries');
     
     // Process all entries including placeholders
     weightHistory.forEach(entry => {
@@ -223,12 +223,12 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
     
     // Sort months in descending order (most recent first) using sortDate
     const result = Object.values(grouped).sort((a, b) => b.sortDate - a.sortDate);
-    // console.log('ðŸ“Š Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
+    // console.log('📊 Monthly groups:', result.map(g => ({ month: g.monthName, count: g.entries.length })));
     return result;
   }, [weightHistory]);
 
   /**
-   * âœ… MEMOIZED: Pre-compute previous weight map for O(1) lookup
+   * ✅ MEMOIZED: Pre-compute previous weight map for O(1) lookup
    */
   const previousWeightMap = useMemo(() => {
     const map = new Map();
@@ -470,7 +470,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
       const userId = userIdRef.current;
 
       if (!userId) {
-        // User not yet authenticated (e.g. still restoring session) ΓÇö silently
+        // User not yet authenticated (e.g. still restoring session) — silently
         // bail out. The useEffect will re-run once user?.id / user?.email is set.
         setLoading(false);
         return;
@@ -478,7 +478,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
 
       const currentOffset = reset ? 0 : offsetRef.current;
 
-      // Γ£à LAZY LOAD: only request 10 entries per page (no images ΓÇö fetched per card)
+      // ✅ LAZY LOAD: only request 10 entries per page (no images — fetched per card)
       const params = new URLSearchParams({
         userId,
         includeImage: 'false',
@@ -544,7 +544,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
   };
 
   /**
-   * Γ£à INFINITE SCROLL: observe sentinel and load next page when visible
+   * ✅ INFINITE SCROLL: observe sentinel and load next page when visible
    */
   useEffect(() => {
     const el = loadMoreSentinelRef.current;
@@ -623,7 +623,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to delete entry');
       }
 
-      // console.log('âœ… Entry soft-deleted immediately:', entryToDelete.ID);
+      // console.log('✅ Entry soft-deleted immediately:', entryToDelete.ID);
 
     } catch (err) {
       console.error('âŒ Delete error:', err);
@@ -681,7 +681,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
         throw new Error(data.message || 'Failed to restore entry');
       }
 
-      // console.log('âœ… Entry restored via API:', originalEntry.ID);
+      // console.log('✅ Entry restored via API:', originalEntry.ID);
 
     } catch (err) {
       console.error('âŒ Undo restore error:', err);
@@ -1370,7 +1370,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           );
                         }
 
-                        // âœ… OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
+                        // ✅ OPTIMIZED: Use pre-computed previousWeightMap for O(1) lookup
                         const prevWeight = previousWeightMap.get(entry.ID);
                         
                         // Skeleton placeholder for lazy loading
@@ -1387,7 +1387,7 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
                           </div>
                         );
 
-                        // âœ… PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
+                        // ✅ PERFORMANCE: First 10 items render immediately, rest lazy load on scroll
                         if (index < 10) {
                           return (
                             <Suspense key={entry.ID} fallback={skeleton}>
@@ -1431,13 +1431,13 @@ const WeightDashboard = ({ user, apiBaseUrl, hideHeader }) => {
             })
           )}
 
-          {/* Γ£à INFINITE SCROLL: sentinel + loading indicator for next 10 entries */}
+          {/* ✅ INFINITE SCROLL: sentinel + loading indicator for next 10 entries */}
           {(hasMoreWeights || loadingMore) && (
             <div ref={loadMoreSentinelRef} className="flex items-center justify-center py-6">
               {loadingMore ? (
                 <div className="flex items-center gap-2 text-sm text-gray-500">
                   <span className="inline-block h-4 w-4 rounded-full border-2 border-emerald-400 border-t-transparent animate-spin" />
-                  Loading more entriesΓÇª
+                  Loading more entries…
                 </div>
               ) : (
                 <span className="text-xs text-gray-400">Scroll to load more</span>

@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { TeamMemberProfileModal } from "../features/user";
@@ -9,15 +9,15 @@ const PROGRAMS = [
   {
     id: "family-breakfast",
     name: "Family Healthy Breakfast Programme",
-    icon: "ðŸ¥—",
+    icon: "🥗",
   },
-  { id: "weight-loss", name: "Weight Loss", icon: "ðŸ“‰" },
-  { id: "weight-gain", name: "Weight Gain", icon: "ðŸ“ˆ" },
-  { id: "kids-nutrition", name: "Kids Nutrition", icon: "ðŸ§’" },
+  { id: "weight-loss", name: "Weight Loss", icon: "📉" },
+  { id: "weight-gain", name: "Weight Gain", icon: "📈" },
+  { id: "kids-nutrition", name: "Kids Nutrition", icon: "🧒" },
   { id: "sports-nutrition", name: "Sports Nutrition", icon: "ðŸƒ" },
-  { id: "targeted-nutrition", name: "Targeted Nutrition", icon: "ðŸŽ¯" },
-  { id: "earn-product-cost", name: "How to Earn My Product Cost", icon: "ðŸ’°" },
-  { id: "extra-income", name: "Extra Income Opportunity", icon: "ðŸ’¼" },
+  { id: "targeted-nutrition", name: "Targeted Nutrition", icon: "🎯" },
+  { id: "earn-product-cost", name: "How to Earn My Product Cost", icon: "💰" },
+  { id: "extra-income", name: "Extra Income Opportunity", icon: "💼" },
 ];
 
 const WellnessUniversityReport = ({ onClose, user, userRole }) => {
@@ -70,7 +70,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               user.email,
             )}&includeInactive=true&_t=${cacheBuster}`;
 
-        console.log("ðŸ“¡ Fetching team hierarchy:", teamUrl);
+        console.log("📡 Fetching team hierarchy:", teamUrl);
 
         const teamResponse = await fetch(teamUrl);
 
@@ -92,12 +92,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           teamData.allMembers.length > 0
         ) {
           console.log(
-            "âœ… Team hierarchy loaded:",
+            "✅ Team hierarchy loaded:",
             teamData.allMembers?.length,
             "members",
           );
           console.log(
-            "ðŸ‘¥ All team members from API (detailed):",
+            "👥 All team members from API (detailed):",
             teamData.allMembers.map((m) => ({
               name: m.UserName || m.Email,
               userId: m.UserId,
@@ -109,7 +109,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             })),
           );
           console.log(
-            "ðŸ“Š Hierarchy structure:",
+            "📊 Hierarchy structure:",
             JSON.stringify(teamData.hierarchy, null, 2),
           );
 
@@ -121,9 +121,9 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           // Don't filter - we need everyone to calculate full team
           teamMembers = teamData.allMembers || [];
 
-          console.log("âœ… Stored all team members:", teamMembers.length);
+          console.log("✅ Stored all team members:", teamMembers.length);
           console.log(
-            "ðŸ‘¥ Team members:",
+            "👥 Team members:",
             teamMembers.map((m) => ({
               name: m.UserName,
               userId: m.UserId,
@@ -147,7 +147,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             })
             .map((m) => Number(m.UserId));
 
-          console.log("âœ… Direct team IDs:", myDirectTeamIds);
+          console.log("✅ Direct team IDs:", myDirectTeamIds);
 
           setAllTeamMembers(teamMembers);
         } else {
@@ -167,7 +167,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       if (data.success) {
         console.log(
-          "âœ… Enrollments loaded:",
+          "✅ Enrollments loaded:",
           data.enrollments?.length,
           "enrollments",
         );
@@ -271,7 +271,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               coCoachIdMatch,
               "| NotSelf:",
               notSelf,
-              "| âœ… IsDirect:",
+              "| ✅ IsDirect:",
               isDirect,
             );
           }
@@ -280,11 +280,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         });
 
         console.log(
-          `[${programName}] âœ… Direct members found:`,
+          `[${programName}] ✅ Direct members found:`,
           allDirectMembers.length,
         );
         console.log(
-          `[${programName}] âœ… Direct members:`,
+          `[${programName}] ✅ Direct members:`,
           allDirectMembers.map((m) => m.UserName || m.Email),
         );
 
@@ -295,13 +295,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           const queue = [...startMembers];
 
           console.log(
-            `[${programName}] ðŸ”§ Building full team from ${startMembers.length} direct members`,
+            `[${programName}] 🔧 Building full team from ${startMembers.length} direct members`,
           );
           console.log(
-            `[${programName}] ðŸ”§ Using ${allMembers.length} total members for hierarchy traversal`,
+            `[${programName}] 🔧 Using ${allMembers.length} total members for hierarchy traversal`,
           );
           console.log(
-            `[${programName}] ðŸ”§ All members sample:`,
+            `[${programName}] 🔧 All members sample:`,
             allMembers.slice(0, 5).map((m) => ({
               UserId: m.UserId,
               UserName: m.UserName,
@@ -318,7 +318,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             if (!fullTeam.has(currentUserId)) {
               fullTeam.set(currentUserId, current);
               console.log(
-                `[${programName}] âž• Added to full team:`,
+                `[${programName}] ➕ Added to full team:`,
                 current.UserName || current.Email,
                 "(UserId:",
                 currentUserId,
@@ -343,7 +343,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
                 if (isSubTeamMember) {
                   console.log(
-                    `[${programName}] ðŸ‘¤ Found sub-team member:`,
+                    `[${programName}] 👤 Found sub-team member:`,
                     m.UserName || m.Email,
                     "(UserId:",
                     mUserId,
@@ -364,7 +364,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               });
 
               console.log(
-                `[${programName}] ðŸ“‹ ${current.UserName || current.Email} has ${
+                `[${programName}] 📋 ${current.UserName || current.Email} has ${
                   subTeam.length
                 } direct reports`,
               );
@@ -380,7 +380,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
           const result = Array.from(fullTeam.values());
           console.log(
-            `[${programName}] âœ… Full team build complete: ${result.length} members`,
+            `[${programName}] ✅ Full team build complete: ${result.length} members`,
           );
           return result;
         };
@@ -390,11 +390,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         const allFullMembers = buildFullTeam(allDirectMembers, allTeamMembers);
 
         console.log(
-          `[${programName}] ðŸ“Š Full team members (entire downline):`,
+          `[${programName}] 📊 Full team members (entire downline):`,
           allFullMembers.length,
         );
         console.log(
-          `[${programName}] ðŸ“Š Full team:`,
+          `[${programName}] 📊 Full team:`,
           allFullMembers.map((m) => m.UserName || m.Email),
         );
 
@@ -461,12 +461,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         });
 
         console.log(
-          `[${programName}] ðŸ“Š Full enrolled:`,
+          `[${programName}] 📊 Full enrolled:`,
           fullEnrolled.length,
           fullEnrolled.map((m) => m.UserName),
         );
         console.log(
-          `[${programName}] ðŸ“Š Full unenrolled:`,
+          `[${programName}] 📊 Full unenrolled:`,
           fullNotEnrolled.length,
           fullNotEnrolled.map((m) => m.UserName),
         );
@@ -561,12 +561,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
   const programStats = calculateProgramStats();
 
-  // Always show individual view â€” for self when empty, for searched member when typed
+  // Always show individual view — for self when empty, for searched member when typed
   const q = searchQuery.toLowerCase().trim();
   const isSearchingAnyone = true;
   const isSearchingOther = q.length > 0 && !currentUserName.toLowerCase().includes(q);
 
-  // Find the member to show â€” logged-in user by default, searched member if typed
+  // Find the member to show — logged-in user by default, searched member if typed
   const searchedMember = isSearchingOther
     ? allTeamMembers.find(
         (m) =>
@@ -883,7 +883,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                 <div className="flex-shrink-0">
                   {isEnrolled ? (
                     <div className="bg-green-100 text-green-700 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
-                      âœ“ Enrolled
+                      ✓ Enrolled
                     </div>
                   ) : (
                     <div className="bg-gray-200 text-gray-500 text-[10px] sm:text-xs font-medium px-2 py-1 rounded whitespace-nowrap">
@@ -1237,7 +1237,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           <>
             {/* Programs List */}
             <div className="space-y-3 sm:space-y-4">
-              {/* â”€â”€ INDIVIDUAL VIEW: any name is searched â”€â”€ */}
+              {/* ── INDIVIDUAL VIEW: any name is searched ── */}
               {isSearchingAnyone ? (
                 !searchedMember ? (
                   <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
@@ -1292,7 +1292,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                 {isEnrolled && (() => { const d = getSearchedMemberProgramDate(program.name); return d ? (
                                   <p className="text-xs text-gray-400 mt-0.5">
                                     {new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" })}
-                                    {" Â· "}
+                                    {" · "}
                                     {new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" })}
                                   </p>
                                 ) : null; })()}
@@ -1306,7 +1306,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                               <SelfLogo className={`w-4 h-4 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`} />
                               <div className={`text-[10px] font-bold mt-0.5 ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>Individual</div>
                               <div className={`text-xl font-bold ${isEnrolled ? "text-blue-600" : "text-gray-400"}`}>
-                                {isEnrolled ? "âœ“" : "âœ—"}
+                                {isEnrolled ? "✓" : "✗"}
                               </div>
                             </div>
                           </div>
@@ -1316,7 +1316,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   </>
                 )
               ) : (
-              /* â”€â”€ NORMAL HIERARCHICAL VIEW â”€â”€ */
+              /* ── NORMAL HIERARCHICAL VIEW ── */
               <>
               {PROGRAMS.filter((program) => {
                 const rawStats = programStats[program.name] || {
@@ -1328,7 +1328,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                 return hasEnrollments;
               }).length === 0 ? (
                 <div className="bg-gray-50 rounded-xl p-8 sm:p-12 text-center">
-                  <div className="text-5xl sm:text-6xl mb-4">ðŸ“‹</div>
+                  <div className="text-5xl sm:text-6xl mb-4">📋</div>
                   <p className="text-gray-600 text-base sm:text-lg">
                     No enrollments found
                   </p>
@@ -1400,7 +1400,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                   <div className={`text-lg font-bold ${
                                     stats.mine > 0 ? "text-blue-600" : "text-gray-400"
                                   }`}>
-                                    {stats.mine > 0 ? "âœ“" : "âœ—"}
+                                    {stats.mine > 0 ? "✓" : "✗"}
                                   </div>
                                 </div>
                               </div>
@@ -1497,7 +1497,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                   <div className={`text-lg font-bold ${
                                     stats.mine > 0 ? "text-blue-600" : "text-gray-400"
                                   }`}>
-                                    {stats.mine > 0 ? "âœ“" : "âœ—"}
+                                    {stats.mine > 0 ? "✓" : "✗"}
                                   </div>
                                 </div>
                               </div>
@@ -1646,7 +1646,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                 {viewType === "mine" && stats.mine > 0 && (
                                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 sm:p-4 text-center">
                                     <div className="text-3xl sm:text-4xl mb-2">
-                                      âœ…
+                                      ✅
                                     </div>
                                     <p className="text-blue-800 font-semibold text-sm sm:text-base">
                                       You're enrolled in this program!
@@ -1656,7 +1656,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                                 {viewType === "mine" && stats.mine === 0 && (
                                   <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 sm:p-4 text-center">
                                     <div className="text-3xl sm:text-4xl mb-2">
-                                      ðŸ“‹
+                                      📋
                                     </div>
                                     <p className="text-gray-600 font-semibold text-sm sm:text-base">
                                       You're unenrolled in this program

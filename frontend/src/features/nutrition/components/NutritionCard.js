@@ -1,4 +1,4 @@
-﻿//src\components\NutritionCard.js
+//src\components\NutritionCard.js
 import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import { getVersionString } from "../../../config/version";
@@ -50,7 +50,7 @@ const NutritionCard = ({
       // Create object URL from original file (no compression)
       const url = URL.createObjectURL(selectedImage);
       setHighResImageUrl(url);
-      console.log("ðŸ“¸ Created high-res image URL for sharing");
+      console.log("📸 Created high-res image URL for sharing");
 
       // Cleanup on unmount
       return () => {
@@ -100,7 +100,7 @@ const NutritionCard = ({
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
-    console.log("ðŸ”„ [NutritionCard] Data prop changed, syncing local state");
+    console.log("🔄 [NutritionCard] Data prop changed, syncing local state");
     console.log("   New nutrition values:", data?.nutrition);
     console.log("   New detailedItems count:", data?.detailedItems?.length);
 
@@ -301,7 +301,7 @@ const NutritionCard = ({
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
     console.log(
-      "ðŸ§® [NutritionCard] recalculateTotals - Processing items:",
+      "🧮 [NutritionCard] recalculateTotals - Processing items:",
       items.length,
     );
 
@@ -313,7 +313,7 @@ const NutritionCard = ({
         const itemFat = item.nutrition?.fat || item.fat || 0;
         const itemFiber = item.nutrition?.fiber || item.fiber || 0;
 
-        console.log(`   ðŸ“Š Item ${index + 1}: ${item.name}`);
+        console.log(`   📊 Item ${index + 1}: ${item.name}`);
         console.log(
           `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
         );
@@ -344,7 +344,7 @@ const NutritionCard = ({
       fiber: Math.round(totals.fiber * 10) / 10,
     };
 
-    console.log("   âœ… Final totals:", rounded);
+    console.log("   ✅ Final totals:", rounded);
     return rounded;
   };
 
@@ -734,14 +734,14 @@ const NutritionCard = ({
       breakdownText += `${Math.round(calories)} kcal ðŸŽ\n\n`;
 
       // Add nutrition summary
-      breakdownText += `ðŸ“Š Nutrition Summary:\n`;
-      breakdownText += `â€¢ Calories: ${Math.round(
+      breakdownText += `📊 Nutrition Summary:\n`;
+      breakdownText += `• Calories: ${Math.round(
         localNutrition.calories,
       )} kcal\n`;
-      breakdownText += `â€¢ Protein: ${localNutrition.protein}g\n`;
-      breakdownText += `â€¢ Carbs: ${localNutrition.carbs}g\n`;
-      breakdownText += `â€¢ Fat: ${localNutrition.fat}g\n`;
-      breakdownText += `â€¢ Fiber: ${localNutrition.fiber}g\n\n`;
+      breakdownText += `• Protein: ${localNutrition.protein}g\n`;
+      breakdownText += `• Carbs: ${localNutrition.carbs}g\n`;
+      breakdownText += `• Fat: ${localNutrition.fat}g\n`;
+      breakdownText += `• Fiber: ${localNutrition.fiber}g\n\n`;
 
       // Add food breakdown if multiple items
       if (localDetailedItems.length > 0) {
@@ -758,17 +758,17 @@ const NutritionCard = ({
             breakdownText += ` (${portion})`;
           }
           breakdownText += `\n   ${Math.round(itemCals)} kcal`;
-          breakdownText += ` â€¢ Protein: ${Math.round(
+          breakdownText += ` • Protein: ${Math.round(
             item.nutrition?.protein || item.protein || 0,
           )}g`;
-          breakdownText += ` â€¢ Carbs: ${Math.round(
+          breakdownText += ` • Carbs: ${Math.round(
             item.nutrition?.carbs || item.carbs || 0,
           )}g`;
-          breakdownText += ` â€¢ Fat: ${Math.round(
+          breakdownText += ` • Fat: ${Math.round(
             item.nutrition?.fat || item.fat || 0,
           )}g`;
           if ((item.nutrition?.fiber || item.fiber || 0) > 0) {
-            breakdownText += ` â€¢ Fiber: ${Math.round(
+            breakdownText += ` • Fiber: ${Math.round(
               item.nutrition?.fiber || item.fiber || 0,
             )}g`;
           }
@@ -1193,7 +1193,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">â€¢</span>
+                          <span className="text-gray-400">•</span>
                           <span className="text-yellow-600">
                             Carbs{" "}
                             {Math.round(
@@ -1201,7 +1201,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">â€¢</span>
+                          <span className="text-gray-400">•</span>
                           <span className="text-green-600">
                             Fiber{" "}
                             {Math.round(
@@ -1209,7 +1209,7 @@ const NutritionCard = ({
                             )}
                             g
                           </span>
-                          <span className="text-gray-400">â€¢</span>
+                          <span className="text-gray-400">•</span>
                           <span className="text-purple-600">
                             Fat{" "}
                             {Math.round(item.nutrition?.fat || item.fat || 0)}g
@@ -1474,7 +1474,7 @@ const NutritionCard = ({
 
                             <div className="text-xs text-gray-600 mt-0.5">
                               {/* {food.defaultServing?.nutrition?.calories || 0} kcal
-                              {" Â· "}
+                              {" · "}
                               {food.defaultServing?.description || "1 serving"} */}
                             </div>
                           </button>

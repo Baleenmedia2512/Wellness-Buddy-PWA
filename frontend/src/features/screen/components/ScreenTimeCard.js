@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Smartphone, RefreshCw, Clock, BarChart3, Shield, ChevronDown, ChevronUp } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import {
@@ -145,7 +145,7 @@ const ScreenTimeCard = ({ userId }) => {
       const deviceData = await getTodayScreenTime();
       setTodayData(deviceData);
 
-      // Try backend operations separately â€” don't let them block device data
+      // Try backend operations separately — don't let them block device data
       if (resolvedUserId) {
         try {
           const history = await fetchScreenTimeHistory(resolvedUserId, selectedPeriod, toDateKey());
@@ -154,7 +154,7 @@ const ScreenTimeCard = ({ userId }) => {
           console.warn('[ScreenTimeCard] Backend history fetch failed:', err.message);
         }
 
-        // Save using already-fetched deviceData â€” no second plugin call
+        // Save using already-fetched deviceData — no second plugin call
         if (deviceData?.totalScreenTimeSeconds > 0) {
           const localDate = deviceData.date || toDateKey();
           try {
@@ -185,7 +185,7 @@ const ScreenTimeCard = ({ userId }) => {
     }
   }, [selectedPeriod, permissionGranted, resolvedUserId]);
 
-  // On app open: backfill only missing/zero days from install date â†’ today
+  // On app open: backfill only missing/zero days from install date → today
   useEffect(() => {
     if (!isNative || !permissionGranted || !resolvedUserId) return;
 

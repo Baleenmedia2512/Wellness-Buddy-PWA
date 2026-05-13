@@ -1,4 +1,4 @@
-﻿import { cacheManager } from '../../../shared/services/cacheManager';
+import { cacheManager } from '../../../shared/services/cacheManager';
 
 const API_BASE_URL =
   process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
@@ -16,7 +16,7 @@ const normalizeFoodName = (name) => {
     .toLowerCase()
     .trim()
     // Remove special characters but keep spaces
-    .replace(/[-â€“â€”_()[\]{}]/g, " ")
+    .replace(/[-–—_()[\]{}]/g, " ")
     // Remove extra spaces
     .replace(/\s+/g, " ")
     .trim();
@@ -64,7 +64,7 @@ const getFoodTypeByUnit = (unit) => {
  */
 export const saveFoodCorrection = async (userId, aiDetected, userCorrected, correctedData = {}) => {
   try {
-    console.log("\nðŸ’¾ ========== SAVE CORRECTION API ==========");
+    console.log("\n💾 ========== SAVE CORRECTION API ==========");
     console.log("[CORRECTION SERVICE] saveFoodCorrection called:", {
       userId,
       aiDetected,
@@ -72,7 +72,7 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
       correctedData,
     });
     
-    // ðŸš¨ CRITICAL VALIDATION: Ensure aiDetected is the ORIGINAL AI name
+    // 🚨 CRITICAL VALIDATION: Ensure aiDetected is the ORIGINAL AI name
     console.log("ðŸ” [VALIDATION] Checking if aiDetected is original AI name...");
     console.log("   - aiDetected:", aiDetected);
     console.log("   - Will save to DB:", { 
@@ -102,8 +102,8 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
       ...correctedData
     };
     console.log("[CORRECTION SERVICE] Payload:", payload);
-    console.log("ðŸš€ [SENDING TO BACKEND] Will create/update DB record:");
-    console.log("   ðŸ“Š food_corrections_table:");
+    console.log("🚀 [SENDING TO BACKEND] Will create/update DB record:");
+    console.log("   📊 food_corrections_table:");
     console.log("      - UserId:", userId);
     console.log("      - AiDetected:", aiDetected.trim());
     console.log("      - UserCorrected:", userCorrected.trim());
@@ -150,7 +150,7 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
     }
 
     const data = await response.json();
-    console.log("[CORRECTION SERVICE] âœ… Success:", data);
+    console.log("[CORRECTION SERVICE] ✅ Success:", data);
     
     // Clear cache so new correction applies immediately
     cacheManager.clearPattern('foodCorrection');
@@ -225,7 +225,7 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
       
       let result = null;
       if (data.success && data.found) {
-        console.log("âœ… [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
+        console.log("✅ [REVERSE-LOOKUP] Found original AI name:", data.originalAiName);
         result = data.originalAiName;
       } else {
         console.log("â„¹ï¸ [REVERSE-LOOKUP] No correction mapping found");
@@ -239,7 +239,7 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
 
 /**
  * Apply hybrid corrections (global + user-specific) to AI-detected food names
- * ðŸŽ¯ NEW LOGIC:
+ * 🎯 NEW LOGIC:
  * - Herbalife Formula 1: Global corrections (all users see same correction)
  * - Other foods: User-specific corrections (only that user sees their corrections)
  * @param {Array} foods - Array of food items detected by AI
@@ -253,7 +253,7 @@ export const applyUserCorrections = async (foods, userId) => {
     }
 
     console.log(
-      "ðŸ”„ [HYBRID-CORRECTION] Processing foods for userId:",
+      "🔄 [HYBRID-CORRECTION] Processing foods for userId:",
       userId,
       "- Hybrid mode (global Herbalife + user-specific)",
     );
@@ -300,7 +300,7 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
     async () => {
       console.log("ðŸŒ [HYBRID-AUTO] Fetching corrections from server...");
       if (userId) {
-        console.log(`   ðŸ‘¤ Including user-specific corrections for user ${userId}`);
+        console.log(`   👤 Including user-specific corrections for user ${userId}`);
       }
 
       const url = userId 
@@ -336,7 +336,7 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
         const userCount = data.userCount || 0;
         
         console.log(
-          `âœ… [HYBRID-AUTO] Loaded ${correctionMap.size} corrections (ðŸŒ ${globalCount} global + ðŸ‘¤ ${userCount} user)`,
+          `✅ [HYBRID-AUTO] Loaded ${correctionMap.size} corrections (ðŸŒ ${globalCount} global + 👤 ${userCount} user)`,
         );
       }
 
@@ -351,13 +351,13 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
 
 /**
  * Apply hybrid auto-corrections to AI-detected food names
- * ðŸŽ¯ NEW LOGIC (Hybrid Mode):
+ * 🎯 NEW LOGIC (Hybrid Mode):
  * - Herbalife Formula 1: GLOBAL correction (applies to all users)
  * - Other foods: USER-SPECIFIC correction (only for that user)
  * 
  * Examples:
- * - Balaji corrects "water" â†’ "coconut water": Only Balaji sees it
- * - Balaji corrects "milk" â†’ "Herbalife Formula 1": ALL users see it
+ * - Balaji corrects "water" → "coconut water": Only Balaji sees it
+ * - Balaji corrects "milk" → "Herbalife Formula 1": ALL users see it
  * 
  * @param {Array} foods - Array of food items detected by AI
  * @param {number} currentUserId - Current logged in user ID (optional but recommended)
@@ -370,12 +370,12 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     }
 
     console.log(
-      "ðŸ”„ [HYBRID-AUTO] Processing",
+      "🔄 [HYBRID-AUTO] Processing",
       foods.length,
       "items...",
     );
     if (currentUserId) {
-      console.log(`   ðŸ‘¤ User ID: ${currentUserId} (will include user-specific corrections)`);
+      console.log(`   👤 User ID: ${currentUserId} (will include user-specific corrections)`);
     } else {
       console.warn(`   âš ï¸ WARNING: No userId provided - only global Herbalife corrections will apply!`);
     }
@@ -394,9 +394,9 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     }
 
     // ðŸ” DEBUG: Show what's in the correction map
-    console.log(`ðŸ“‹ [HYBRID-AUTO] Correction map contains ${correctionMap.size} entries:`);
+    console.log(`📋 [HYBRID-AUTO] Correction map contains ${correctionMap.size} entries:`);
     correctionMap.forEach((correction, key) => {
-      console.log(`   "${key}" â†’ "${correction.correctedName}" (${correction.isGlobal ? 'ðŸŒ Global' : 'ðŸ‘¤ User'})`);
+      console.log(`   "${key}" → "${correction.correctedName}" (${correction.isGlobal ? 'ðŸŒ Global' : '👤 User'})`);
     });
 
     // Keywords that identify liquid/shake foods eligible for autocorrection
@@ -423,11 +423,11 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       const originalName = food.name;
       const normalizedOriginal = normalizeFoodName(originalName);
 
-      // ï¿½ CRITICAL: Preserve the very first AI detected name
+      // � CRITICAL: Preserve the very first AI detected name
       // If food already has originalAiName, keep it; otherwise use current name
       const trueOriginalAiName = food.originalAiName || originalName;
 
-      // ðŸš« Solid foods are completely excluded from autocorrection
+      // 🚫 Solid foods are completely excluded from autocorrection
       if (!isFoodLiquidOrShake(food)) {
         console.log(`â­ï¸ [SOLID-FOOD] Skipping autocorrection for "${originalName}" (solid food)`);
         return {
@@ -441,23 +441,23 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       let correction = null;
       let matchType = null;
 
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // Exact lookup â€” backend already guarantees:
+      // ─────────────────────────────────────────────────────────────
+      // Exact lookup — backend already guarantees:
       //   user's latest correction  >  global (Herbalife) latest correction
       // So we just use whatever the map returns.
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ─────────────────────────────────────────────────────────────
       if (correctionMap.has(normalizedOriginal)) {
         correction = correctionMap.get(normalizedOriginal);
         matchType = 'exact';
         console.log(
-          `âœ… [EXACT-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" â†’ "${correction.correctedName}"`
+          `✅ [EXACT-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" → "${correction.correctedName}"`
         );
       }
 
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-      // Fuzzy / partial match â€” only if no exact match
+      // ─────────────────────────────────────────────────────────────
+      // Fuzzy / partial match — only if no exact match
       // Longest key wins; backend priority already baked into map values.
-      // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+      // ─────────────────────────────────────────────────────────────
       if (!correction) {
         console.log(`ðŸ” [FUZZY-MATCH] Trying partial match for "${originalName}" (normalized: "${normalizedOriginal}")`);
 
@@ -478,7 +478,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           correction = bestMatch.correction;
           matchType = 'fuzzy-contained-in';
           console.log(
-            `âœ… [FUZZY-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" matches "${bestMatch.key}" â†’ "${correction.correctedName}"`
+            `✅ [FUZZY-${correction.isGlobal ? 'GLOBAL' : 'USER'}] "${originalName}" matches "${bestMatch.key}" → "${correction.correctedName}"`
           );
         }
       }
@@ -497,7 +497,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       if (correction) {
 
         // Determine if this is a global (Herbalife) or user-specific correction
-        const correctionType = correction.isGlobal ? 'ðŸŒ Global' : 'ðŸ‘¤ User';
+        const correctionType = correction.isGlobal ? 'ðŸŒ Global' : '👤 User';
 
         // Type safety check - only apply if food types match
         const shouldApplyCorrection = !correction.correctedFoodType ||
@@ -516,11 +516,11 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
         }
         
         console.log(
-          `âœ… [${correctionType}${matchType ? '-' + matchType.toUpperCase() : ''}] "${originalName}" â†’ "${correction.correctedName}" ` +
+          `✅ [${correctionType}${matchType ? '-' + matchType.toUpperCase() : ''}] "${originalName}" → "${correction.correctedName}" ` +
             `(${correction.userCount} user${correction.userCount > 1 ? "s" : ""}, match: ${matchType})`
         );
 
-        // ðŸŽ¯ Apply EXACT corrected values from database (name, quantity, nutrition)
+        // 🎯 Apply EXACT corrected values from database (name, quantity, nutrition)
         // This ensures consistent user experience - what they corrected is what everyone sees
         
         const correctedFood = {
@@ -562,7 +562,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
             };
           }
           
-          console.log(`   âš–ï¸ Weight/Volume: ${food.quantity || food.grams || 'N/A'} â†’ ${correction.correctedQuantity}${correction.correctedUnit || 'g'}`);
+          console.log(`   âš–ï¸ Weight/Volume: ${food.quantity || food.grams || 'N/A'} → ${correction.correctedQuantity}${correction.correctedUnit || 'g'}`);
         }
         
         if (correction.correctedUnit) {
@@ -570,7 +570,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           correctedFood.isLiquid = correction.correctedUnit === 'ml';
         }
         
-        // ðŸŽ¯ Apply EXACT corrected nutrition values from database (not recalculated)
+        // 🎯 Apply EXACT corrected nutrition values from database (not recalculated)
         // Initialize nutrition object to ensure it exists
         if (!correctedFood.nutrition) {
           correctedFood.nutrition = {};
@@ -582,40 +582,40 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
           correctedFood.calories = correction.correctedCalories;
           correctedFood.nutrition.calories = correction.correctedCalories;
           nutritionApplied = true;
-          console.log(`   ðŸ”¥ Calories: ${food.calories || 'N/A'} â†’ ${correction.correctedCalories} (from DB)`);
+          console.log(`   🔥 Calories: ${food.calories || 'N/A'} → ${correction.correctedCalories} (from DB)`);
         }
         
         if (correction.correctedCarbs !== undefined && correction.correctedCarbs !== null) {
           correctedFood.carbs = correction.correctedCarbs;
           correctedFood.nutrition.carbs = correction.correctedCarbs;
           nutritionApplied = true;
-          console.log(`   ðŸŒ¾ Carbs: ${food.carbs || 'N/A'} â†’ ${correction.correctedCarbs}g (from DB)`);
+          console.log(`   🌾 Carbs: ${food.carbs || 'N/A'} → ${correction.correctedCarbs}g (from DB)`);
         }
         
         if (correction.correctedProtein !== undefined && correction.correctedProtein !== null) {
           correctedFood.protein = correction.correctedProtein;
           correctedFood.nutrition.protein = correction.correctedProtein;
           nutritionApplied = true;
-          console.log(`   ðŸ¥© Protein: ${food.protein || 'N/A'} â†’ ${correction.correctedProtein}g (from DB)`);
+          console.log(`   🥩 Protein: ${food.protein || 'N/A'} → ${correction.correctedProtein}g (from DB)`);
         }
         
         if (correction.correctedFat !== undefined && correction.correctedFat !== null) {
           correctedFood.fat = correction.correctedFat;
           correctedFood.nutrition.fat = correction.correctedFat;
           nutritionApplied = true;
-          console.log(`   ðŸ§ˆ Fat: ${food.fat || 'N/A'} â†’ ${correction.correctedFat}g (from DB)`);
+          console.log(`   🧈 Fat: ${food.fat || 'N/A'} → ${correction.correctedFat}g (from DB)`);
         }
         
         if (correction.correctedFiber !== undefined && correction.correctedFiber !== null) {
           correctedFood.fiber = correction.correctedFiber;
           correctedFood.nutrition.fiber = correction.correctedFiber;
           nutritionApplied = true;
-          console.log(`   ðŸŒ¿ Fiber: ${food.fiber || 'N/A'} â†’ ${correction.correctedFiber}g (from DB)`);
+          console.log(`   🌿 Fiber: ${food.fiber || 'N/A'} → ${correction.correctedFiber}g (from DB)`);
         }
         
         if (nutritionApplied) {
-          console.log(`   âœ… Applied EXACT corrected nutrition values from database`);
-          console.log(`   ðŸ“Š Final corrected object:`, JSON.stringify({
+          console.log(`   ✅ Applied EXACT corrected nutrition values from database`);
+          console.log(`   📊 Final corrected object:`, JSON.stringify({
             name: correctedFood.name,
             calories: correctedFood.calories,
             carbs: correctedFood.carbs,
@@ -632,7 +632,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
       // No correction found - return with explicit flags
       console.log(`âŒ [NO-MATCH] No correction found for "${originalName}" (normalized: "${normalizedOriginal}")`);
       console.log(`   ðŸ” Checked against ${correctionMap.size} corrections in map (exact + fuzzy matching)`);
-      console.log(`   ðŸ‘¤ Current userId: ${currentUserId || 'NOT PROVIDED'}`);
+      console.log(`   👤 Current userId: ${currentUserId || 'NOT PROVIDED'}`);
       
       return {
         ...food,
@@ -655,7 +655,7 @@ export const applyGlobalAutoCorrections = async (foods, currentUserId = null) =>
     
     if (correctedCount > 0) {
       console.log(
-        `ðŸŽ¯ [HYBRID-AUTO] âœ“ ${correctedCount}/${foods.length} items auto-corrected (ðŸŒ ${globalCount} global + ðŸ‘¤ ${userCount} personal)`,
+        `🎯 [HYBRID-AUTO] ✓ ${correctedCount}/${foods.length} items auto-corrected (ðŸŒ ${globalCount} global + 👤 ${userCount} personal)`,
       );
     }
 

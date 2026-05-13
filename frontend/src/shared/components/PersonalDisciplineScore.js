@@ -1,4 +1,4 @@
-﻿// src/components/PersonalDisciplineScore.js
+// src/components/PersonalDisciplineScore.js
 import React, {
   useState,
   useEffect,
@@ -95,7 +95,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         setCategories(categoryData);
       } catch (error) {
         console.error(
-          "≡ƒôè [PersonalDisciplineScore] Error fetching personal score:",
+          "📊 [PersonalDisciplineScore] Error fetching personal score:",
           error,
         );
         setCategories(null);

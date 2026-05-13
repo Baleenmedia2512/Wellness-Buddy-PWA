@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ArrowLeft, MapPin, Clock, Phone, Save, Trash2, CheckCircle, XCircle, Loader } from 'lucide-react';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
@@ -330,7 +330,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       return;
     }
 
-    console.log('âœ… Placing marker at:', location.lat(), location.lng());
+    console.log('✅ Placing marker at:', location.lat(), location.lng());
 
     // Remove existing marker
     if (markerRef.current && markerRef.current.setMap) {
@@ -463,7 +463,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
 
       const result = await response.json();
       if (result.success) {
-        // Backend handles co-coach partnership â€” returns clubs for both coach & co-coach
+        // Backend handles co-coach partnership — returns clubs for both coach & co-coach
         setMyCenters(result.data || []);
       }
     } catch (err) {
@@ -692,16 +692,16 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
                   }}
                   className="w-32 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
                 >
-                  <option value="+91">ðŸ‡®ðŸ‡³ +91</option>
-                  <option value="+1">ðŸ‡ºðŸ‡¸ +1</option>
-                  <option value="+44">ðŸ‡¬ðŸ‡§ +44</option>
-                  <option value="+61">ðŸ‡¦ðŸ‡º +61</option>
-                  <option value="+81">ðŸ‡¯ðŸ‡µ +81</option>
-                  <option value="+86">ðŸ‡¨ðŸ‡³ +86</option>
-                  <option value="+971">ðŸ‡¦ðŸ‡ª +971</option>
-                  <option value="+966">ðŸ‡¸ðŸ‡¦ +966</option>
-                  <option value="+65">ðŸ‡¸ðŸ‡¬ +65</option>
-                  <option value="+60">ðŸ‡²ðŸ‡¾ +60</option>
+                  <option value="+91">🇮🇳 +91</option>
+                  <option value="+1">🇺🇸 +1</option>
+                  <option value="+44">🇬🇧 +44</option>
+                  <option value="+61">🇦🇺 +61</option>
+                  <option value="+81">🇯🇵 +81</option>
+                  <option value="+86">🇨🇳 +86</option>
+                  <option value="+971">🇦🇪 +971</option>
+                  <option value="+966">🇸🇦 +966</option>
+                  <option value="+65">🇸🇬 +65</option>
+                  <option value="+60">🇲🇾 +60</option>
                 </select>
                 
                 {/* Phone Number Input */}

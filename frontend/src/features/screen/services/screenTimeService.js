@@ -1,4 +1,4 @@
-﻿import { apiClient } from '../../../shared/services/apiClient';
+import { apiClient } from '../../../shared/services/apiClient';
 import { ScreenTimePlugin } from '../../../shared/plugins/screenTimePlugin';
 
 /**
@@ -137,13 +137,13 @@ export async function backfillMissingScreenTimeDays(userId) {
     )
   );
 
-  console.log(`âœ… [ScreenTime] Backfilled ${toSave.length} day(s):`, toSave.map(e => e.date));
+  console.log(`✅ [ScreenTime] Backfilled ${toSave.length} day(s):`, toSave.map(e => e.date));
   return toSave;
 }
 
 /**
  * Read accurate per-day screen time from UsageStatsManager (same as Android Digital Wellbeing).
- * Uses OS-level data â€” not affected by background service being killed mid-day.
+ * Uses OS-level data — not affected by background service being killed mid-day.
  */
 export async function getAccurateScreenTimeHistory(days = 7) {
   return ScreenTimePlugin.getAccurateScreenTimeHistory(days);
@@ -151,7 +151,7 @@ export async function getAccurateScreenTimeHistory(days = 7) {
 
 /**
  * Read per-day screen time history from the background service SharedPreferences.
- * NOTE: May be lower than actual if service was killed â€” prefer getAccurateScreenTimeHistory.
+ * NOTE: May be lower than actual if service was killed — prefer getAccurateScreenTimeHistory.
  */
 export async function getBackgroundScreenTimeHistory(days = 7) {
   return ScreenTimePlugin.getBackgroundScreenTimeHistory(days);

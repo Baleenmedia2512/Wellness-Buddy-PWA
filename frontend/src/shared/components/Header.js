@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LogOut,
   LayoutDashboard,
@@ -50,7 +50,7 @@ const Header = ({
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const menuPanelRef = useRef(null);
 
-  // Γ£à Auto-reopen delete modal if user closed app mid-OTP flow
+  // ✅ Auto-reopen delete modal if user closed app mid-OTP flow
   useEffect(() => {
     try {
       const saved = localStorage.getItem('deleteAccountOtpPending');
@@ -58,7 +58,7 @@ const Header = ({
         const { sentAt } = JSON.parse(saved);
         const age = Date.now() - sentAt;
         if (age < 10 * 60 * 1000) {
-          // OTP still valid ΓÇö reopen modal so user can enter it
+          // OTP still valid — reopen modal so user can enter it
           setShowDeleteModal(true);
         } else {
           localStorage.removeItem('deleteAccountOtpPending');
@@ -94,7 +94,7 @@ const Header = ({
     };
   }, [menuOpen]);
 
-  // Profile modal â€” only opens when user explicitly clicks "Manage your Profile"
+  // Profile modal — only opens when user explicitly clicks "Manage your Profile"
   const [showProfileModal, setShowProfileModal] = useState(false);
 
   // Clear stale showProfileModal key from localStorage (old versions stored it)
@@ -265,7 +265,7 @@ const Header = ({
                 )}
               </TouchFeedbackButton>
 
-              {/* AI/Manual mode indicator â€” FEATURE DISABLED */}
+              {/* AI/Manual mode indicator — FEATURE DISABLED */}
               {/* <div
                 className="flex items-center gap-1 px-1.5 py-0.5 rounded-full border flex-shrink-0"
                 style={{
@@ -310,9 +310,9 @@ const Header = ({
                   onClick={closeMenu}
                 />
 
-                {/* Google-style fixed centered panel â€” no scroll */}
+                {/* Google-style fixed centered panel — no scroll */}
                 <div ref={menuPanelRef} className="fixed top-[64px] xs:top-[68px] left-1/2 w-[min(320px,calc(100vw-20px))] xs:w-[min(300px,calc(100vw-24px))] bg-white rounded-2xl shadow-2xl ring-1 ring-black/10 z-50 flex flex-col" style={{ transform: "translateX(-50%)", transformOrigin: "top center" }}>
-                  {/* â”€â”€ PROFILE CARD â”€â”€ */}
+                  {/* ── PROFILE CARD ── */}
                   <div className="relative px-4 pt-3 pb-3 border-b border-gray-100 text-center">
                     {/* Close button */}
                     <TouchFeedbackButton
@@ -390,7 +390,7 @@ const Header = ({
                     </TouchFeedbackButton>
                   </div>
 
-                  {/* â”€â”€ APP GRID â”€â”€ no scroll, compact tiles */}
+                  {/* ── APP GRID ── no scroll, compact tiles */}
                   <div className="p-2">
                     <div className="grid grid-cols-3 gap-0.5">
                       {/* Dashboard */}
@@ -410,7 +410,7 @@ const Header = ({
                         </span>
                       </TouchFeedbackButton>
 
-                      {/* Step Counter â€” FEATURE DISABLED */}
+                      {/* Step Counter — FEATURE DISABLED */}
                       {/* {onShowStepCounter && (
                         <TouchFeedbackButton
                           onClick={() => { onShowStepCounter(); closeMenu(); }}
@@ -424,7 +424,7 @@ const Header = ({
                         </TouchFeedbackButton>
                       )} */}
 
-                      {/* Screen Time â€” FEATURE DISABLED */}
+                      {/* Screen Time — FEATURE DISABLED */}
                       {/* {onShowScreenTime && (
                         <TouchFeedbackButton
                           onClick={() => { onShowScreenTime(); closeMenu(); }}
@@ -438,7 +438,7 @@ const Header = ({
                         </TouchFeedbackButton>
                       )} */}
 
-                      {/* Reminders â€” FEATURE DISABLED */}
+                      {/* Reminders — FEATURE DISABLED */}
                       {/* {onShowReminders && (
                         <TouchFeedbackButton
                           onClick={() => { onShowReminders(); closeMenu(); }}
@@ -625,7 +625,7 @@ const Header = ({
                     </div>
                   </div>
 
-                  {/* â”€â”€ FOOTER: Sign out + Delete Account + Version â”€â”€ */}
+                  {/* ── FOOTER: Sign out + Delete Account + Version ── */}
                   <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between bg-gray-50 rounded-b-2xl">
                     <TouchFeedbackButton
                       onClick={() => {

@@ -1,4 +1,4 @@
-﻿// src/pages/WellnessCounselling.js
+// src/pages/WellnessCounselling.js
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { FileHeart, CheckCircle, Clock, Users, Plus } from "lucide-react";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
@@ -51,7 +51,7 @@ const WellnessCounselling = ({ user, onBack }) => {
     });
     const data = response.data;
     
-    console.log('ðŸ“‹ [WellnessCounselling] Lookup response:', data);
+    console.log('📋 [WellnessCounselling] Lookup response:', data);
     
     if (!data.success) {
       throw new Error(data.message || "User not found");
@@ -71,7 +71,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       return;
     }
 
-    console.log('ðŸ‘¤ [WellnessCounselling] User object:', { 
+    console.log('👤 [WellnessCounselling] User object:', { 
       email: user.email, 
       name: user.name,
       id: user.id 
@@ -88,7 +88,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       const userId = await getUserId(user.email);
       
       // Use new dual coaching hierarchy endpoint that fetches both hierarchy and assessments
-      console.log('ðŸ“‹ [WellnessCounselling] Fetching hierarchical assessments...');
+      console.log('📋 [WellnessCounselling] Fetching hierarchical assessments...');
       const response = await CapacitorHttp.get({
         url: `${apiBaseUrl}/api/counselling/hierarchical-assessments?userId=${userId}`,
         headers: { "Cache-Control": "no-cache" }
@@ -100,7 +100,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       
       const result = response.data;
       
-      console.log('ðŸ“‹ [WellnessCounselling] Full API response:', result);
+      console.log('📋 [WellnessCounselling] Full API response:', result);
       
       if (!result.success) {
         throw new Error(result.message || "Failed to fetch team data");
@@ -110,7 +110,7 @@ const WellnessCounselling = ({ user, onBack }) => {
       const hierarchyData = result.data;
       const assessments = result.assessments || {};
       
-      console.log('âœ… [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
+      console.log('✅ [WellnessCounselling] Fetched assessments:', Object.keys(assessments).length);
       console.log('ðŸ” [WellnessCounselling] Assessment userIds (types):', 
         Object.keys(assessments).map(k => `${k} (${typeof k})`).join(', '));
       
@@ -121,7 +121,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         normalizedAssessments[numKey] = assessments[key];
       });
       
-      console.log('ðŸ”§ [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
+      console.log('🔧 [WellnessCounselling] Normalized assessment keys:', Object.keys(normalizedAssessments));
       
       // Set assessment data first
       setAssessmentData(normalizedAssessments);
@@ -132,7 +132,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         return;
       }
       
-      console.log('ðŸ“‹ [WellnessCounselling] Raw hierarchy data:', hierarchyData);
+      console.log('📋 [WellnessCounselling] Raw hierarchy data:', hierarchyData);
 
       // Map field names for HierarchicalNode component
       const mapFields = (node) => {
@@ -169,7 +169,7 @@ const WellnessCounselling = ({ user, onBack }) => {
         throw new Error("Failed to process team hierarchy data");
       }
       
-      console.log('âœ… [WellnessCounselling] Mapped hierarchy:', mappedData);
+      console.log('✅ [WellnessCounselling] Mapped hierarchy:', mappedData);
       
       setHierarchyData(mappedData);
       
@@ -370,7 +370,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {/* Assessment info */}
             <div className="flex items-center gap-2 text-xs text-gray-600 mb-3">
               <span>Counselled by: <span className="font-medium text-gray-800">{assessment.counsellorName}</span></span>
-              <span className="text-gray-400">â€¢</span>
+              <span className="text-gray-400">•</span>
               <span>{new Date(assessment.submittedAt).toLocaleDateString()}</span>
             </div>
             <TouchFeedbackButton
@@ -385,7 +385,7 @@ const WellnessCounselling = ({ user, onBack }) => {
             {/* Info note when starting assessment */}
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-2">
               <p className="text-xs text-blue-800">
-                ðŸ’¡ Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
+                💡 Start a wellness counselling assessment for this member. You can assess yourself, direct reports, or full team members.
               </p>
             </div>
             <TouchFeedbackButton
@@ -511,7 +511,7 @@ const WellnessCounselling = ({ user, onBack }) => {
     <div className="h-screen bg-gradient-to-br from-green-50 to-blue-50 overflow-hidden flex flex-col">
       <HierarchicalReportLayout
         title="Wellness Counselling"
-        subtitle={`${stats.total} Members â€¢ ${stats.counselled} Counselled`}
+        subtitle={`${stats.total} Members • ${stats.counselled} Counselled`}
         onBack={onBack}
         onRefresh={handleManualRefresh}
         loading={refreshing}
@@ -585,9 +585,9 @@ const WellnessCounselling = ({ user, onBack }) => {
         selectedMember={selectedMember}
         onSaveSuccess={async () => {
           // Refresh data from API first, THEN close form
-          console.log('ðŸ’¾ [WellnessCounselling] Assessment saved, refreshing data...');
+          console.log('💾 [WellnessCounselling] Assessment saved, refreshing data...');
           await fetchData(true);
-          console.log('âœ… [WellnessCounselling] Data refreshed, closing form');
+          console.log('✅ [WellnessCounselling] Data refreshed, closing form');
           setIsFormOpen(false);
           setSelectedMember(null);
         }}
@@ -633,7 +633,7 @@ const AssessmentViewModal = ({ assessment, member, onClose }) => {
             className="p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition-colors"
             ariaLabel="Close"
           >
-            âœ•
+            ✕
           </TouchFeedbackButton>
         </div>
 

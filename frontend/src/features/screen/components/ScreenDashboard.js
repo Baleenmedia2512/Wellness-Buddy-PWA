@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Smartphone, Clock, TrendingUp, ChevronLeft, ChevronRight, Calendar, RefreshCw, ThumbsUp, Ban } from 'lucide-react';
 import {
@@ -91,7 +91,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
     if (incomingId) setResolvedUserId(incomingId);
   }, [user?.id, user?.userId]);
 
-  // True when displaying someone else's data â€” must never save our device screen time to their account.
+  // True when displaying someone else's data — must never save our device screen time to their account.
   const selfUserId = Number(localStorage.getItem('dbUserId'));
   const isViewingOther = !!(resolvedUserId && selfUserId && Number(resolvedUserId) !== selfUserId);
 
@@ -155,7 +155,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
     const selfId = Number(localStorage.getItem('dbUserId'));
     const viewingOther = !!(selfId && Number(resolvedUserId) !== selfId);
     try {
-      // Only sync device data when viewing our own screen time â€” never save our data to another member.
+      // Only sync device data when viewing our own screen time — never save our data to another member.
       if (isNative && !viewingOther) {
         try {
           const status = await getScreenTimePermissionStatus();
@@ -316,7 +316,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
 
   // Selected date stats
   const selectedRecord = historyData.find(r => r.Date === toDateKey(selectedDate));
-  // Never use live device seconds when viewing another member â€” always use their DB value.
+  // Never use live device seconds when viewing another member — always use their DB value.
   const selectedSeconds = (isNative && isToday(selectedDate) && !isViewingOther && typeof todayDeviceSeconds === 'number')
     ? todayDeviceSeconds
     : (selectedRecord?.TotalScreenTimeSeconds || 0);
@@ -492,7 +492,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
   return (
     <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl px-3 md:px-4 pt-3 md:pt-5 pb-8 space-y-4">
 
-      {/* â”€â”€ Date Navigation â”€â”€ */}
+      {/* ── Date Navigation ── */}
       <div className="bg-white border-b border-gray-200 shadow-sm rounded-2xl">
         {!isControlled && (
           <div className="flex items-center justify-between px-4 pt-2 pb-0">
@@ -610,7 +610,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
         </div>
       </div>
 
-      {/* â”€â”€ Inline Calendar â”€â”€ */}
+      {/* ── Inline Calendar ── */}
       {!isControlled && (
       <div className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out rounded-2xl ${
         showCalendar ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
@@ -700,7 +700,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
       </div>
       )}
 
-      {/* â”€â”€ Summary / Trend Card â”€â”€ */}
+      {/* ── Summary / Trend Card ── */}
       <div className={`w-full bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
         showContent ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-6'
       }`}>
@@ -751,10 +751,10 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
             className="flex items-start w-[200%] transition-transform duration-500 ease-out"
             style={{ transform: activePanel === 'summary' ? 'translateX(0%)' : 'translateX(-50%)' }}
           >
-            {/* â”€â”€ Summary Panel â”€â”€ */}
+            {/* ── Summary Panel ── */}
             <div ref={summaryRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-5">
               <div className="flex flex-col items-center mt-2">
-                {/* Ring â€” larger container gives room for outer labels */}
+                {/* Ring — larger container gives room for outer labels */}
                 <div className="relative w-44 h-44 sm:w-52 sm:h-52 mx-auto mb-1">
                   {/* overflow:visible so label text outside SVG bounds renders */}
                   <svg viewBox="-50 -50 300 300" className="w-full h-full" style={{ overflow: 'visible' }}>
@@ -881,7 +881,7 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
               </div>
             </div>
 
-            {/* â”€â”€ Trend Panel â”€â”€ */}
+            {/* ── Trend Panel ── */}
             <div ref={trendRef} className="w-1/2 shrink-0 px-4 md:px-5 pb-5">
               {/* Trend range selector */}
               <div className="flex items-center justify-between mt-2 mb-3">

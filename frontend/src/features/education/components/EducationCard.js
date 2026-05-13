@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { BookOpen, Monitor, Video, Users, Trash2 } from 'lucide-react';
 import { istToLocalDate, formatISTToLocalTime } from '../../../shared/utils/timezoneUtils';
 
@@ -71,7 +71,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
   const [leaving, setLeaving] = useState(false);
   const [deletedOnce, setDeletedOnce] = useState(false);
   const [thumbnailSrc, setThumbnailSrc] = useState(null);
-  // Γ£à Only fetch the image once the card is actually scrolled into view
+  // ✅ Only fetch the image once the card is actually scrolled into view
   const [imageVisible, setImageVisible] = useState(false);
   const imgWrapRef = useRef(null);
 
@@ -93,7 +93,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
   useEffect(() => () => cancelRAF(), []);
 
-  // Γ£à Observe image slot ΓÇö only request the image when scrolled into view
+  // ✅ Observe image slot — only request the image when scrolled into view
   useEffect(() => {
     const el = imgWrapRef.current;
     if (!el) return;
@@ -185,7 +185,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
     });
   };
 
-  // Touch events â€” primary path on iOS
+  // Touch events — primary path on iOS
   const onTouchStart = (e) => {
     if (leaving) return;
     touchBlockedRef.current = false;
@@ -220,7 +220,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
   const onTouchEnd = () => finishGesture();
   const onTouchCancel = () => finishGesture();
 
-  // Pointer events â€” fallback for non-touch
+  // Pointer events — fallback for non-touch
   const onPointerDown = (e) => {
     if (!e.isPrimary || leaving || e.pointerType === 'touch') return;
     cancelRAF();
@@ -347,7 +347,7 @@ const EducationCard = React.memo(({ data, onDelete, onClick, index = 0, apiBaseU
 
             {/* Platform & Date */}
             <p className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
-              {data.Platform || 'Online Meeting'} â€¢ {formatDate(data.CreatedAt)}
+              {data.Platform || 'Online Meeting'} • {formatDate(data.CreatedAt)}
             </p>
           </div>
         </div>

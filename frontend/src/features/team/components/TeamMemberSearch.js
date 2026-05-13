@@ -1,4 +1,4 @@
-﻿// src/components/TeamMemberSearch.js
+// src/components/TeamMemberSearch.js
 import React, { useState, useEffect, useRef } from 'react';
 import { X, User, Search, Info } from 'lucide-react';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
@@ -219,7 +219,7 @@ const TeamMemberSearch = ({ user, userRole, selectedMember, onMemberSelect }) =>
                 if (newValue === '') {
                   setHasCleared(true);
                 }
-                // Always update search â€” no guard that blocks keystrokes
+                // Always update search — no guard that blocks keystrokes
                 setSearchQuery(newValue);
                 setIsOpen(true);
               }}
