@@ -28,7 +28,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
 
       try {
         // console.log(
-        //   "≡ƒôè [PersonalDisciplineScore] Fetching personal discipline for userId:",
+        //   "📊 [PersonalDisciplineScore] Fetching personal discipline for userId:",
         //   userId,
         // );
 
@@ -46,8 +46,8 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         );
         const result = await response.json();
 
-        // console.log("≡ƒôè [PersonalDisciplineScore] Full API Response:", result);
-        // console.log("≡ƒôè [PersonalDisciplineScore] API Response Summary:", {
+        // console.log("📊 [PersonalDisciplineScore] Full API Response:", result);
+        // console.log("📊 [PersonalDisciplineScore] API Response Summary:", {
         //   success: result.success,
         //   hasCoachPerformance: !!result.coachPerformance,
         //   activities: result.coachPerformance?.activities,
@@ -57,7 +57,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
 
         if (!result.success || !result.coachPerformance) {
           // console.log(
-          //   "≡ƒôè [PersonalDisciplineScore] No data available - hiding component",
+          //   "📊 [PersonalDisciplineScore] No data available - hiding component",
           // );
           setCategories(null);
           setOverallScore(0);
@@ -68,13 +68,13 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         // Get overall discipline score
         const overall =
           result.coachPerformance.periodDiscipline?.percentage || 0;
-        // console.log("≡ƒôè [PersonalDisciplineScore] Overall score:", overall);
+        // console.log("📊 [PersonalDisciplineScore] Overall score:", overall);
         setOverallScore(overall);
 
         // Get personal discipline activities (use 'activities' field from API)
         const activities = result.coachPerformance.activities || {};
         // console.log(
-        //   "≡ƒôè [PersonalDisciplineScore] Activities data:",
+        //   "📊 [PersonalDisciplineScore] Activities data:",
         //   activities,
         // );
 
@@ -89,7 +89,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
         };
 
         // console.log(
-        //   "≡ƒôè [PersonalDisciplineScore] Setting categories:",
+        //   "📊 [PersonalDisciplineScore] Setting categories:",
         //   categoryData,
         // );
         setCategories(categoryData);
@@ -111,7 +111,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
   // Expose refresh method to parent component
   useImperativeHandle(ref, () => ({
     refresh: () => {
-      // console.log("≡ƒôè [PersonalDisciplineScore] Manual refresh triggered");
+      // console.log("📊 [PersonalDisciplineScore] Manual refresh triggered");
       setRefreshKey((prev) => prev + 1);
     },
   }));
@@ -123,7 +123,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
     return "text-red-600 bg-red-50 border-red-200";
   };
 
-  // Score ΓåÆ variant for non-tintable icons (the PNG-based scale)
+  // Score → variant for non-tintable icons (the PNG-based scale)
   const getScoreVariant = (score) => (score >= 80 ? "green" : "red");
 
   // Icons for each category (weight is a function so it can react to score)
@@ -150,7 +150,7 @@ const PersonalDisciplineScore = forwardRef(({ apiBaseUrl, userId }, ref) => {
   // Don't show if no data
   if (!categories) {
     // console.log(
-    //   "≡ƒôè [PersonalDisciplineScore] Not rendering - no categories available",
+    //   "📊 [PersonalDisciplineScore] Not rendering - no categories available",
     // );
     return null;
   }

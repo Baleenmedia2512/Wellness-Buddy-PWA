@@ -32,7 +32,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   const fetchLeaderboard = useCallback(async () => {
     try {
       // console.log(
-      //   "Γ¡É [DISCIPLINE-LEADERBOARD] Fetching data from:",
+      //   "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
       //   `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
       // );
 
@@ -48,15 +48,15 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
       );
 
       // console.log(
-      //   "Γ¡É [DISCIPLINE-LEADERBOARD] Response status:",
+      //   "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
       //   response.status,
       // );
       const result = await response.json();
-      // console.log("Γ¡É [DISCIPLINE-LEADERBOARD] Result:", result);
+      // console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
         // console.log(
-        //   "Γ£à [DISCIPLINE-LEADERBOARD] Data found:",
+        //   "✅ [DISCIPLINE-LEADERBOARD] Data found:",
         //   result.data.length,
         //   "users",
         // );
