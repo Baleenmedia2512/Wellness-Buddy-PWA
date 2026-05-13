@@ -12,7 +12,7 @@ import {
   saveFoodCorrection,
   reverseLookupOriginalAiName,
 } from "../services/foodCorrectionService";
-import { getUserContext } from "../../user/services/userContextService";
+import { getUserContext } from "../../../shared/services/userIdentity";
 import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 import {
   Search,

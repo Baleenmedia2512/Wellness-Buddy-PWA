@@ -3,7 +3,7 @@ import React, { useState, useCallback, useRef, useEffect } from "react";
 import { Share2 } from "lucide-react";
 import { getVersionString } from "../../../config/version";
 import EditableFoodItem from "./EditableFoodItem";
-import { getUserId } from "../../user/services/getUserId";
+import { getUserId } from "../../../shared/services/userIdentity";
 import { geminiService } from "../../../shared/services/geminiService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
 

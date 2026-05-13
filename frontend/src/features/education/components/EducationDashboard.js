@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, lazy, Suspense, useRef } from 'react';
 import { BookOpen, Calendar, RotateCcw, Monitor, Clock, Layers, TrendingUp, Video, CheckCircle2, Flame, Sun, Moon, Sunset, Check } from 'lucide-react';
-import { getUserId } from '../../user/services/getUserId';
+import { getUserId } from '../../../shared/services/userIdentity';
 import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
 import EducationCardModal from './EducationCardModal';
 

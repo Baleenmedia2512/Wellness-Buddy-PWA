@@ -1,0 +1,1281 @@
+{
+  "generatedAt": "2026-05-13T09:45:37.492Z",
+  "backend": {
+    "label": "backend",
+    "featuresRoot": "backend/features",
+    "lineLimit": 150,
+    "features": {
+      "activity": {
+        "fileCount": 5,
+        "totalCodeLines": 589,
+        "files": [
+          {
+            "rel": "backend/features/activity/time-report.service.js",
+            "totalLines": 253,
+            "codeLines": 235,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/activity/activity.service.js",
+            "totalLines": 168,
+            "codeLines": 147,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/activity/activity.repository.js",
+            "totalLines": 82,
+            "codeLines": 74,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/activity/activity.validators.js",
+            "totalLines": 78,
+            "codeLines": 70,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/activity/time-report.repository.js",
+            "totalLines": 67,
+            "codeLines": 63,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/activity/activity.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          },
+          {
+            "from": "backend/features/activity/time-report.service.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/disciplineCalculationsSupabase.js",
+          "backend/utils/foodTypeDetection.js",
+          "backend/utils/supabaseClient.js",
+          "backend/utils/timeReportHelpers.js"
+        ]
+      },
+      "auth": {
+        "fileCount": 3,
+        "totalCodeLines": 298,
+        "files": [
+          {
+            "rel": "backend/features/auth/auth.service.js",
+            "totalLines": 239,
+            "codeLines": 213,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/auth/auth.repository.js",
+            "totalLines": 73,
+            "codeLines": 64,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/auth/auth.validators.js",
+            "totalLines": 24,
+            "codeLines": 21,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/auth/auth.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "background-analysis": {
+        "fileCount": 3,
+        "totalCodeLines": 288,
+        "files": [
+          {
+            "rel": "backend/features/background-analysis/analysis.service.js",
+            "totalLines": 210,
+            "codeLines": 189,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/background-analysis/analysis.repository.js",
+            "totalLines": 76,
+            "codeLines": 68,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/background-analysis/analysis.validators.js",
+            "totalLines": 36,
+            "codeLines": 31,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/background-analysis/analysis.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/cache.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "education": {
+        "fileCount": 3,
+        "totalCodeLines": 366,
+        "files": [
+          {
+            "rel": "backend/features/education/education.service.js",
+            "totalLines": 231,
+            "codeLines": 204,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/education/education.repository.js",
+            "totalLines": 122,
+            "codeLines": 111,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/education/education.validators.js",
+            "totalLines": 58,
+            "codeLines": 51,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/education/education.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/cache.js",
+          "backend/utils/disciplineCalculationsSupabase.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "food-corrections": {
+        "fileCount": 4,
+        "totalCodeLines": 552,
+        "files": [
+          {
+            "rel": "backend/features/food-corrections/food-corrections.service.js",
+            "totalLines": 250,
+            "codeLines": 225,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/food-corrections/food-corrections.repository.js",
+            "totalLines": 166,
+            "codeLines": 150,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/food-corrections/global-corrections.service.js",
+            "totalLines": 156,
+            "codeLines": 137,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/food-corrections/food-corrections.validators.js",
+            "totalLines": 47,
+            "codeLines": 40,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/food-corrections/food-corrections.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/cache.js",
+          "backend/utils/foodTypeDetection.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "misc": {
+        "fileCount": 3,
+        "totalCodeLines": 175,
+        "files": [
+          {
+            "rel": "backend/features/misc/misc.service.js",
+            "totalLines": 144,
+            "codeLines": 123,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/misc/misc.repository.js",
+            "totalLines": 40,
+            "codeLines": 36,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/misc/misc.validators.js",
+            "totalLines": 19,
+            "codeLines": 16,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/misc/misc.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/disciplineCalculationsSupabase.js",
+          "backend/utils/disciplineHelpers.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "nutrition-centers": {
+        "fileCount": 3,
+        "totalCodeLines": 295,
+        "files": [
+          {
+            "rel": "backend/features/nutrition-centers/centers.repository.js",
+            "totalLines": 144,
+            "codeLines": 130,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/nutrition-centers/centers.service.js",
+            "totalLines": 146,
+            "codeLines": 126,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/nutrition-centers/centers.validators.js",
+            "totalLines": 45,
+            "codeLines": 39,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/nutrition-centers/centers.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/disciplineCalculationsSupabase.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "screen": {
+        "fileCount": 3,
+        "totalCodeLines": 142,
+        "files": [
+          {
+            "rel": "backend/features/screen/screen.service.js",
+            "totalLines": 75,
+            "codeLines": 64,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/screen/screen.repository.js",
+            "totalLines": 61,
+            "codeLines": 53,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/screen/screen.validators.js",
+            "totalLines": 31,
+            "codeLines": 25,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/screen/screen.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "token": {
+        "fileCount": 3,
+        "totalCodeLines": 643,
+        "files": [
+          {
+            "rel": "backend/features/token/token.service.js",
+            "totalLines": 438,
+            "codeLines": 392,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "backend/features/token/token.repository.js",
+            "totalLines": 204,
+            "codeLines": 184,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/token/token.validators.js",
+            "totalLines": 75,
+            "codeLines": 67,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 2,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/token/token.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "user": {
+        "fileCount": 3,
+        "totalCodeLines": 691,
+        "files": [
+          {
+            "rel": "backend/features/user/user.service.js",
+            "totalLines": 512,
+            "codeLines": 440,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "backend/features/user/user.repository.js",
+            "totalLines": 211,
+            "codeLines": 187,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/user/user.validators.js",
+            "totalLines": 78,
+            "codeLines": 64,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 2,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/user/user.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/cache.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "water": {
+        "fileCount": 3,
+        "totalCodeLines": 93,
+        "files": [
+          {
+            "rel": "backend/features/water/water.service.js",
+            "totalLines": 68,
+            "codeLines": 58,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/water/water.repository.js",
+            "totalLines": 28,
+            "codeLines": 25,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/water/water.validators.js",
+            "totalLines": 13,
+            "codeLines": 10,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [
+          {
+            "from": "backend/features/water/water.validators.js",
+            "to": "backend/features/weight/weight.validators.js",
+            "otherFeature": "weight"
+          }
+        ],
+        "sharedUsage": [
+          "backend/utils/foodTypeDetection.js",
+          "backend/utils/supabaseClient.js"
+        ]
+      },
+      "weight": {
+        "fileCount": 3,
+        "totalCodeLines": 443,
+        "files": [
+          {
+            "rel": "backend/features/weight/weight.service.js",
+            "totalLines": 286,
+            "codeLines": 248,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "backend/features/weight/weight.repository.js",
+            "totalLines": 156,
+            "codeLines": 141,
+            "status": "OK"
+          },
+          {
+            "rel": "backend/features/weight/weight.validators.js",
+            "totalLines": 63,
+            "codeLines": 54,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "backend/shared/lib/userActivity.js",
+          "backend/utils/supabaseClient.js",
+          "backend/utils/weightValidation.js"
+        ]
+      }
+    }
+  },
+  "frontend": {
+    "label": "frontend",
+    "featuresRoot": "frontend/src/features",
+    "lineLimit": 150,
+    "features": {
+      "activity": {
+        "fileCount": 8,
+        "totalCodeLines": 3410,
+        "files": [
+          {
+            "rel": "frontend/src/features/activity/components/StepCounter.js",
+            "totalLines": 1979,
+            "codeLines": 1467,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/activity/components/ActivityTimeReport.js",
+            "totalLines": 1043,
+            "codeLines": 867,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/activity/components/StepsDashboard.js",
+            "totalLines": 694,
+            "codeLines": 643,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/activity/components/WatchActivityCard.js",
+            "totalLines": 255,
+            "codeLines": 225,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/activity/components/ManualWatchEntryModal.js",
+            "totalLines": 173,
+            "codeLines": 156,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/activity/services/activity.api.js",
+            "totalLines": 34,
+            "codeLines": 28,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/activity/services/dailyActivityService.js",
+            "totalLines": 25,
+            "codeLines": 18,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/activity/index.js",
+            "totalLines": 8,
+            "codeLines": 6,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 5,
+        "crossFeatureImports": [
+          {
+            "from": "frontend/src/features/activity/components/ActivityTimeReport.js",
+            "to": "frontend/src/features/user/index.js",
+            "otherFeature": "user"
+          },
+          {
+            "from": "frontend/src/features/activity/components/StepCounter.js",
+            "to": "frontend/src/features/misc/services/misc.api.js",
+            "otherFeature": "misc"
+          },
+          {
+            "from": "frontend/src/features/activity/components/StepCounter.js",
+            "to": "frontend/src/features/user/services/user.api.js",
+            "otherFeature": "user"
+          }
+        ],
+        "sharedUsage": [
+          "frontend/src/shared/components/LoadingSpinner.js",
+          "frontend/src/shared/components/LocationGuard.js",
+          "frontend/src/shared/components/TimeWindowSettingsModal.js",
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/components/common/HierarchicalNode.js",
+          "frontend/src/shared/components/common/HierarchicalReportLayout.js",
+          "frontend/src/shared/components/icons/BathroomScaleIcon.js",
+          "frontend/src/shared/plugins/galleryMonitorPlugin.js",
+          "frontend/src/shared/plugins/stepCounterPlugin.js",
+          "frontend/src/shared/services/apiClient.js",
+          "frontend/src/shared/services/teamHierarchyService.js"
+        ]
+      },
+      "admin": {
+        "fileCount": 4,
+        "totalCodeLines": 2206,
+        "files": [
+          {
+            "rel": "frontend/src/features/admin/components/AdminDashboard.js",
+            "totalLines": 1948,
+            "codeLines": 1761,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/admin/components/FoodCorrectionsDebugPanel.js",
+            "totalLines": 378,
+            "codeLines": 338,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/admin/components/TestImageGuide.js",
+            "totalLines": 114,
+            "codeLines": 104,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/admin/index.js",
+            "totalLines": 5,
+            "codeLines": 3,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 2,
+        "crossFeatureImports": [
+          {
+            "from": "frontend/src/features/admin/components/FoodCorrectionsDebugPanel.js",
+            "to": "frontend/src/features/nutrition/services/foodCorrectionService.js",
+            "otherFeature": "nutrition"
+          }
+        ],
+        "sharedUsage": [
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/services/geminiService.js",
+          "frontend/src/shared/services/tokenCost/tokenCostConfig.js",
+          "frontend/src/shared/services/tokenCost/userPricingManager.js",
+          "frontend/src/shared/services/userIdentity.js",
+          "frontend/src/shared/utils/timezoneUtils.js"
+        ]
+      },
+      "auth": {
+        "fileCount": 1,
+        "totalCodeLines": 18,
+        "files": [
+          {
+            "rel": "frontend/src/features/auth/services/auth.api.js",
+            "totalLines": 22,
+            "codeLines": 18,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [],
+        "sharedUsage": []
+      },
+      "background-analysis": {
+        "fileCount": 1,
+        "totalCodeLines": 30,
+        "files": [
+          {
+            "rel": "frontend/src/features/background-analysis/services/analysis.api.js",
+            "totalLines": 36,
+            "codeLines": 30,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [],
+        "sharedUsage": []
+      },
+      "counselling": {
+        "fileCount": 6,
+        "totalCodeLines": 524,
+        "files": [
+          {
+            "rel": "frontend/src/features/counselling/components/WellnessCounsellingForm.js",
+            "totalLines": 272,
+            "codeLines": 236,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/counselling/components/EatingHabitsSection.js",
+            "totalLines": 117,
+            "codeLines": 107,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/counselling/components/SleepQualitySection.js",
+            "totalLines": 84,
+            "codeLines": 75,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/counselling/components/HealthProblemChips.js",
+            "totalLines": 82,
+            "codeLines": 73,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/counselling/components/MedicationSection.js",
+            "totalLines": 34,
+            "codeLines": 28,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/counselling/index.js",
+            "totalLines": 6,
+            "codeLines": 5,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/TouchFeedbackButton.js"
+        ]
+      },
+      "education": {
+        "fileCount": 8,
+        "totalCodeLines": 2224,
+        "files": [
+          {
+            "rel": "frontend/src/features/education/components/EducationDashboard.js",
+            "totalLines": 1255,
+            "codeLines": 1094,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/education/components/EducationCard.js",
+            "totalLines": 355,
+            "codeLines": 305,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/education/components/EducationLogCard.js",
+            "totalLines": 319,
+            "codeLines": 286,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/education/components/EducationCardModal.js",
+            "totalLines": 198,
+            "codeLines": 173,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/education/components/ManualEducationEntryModal.js",
+            "totalLines": 186,
+            "codeLines": 164,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/education/services/educationDetectionService.js",
+            "totalLines": 198,
+            "codeLines": 152,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/education/services/education.api.js",
+            "totalLines": 52,
+            "codeLines": 44,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/education/index.js",
+            "totalLines": 8,
+            "codeLines": 6,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 6,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/services/userIdentity.js",
+          "frontend/src/shared/utils/shareUtils.js",
+          "frontend/src/shared/utils/timezoneUtils.js"
+        ]
+      },
+      "food-corrections": {
+        "fileCount": 1,
+        "totalCodeLines": 42,
+        "files": [
+          {
+            "rel": "frontend/src/features/food-corrections/services/food-corrections.api.js",
+            "totalLines": 50,
+            "codeLines": 42,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [],
+        "sharedUsage": []
+      },
+      "leaderboard": {
+        "fileCount": 9,
+        "totalCodeLines": 2561,
+        "files": [
+          {
+            "rel": "frontend/src/features/leaderboard/components/DisciplineReport.js",
+            "totalLines": 1033,
+            "codeLines": 893,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/HierarchicalTeamView.js",
+            "totalLines": 531,
+            "codeLines": 481,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/HierarchicalScoreCard.js",
+            "totalLines": 337,
+            "codeLines": 279,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/CoachScoreSummary.js",
+            "totalLines": 316,
+            "codeLines": 264,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/DisciplineLeaderboard.js",
+            "totalLines": 249,
+            "codeLines": 197,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/LeaderboardSettingsDropdown.js",
+            "totalLines": 212,
+            "codeLines": 183,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/components/LeaderboardSettingsModal.js",
+            "totalLines": 170,
+            "codeLines": 142,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/services/disciplineReportService.js",
+            "totalLines": 139,
+            "codeLines": 114,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/leaderboard/index.js",
+            "totalLines": 10,
+            "codeLines": 8,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 6,
+        "crossFeatureImports": [
+          {
+            "from": "frontend/src/features/leaderboard/components/DisciplineReport.js",
+            "to": "frontend/src/features/user/index.js",
+            "otherFeature": "user"
+          }
+        ],
+        "sharedUsage": [
+          "frontend/src/shared/components/TimeWindowSettingsModal.js",
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/components/common/DisciplineScoreLogos.js",
+          "frontend/src/shared/components/common/HierarchicalNode.js",
+          "frontend/src/shared/components/common/HierarchicalReportLayout.js",
+          "frontend/src/shared/components/icons/BathroomScaleIcon.js",
+          "frontend/src/shared/services/cacheManager.js",
+          "frontend/src/shared/services/teamHierarchyService.js"
+        ]
+      },
+      "misc": {
+        "fileCount": 1,
+        "totalCodeLines": 25,
+        "files": [
+          {
+            "rel": "frontend/src/features/misc/services/misc.api.js",
+            "totalLines": 31,
+            "codeLines": 25,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [],
+        "sharedUsage": []
+      },
+      "nutrition": {
+        "fileCount": 12,
+        "totalCodeLines": 8432,
+        "files": [
+          {
+            "rel": "frontend/src/features/nutrition/components/NutritionDashboard.js",
+            "totalLines": 3489,
+            "codeLines": 3105,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/components/EditableFoodItem.js",
+            "totalLines": 1944,
+            "codeLines": 1534,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/components/NutritionCard.js",
+            "totalLines": 1600,
+            "codeLines": 1427,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/components/SmartFoodSearchModal.js",
+            "totalLines": 543,
+            "codeLines": 496,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/services/foodCorrectionService.js",
+            "totalLines": 608,
+            "codeLines": 465,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/services/duplicateDetectionService.js",
+            "totalLines": 600,
+            "codeLines": 432,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/services/nutritionFallback.js",
+            "totalLines": 423,
+            "codeLines": 349,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/components/ManualFoodEntryModal.js",
+            "totalLines": 275,
+            "codeLines": 251,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/services/nutritionSaveService.js",
+            "totalLines": 222,
+            "codeLines": 178,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/components/DuplicateFoodModal.js",
+            "totalLines": 185,
+            "codeLines": 166,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/services/backgroundNutritionService.js",
+            "totalLines": 23,
+            "codeLines": 18,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/nutrition/index.js",
+            "totalLines": 13,
+            "codeLines": 11,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 10,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/components/icons/BathroomScaleIcon.js",
+          "frontend/src/shared/services/cacheManager.js",
+          "frontend/src/shared/services/geminiService.js",
+          "frontend/src/shared/services/userIdentity.js",
+          "frontend/src/shared/utils/shareUtils.js",
+          "frontend/src/shared/utils/timezoneUtils.js"
+        ]
+      },
+      "nutrition-centers": {
+        "fileCount": 6,
+        "totalCodeLines": 1742,
+        "files": [
+          {
+            "rel": "frontend/src/features/nutrition-centers/components/NutritionCenterRegistration.js",
+            "totalLines": 862,
+            "codeLines": 722,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition-centers/components/NutritionCentersMap.js",
+            "totalLines": 824,
+            "codeLines": 715,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/nutrition-centers/services/locationAttendanceService.js",
+            "totalLines": 224,
+            "codeLines": 174,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/nutrition-centers/components/ClubSelectionModal.js",
+            "totalLines": 107,
+            "codeLines": 100,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/nutrition-centers/services/centers.api.js",
+            "totalLines": 33,
+            "codeLines": 27,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/nutrition-centers/index.js",
+            "totalLines": 6,
+            "codeLines": 4,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 3,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/CustomAlertModal.js",
+          "frontend/src/shared/components/LoadingSpinner.js",
+          "frontend/src/shared/components/TouchFeedbackButton.js"
+        ]
+      },
+      "screen": {
+        "fileCount": 5,
+        "totalCodeLines": 1463,
+        "files": [
+          {
+            "rel": "frontend/src/features/screen/components/ScreenDashboard.js",
+            "totalLines": 1018,
+            "codeLines": 938,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/screen/components/ScreenTimeCard.js",
+            "totalLines": 456,
+            "codeLines": 402,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/screen/services/screenTimeService.js",
+            "totalLines": 137,
+            "codeLines": 96,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/screen/services/screen.api.js",
+            "totalLines": 29,
+            "codeLines": 24,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/screen/index.js",
+            "totalLines": 5,
+            "codeLines": 3,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 2,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/LoadingSpinner.js",
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/plugins/screenTimePlugin.js",
+          "frontend/src/shared/services/apiClient.js"
+        ]
+      },
+      "team": {
+        "fileCount": 3,
+        "totalCodeLines": 1049,
+        "files": [
+          {
+            "rel": "frontend/src/features/team/components/AttendanceReport.js",
+            "totalLines": 912,
+            "codeLines": 778,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/team/components/TeamMemberSearch.js",
+            "totalLines": 321,
+            "codeLines": 269,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/team/index.js",
+            "totalLines": 4,
+            "codeLines": 2,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 2,
+        "crossFeatureImports": [
+          {
+            "from": "frontend/src/features/team/components/AttendanceReport.js",
+            "to": "frontend/src/features/user/index.js",
+            "otherFeature": "user"
+          },
+          {
+            "from": "frontend/src/features/team/components/TeamMemberSearch.js",
+            "to": "frontend/src/features/user/index.js",
+            "otherFeature": "user"
+          }
+        ],
+        "sharedUsage": [
+          "frontend/src/shared/components/CustomAlertModal.js",
+          "frontend/src/shared/components/common/DisciplineScoreLogos.js",
+          "frontend/src/shared/components/common/HierarchicalNode.js",
+          "frontend/src/shared/components/common/HierarchicalReportLayout.js",
+          "frontend/src/shared/services/teamHierarchyService.js"
+        ]
+      },
+      "token": {
+        "fileCount": 1,
+        "totalCodeLines": 41,
+        "files": [
+          {
+            "rel": "frontend/src/features/token/services/token.api.js",
+            "totalLines": 50,
+            "codeLines": 41,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 0,
+        "crossFeatureImports": [],
+        "sharedUsage": []
+      },
+      "user": {
+        "fileCount": 14,
+        "totalCodeLines": 3644,
+        "files": [
+          {
+            "rel": "frontend/src/features/user/components/UserProfileModal.js",
+            "totalLines": 1060,
+            "codeLines": 940,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/user/components/CompleteProfilePage.js",
+            "totalLines": 629,
+            "codeLines": 550,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/user/components/Login.js",
+            "totalLines": 534,
+            "codeLines": 485,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/user/components/DeleteAccountModal.js",
+            "totalLines": 549,
+            "codeLines": 472,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/user/components/MandatoryProfilePictureModal.js",
+            "totalLines": 468,
+            "codeLines": 411,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/user/components/TeamMemberProfileModal.js",
+            "totalLines": 235,
+            "codeLines": 217,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/user/components/NumericKeypad.js",
+            "totalLines": 164,
+            "codeLines": 146,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/components/InactiveUserModal.js",
+            "totalLines": 142,
+            "codeLines": 124,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/components/UserNotFoundModal.js",
+            "totalLines": 141,
+            "codeLines": 123,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/components/InlineNumericKeypad.js",
+            "totalLines": 107,
+            "codeLines": 91,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/services/user.api.js",
+            "totalLines": 77,
+            "codeLines": 65,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/index.js",
+            "totalLines": 15,
+            "codeLines": 10,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/services/userContextService.js",
+            "totalLines": 12,
+            "codeLines": 9,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/user/services/getUserId.js",
+            "totalLines": 3,
+            "codeLines": 1,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 6,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/PrivacyPolicy.js",
+          "frontend/src/shared/components/TermsAndConditions.js",
+          "frontend/src/shared/components/TouchFeedbackButton.js",
+          "frontend/src/shared/services/firebase.js",
+          "frontend/src/shared/services/userIdentity.js"
+        ]
+      },
+      "water": {
+        "fileCount": 3,
+        "totalCodeLines": 328,
+        "files": [
+          {
+            "rel": "frontend/src/features/water/components/WaterTracker.js",
+            "totalLines": 355,
+            "codeLines": 319,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/water/services/water.api.js",
+            "totalLines": 11,
+            "codeLines": 8,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/water/index.js",
+            "totalLines": 3,
+            "codeLines": 1,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 1,
+        "crossFeatureImports": [
+          {
+            "from": "frontend/src/features/water/components/WaterTracker.js",
+            "to": "frontend/src/features/nutrition/services/nutritionSaveService.js",
+            "otherFeature": "nutrition"
+          }
+        ],
+        "sharedUsage": []
+      },
+      "weight": {
+        "fileCount": 8,
+        "totalCodeLines": 2573,
+        "files": [
+          {
+            "rel": "frontend/src/features/weight/components/WeightDashboard.js",
+            "totalLines": 1471,
+            "codeLines": 1246,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/weight/services/weightDetectionService.js",
+            "totalLines": 404,
+            "codeLines": 309,
+            "status": "CRITICAL"
+          },
+          {
+            "rel": "frontend/src/features/weight/components/ManualWeightEntryModal.js",
+            "totalLines": 301,
+            "codeLines": 265,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/weight/components/WeightCardModal.js",
+            "totalLines": 282,
+            "codeLines": 256,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/weight/components/WeightCard.js",
+            "totalLines": 276,
+            "codeLines": 245,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/weight/components/WeightLossLeaderboard.js",
+            "totalLines": 264,
+            "codeLines": 209,
+            "status": "VIOLATION"
+          },
+          {
+            "rel": "frontend/src/features/weight/services/weight.api.js",
+            "totalLines": 44,
+            "codeLines": 37,
+            "status": "OK"
+          },
+          {
+            "rel": "frontend/src/features/weight/index.js",
+            "totalLines": 9,
+            "codeLines": 6,
+            "status": "OK"
+          }
+        ],
+        "violationCount": 6,
+        "crossFeatureImports": [],
+        "sharedUsage": [
+          "frontend/src/shared/components/icons/BathroomScaleIcon.js",
+          "frontend/src/shared/services/userIdentity.js",
+          "frontend/src/shared/utils/timezoneUtils.js"
+        ]
+      }
+    }
+  }
+}

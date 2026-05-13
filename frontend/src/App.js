@@ -30,12 +30,12 @@ import Header from "./shared/components/Header";
 import {
   getUserContext,
   clearContextCache,
-} from "./features/user";
+} from "./shared/services/userIdentity";
 import {
   initializeBackButton,
   cleanupBackButton,
 } from "./shared/utils/backButtonHandler";
-import { getUserId, clearUserIdCache } from "./features/user";
+import { getUserId, clearUserIdCache } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
 import {
   saveNutritionAnalysis,
@@ -1288,7 +1288,7 @@ function WellnessValleyApp() {
 
     const {
       subscribeToContextUpdates,
-    } = require("./features/user/services/userContextService");
+    } = require("./shared/services/userIdentity");
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
       console.log("✅ [App] User context updated in state:", {
         corrections: updatedContext?.personalCorrections?.length || 0,

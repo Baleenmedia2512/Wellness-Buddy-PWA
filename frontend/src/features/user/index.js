@@ -9,5 +9,6 @@ export { default as DeleteAccountModal } from './components/DeleteAccountModal';
 export { default as TeamMemberProfileModal } from './components/TeamMemberProfileModal';
 export { default as InlineNumericKeypad } from './components/InlineNumericKeypad';
 export { default as NumericKeypad } from './components/NumericKeypad';
-export * from './services/getUserId';
-export * from './services/userContextService';
+// Note: identity helpers (getUserId, userContextService) intentionally
+// removed from the user feature's public surface. Import them from
+// `shared/services/userIdentity` instead — see VSA refactor notes.

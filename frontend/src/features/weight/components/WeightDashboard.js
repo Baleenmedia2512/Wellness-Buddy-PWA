@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Capacitor } from '@capacitor/core';
 import BathroomScaleIcon from '../../../shared/components/icons/BathroomScaleIcon';
-import { getUserId } from '../../user/services/getUserId';
+import { getUserId } from '../../../shared/services/userIdentity';
 import { istToLocalDate, formatISTToLocalDate } from '../../../shared/utils/timezoneUtils';
 import '../../../LazyLoadStyles.css';
 
