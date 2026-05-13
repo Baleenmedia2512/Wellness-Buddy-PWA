@@ -1,5 +1,11 @@
-export { default as WellnessCounsellingForm } from './components/WellnessCounsellingForm';
-export { default as HealthProblemChips } from './components/HealthProblemChips';
-export { default as EatingHabitsSection } from './components/EatingHabitsSection';
-export { default as SleepQualitySection } from './components/SleepQualitySection';
-export { default as MedicationSection } from './components/MedicationSection';
+// Public surface of the `counselling` feature slice.
+// External code MUST import from this barrel — never deep-import.
+export { WellnessCounsellingForm, HealthProblemChips } from './components';
+export {
+  HealthProblemSection,
+  EatingHabitsSection,
+  SleepQualitySection,
+  MedicationSection,
+} from './sections';
+export { useCounsellingForm } from './hooks';
+export { saveAssessment } from './services';

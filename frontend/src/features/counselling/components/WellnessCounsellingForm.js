@@ -1,122 +1,24 @@
-// src/components/WellnessCounselling/WellnessCounsellingForm.js
-import React, { useState } from "react";
-import { X, Save, CheckCircle, AlertCircle } from "lucide-react";
-import { CapacitorHttp } from '@capacitor/core';
-import HealthProblemChips from "./HealthProblemChips";
-import EatingHabitsSection from "./EatingHabitsSection";
-import SleepQualitySection from "./SleepQualitySection";
-import MedicationSection from "./MedicationSection";
-import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
-
 /**
- * Wellness Counselling Form Component
- * Main form for capturing comprehensive wellness assessment data
+ * WellnessCounsellingForm.js — slice-level container.
+ *
+ * Composes the counselling form from dumb section components and the
+ * useCounsellingForm hook. No business logic, no fetch, no validation
+ * lives in this file — everything is delegated.
  */
+import React from 'react';
+import { X, CheckCircle, AlertCircle } from 'lucide-react';
+import {
+  HealthProblemSection,
+  EatingHabitsSection,
+  SleepQualitySection,
+  MedicationSection,
+} from '../sections';
+import { useCounsellingForm } from '../hooks/useCounsellingForm';
+import AssessmentTargetCard from './AssessmentTargetCard';
+import CounsellingFormActions from './CounsellingFormActions';
+
 const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSaveSuccess }) => {
-  const [selectedHealthProblems, setSelectedHealthProblems] = useState([]);
-  const [eatingHabits, setEatingHabits] = useState({
-    wakeUpTime: "",
-    teaCoffeeTime: "",
-    breakfastTime: "",
-    lunchTime: "",
-    snacksTime: "",
-    dinnerTime: "",
-    dietType: "",
-    waterIntake: "",
-  });
-  const [sleepData, setSleepData] = useState({
-    quality: "",
-    duration: "",
-  });
-  const [medicationDetails, setMedicationDetails] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const [error, setError] = useState("");
-
-  // Determine who is being assessed
-  const targetMember = selectedMember || user;
-
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError("");
-    setIsSaving(true);
-
-    try {
-      // Simulate API call - TODO: Replace with real API endpoint
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      const formData = {
-        userId: targetMember?.userId || targetMember?.id,
-        counsellorId: user?.id,
-        healthProblems: selectedHealthProblems,
-        eatingHabits,
-        sleepData,
-        medicationDetails,
-        submittedAt: new Date().toISOString(),
-      };
-
-      console.log("✅ Wellness Counselling Data:", formData);
-
-      // Save to backend using CapacitorHttp (works on both web and mobile)
-      const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
-      const response = await CapacitorHttp.post({
-        url: `${apiBaseUrl}/api/counselling/save-assessment`,
-        headers: { 'Content-Type': 'application/json' },
-        data: formData
-      });
-      
-      const result = response.data;
-      
-      if (!result.success) {
-        throw new Error(result.message || 'Failed to save assessment');
-      }
-
-      // Show success message
-      setSaveSuccess(true);
-      
-      // Call onSaveSuccess callback
-      if (onSaveSuccess) {
-        onSaveSuccess(formData);
-      }
-      
-      setTimeout(() => {
-        setSaveSuccess(false);
-        resetForm();
-        onClose();
-      }, 1500);
-    } catch (err) {
-      console.error("❌ Error saving data:", err);
-      setError("Failed to save. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Handle form reset
-  const resetForm = () => {
-    setSelectedHealthProblems([]);
-    setEatingHabits({
-      wakeUpTime: "",
-      teaCoffeeTime: "",
-      breakfastTime: "",
-      lunchTime: "",
-      snacksTime: "",
-      dinnerTime: "",
-      dietType: "",
-      waterIntake: "",
-    });
-    setSleepData({ quality: "", duration: "" });
-    setMedicationDetails("");
-    setSaveSuccess(false);
-    setError("");
-  };
-
-  const handleReset = () => {
-    if (window.confirm("Are you sure you want to clear all data?")) {
-      resetForm();
-    }
-  };
+  const vm = useCounsellingForm({ user, selectedMember, onSaveSuccess, onClose });
 
   if (!isOpen) return null;
 
@@ -128,9 +30,7 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSave
           <div className="sticky top-0 bg-gradient-to-r from-green-500 to-green-600 text-white px-4 sm:px-6 py-3 sm:py-4 rounded-t-xl flex items-center justify-between z-10">
             <div className="flex-1 min-w-0">
               <h2 className="text-lg sm:text-xl font-bold truncate">Wellness Counselling</h2>
-              <p className="text-xs sm:text-sm text-green-100">
-                Initial Assessment Record
-              </p>
+              <p className="text-xs sm:text-sm text-green-100">Initial Assessment Record</p>
             </div>
             <button
               onClick={onClose}
@@ -141,129 +41,57 @@ const WellnessCounsellingForm = ({ isOpen, onClose, user, selectedMember, onSave
           </div>
 
           {/* Form Content */}
-          <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-6 sm:space-y-8">
-            {/* Success Message */}
-            {saveSuccess && (
+          <form onSubmit={vm.handleSubmit} className="p-4 sm:p-6 space-y-6 sm:space-y-8">
+            {vm.saveSuccess && (
               <div className="flex items-center gap-2 sm:gap-3 bg-green-50 border border-green-200 text-green-800 px-3 sm:px-4 py-2 sm:py-3 rounded-lg">
                 <CheckCircle size={18} className="flex-shrink-0" />
                 <span className="text-sm sm:text-base">Assessment saved successfully!</span>
               </div>
             )}
-
-            {/* Error Message */}
-            {error && (
+            {vm.error && (
               <div className="flex items-center gap-2 sm:gap-3 bg-red-50 border border-red-200 text-red-800 px-3 sm:px-4 py-2 sm:py-3 rounded-lg">
                 <AlertCircle size={18} className="flex-shrink-0" />
-                <span className="text-sm sm:text-base">{error}</span>
+                <span className="text-sm sm:text-base">{vm.error}</span>
               </div>
             )}
 
-            {/* User Info */}
-            <div className="bg-gray-50 rounded-lg p-3 sm:p-4">
-              <h3 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-3">
-                Assessment For
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
-                <div className="flex flex-wrap items-baseline gap-1">
-                  <span className="text-gray-500">Name:</span>
-                  <span className="font-medium break-words">
-                    {targetMember?.userName || targetMember?.name || "N/A"}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-1">
-                  <span className="text-gray-500">Email:</span>
-                  <span className="font-medium break-all text-xs">
-                    {targetMember?.userEmail || targetMember?.email || "N/A"}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-1">
-                  <span className="text-gray-500">Counsellor:</span>
-                  <span className="font-medium break-words">
-                    {user?.name || user?.email}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-baseline gap-1">
-                  <span className="text-gray-500">Date:</span>
-                  <span className="font-medium">
-                    {new Date().toLocaleDateString()}
-                  </span>
-                </div>
-              </div>
-            </div>
+            <AssessmentTargetCard
+              targetMember={vm.targetMember}
+              counsellor={user}
+              todayLabel={vm.todayLabel}
+            />
 
-            {/* Health Problems Section */}
             <div className="border-t pt-4 sm:pt-6">
-              <HealthProblemChips
-                selectedProblems={selectedHealthProblems}
-                onChange={setSelectedHealthProblems}
+              <HealthProblemSection
+                selectedProblems={vm.selectedHealthProblems}
+                onChange={vm.setSelectedHealthProblems}
               />
             </div>
-
-            {/* Eating Habits Section */}
             <div className="border-t pt-4 sm:pt-6">
               <EatingHabitsSection
-                eatingHabits={eatingHabits}
-                onChange={setEatingHabits}
+                eatingHabits={vm.eatingHabits}
+                onChange={vm.setEatingHabits}
               />
             </div>
-
-            {/* Sleep Quality Section */}
             <div className="border-t pt-4 sm:pt-6">
               <SleepQualitySection
-                sleepData={sleepData}
-                onChange={setSleepData}
+                sleepData={vm.sleepData}
+                onChange={vm.setSleepData}
               />
             </div>
-
-            {/* Medication Section */}
             <div className="border-t pt-4 sm:pt-6">
               <MedicationSection
-                medicationDetails={medicationDetails}
-                onChange={setMedicationDetails}
+                medicationDetails={vm.medicationDetails}
+                onChange={vm.setMedicationDetails}
               />
             </div>
 
-            {/* Form Actions */}
-            <div className="border-t pt-4 sm:pt-6 flex flex-col sm:flex-row gap-2 sm:gap-3">
-              <TouchFeedbackButton
-                type="button"
-                onClick={handleReset}
-                variant="outline"
-                className="w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 border-2 border-gray-300 text-gray-700 rounded-lg text-sm sm:text-base font-medium hover:bg-gray-50"
-              >
-                Clear All
-              </TouchFeedbackButton>
-              <TouchFeedbackButton
-                type="submit"
-                disabled={isSaving || selectedHealthProblems.length === 0}
-                className={`
-                  w-full sm:flex-1 px-4 sm:px-6 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-medium flex items-center justify-center gap-2
-                  ${
-                    isSaving || selectedHealthProblems.length === 0
-                      ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-gradient-to-r from-green-500 to-green-600 text-white hover:from-green-600 hover:to-green-700"
-                  }
-                `}
-              >
-                {isSaving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save size={20} />
-                    Save Assessment
-                  </>
-                )}
-              </TouchFeedbackButton>
-            </div>
-
-            {selectedHealthProblems.length === 0 && (
-              <p className="text-xs sm:text-sm text-amber-600 text-center px-2">
-                Please select at least one health problem to continue
-              </p>
-            )}
+            <CounsellingFormActions
+              isSaving={vm.isSaving}
+              canSubmit={vm.canSubmit}
+              isValid={vm.isValid}
+              onReset={vm.handleReset}
+            />
           </form>
         </div>
       </div>
