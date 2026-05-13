@@ -563,19 +563,11 @@ const shareNative = async (
 
         console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
 
-        // Check if Share API is available
-        const canShare = await Share.canShare().catch(() => ({ value: false }));
-        console.log("📊 Can share:", canShare);
-
-        if (!canShare.value) {
-          throw new Error("Share API not available on this device");
-        }
+        // Skip canShare() check — it returns false on many iOS devices even when
+        // sharing IS supported. Just call Share.share() directly.
+        console.log("🚀 Calling Share.share()...");
 
         // Perform the share
-        console.log(
-          "🚀 Calling Share.share() with options:",
-          JSON.stringify(shareOptions, null, 2),
-        );
         const shareResult = await Share.share(shareOptions);
 
         console.log("✅ Share completed:", shareResult);
