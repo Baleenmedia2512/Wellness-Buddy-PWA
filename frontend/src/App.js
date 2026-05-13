@@ -1696,7 +1696,7 @@ function WellnessValleyApp() {
     try {
       if (!user?.email) return;
       const profileRes = await fetch(
-        `${apiBaseUrl}/api/get-user-profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
+        `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}&_t=${Date.now()}`,
         { cache: "no-store" }
       );
       if (!profileRes.ok) return;

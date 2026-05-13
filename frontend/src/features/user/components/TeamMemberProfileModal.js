@@ -33,7 +33,7 @@ const TeamMemberProfileModal = ({ isOpen, onClose, memberEmail, apiBaseUrl }) =>
       try {
         const base = apiBaseUrl || process.env.REACT_APP_API_BASE_URL;
         const res = await fetch(
-          `${base}/api/get-user-profile?email=${encodeURIComponent(memberEmail)}&_t=${Date.now()}`,
+          `${base}/api/user/profile?email=${encodeURIComponent(memberEmail)}&_t=${Date.now()}`,
           { cache: 'no-store', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
         );
         if (!res.ok) throw new Error('Failed to load profile');
