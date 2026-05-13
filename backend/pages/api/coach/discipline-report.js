@@ -304,28 +304,39 @@ export default async function handler(req, res) {
       console.log('💧 No water records found. Sample food AnalysisData:', (foodData.data || []).concat(waterFoodData.data || [])[0]?.AnalysisData?.substring?.(0, 200));
     }
 
-    // Fetch latest body weight AND BMR for each user from ANY date (no date restriction)
-    // Uses most recent weight ever recorded — no need to upload weight today
-    // Falls back to 2500ml ONLY if user has never logged a weight at all
+    // Fetch latest body weight per user from weight_records_table (BMR is no
+    // longer stored here — it lives in team_table now).
     const DEFAULT_WATER_REQUIRED_ML = 2500;
     const { data: latestWeightRows } = await supabase
       .from('weight_records_table')
-      .select('UserId, Weight, Bmr, CreatedAt')
+      .select('UserId, Weight, CreatedAt')
       .in('UserId', allUserIds)
       .neq('IsDeleted', true)
       .order('CreatedAt', { ascending: false });
     // Build map: userId → latest body weight kg
     const userBodyWeightMap = {};
-    const userBmrMap = {}; // BMR (calorie target) per userId
     (latestWeightRows || []).forEach(row => {
       const uid = row.UserId;
       if (!(uid in userBodyWeightMap)) {
         const w = parseFloat(row.Weight);
         userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
       }
-      if (!(uid in userBmrMap)) {
-        const b = parseFloat(row.Bmr);
-        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
+    });
+
+    // BMR (calorie target) per userId — read from team_table.
+    // Fetch all rows; pick the highest non-null Bmr per user in JS so we don't
+    // depend on a sort column that may not exist on team_table.
+    const userBmrMap = {};
+    const { data: bmrRows } = await supabase
+      .from('team_table')
+      .select('UserId, Bmr')
+      .in('UserId', allUserIds)
+      .not('Bmr', 'is', null);
+    (bmrRows || []).forEach(row => {
+      const uid = row.UserId;
+      const b = parseFloat(row.Bmr);
+      if (!isNaN(b) && b > 0 && (!(uid in userBmrMap) || b > userBmrMap[uid])) {
+        userBmrMap[uid] = b;
       }
     });
     
@@ -635,7 +646,17 @@ export default async function handler(req, res) {
         });
 
         // A day is disciplined if net calories (consumed - burned) <= BMR target
+        // Include ALL dates in the reporting period so days with no food logged (0 consumed)
+        // are also evaluated — 0 consumed ≤ BMR target → disciplined day ✅
+        const allPeriodDates = new Set();
+        const periodCursor = new Date(dates.start);
+        const periodEnd = new Date(dates.end);
+        while (periodCursor <= periodEnd) {
+          allPeriodDates.add(periodCursor.toISOString().slice(0, 10));
+          periodCursor.setDate(periodCursor.getDate() + 1);
+        }
         const allActivityDates = new Set([
+          ...allPeriodDates,
           ...Object.keys(caloriesConsumedByDate),
           ...Object.keys(caloriesBurnedByDate),
         ]);
@@ -647,6 +668,17 @@ export default async function handler(req, res) {
             caloriesBurnedDates.add(dateStr);
           }
         });
+
+        // 🔍 DEBUG: Calorie discipline trace
+        console.log(`🍽️ [Calorie] User ${userId}:`, {
+          userBmrTarget,
+          consumedByDate: caloriesConsumedByDate,
+          burnedByDate: caloriesBurnedByDate,
+          disciplinedDates: Array.from(caloriesBurnedDates),
+          consideredDates: Array.from(allActivityDates),
+        });
+      } else {
+        console.log(`🍽️ [Calorie] User ${userId}: SKIPPED — no BMR target (userBmrTarget=${userBmrTarget})`);
       }
       // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
 
