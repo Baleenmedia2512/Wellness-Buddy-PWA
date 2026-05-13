@@ -2343,8 +2343,8 @@ const NutritionDashboard = ({
                                 </p>
                               )}
                             </div>
-                            <p className="text-[11px] text-orange-600 font-medium">
-                              {isOverTarget ? `${burnProgress}% burned` : "0% burned"}
+                            <p className={`text-[11px] font-medium ${isOverTarget ? "text-orange-600" : "text-emerald-600"}`}>
+                              {isOverTarget ? `${burnProgress}% burned` : "✅ Within Target"}
                             </p>
                           </div>
 
