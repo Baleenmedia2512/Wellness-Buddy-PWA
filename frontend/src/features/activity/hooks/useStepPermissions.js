@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { StepCounterPlugin } from '../../../shared/plugins/stepCounterPlugin';
-import { lookup as lookupUser } from '../../user/services/user.api';
+import { getUserId } from '../../../shared/services/userIdentity';
 import {
   readStoredUserId, writeStoredUserId, readStoredEmail,
 } from '../services/stepCounterStorage';
@@ -35,10 +35,10 @@ export function useStepPermissions({ userId, refs }) {
       const email = readStoredEmail();
       if (email) {
         try {
-          const data = await lookupUser(email);
-          if (data.success && data.userId) {
-            writeStoredUserId(data.userId);
-            if (!cancelled) setResolvedUserId(data.userId);
+          const userId = await getUserId({ email });
+          if (userId) {
+            writeStoredUserId(userId);
+            if (!cancelled) setResolvedUserId(userId);
             return true;
           }
         } catch (e) { console.warn('[StepCounter] userId API fallback failed:', e.message); }

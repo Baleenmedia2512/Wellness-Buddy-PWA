@@ -5,7 +5,7 @@
  * forward in less than 36 h of real elapsed time) and exposes a server-date
  * comparator for the visible "Wrong Device Date" warning banner.
  */
-import { getServerTime } from '../../misc/services/misc.api';
+import { getServerTime } from '../../../shared/services/serverTime';
 import { toDateKey } from './stepCounterCalculations';
 import {
   STEP_TIME_GUARD_LAST_TS_KEY, STEP_TIME_GUARD_LAST_DATE_KEY,
