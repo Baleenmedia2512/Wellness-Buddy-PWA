@@ -3,14 +3,14 @@
  * Persistence + remote IO for the water-tracker slice.
  *
  * Read  : GET /api/water/intake?userId=X&date=YYYY-MM-DD
- * Write : POST via nutritionSaveService (stores a food_nutrition_data_table row
- *         with AnalysisData.foods = [{ name:"water", volume_ml: N, calories: 0 }])
+ * Write : POST via shared nutritionPersistence (stores a food_nutrition_data_table
+ *         row with AnalysisData.foods = [{ name:"water", volume_ml: N, calories: 0 }])
  *
  * All UI / state / calculations live in useWaterTracker. This module is
  * intentionally side-effect free except for fetch + localStorage.
  */
 import { getApiBaseUrl } from '../../../config/api.config.js';
-import { saveNutritionAnalysis } from '../../nutrition/services/nutritionSaveService';
+import { saveNutritionAnalysis } from '../../../shared/services/nutritionPersistence';
 
 const STORAGE_KEY_USER_ID = 'dbUserId';
 const STORAGE_KEY_EMAIL = 'userEmail';

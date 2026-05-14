@@ -7,6 +7,26 @@ export async function listCorrections(userId) {
   return res.json();
 }
 
+/**
+ * Per-user corrections fetcher used by the admin debug panel.
+ * Mirrors the original `getUserCorrections` from nutrition/foodCorrection so
+ * non-nutrition consumers do not have to cross feature boundaries.
+ * Behavior is preserved exactly: no query encoding, throws on non-2xx.
+ */
+export async function getUserCorrections(userId) {
+  try {
+    const response = await fetch(`${base()}/api/food-corrections?userId=${userId}`, {
+      method: 'GET',
+      headers: { 'Content-Type': 'application/json' },
+    });
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    return await response.json();
+  } catch (error) {
+    console.error('Error fetching user corrections:', error);
+    throw error;
+  }
+}
+
 export async function saveCorrection(payload) {
   const res = await fetch(`${base()}/api/food-corrections`, {
     method: 'POST',
