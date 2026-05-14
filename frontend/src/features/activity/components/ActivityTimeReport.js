@@ -22,7 +22,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../../../shared/components/common/HierarchicalNode";
 import { teamHierarchyService } from "../../../shared/services/teamHierarchyService";
 import TimeWindowSettingsModal from "../../../shared/components/TimeWindowSettingsModal";
-import { TeamMemberProfileModal } from "../../user";
+import { TeamMemberProfileModal } from "../../../shared/components/TeamMemberProfileModal";
 
 // ───Constants ────────────────────────────────────────────────────────────────
 

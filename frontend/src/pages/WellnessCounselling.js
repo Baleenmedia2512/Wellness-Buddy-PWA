@@ -9,7 +9,7 @@ import HierarchicalReportLayout, {
 import HierarchicalNode from "../shared/components/common/HierarchicalNode";
 import { WellnessCounsellingForm } from "../features/counselling";
 import TouchFeedbackButton from "../shared/components/TouchFeedbackButton";
-import { TeamMemberProfileModal } from "../features/user";
+import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
 /**
  * Wellness Counselling Page
  * Shows team hierarchy with counselling status and allows starting new assessments

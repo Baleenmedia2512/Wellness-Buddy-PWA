@@ -6,7 +6,7 @@
  * `TeamSearchInput` and `TeamSearchResults`.
  */
 import React, { useState } from 'react';
-import { TeamMemberProfileModal } from '../../user';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import TeamSearchInput from './TeamSearchInput';
 import TeamSearchResults from './TeamSearchResults';
 import { useTeamSearch } from '../hooks/useTeamSearch';

@@ -10,7 +10,7 @@ import HierarchicalReportLayout, {
   LoadingSkeleton,
 } from '../../../shared/components/common/HierarchicalReportLayout';
 import TimeWindowSettingsModal from '../../../shared/components/TimeWindowSettingsModal';
-import { TeamMemberProfileModal } from '../../user';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 import { useDisciplineReport } from '../hooks/useDisciplineReport';
 import { filterOptions } from '../services/disciplineReportFormatter';
 import OverviewTab from '../tabs/OverviewTab';

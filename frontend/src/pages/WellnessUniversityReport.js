@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
-import { TeamMemberProfileModal } from "../features/user";
+import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 

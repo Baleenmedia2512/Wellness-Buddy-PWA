@@ -1,4 +1,4 @@
-// src/components/TeamMemberProfileModal.js
+// src/shared/components/TeamMemberProfileModal/TeamMemberProfileModal.js
 import React, { useState, useEffect } from 'react';
 import { X, User, Mail, Ruler, Flame, Salad, Phone } from 'lucide-react';
 

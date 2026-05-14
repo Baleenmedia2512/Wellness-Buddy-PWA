@@ -6,7 +6,7 @@
  */
 import React from 'react';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
-import { TeamMemberProfileModal } from '../../user';
+import { TeamMemberProfileModal } from '../../../shared/components/TeamMemberProfileModal';
 
 const AttendanceSummary = ({ alertModal, onCloseAlert, profileModalEmail, onCloseProfile }) => (
   <>
