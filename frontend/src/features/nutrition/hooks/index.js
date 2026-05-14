@@ -16,3 +16,4 @@ export { useSwipePanelHeight } from './useSwipePanelHeight';
 export { useMealMutations } from './useMealMutations';
 export { useMealItemMutations } from './useMealItemMutations';
 export { useMealDeleteMutations } from './useMealDeleteMutations';
+export { useDeleteWithUndo } from './useDeleteWithUndo';
