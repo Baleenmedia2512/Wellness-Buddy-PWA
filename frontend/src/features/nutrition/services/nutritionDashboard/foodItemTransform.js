@@ -37,7 +37,11 @@ export function transformDbItemToEditable(item, withPer100g = true) {
   const unit = item.unit || (isLiquid ? 'ml' : 'g');
 
   const base = {
-    ...item,
+    name: item.name,
+    nutrition: item.nutrition,
+    weight_g: item.weight_g,
+    volume_ml: item.volume_ml,
+    portion: item.portion,
     serving: {
       description: item.portion,
       grams: actualGrams,

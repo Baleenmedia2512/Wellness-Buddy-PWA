@@ -1542,7 +1542,8 @@ const EditableFoodItem = forwardRef(
         isLiquid: foodItem.isLiquid,
         servingUnit: foodItem.serving?.unit,
         servingIsLiquid: foodItem.serving?.isLiquid,
-        fullItem: foodItem,
+        grams: foodItem.grams,
+        hasNutrition: !!foodItem.nutrition,
       });
 
       // Pre-fill with current food data - ensure we have a valid number

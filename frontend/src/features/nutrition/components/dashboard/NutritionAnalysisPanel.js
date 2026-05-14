@@ -61,7 +61,7 @@ const NutritionAnalysisPanel = ({
         <div className="relative flex flex-col" style={{ maxHeight: isEditing ? '90vh' : '80vh' }}>
           <div className="relative">
             {imgSrc ? (
-              <img src={imgSrc} alt={foodData.name}
+              <img src={imgSrc} alt="Meal"
                 className={`w-full object-cover transition-all duration-500 ease-in-out ${isEditing ? 'h-48' : 'h-72'}`}
                 onError={(e) => { e.target.src = 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?auto=format&fit=crop&w=880&q=80'; }} />
             ) : (

@@ -9,7 +9,7 @@
  * Named exports only.
  */
 
-export { getUserId, clearUserIdCache } from './getUserId.js';
+export { getUserId, clearUserIdCache, lookupUserByEmail } from './getUserId.js';
 
 export {
   getUserContext,

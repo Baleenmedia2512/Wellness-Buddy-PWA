@@ -45,7 +45,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
       <div
         ref={elRef}
         role="button"
-        aria-label={`${foodData.name}, ${Math.round(calories)} kilocalories`}
+        aria-label={`Meal, ${Math.round(calories)} kilocalories`}
         tabIndex={0}
         onKeyDown={(e) => {
           if (leaving) return;
@@ -81,7 +81,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
                 src={meal.ImageBase64.startsWith('data:image')
                   ? meal.ImageBase64
                   : `data:image/jpeg;base64,${meal.ImageBase64}`}
-                alt={foodData.name}
+                alt="Meal"
                 className="w-full h-full object-cover"
                 loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -89,7 +89,7 @@ const MealCard = ({ meal, foodData, mealTime, calories, onDelete, onClick }) => 
             ) : meal.ImagePath ? (
               <img
                 src={meal.ImagePath}
-                alt={foodData.name}
+                alt="Meal"
                 className="w-full h-full object-cover"
                 loading="lazy"
                 onError={(e) => { e.currentTarget.style.display = 'none'; }}

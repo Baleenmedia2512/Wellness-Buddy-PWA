@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Capacitor } from '@capacitor/core';
 import { Geolocation } from '@capacitor/geolocation';
 import { StepCounterPlugin } from '../../../shared/plugins/stepCounterPlugin';
-import { lookup as lookupUser } from '../../user/services/user.api';
+import { lookupUserByEmail } from '../../../shared/services';
 import {
   readStoredUserId, writeStoredUserId, readStoredEmail,
 } from '../services/stepCounterStorage';
@@ -35,7 +35,7 @@ export function useStepPermissions({ userId, refs }) {
       const email = readStoredEmail();
       if (email) {
         try {
-          const data = await lookupUser(email);
+          const data = await lookupUserByEmail(email);
           if (data.success && data.userId) {
             writeStoredUserId(data.userId);
             if (!cancelled) setResolvedUserId(data.userId);

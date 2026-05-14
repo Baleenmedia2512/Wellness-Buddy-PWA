@@ -18,6 +18,8 @@ import {
   resolveFoodItemIndex,
   transformDbItemToEditable,
   parseAnalysisData,
+  recalculateTotals,
+  persistMealItems as persistMealItemsService,
 } from "../services/nutritionDashboard";
 import {
   NutritionSummaryCards,
@@ -144,88 +146,13 @@ const NutritionDashboard = ({
 
       // Transform database format to EditableFoodItem expected format
       const transformedItems = (foodData.detailedItems || []).map((item) => {
-        // Auto-detect liquids from name if not explicitly set (for backwards compatibility)
-        const nameToCheck = (item.name || "").toLowerCase();
-        const liquidKeywords = [
-          "shake",
-          "juice",
-          "milk",
-          "Lassi",
-          "coffee",
-          "tea",
-          "water",
-          "smoothie",
-          "soup",
-          "drink",
-          "beverage",
-          "cola",
-          "soda",
-          "beer",
-          "wine",
-          "cocktail",
-          "latte",
-          "cappuccino",
-          "espresso",
-        ];
-        const isLiquidByName = liquidKeywords.some((keyword) =>
-          nameToCheck.includes(keyword),
-        );
-
-        // Determine if this is a liquid food - check both explicit flag and volume_ml presence
-        const isLiquid =
-          item.isLiquid === true ||
-          (item.volume_ml !== null && item.volume_ml !== undefined) ||
-          isLiquidByName;
-
-        // âœ… Get the correct value based on liquid/solid
-        const actualGrams = isLiquid
-          ? item.volume_ml || item.grams || item.weight_g || 100
-          : item.weight_g || item.grams || item.volume_ml || 100;
-
-        const unit = item.unit || (isLiquid ? "ml" : "g");
-
-        // Calculate per100g if not present (needed for editing)
-        const nutrition = item.nutrition || {};
-        const per100g = item.per100g || {
-          calories: (nutrition.calories || 0) * (100 / actualGrams),
-          protein: (nutrition.protein || 0) * (100 / actualGrams),
-          carbs: (nutrition.carbs || 0) * (100 / actualGrams),
-          fat: (nutrition.fat || 0) * (100 / actualGrams),
-          fiber: (nutrition.fiber || 0) * (100 / actualGrams),
-        };
-
-        const transformed = {
-          ...item,
-          serving: {
-            description: item.portion,
-            grams: actualGrams,
-            unit: unit,
-            isLiquid: isLiquid,
-          },
-          portionDescription: item.portion,
-          grams: actualGrams,
-          unit: unit,
-          isLiquid: isLiquid,
-          per100g: per100g, // âœ… Add per100g for editing calculations
-          // ðŸ”´ CRITICAL: Preserve correction metadata if it exists
-          // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
-          originalAiName: item.originalAiName || null, // Use null instead of fallback
-          wasAutoCorrected:
-            item.wasAutoCorrected || (item.originalAiName ? true : false),
-          correctionSource: item.correctionSource || null,
-          correctionMetadata: item.correctionMetadata || null,
-          // Flag to indicate this item needs reverse-lookup
-          needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
-        };
-        console.log("Ã°Å¸â€Â [NutritionDashboard] Transformed item:", {
+        const transformed = transformDbItemToEditable(item);
+        console.log("[NutritionDashboard] Transformed item:", {
           name: item.name,
           originalAiName: transformed.originalAiName,
           wasAutoCorrected: transformed.wasAutoCorrected,
           needsReverseLookup: transformed.needsReverseLookup,
           correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
-          isLiquidByName,
-          original: item,
-          transformed: transformed,
         });
         return transformed;
       });
@@ -272,37 +199,11 @@ const NutritionDashboard = ({
     [],
   );
 
-  // Recalculate total nutrition from all food items
-  const recalculateTotals = (items) => {
-    const totals = items.reduce(
-      (acc, item) => ({
-        calories:
-          acc.calories + (item.nutrition?.calories || item.calories || 0),
-        protein: acc.protein + (item.nutrition?.protein || item.protein || 0),
-        carbs: acc.carbs + (item.nutrition?.carbs || item.carbs || 0),
-        fat: acc.fat + (item.nutrition?.fat || item.fat || 0),
-        fiber: acc.fiber + (item.nutrition?.fiber || item.fiber || 0),
-      }),
-      { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
-    );
-
-    return {
-      calories: Math.round(totals.calories),
-      protein: Math.round(totals.protein * 10) / 10,
-      carbs: Math.round(totals.carbs * 10) / 10,
-      fat: Math.round(totals.fat * 10) / 10,
-      fiber: Math.round(totals.fiber * 10) / 10,
-    };
-  };
-
-  // Handle food item update and save to database
+  // Wrap shared persistMealItems with local state setters and saving flag.
   const persistMealItems = async (newItems, newTotals, options = {}) => {
     if (!selectedMeal?.ID) return;
 
-    const {
-      syncSelectedMeal = true,
-      refreshStats = true,
-    } = options;
+    const { syncSelectedMeal = true, refreshStats = true } = options;
 
     setIsSaving(true);
     try {
@@ -311,104 +212,21 @@ const NutritionDashboard = ({
         throw new Error("User not authenticated or not found in database");
       }
 
-      const updatedAnalysisData = {
-        foods: newItems.map((item) => ({
-          name: item.name,
-          portion:
-            item.serving?.description ||
-            item.portionDescription ||
-            item.portion ||
-            "1 serving",
-          weight_g:
-            item.unit === "ml"
-              ? null
-              : item.serving?.grams || item.grams || item.weight_g || 100,
-          volume_ml:
-            item.unit === "ml"
-              ? item.serving?.grams || item.grams || item.weight_g || 100
-              : null,
-          unit: item.unit || item.serving?.unit || "g",
-          isLiquid: item.isLiquid || item.serving?.isLiquid || false,
-          nutrition: {
-            calories: Math.round(item.nutrition?.calories || item.calories || 0),
-            protein: Math.round(item.nutrition?.protein || item.protein || 0),
-            carbs: Math.round(item.nutrition?.carbs || item.carbs || 0),
-            fat: Math.round(item.nutrition?.fat || item.fat || 0),
-            fiber: Math.round(item.nutrition?.fiber || item.fiber || 0),
-          },
-          originalAiName: item.originalAiName || item.name,
-          wasAutoCorrected: item.wasAutoCorrected || false,
-          correctionSource: item.correctionSource || null,
-          correctionMetadata: item.correctionMetadata || null,
-        })),
-        total: {
-          calories: Math.round(newTotals.calories || 0),
-          protein: Math.round(newTotals.protein || 0),
-          carbs: Math.round(newTotals.carbs || 0),
-          fat: Math.round(newTotals.fat || 0),
-          fiber: Math.round(newTotals.fiber || 0),
+      await persistMealItemsService({
+        apiBaseUrl,
+        mealId: selectedMeal.ID,
+        userId: resolvedUserId,
+        newItems,
+        newTotals,
+        setAnalyses,
+        syncSelectedMeal,
+        setSelectedMeal,
+        refresh: refreshStats ? fetchDayAnalyses : null,
+        selectedDate,
+        markAutoSave: () => {
+          isAutoSaveUpdateRef.current = true;
         },
-        confidence: "high",
-      };
-
-      const response = await fetch(
-        `${apiBaseUrl}/api/food-corrections/nutrition`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            id: selectedMeal.ID,
-            userId: resolvedUserId,
-            analysisData: updatedAnalysisData,
-            totalCalories: Math.round(newTotals.calories || 0),
-            totalProtein: Math.round(newTotals.protein || 0),
-            totalCarbs: Math.round(newTotals.carbs || 0),
-            totalFat: Math.round(newTotals.fat || 0),
-            totalFiber: Math.round(newTotals.fiber || 0),
-          }),
-        },
-      );
-
-      const result = await response.json();
-
-      if (!response.ok || !result.success) {
-        throw new Error(result.message || "Failed to update meal");
-      }
-
-      setAnalyses((prev) =>
-        prev.map((meal) =>
-          meal.ID === selectedMeal.ID
-            ? {
-                ...meal,
-                AnalysisData: JSON.stringify(updatedAnalysisData),
-                TotalCalories: Math.round(newTotals.calories || 0),
-                TotalProtein: Math.round(newTotals.protein || 0),
-                TotalCarbs: Math.round(newTotals.carbs || 0),
-                TotalFat: Math.round(newTotals.fat || 0),
-                TotalFiber: Math.round(newTotals.fiber || 0),
-              }
-            : meal,
-        ),
-      );
-
-      if (syncSelectedMeal) {
-        isAutoSaveUpdateRef.current = true;
-        setSelectedMeal((prev) => ({
-          ...prev,
-          AnalysisData: JSON.stringify(updatedAnalysisData),
-          TotalCalories: Math.round(newTotals.calories || 0),
-          TotalProtein: Math.round(newTotals.protein || 0),
-          TotalCarbs: Math.round(newTotals.carbs || 0),
-          TotalFat: Math.round(newTotals.fat || 0),
-          TotalFiber: Math.round(newTotals.fiber || 0),
-        }));
-      }
-
-      if (refreshStats) {
-        fetchDayAnalyses(selectedDate).catch((err) =>
-          console.error("? Error reloading stats:", err),
-        );
-      }
+      });
     } catch (error) {
       console.error("[NutritionDashboard] Failed to persist meal items:", error);
       throw error;
@@ -431,31 +249,6 @@ const NutritionDashboard = ({
       console.error("? Error updating meal:", error);
       throw error;
     }
-  };
-
-  const getFoodSignature = (item) => {
-    const name = (item?.name || "").trim().toLowerCase();
-    const grams =
-      item?.serving?.grams ?? item?.grams ?? item?.estimatedWeight ?? "";
-    const unit =
-      (item?.serving?.unit || item?.unit || "").trim().toLowerCase();
-    return `${name}::${grams}::${unit}`;
-  };
-
-  const resolveFoodItemIndex = (items, fallbackIndex, snapshot) => {
-    if (snapshot) {
-      const snapSig = getFoodSignature(snapshot);
-      const bySignature = items.findIndex(
-        (item) => getFoodSignature(item) === snapSig,
-      );
-      if (bySignature !== -1) return bySignature;
-    }
-
-    if (fallbackIndex >= 0 && fallbackIndex < items.length) {
-      return fallbackIndex;
-    }
-
-    return -1;
   };
 
   const handleDeleteFoodItem = async (index, options = {}) => {
@@ -1142,7 +935,7 @@ const NutritionDashboard = ({
         </>
       )}
 
-      {/* Date selector */selectedDate}
+      {/* Date selector */}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {isMobileDevice() ? (

@@ -54,3 +54,35 @@ export async function getUserId(user) {
     return null;
   }
 }
+
+/**
+ * Look up user by email and return the full API response.
+ * Useful when you need access to success status and other metadata.
+ *
+ * @param {string} email - The email address to lookup
+ * @returns {Promise<{success: boolean, userId?: number}>} Full API response
+ */
+export async function lookupUserByEmail(email) {
+  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  if (!email) return { success: false };
+
+  try {
+    const res = await fetch(`${apiBaseUrl}/api/user/lookup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const data = await res.json();
+    
+    // Cache the userId if successful
+    if (data.success && data.userId) {
+      userIdCache.set(email, data.userId);
+      console.log('[lookupUserByEmail] Cached userId for:', email);
+    }
+    
+    return data;
+  } catch (err) {
+    console.error('[lookupUserByEmail] Error:', err);
+    return { success: false, error: err.message };
+  }
+}
