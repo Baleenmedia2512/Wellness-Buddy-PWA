@@ -1,6 +1,7 @@
 // Day-of-meals fetcher. Returns { success, list, error } — never throws.
 // Demo accounts also receive any locally-stored meals matching the date.
 import { toLocalDateString } from './analysisHelpers';
+import * as Session from '../../../../shared/services/sessionStorage';
 
 export async function fetchDayAnalyses({ apiBaseUrl, userId, date }) {
   if (!userId) return { success: false, list: [], error: 'no-user' };
@@ -18,7 +19,7 @@ export async function fetchDayAnalyses({ apiBaseUrl, userId, date }) {
     let list = data.data || [];
     if (userId === 'DEMO_USER') {
       try {
-        const demoMeals = JSON.parse(localStorage.getItem('demo_meals') || '[]');
+        const demoMeals = JSON.parse(Session.getDemoMealsRaw() || '[]');
         list = [...list, ...demoMeals.filter((m) => m.dateKey === dateString)];
       } catch { /* ignore */ }
     }

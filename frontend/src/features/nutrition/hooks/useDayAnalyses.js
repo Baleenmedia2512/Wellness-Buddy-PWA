@@ -11,6 +11,7 @@
  */
 import { useState, useEffect, useCallback } from 'react';
 import { parseAnalysisData } from '../services/nutritionDashboard';
+import * as Session from '../../../shared/services/sessionStorage';
 
 const EMPTY_STATS = {
   totalCalories: 0,
@@ -87,7 +88,7 @@ export function useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId }
           // 🔒 Demo account — merge localStorage meals for the selected date
           if (actualUserId === 'DEMO_USER') {
             try {
-              const demoMeals = JSON.parse(localStorage.getItem('demo_meals') || '[]');
+              const demoMeals = JSON.parse(Session.getDemoMealsRaw() || '[]');
               const dayMeals = demoMeals.filter((m) => m.dateKey === dateString);
               list = [...list, ...dayMeals];
             } catch (e) { /* ignore */ }

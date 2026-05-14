@@ -1,8 +1,8 @@
 // Demo accounts skip the DB write — meals are persisted to localStorage instead.
 import { transformToBackgroundServiceFormat } from './transformAnalysisFormat';
+import * as Session from '../sessionStorage';
 
 const DEMO_EMAILS = ['testereasywork@gmail.com'];
-const DEMO_STORE_KEY = 'demo_meals';
 const DEMO_MAX = 20;
 
 export const isDemoUser = (userId, userEmail) =>
@@ -22,10 +22,10 @@ export function saveDemoMeal({ imageBase64, analysisResult, captureTimestamp }) 
     dateKey: now.slice(0, 10),
   };
   try {
-    const stored = JSON.parse(localStorage.getItem(DEMO_STORE_KEY) || '[]');
+    const stored = JSON.parse(Session.getDemoMealsRaw() || '[]');
     stored.push(meal);
     if (stored.length > DEMO_MAX) stored.splice(0, stored.length - DEMO_MAX);
-    localStorage.setItem(DEMO_STORE_KEY, JSON.stringify(stored));
+    Session.setDemoMealsRaw(JSON.stringify(stored));
   } catch { /* ignore quota / parse errors */ }
   return { success: true, id: demoId, insertId: null };
 }

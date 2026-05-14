@@ -1,4 +1,55 @@
 // src/App.js
+// ============================================================================
+// WellnessValleyApp — App.js architecture policy (post-hygiene-phase, May 2026)
+// ----------------------------------------------------------------------------
+// App.js is INTENTIONALLY the orchestrator. It is NOT being shrunk to a thin
+// shell. The following responsibilities live here on purpose and should NOT
+// be extracted without a strong reason:
+//
+//   1. Identity & session ownership
+//      - The single `user` / `isUserActive` / `userContext` source of truth.
+//      - Sign-in / sign-out flows (Firebase + OTP).
+//      - The iOS Keychain re-auth gate (`forceLoggedOut`) — MUST stay read
+//        synchronously at component init, before Firebase fires.
+//
+//   2. Native lifecycle ownership
+//      - All Capacitor native concerns are now delegated to
+//        `shared/services/nativeLifecycle` (May 2026 phase). App.js still
+//        owns the orchestration *call sites* (effects decide WHEN to register,
+//        WHEN to fire permissions, WHEN to hide splash); the service owns the
+//        plugin plumbing.
+//      - Multiple `appStateChange` listeners coexist (gallery effect +
+//        foreground profile-check effect) — each consumer receives its own
+//        PluginListenerHandle and removes only its own handle on cleanup.
+//        Nothing in this codebase calls `App.removeAllListeners()`.
+//      - SplashScreen dismissal timing (500 ms after first React render).
+//      - StatusBar overlay configuration.
+//      - Permissions request orchestration (camera/photos → push → geolocation).
+//
+//   3. Routing orchestration
+//      - The 24 `show*` view-flag booleans + their localStorage mirroring
+//        (`currentPage`). This is a deliberate homemade router. It can be
+//        replaced by a real router LATER as a single focused effort —
+//        do not collapse it into a reducer in the meantime (modal-over-route
+//        invariants would break).
+//
+//   4. Cross-feature glue that legitimately spans VSA boundaries
+//      - The image-capture pipeline (it dispatches to nutrition / weight /
+//        education / activity — no single feature owns it).
+//      - Watch-burned-calories → Nutrition write (cross-feature by design).
+//
+// State-machine candidates (deferred to later phases):
+//   - Auth flow (idle → restoring → authenticating → checking_status →
+//     checking_setup → checking_picture → ready | inactive | not_found).
+//   - Image-capture pipeline (idle → captured → detecting → analyzing →
+//     correcting → checking_duplicate → confirming → saving | manual_fallback).
+//
+// Hygiene-phase guarantees (this commit):
+//   - Session keys go through `shared/services/sessionStorage.js`.
+//   - Lifecycle listeners track their own handles (no `App.removeAllListeners`).
+//   - High-noise debug logs go through `shared/utils/logger.debugLog`.
+//   - Long-lived effect fetches use `shared/utils/fetchWithAbort` discipline.
+// ============================================================================
 import React, {
   useState,
   useRef,
@@ -11,11 +62,6 @@ import React, {
 } from "react";
 import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
-import { App } from "@capacitor/app";
-import { PushNotifications } from "@capacitor/push-notifications";
-import { Geolocation } from "@capacitor/geolocation";
-import { Camera } from "@capacitor/camera";
-import { SplashScreen } from "@capacitor/splash-screen";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
 import { NutritionCard } from "./features/nutrition";
@@ -64,6 +110,14 @@ import CustomAlertModal from "./shared/components/CustomAlertModal";
 import { CoachScoreSummary } from "./features/leaderboard";
 import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
+import * as Session from "./shared/services/sessionStorage";
+import * as nativeLifecycle from "./shared/services/nativeLifecycle";
+import * as authFsm from "./shared/services/auth/fsm";
+import { fetchProfileCompletion, fetchProfilePicture } from "./shared/services/auth/userProfile";
+import { fetchUserStatus, fetchSetupStatus } from "./shared/services/auth/userSetup";
+import { silentlyCompleteDemoSetup, DEMO_EMAIL } from "./shared/services/auth/demoSetup";
+import { debugLog } from "./shared/utils/logger";
+import { createAbortGroup, isAbortError } from "./shared/utils/fetchWithAbort";
 import {
   signInWithGoogle,
   signInWithGooglePopup,
@@ -129,11 +183,11 @@ function WellnessValleyApp() {
   // ✅ iOS Sign-out gate: persisted in localStorage so it survives app restarts
   // Firebase re-auth from Keychain is blocked until user explicitly taps Sign In
   const [forceLoggedOut, setForceLoggedOut] = useState(
-    localStorage.getItem("userSignedOut") === "true"
+    Session.isUserSignedOut()
   );
   const [authLoading, setAuthLoading] = useState(true);
   const [isOtpVerified, setIsOtpVerified] = useState(
-    localStorage.getItem("isOtpVerified") === "true",
+    Session.isOtpVerified(),
   );
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
@@ -154,7 +208,33 @@ function WellnessValleyApp() {
   const [educationWindow, setEducationWindow] = useState(null);
   const [weightResult, setWeightResult] = useState(null); // Store weight detection results
   const [savedWeightId, setSavedWeightId] = useState(null); // ID of the saved weight entry for editing
-  const savedWeightIdRef = useRef(null); // Ref mirror — always current inside async handlers
+  // ─── savedWeightIdRef ────────────────────────────────────────────────────
+  // INTENTIONAL ref-mirror of `savedWeightId` state.
+  //
+  // Why both exist:
+  //   - `savedWeightId` (state) drives JSX (e.g. enabling the inline-edit
+  //     pencil button, conditional render of the edit overlay).
+  //   - `savedWeightIdRef` (ref) is read inside async handlers that are
+  //     created/closed-over BEFORE the state setter resolves — specifically:
+  //       • performWeightSave    → writes the new id (line ~1884)
+  //       • handleWeightEditSave → reads the current id mid-flight (line ~1947)
+  //                                so a user editing immediately after save
+  //                                hits the right entryId without waiting
+  //                                for React to re-render the handler.
+  //       • saveWeightEntry      → updates id after a manual save (line ~1973)
+  //   - Cleared together with state in showMainPage / showDashboardPage /
+  //     handleSignOut so they cannot diverge across navigation.
+  //
+  // Stale-closure risk (documented, NOT fixed in hygiene phase):
+  //   - The inline edit handler captures `weightResult` and `user` by closure
+  //     but reads `savedWeightIdRef.current` directly. If a second weight
+  //     save lands between two clicks of the edit button, the edit can race
+  //     onto the *new* entry id while the user thinks they are editing the
+  //     prior result. This is currently masked by the UI clearing the result
+  //     card on save, so practically unreachable. To eliminate fully, a
+  //     state-machine extraction of weight-save (later phase) should pair
+  //     `entryId` with the result object instead of using a sibling ref.
+  const savedWeightIdRef = useRef(null);
   const [isEditingWeight, setIsEditingWeight] = useState(false); // Inline edit mode
   const [editWeightValue, setEditWeightValue] = useState(""); // Value being edited
   const [isSavingWeightEdit, setIsSavingWeightEdit] = useState(false); // Loading for edit save
@@ -218,12 +298,11 @@ function WellnessValleyApp() {
   const [profilePicSnoozeData, setProfilePicSnoozeData] = useState(null);
 
   // Ref to prevent race conditions re-showing the gate after a successful save.
-  // Initialised from localStorage so it persists across page refreshes.
-  const storedEmail = localStorage.getItem("userEmail") || "";
-  const profileCompletedRef = useRef(
-    storedEmail !== "" &&
-      localStorage.getItem("profileComplete_v2_" + storedEmail) === "true",
-  );
+  // Initialised from localStorage (via Session helper) so it persists across
+  // page refreshes. The `profileComplete_v2_<email>` key is per-user; the
+  // helper handles the suffix and missing-email case for us.
+  const storedEmail = Session.getUserEmail() || "";
+  const profileCompletedRef = useRef(Session.isProfileComplete(storedEmail));
 
   // Profile update trigger - increment this to force Dashboard to refetch BMR
   const [profileUpdateTrigger, setProfileUpdateTrigger] = useState(0);
@@ -273,40 +352,9 @@ function WellnessValleyApp() {
   const [showSetupWizard, setShowSetupWizard] = useState(false);
   const [showValidateOTP, setShowValidateOTP] = useState(false);
 
-  // ── Demo account: silently complete coach setup in background ─────────────
-  const DEMO_EMAIL = 'testereasywork@gmail.com';
-  const silentlyCompleteDemoSetup = async (userEmail) => {
-    if ((userEmail || '').toLowerCase().trim() !== DEMO_EMAIL) return false;
-    try {
-      const API_BASE = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
-      // 1. Search for Yasheer J
-      const searchRes = await fetch(`${API_BASE}/api/users/search?q=Yasheer+J&email=${encodeURIComponent(userEmail)}`);
-      const searchData = await searchRes.json();
-      const yasheer = (searchData.coaches || []).find(c => c.userName.toLowerCase().includes('yasheer'));
-      if (!yasheer) { console.warn('[Demo] Yasheer J not found'); return false; }
-
-      // 2. Send upline request (backend auto-hashes OTP 000000)
-      await fetch(`${API_BASE}/api/upline/request`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ coachId: yasheer.userId, email: userEmail }),
-      });
-
-      // 3. Validate with fixed OTP 000000
-      await fetch(`${API_BASE}/api/upline/validate-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ otp: '000000', email: userEmail }),
-      });
-
-      localStorage.setItem('coachOtpVerified', 'true');
-      console.log('✅ [Demo] Coach setup completed silently');
-      return true;
-    } catch (err) {
-      console.error('[Demo] Silent setup failed:', err);
-      return false;
-    }
-  };
+  // Demo account: silent coach-OTP setup is provided by
+  // shared/services/auth/demoSetup.js. DEMO_EMAIL and the
+  // silentlyCompleteDemoSetup function are imported at the top of this file.
   // ─────────────────────────────────────────────────────────────────────────
 
   // Wellness University state
@@ -462,34 +510,14 @@ function WellnessValleyApp() {
     return () => clearTimeout(authTimeout);
   }, []);
 
-  useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      // Double-check splash screen is hidden after React renders
-      const timer = setTimeout(() => {
-        SplashScreen.hide().catch((err) => {
-          console.log("Splash screen already hidden");
-        });
-      }, 500);
-
-      return () => clearTimeout(timer);
-    }
-  }, []);
-  // useEffect(() => {
-  //   if (Capacitor.isNativePlatform()) {
-  //     // Double-check splash screen is hidden after React renders
-  //     const timer = setTimeout(() => {
-  //       SplashScreen.hide().catch((err) => {
-  //         console.log("Splash screen already hidden");
-  //       });
-  //     }, 500);
-
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, []);
+  // ✅ NATIVE LIFECYCLE PHASE (May 2026): SplashScreen dismissal delegated to
+  // shared/services/nativeLifecycle. Timing (500ms), error-swallowing, and
+  // native-only gating are preserved exactly inside the service.
+  useEffect(() => nativeLifecycle.scheduleSplashHide(500), []);
 
   // Restore showDashboard from localStorage using startTransition — avoids suspending lazy <Dashboard> on mount
   useEffect(() => {
-    const page = localStorage.getItem("currentPage");
+    const page = Session.getCurrentPage();
     if (
       page === "dashboard" ||
       page === "nutrition-dashboard" ||
@@ -517,12 +545,12 @@ function WellnessValleyApp() {
       }
       if (showStepCounter) {
         // setShowStepCounter(false); // feature disabled
-        localStorage.setItem("currentPage", "main");
+        Session.setCurrentPage("main");
         return true;
       }
       if (showScreenTime) {
         setShowScreenTime(false);
-        localStorage.setItem("currentPage", "main");
+        Session.setCurrentPage("main");
         return true;
       }
       return ionRouter.canGoBack() && ionRouter.goBack();
@@ -559,6 +587,13 @@ function WellnessValleyApp() {
   // Add a ref to track if image processing is in progress (prevents React StrictMode double-calls)
   const imageProcessingInProgress = useRef(false);
 
+  // Phase 3d-a: Auth FSM shadow-mode observation refs.
+  // The FSM never mutates React state. It only logs transitions and drift.
+  // Disabled by default — enable via `localStorage.setItem('authFsm.shadow', 'true')`
+  // or REACT_APP_AUTH_FSM_SHADOW=true. Kill switch overrides everything.
+  const authFsmLegacyRef = useRef({});
+  const authFsmStartedRef = useRef(false);
+
   // Check user status (Active/Inactive) using lookup-user-id API
   const checkUserStatus = useCallback(
     async (user) => {
@@ -582,60 +617,43 @@ function WellnessValleyApp() {
         statusCheckInProgress.current = true;
 
         const userEmail = user.email || user.Email;
+        if (!userEmail) return true;
 
-        if (!userEmail) {
-          return true;
-        }
-
-        const response = await fetch(`${apiBaseUrl}/api/user/lookup`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: userEmail }),
+        // Phase 3b: HTTP + response mapping moved into shared/services/auth/userSetup.
+        // Fail-open semantics preserved by the helper (network errors → 'active').
+        const { result, role } = await fetchUserStatus({
+          apiBaseUrl,
+          email: userEmail,
         });
 
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
+        // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+        authFsm.send({ type: authFsm.E.USER_STATUS_RESOLVED, result, role });
 
-        const data = await response.json();
-
-        // User not found in database
-        if (!data.success || data.userNotFound) {
+        if (result === "userNotFound") {
           setShowUserNotFoundModal(true);
           setIsUserActive(false);
           return false;
         }
 
-        // ✅ New user — SetupWizard will handle profile collection, no popup needed
-        if (data.isNewUser) {
+        if (result === "newUser") {
+          // ✅ New user — SetupWizard will handle profile collection, no popup needed
           setShowUserNotFoundModal(false);
           setIsUserActive(true);
-          if (data.role) setUserRole(data.role);
+          if (role) setUserRole(role);
           return true;
         }
 
-        // User found but inactive
-        if (data.success && !data.isActive) {
+        if (result === "inactive") {
           setShowInactiveModal(true);
           setIsUserActive(false);
           return false;
         }
 
-        // User is active - clear any modal states and store role
+        // result === 'active' (also covers fail-open on network error)
         setShowInactiveModal(false);
         setShowUserNotFoundModal(false);
         setIsUserActive(true);
-
-        // Store user role for access control
-        if (data.role) {
-          setUserRole(data.role);
-        }
-
-        return true;
-      } catch (error) {
-        console.error("Error checking user status:", error);
-        // On error, allow user to continue (fail-open)
-        setIsUserActive(true);
+        if (role) setUserRole(role);
         return true;
       } finally {
         statusCheckInProgress.current = false;
@@ -706,7 +724,7 @@ function WellnessValleyApp() {
       startTransition(() => {
         setShowDashboard(true);
       });
-      localStorage.setItem("currentPage", "dashboard");
+      Session.setCurrentPage("dashboard");
     },
     [user, checkUserStatus, nutritionData, imagePreview, imageType, watchResult, educationResult, weightResult, selectedImage],
   );
@@ -739,54 +757,15 @@ function WellnessValleyApp() {
       fileInputRef.current.resetInputs();
     }
 
-    localStorage.setItem("currentPage", "main");
+    Session.setCurrentPage("main");
   };
 
-  const requestAllPermissions = async () => {
-    if (!Capacitor.isNativePlatform()) return;
-    try {
-      console.log("📱 Requesting all permissions at once...");
-
-      // Request camera/gallery permissions
-      await Camera.requestPermissions({ permissions: ["camera", "photos"] });
-
-      // Request push notification permissions
-      await PushNotifications.requestPermissions();
-
-      // Request location permissions for attendance tracking
-      await Geolocation.requestPermissions();
-
-      // On Android, also prompt for exact-alarm permission so reminders fire on time
-      // FEATURE DISABLED — Reminders commented out
-      // if (Capacitor.getPlatform() === "android") {
-      //   try {
-      //     const { canScheduleExact } = await checkExactAlarmPermission();
-      //     if (!canScheduleExact) {
-      //       await openExactAlarmSettings();
-      //     }
-      //   } catch (e) {
-      //     console.warn("âš ï¸ Exact alarm permission check failed:", e);
-      //   }
-      // }
-
-      // Request ACTIVITY_RECOGNITION so the background step sensor works from day 1
-      // FEATURE DISABLED — Step Counter commented out
-      // try {
-      //   const { StepCounterPlugin } = await import('./shared/plugins/stepCounterPlugin');
-      //   const av = await StepCounterPlugin.isAvailable();
-      //   if (av?.available) {
-      //     await StepCounterPlugin.requestPermission();
-      //     console.log('✅ Activity recognition permission requested');
-      //   }
-      // } catch (stepErr) {
-      //   console.warn('âš ï¸ Step counter permission request failed:', stepErr?.message || stepErr);
-      // }
-
-      console.log("✅ All permissions requested");
-    } catch (err) {
-      console.warn("âŒ Permission request failed:", err);
-    }
-  };
+  // ✅ NATIVE LIFECYCLE PHASE: permission bootstrap delegated to nativeLifecycle.
+  // App.js retains the call site (in the user-authenticated effect below) so
+  // orchestration ownership stays here; only the plugin plumbing moved out.
+  // Behavior, order (camera/photos → push → geolocation), and logging preserved
+  // exactly inside the service.
+  const requestAllPermissions = nativeLifecycle.requestAllPermissions;
 
   const handleInactiveModalClose = async () => {
     setShowInactiveModal(false);
@@ -819,52 +798,73 @@ function WellnessValleyApp() {
     }
   };
 
-  // Set up StatusBar to appear above content (not overlaid)
+  // ✅ NATIVE LIFECYCLE PHASE: StatusBar overlay configuration delegated to
+  // nativeLifecycle. Lazy import + native-only gate + warn-on-missing-plugin
+  // semantics are preserved exactly inside the service.
   useEffect(() => {
-    if (Capacitor.isNativePlatform()) {
-      import("@capacitor/status-bar")
-        .then(({ StatusBar }) => {
-          StatusBar.setOverlaysWebView({ overlay: false });
-        })
-        .catch((err) => {
-          console.warn("StatusBar plugin not available:", err);
-        });
-    }
+    nativeLifecycle.initStatusBar();
   }, []);
 
+  // ✅ HYGIENE FIX (May 2026): track our own listener handles. Previously this
+  // effect's cleanup called `App.removeAllListeners()` which also wiped the
+  // foreground-profile-check listener (registered further down at the
+  // "Immediate profile check when app comes back to foreground" effect),
+  // because Capacitor's removeAllListeners is plugin-wide. With the
+  // showDashboardPage-dep effect re-running on callback identity changes,
+  // the foreground profile check could disappear silently.
   useEffect(() => {
-    const initializeGalleryMonitoring = async () => {
-      if (Capacitor.isNativePlatform()) {
-        await GalleryMonitor.initialize();
+    if (!Capacitor.isNativePlatform()) return undefined;
 
-        App.addListener("appStateChange", ({ isActive }) => {
+    let appStateHandle = null;          // PluginListenerHandle for our appStateChange listener
+    let notificationHandle = null;      // PluginListenerHandle for galleryMonitorPlugin notificationClicked
+    let cancelled = false;
+
+    const init = async () => {
+      try {
+        await GalleryMonitor.initialize();
+        if (cancelled) return;
+
+        // ✅ NATIVE LIFECYCLE PHASE: registration plumbing routed through
+        // nativeLifecycle.addAppStateListener. Returns the same
+        // PluginListenerHandle shape as before; cleanup semantics unchanged
+        // (this effect still removes only its own handle, never
+        // App.removeAllListeners()).
+        appStateHandle = await nativeLifecycle.addAppStateListener(({ isActive }) => {
           if (isActive) {
             GalleryMonitor.checkGallery();
-            // Re-start step tracking in case Android killed the service while app was in background
-            import('./shared/plugins/stepCounterPlugin').then(({ StepCounterPlugin }) => {
-              StepCounterPlugin.isAvailable().then(av => {
-                if (av?.available) {
-                  StepCounterPlugin.getPermissionStatus().then(perm => {
-                    if (perm?.granted) StepCounterPlugin.startTracking().catch(() => {});
-                  }).catch(() => {});
-                }
-              }).catch(() => {});
-            }).catch(() => {});
+            // Re-start step tracking in case Android killed the service while in background
+            import("./shared/plugins/stepCounterPlugin")
+              .then(({ StepCounterPlugin }) => {
+                StepCounterPlugin.isAvailable().then((av) => {
+                  if (av?.available) {
+                    StepCounterPlugin.getPermissionStatus()
+                      .then((perm) => {
+                        if (perm?.granted) StepCounterPlugin.startTracking().catch(() => {});
+                      })
+                      .catch(() => {});
+                  }
+                }).catch(() => {});
+              })
+              .catch(() => {});
           } else {
-            // App going to background — reset sub-pages so reopening shows dashboard
-            const page = localStorage.getItem("currentPage");
+            // Background → reset transient sub-pages so reopening shows dashboard
+            const page = Session.getCurrentPage();
             if (page === "step-counter" || page === "screen-time") {
-              localStorage.setItem("currentPage", "main");
-              // setShowStepCounter(false); // feature disabled
+              Session.setCurrentPage("main");
               setShowScreenTime(false);
             }
           }
         });
+        if (cancelled) {
+          appStateHandle?.remove?.();
+          appStateHandle = null;
+          return;
+        }
 
         const { GalleryMonitorPlugin } = await import(
           "./shared/plugins/galleryMonitorPlugin"
         );
-        const listener = await GalleryMonitorPlugin.addListener(
+        notificationHandle = await GalleryMonitorPlugin.addListener(
           "notificationClicked",
           (data) => {
             if (data && data.action === "openBackgroundHistory") {
@@ -872,21 +872,24 @@ function WellnessValleyApp() {
             }
           },
         );
-
-        return () => {
-          listener.remove();
-        };
+        if (cancelled) {
+          notificationHandle?.remove?.();
+          notificationHandle = null;
+        }
+      } catch (err) {
+        console.warn("[App] gallery monitoring init failed:", err?.message || err);
       }
     };
 
-    let cleanupFn;
-    initializeGalleryMonitoring().then((fn) => {
-      cleanupFn = fn;
-    });
+    init();
 
     return () => {
-      App.removeAllListeners();
-      if (cleanupFn) cleanupFn();
+      cancelled = true;
+      // Only remove the listeners we registered — do NOT call
+      // App.removeAllListeners(), which would also kill the foreground
+      // profile-check listener registered in the effect below.
+      try { appStateHandle?.remove?.(); } catch { /* ignore */ }
+      try { notificationHandle?.remove?.(); } catch { /* ignore */ }
     };
   }, [showDashboardPage]);
 
@@ -918,7 +921,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(resultUser);
           if (dbUserId) {
             resultUser.id = dbUserId;
-            localStorage.setItem("dbUserId", String(dbUserId));
+            Session.setDbUserId(dbUserId);
             console.log(
               "✅ [Redirect] Attached database UserId to user object:",
               resultUser.id,
@@ -942,60 +945,45 @@ function WellnessValleyApp() {
   const checkProfileCompletion = useCallback(
     async (userEmail, userObj, { afterSave = false } = {}) => {
       if (!userEmail) return;
-      // Mark check in-flight so the gate does not render while we are fetching
       setProfileChecking(true);
-      try {
-        const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-        let latestData = null;
 
-        // Retry with delays only after a profile save (data can be briefly stale).
-        // On sign-in / refresh, one attempt is enough — data is already final.
-        const maxAttempts = afterSave ? 3 : 1;
+      const result = await fetchProfileCompletion({
+        apiBaseUrl,
+        email: userEmail,
+        afterSave,
+      });
 
-        for (let attempt = 0; attempt < maxAttempts; attempt++) {
-          const res = await fetch(
-            `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
-              userEmail,
-            )}&_t=${Date.now()}_${attempt}`,
-            { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
-          );
-          if (!res.ok) continue;
+      // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+      authFsm.send({
+        type: authFsm.E.PROFILE_CHECK_COMPLETED,
+        status: result.status,
+        snooze: result.snooze,
+        missingFields: result.missingFields,
+      });
 
-          const data = await res.json();
-          if (!data.success || !data.data) continue;
-          latestData = data.data;
+      if (result.status === "complete") {
+        profileCompletedRef.current = true;
+        setProfileChecking(false);
+        setShowCompleteProfile(false);
+        // Profile fields complete — check picture gate separately
+        if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
+        return;
+      }
 
-          if (latestData.profileComplete) {
-            profileCompletedRef.current = true;
-            localStorage.setItem("profileComplete_v2_" + userEmail, "true");
-            setProfileChecking(false);
-            setShowCompleteProfile(false);
-            // Profile fields complete — check picture gate separately
-            if (userObj) setTimeout(() => checkProfilePicture(userObj), 400);
-            return;
-          }
-
-          if (attempt < maxAttempts - 1) {
-            await sleep(450);
-          }
-        }
-
+      if (result.status === "incomplete") {
         console.log(
-          "âš ï¸ [Profile] Mandatory fields missing — showing CompleteProfilePage",
-          {
-            height: latestData?.height ?? null,
-            dietType: latestData?.dietType ?? null,
-            phoneNumber: latestData?.phoneNumber ?? null,
-          },
+          "⚠️ [Profile] Mandatory fields missing — showing CompleteProfilePage",
+          result.missingFields,
         );
-        // Store snooze data so merged screen can use it
-        setProfilePicSnoozeData(latestData?.profilePicSnooze || null);
+        setProfilePicSnoozeData(result.snooze || null);
         setProfileChecking(false);
         setShowCompleteProfile(true);
-      } catch (err) {
-        setProfileChecking(false);
-        console.warn("âš ï¸ [Profile] Failed to check profile completion:", err);
+        return;
       }
+
+      // result.status === 'error' — fail-soft, no gate flash
+      setProfileChecking(false);
+      console.warn("⚠️ [Profile] Failed to check profile completion:", result.error);
     },
     [apiBaseUrl],
   );
@@ -1010,98 +998,139 @@ function WellnessValleyApp() {
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
 
-      console.log("ðŸ–¼ï¸ [Profile Picture] Checking for valid profile picture...");
+      console.log("🖼️ [Profile Picture] Checking for valid profile picture...");
 
-      try {
-        const profilePictureKey = "profilePictureUploaded_" + userEmail;
+      const result = await fetchProfilePicture({ apiBaseUrl, email: userEmail });
 
-        // Fetch user profile to check for ProfileImage in database (always check DB)
-        const res = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
-            userEmail,
-          )}&_t=${Date.now()}`,
-          { cache: "no-store", headers: { "Cache-Control": "no-cache" } },
+      // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+      authFsm.send({
+        type: authFsm.E.PROFILE_PICTURE_CHECK_COMPLETED,
+        status: result.status,
+        source: result.source,
+        snooze: result.snooze,
+      });
+
+      if (result.status === "valid") {
+        if (result.source === "custom") {
+          console.log("✅ [Profile Picture] User has custom uploaded profile picture");
+        } else {
+          console.log(
+            "✅ [Profile Picture] User has Google profile picture:",
+            (result.profileImage || "").substring(0, 50) + "...",
+          );
+        }
+        return;
+      }
+
+      if (result.status === "snoozed") {
+        const snoozeUntil = new Date(result.snooze.until).getTime();
+        console.log(
+          "⏰ [Profile Picture] Snoozed (DB) until",
+          new Date(snoozeUntil).toLocaleString(),
         );
+        return;
+      }
 
-        if (!res.ok) {
-          console.warn("âš ï¸ [Profile Picture] Failed to fetch profile");
-          return;
-        }
-
-        const data = await res.json();
-        if (!data.success || !data.data) {
-          console.warn("âš ï¸ [Profile Picture] Invalid response");
-          return;
-        }
-
-        const profile = data.data;
-        // console.log("ðŸ” [Profile Picture] Database ProfileImage value:", profile.profileImage || "NULL");
-        
-        // Check if user has a valid profile image (either custom uploaded or Google photo)
-        if (profile.profileImage) {
-          // Accept custom uploaded images (base64)
-          if (profile.profileImage.startsWith("data:image/")) {
-            console.log("✅ [Profile Picture] User has custom uploaded profile picture");
-            localStorage.setItem(profilePictureKey, "true");
-            return;
-          }
-          
-          // Accept Google profile picture URLs
-          if (profile.profileImage.startsWith("https://")) {
-            console.log("✅ [Profile Picture] User has Google profile picture:", profile.profileImage.substring(0, 50) + "...");
-            localStorage.setItem(profilePictureKey, "true");
-            return;
-          }
-        }
-
-        // No valid profile picture found - check snooze from DB before showing modal
-        const snooze = profile.profilePicSnooze;
-        if (snooze) {
-          const snoozeUntil = new Date(snooze.until).getTime();
-          const snoozeCount = snooze.count ?? 0;
-          const snoozeMax = snooze.max ?? 5;
-          if (snoozeCount > 0 && snoozeCount < snoozeMax && Date.now() < snoozeUntil) {
-            console.log("â° [Profile Picture] Snoozed (DB) until", new Date(snoozeUntil).toLocaleString());
-            return;
-          }
-        }
+      if (result.status === "missing") {
         // Store snooze data in state so modal can use count/max
-        setProfilePicSnoozeData(snooze || null);
-
-        console.log("âš ï¸ [Profile Picture] No valid profile picture found, showing mandatory upload modal");
-        // Clear localStorage flag in case it was set incorrectly
-        localStorage.removeItem(profilePictureKey);
+        setProfilePicSnoozeData(result.snooze || null);
+        console.log(
+          "⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal",
+        );
         setShowMandatoryProfilePictureModal(true);
-      } catch (err) {
-        console.error("âŒ [Profile Picture] Check failed:", err);
-        // Don't block the user on errors
+        return;
+      }
+
+      // result.status === "error" — don't block the user
+      if (result.error) {
+        console.error("❌ [Profile Picture] Check failed:", result.error);
+      } else {
+        console.warn("⚠️ [Profile Picture] Failed to fetch profile");
       }
     },
     [apiBaseUrl],
   );
   // ─────────────────────────────────────────────────────────────────────────
 
+  // Phase 3d-a: Keep the legacy snapshot ref fresh so the FSM shadow bridge
+  // can compare against current React state on every event. This effect runs
+  // on every render — intentional. The body is a single ref assignment, so
+  // the cost is negligible. The FSM consumes this via `getLegacySnapshot`.
+  useEffect(() => {
+    authFsmLegacyRef.current = {
+      user: !!user,
+      isUserActive,
+      showInactiveModal,
+      showUserNotFoundModal,
+      showSetupWizard,
+      showValidateOTP,
+      showCompleteProfile,
+      showMandatoryProfilePictureModal,
+      forceLoggedOut,
+      signOutInProgress: signOutInProgress.current,
+      accountDeleted: Session.isAccountDeleted(),
+      signedOut: Session.isUserSignedOut(),
+    };
+  });
+
+  // Phase 3d-a: Start the auth FSM in shadow mode exactly once. No-op when
+  // disabled. Sends BOOT + RESTORE_SESSION so the FSM has the same starting
+  // context as the legacy boot path.
+  useEffect(() => {
+    if (authFsmStartedRef.current) return;
+    authFsmStartedRef.current = true;
+    try {
+      const platform =
+        (typeof Capacitor !== "undefined" && Capacitor.getPlatform && Capacitor.getPlatform()) ||
+        "web";
+      const started = authFsm.startShadow({
+        apiBaseUrl,
+        platform,
+        getLegacySnapshot: () => authFsmLegacyRef.current,
+      });
+      if (started) {
+        authFsm.send({
+          type: authFsm.E.RESTORE_SESSION,
+          cachedEmail: Session.getUserEmail(),
+          accountDeleted: Session.isAccountDeleted(),
+          signedOut: Session.isUserSignedOut(),
+          forceLoggedOut,
+        });
+      }
+    } catch (err) {
+      // Shadow FSM must never destabilize the host.
+      // eslint-disable-next-line no-console
+      console.warn("[AuthFSM] startShadow threw (ignored):", err);
+    }
+    // Intentionally empty deps — this must run exactly once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auth state listener
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (user) => {
+      // Phase 3d-a: Observe in shadow FSM (no behaviour change). Sent before
+      // any short-circuit so the FSM sees every Firebase auth-state change.
+      authFsm.send({ type: authFsm.E.AUTH_CHANGED, user });
+
       // If sign-out is in progress, ignore auth state changes
       if (signOutInProgress.current) {
         return;
       }
       // ✅ Also ignore if userEmail was cleared (sign-out completed)
-      const storedEmail = localStorage.getItem("userEmail");
+      const storedEmail = Session.getUserEmail();
       if (!user && !storedEmail) {
         // Normal sign-out state — do nothing, UI already reset
         return;
       }
       // ✅ Block iOS silent re-auth: if user explicitly signed out, ignore Firebase re-auth callbacks
-      if (user && localStorage.getItem("userSignedOut") === "true") {
+      if (user && Session.isUserSignedOut()) {
         console.warn("🚫 [Auth State] Blocked silent re-auth — user signed out");
         signOutUser().catch(() => {});
         return;
       }
       // ✅ Block re-auth if account was permanently deleted
-      if (user && localStorage.getItem("accountDeleted") === "true") {
+      if (user && Session.isAccountDeleted()) {
         console.warn("🚫 [Auth State] Blocked re-auth — account was deleted");
         signOutUser().catch(() => {});
         return;
@@ -1119,7 +1148,7 @@ function WellnessValleyApp() {
           const dbUserId = await getUserId(user);
           if (dbUserId) {
             user.id = dbUserId;
-            localStorage.setItem("dbUserId", String(dbUserId));
+            Session.setDbUserId(dbUserId);
             console.log(
               "✅ [Auth State] Attached database UserId to user object:",
               user.id,
@@ -1130,7 +1159,7 @@ function WellnessValleyApp() {
         // Store user email in localStorage for API calls
         const userEmail = user.email || user.Email;
         if (userEmail) {
-          localStorage.setItem("userEmail", userEmail);
+          Session.setUserEmail(userEmail);
           console.log(
             "✅ [Auth State] Stored user email in localStorage:",
             userEmail,
@@ -1171,11 +1200,10 @@ function WellnessValleyApp() {
 
           // Check setup wizard status for active users
           if (isActive && userEmail) {
-            console.log("🔄 [Auth State] Checking setup wizard status...");
+            debugLog("🔄 [Auth State] Checking setup wizard status...");
 
             // Check if user manually skipped setup (check localStorage first for quick bypass)
-            const setupSkipped = localStorage.getItem("setupSkipped");
-            if (setupSkipped === "true") {
+            if (Session.isSetupSkipped()) {
               console.log(
                 "â­ï¸ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
@@ -1185,73 +1213,59 @@ function WellnessValleyApp() {
             }
 
             try {
-              const statusResponse = await fetch(
-                `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
-                  userEmail,
-                )}`,
-              );
+              // Phase 3b: HTTP + response mapping moved into
+              // shared/services/auth/userSetup (`fetchSetupStatus`).
+              const status = await fetchSetupStatus({ apiBaseUrl, email: userEmail });
 
-              if (statusResponse.ok) {
-                const statusData = await statusResponse.json();
-                console.log("📋 [Auth State] Setup status:", statusData);
+              // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+              authFsm.send({
+                type: authFsm.E.SETUP_STATUS_RESOLVED,
+                result: status.result,
+                isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
+                coachOtpVerified: Session.isCoachOtpVerified(),
+              });
 
-                // Check if user skipped setup (from database)
-                if (statusData.setupSkipped) {
-                  console.log(
-                    "â­ï¸ [Auth State] User skipped setup (database), bypassing wizard",
-                  );
-                  localStorage.setItem("setupSkipped", "true");
-                  // Still check profile completion even if setup was skipped
+              if (status.result === "error") {
+                console.warn(
+                  "⚠️ [Auth State] Setup status check failed",
+                  status.error,
+                );
+              } else if (status.result === "skipped") {
+                console.log(
+                  "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
+                );
+                Session.markSetupSkipped();
+                await checkProfileCompletion(userEmail, user);
+                return;
+              } else if (status.result === "pendingOtp") {
+                if (Session.isCoachOtpVerified()) {
+                  console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
                   await checkProfileCompletion(userEmail, user);
-                  return;
-                }
-
-                // Show setup wizard if not complete
-                if (!statusData.setupComplete) {
-                  if (statusData.pendingRequest) {
-                    // Skip OTP modal if already verified this session
-                    if (localStorage.getItem('coachOtpVerified') === 'true') {
-                      console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
-                      await checkProfileCompletion(userEmail, user);
-                    } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
-                      // Demo account: silently validate OTP in background
-                      console.log("🤖 [Auth State] Demo account pending OTP — completing silently");
-                      await silentlyCompleteDemoSetup(userEmail);
-                      await checkProfileCompletion(userEmail, user);
-                    } else {
-                      console.log(
-                        "📧 [Auth State] Pending OTP detected, showing OTP modal",
-                      );
-                      setShowValidateOTP(true);
-                    }
-                  } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
-                    // Demo account: silently run full coach setup in background
-                    console.log("🤖 [Auth State] Demo account setup incomplete — completing silently");
-                    await silentlyCompleteDemoSetup(userEmail);
-                    await checkProfileCompletion(userEmail, user);
-                  } else {
-                    // User needs to complete setup wizard
-                    console.log(
-                      "🔧 [Auth State] Setup incomplete, showing setup wizard",
-                    );
-                    setShowSetupWizard(true);
-                  }
+                } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+                  console.log("🤖 [Auth State] Demo account pending OTP — completing silently");
+                  await silentlyCompleteDemoSetup(userEmail);
+                  await checkProfileCompletion(userEmail, user);
                 } else {
-                  console.log("✅ [Auth State] Setup already complete");
-                  // Check if mandatory profile fields are filled
-                  // checkProfilePicture is only called inside checkProfileCompletion
-                  // when profile IS complete (to avoid double gate)
+                  console.log("📧 [Auth State] Pending OTP detected, showing OTP modal");
+                  setShowValidateOTP(true);
+                }
+              } else if (status.result === "incomplete") {
+                if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+                  console.log("🤖 [Auth State] Demo account setup incomplete — completing silently");
+                  await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user);
+                } else {
+                  console.log("🔧 [Auth State] Setup incomplete, showing setup wizard");
+                  setShowSetupWizard(true);
                 }
               } else {
-                console.warn(
-                  "âš ï¸ [Auth State] Setup status check failed:",
-                  statusResponse.status,
-                );
+                // status.result === "complete"
+                console.log("✅ [Auth State] Setup already complete");
+                await checkProfileCompletion(userEmail, user);
               }
             } catch (setupError) {
               console.warn(
-                "âš ï¸ [Auth State] Failed to check setup status:",
+                "⚠️ [Auth State] Failed to check setup status:",
                 setupError,
               );
               // Continue without blocking - setup check is not critical
@@ -1339,18 +1353,18 @@ function WellnessValleyApp() {
   useEffect(() => {
     const restoreOtpUser = async () => {
       if (isOtpVerified && !user) {
-        const otpUser = localStorage.getItem("otpUser");
+        const otpUserRaw = Session.getOtpUserRaw();
 
-        if (otpUser) {
+        if (otpUserRaw) {
           try {
-            const parsedUser = JSON.parse(otpUser);
+            const parsedUser = JSON.parse(otpUserRaw);
 
             // Get database UserId if not already attached
             if (!parsedUser.id) {
               const dbUserId = await getUserId(parsedUser);
               if (dbUserId) {
                 parsedUser.id = dbUserId;
-                localStorage.setItem("dbUserId", String(dbUserId));
+                Session.setDbUserId(dbUserId);
                 console.log(
                   "✅ [OTP Restore] Attached database UserId to user object:",
                   parsedUser.id,
@@ -1361,7 +1375,7 @@ function WellnessValleyApp() {
             // Store user email in localStorage for API calls
             const userEmail = parsedUser.email || parsedUser.Email;
             if (userEmail) {
-              localStorage.setItem("userEmail", userEmail);
+              Session.setUserEmail(userEmail);
               console.log(
                 "✅ [OTP Restore] Stored user email in localStorage:",
                 userEmail,
@@ -1404,7 +1418,7 @@ function WellnessValleyApp() {
             }
           } catch (error) {
             console.error("Failed to restore OTP user:", error);
-            localStorage.removeItem("otpUser");
+            Session.clearOtpUser();
             setIsOtpVerified(false);
           }
         }
@@ -1414,22 +1428,45 @@ function WellnessValleyApp() {
     restoreOtpUser();
   }, [isOtpVerified, user, checkUserStatus, checkProfileCompletion]);
 
-  // ✅ Immediate profile check when app comes back to foreground
+  // ✅ Immediate profile check when app comes back to foreground.
+  // NOTE: this is a SEPARATE appStateChange listener from the gallery
+  // monitoring effect above. Capacitor allows multiple listeners on the
+  // same event — the gallery effect now removes only its own handle
+  // (not removeAllListeners), so this one survives gallery effect re-runs.
   useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
+    if (!Capacitor.isNativePlatform()) return undefined;
+    if (!user) return undefined;
 
-    const listener = App.addListener("appStateChange", ({ isActive }) => {
-      if (isActive && user) {
-        const userEmail = user.email || user.Email;
-        if (userEmail) {
-          console.log("🔄 [Foreground] App resumed — running immediate profile check");
-          checkProfileCompletion(userEmail, user);
+    let handle = null;
+    let cancelled = false;
+
+    // ✅ NATIVE LIFECYCLE PHASE: registration plumbing routed through
+    // nativeLifecycle.addAppStateListener. Each consumer still receives its
+    // own PluginListenerHandle so this effect can clean up independently of
+    // the gallery effect's listener (which lives above).
+    Promise.resolve(
+      nativeLifecycle.addAppStateListener(({ isActive }) => {
+        if (isActive && user) {
+          const userEmail = user.email || user.Email;
+          if (userEmail) {
+            debugLog("🔄 [Foreground] App resumed — running immediate profile check");
+            checkProfileCompletion(userEmail, user);
+          }
         }
-      }
-    });
+      }),
+    )
+      .then((h) => {
+        if (cancelled) {
+          h?.remove?.();
+        } else {
+          handle = h;
+        }
+      })
+      .catch(() => {});
 
     return () => {
-      listener.then?.((l) => l.remove()).catch(() => {});
+      cancelled = true;
+      try { handle?.remove?.(); } catch { /* ignore */ }
     };
   }, [user, checkProfileCompletion]);
 
@@ -1452,13 +1489,12 @@ function WellnessValleyApp() {
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
 
-      console.log(
+      debugLog(
         "🔄 [Setup Check] Checking setup wizard status for existing user...",
       );
 
       // Check if user manually skipped setup (check localStorage first for quick bypass)
-      const setupSkipped = localStorage.getItem("setupSkipped");
-      if (setupSkipped === "true") {
+      if (Session.isSetupSkipped()) {
         console.log(
           "â­ï¸ [Setup Check] User skipped setup (localStorage), bypassing wizard",
         );
@@ -1466,74 +1502,57 @@ function WellnessValleyApp() {
       }
 
       try {
-        const statusResponse = await fetch(
-          `${apiBaseUrl}/api/user/status?email=${encodeURIComponent(
-            userEmail,
-          )}`,
-        );
+        // Phase 3b: HTTP + response mapping moved into
+        // shared/services/auth/userSetup (`fetchSetupStatus`).
+        const status = await fetchSetupStatus({ apiBaseUrl, email: userEmail });
 
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json();
-          console.log("📋 [Setup Check] Setup status:", statusData);
+        // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+        authFsm.send({
+          type: authFsm.E.SETUP_STATUS_RESOLVED,
+          result: status.result,
+          isDemo: (userEmail || "").toLowerCase().trim() === DEMO_EMAIL,
+          coachOtpVerified: Session.isCoachOtpVerified(),
+        });
 
-          // Check if user skipped setup (from database)
-          if (statusData.setupSkipped) {
-            console.log(
-              "â­ï¸ [Setup Check] User skipped setup (database), bypassing wizard",
-            );
-            localStorage.setItem("setupSkipped", "true");
-            return;
-          }
-
-          // Show setup wizard if not complete
-          if (!statusData.setupComplete) {
-            if (statusData.pendingRequest) {
-              // Skip OTP modal if already verified this session
-              if (localStorage.getItem('coachOtpVerified') === 'true') {
-                console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
-                await checkProfileCompletion(userEmail);
-                setTimeout(() => checkProfilePicture(user), 800);
-              } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
-                // Demo account: silently validate OTP in background
-                console.log("🤖 [Setup Check] Demo account pending OTP — completing silently");
-                await silentlyCompleteDemoSetup(userEmail);
-                await checkProfileCompletion(userEmail);
-                setTimeout(() => checkProfilePicture(user), 800);
-              } else {
-                console.log(
-                  "📧 [Setup Check] Pending OTP detected, showing OTP modal",
-                );
-                setShowValidateOTP(true);
-              }
-            } else if ((userEmail || '').toLowerCase().trim() === DEMO_EMAIL) {
-              // Demo account: silently run full coach setup in background
-              console.log("🤖 [Setup Check] Demo account setup incomplete — completing silently");
-              await silentlyCompleteDemoSetup(userEmail);
-              await checkProfileCompletion(userEmail);
-              setTimeout(() => checkProfilePicture(user), 800);
-            } else {
-              // User needs to complete setup wizard
-              console.log(
-                "🔧 [Setup Check] Setup incomplete, showing setup wizard",
-              );
-              setShowSetupWizard(true);
-            }
-          } else {
-            console.log("✅ [Setup Check] Setup already complete");
-            // Check profile completion and profile picture
-            // (Firebase auth may not fire these when suspended/offline, so we run them here too)
+        if (status.result === "error") {
+          console.warn("⚠️ [Setup Check] Setup status check failed", status.error);
+        } else if (status.result === "skipped") {
+          console.log("⏭️ [Setup Check] User skipped setup (database), bypassing wizard");
+          Session.markSetupSkipped();
+          return;
+        } else if (status.result === "pendingOtp") {
+          if (Session.isCoachOtpVerified()) {
+            console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
             await checkProfileCompletion(userEmail);
             setTimeout(() => checkProfilePicture(user), 800);
+          } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+            console.log("🤖 [Setup Check] Demo account pending OTP — completing silently");
+            await silentlyCompleteDemoSetup(userEmail);
+            await checkProfileCompletion(userEmail);
+            setTimeout(() => checkProfilePicture(user), 800);
+          } else {
+            console.log("📧 [Setup Check] Pending OTP detected, showing OTP modal");
+            setShowValidateOTP(true);
+          }
+        } else if (status.result === "incomplete") {
+          if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
+            console.log("🤖 [Setup Check] Demo account setup incomplete — completing silently");
+            await silentlyCompleteDemoSetup(userEmail);
+            await checkProfileCompletion(userEmail);
+            setTimeout(() => checkProfilePicture(user), 800);
+          } else {
+            console.log("🔧 [Setup Check] Setup incomplete, showing setup wizard");
+            setShowSetupWizard(true);
           }
         } else {
-          console.warn(
-            "âš ï¸ [Setup Check] Setup status check failed:",
-            statusResponse.status,
-          );
+          // status.result === "complete"
+          console.log("✅ [Setup Check] Setup already complete");
+          await checkProfileCompletion(userEmail);
+          setTimeout(() => checkProfilePicture(user), 800);
         }
       } catch (setupError) {
         console.warn(
-          "âš ï¸ [Setup Check] Failed to check setup status:",
+          "⚠️ [Setup Check] Failed to check setup status:",
           setupError,
         );
       }
@@ -1571,15 +1590,18 @@ function WellnessValleyApp() {
     return () => clearTimeout(timeoutId);
   }, [user?.id]); // Re-run when user ID changes
 
-  // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards
+  // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards.
+  // Uses an AbortController so an in-flight fetch is cancelled if the user logs
+  // out / changes photoURL while it's loading (prevents "setState on unmounted"
+  // warnings and stale writes overwriting newer data).
   useEffect(() => {
     const photoUrl = user?.photoURL;
     if (!photoUrl) {
       setSharePhotoBase64(null);
-      return;
+      return undefined;
     }
-    let cancelled = false;
-    fetch(photoUrl)
+    const { signal, cancel } = createAbortGroup();
+    fetch(photoUrl, { signal })
       .then((res) => res.blob())
       .then(
         (blob) =>
@@ -1591,29 +1613,41 @@ function WellnessValleyApp() {
           }),
       )
       .then((dataUrl) => {
-        if (!cancelled) setSharePhotoBase64(dataUrl);
+        if (!signal.aborted) setSharePhotoBase64(dataUrl);
       })
-      .catch(() => {
-        if (!cancelled) setSharePhotoBase64(null);
+      .catch((err) => {
+        if (isAbortError(err)) return; // expected on cleanup
+        if (!signal.aborted) setSharePhotoBase64(null);
       });
-    return () => {
-      cancelled = true;
-    };
+    return cancel;
   }, [user?.photoURL]);
 
   // Fetch saved custom profile image for share card
   useEffect(() => {
-    if (!user?.email || !apiBaseUrl) { setSavedProfileImage(null); return; }
+    if (!user?.email || !apiBaseUrl) {
+      setSavedProfileImage(null);
+      return undefined;
+    }
+    const { signal, cancel } = createAbortGroup();
     // Use standard caching — no need to bust cache on every render
-    fetch(`${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`)
-      .then(res => res.ok ? res.json() : null)
-      .then(data => {
+    fetch(
+      `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(user.email)}`,
+      { signal },
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (signal.aborted) return;
         if (data?.success && data?.data?.profileImage) setSavedProfileImage(data.data.profileImage);
         else setSavedProfileImage(null);
         if (data?.success && data?.data?.userName) setSavedUserName(data.data.userName);
         else setSavedUserName(null);
       })
-      .catch(() => { setSavedProfileImage(null); setSavedUserName(null); });
+      .catch((err) => {
+        if (isAbortError(err)) return;
+        setSavedProfileImage(null);
+        setSavedUserName(null);
+      });
+    return cancel;
   }, [user?.email, apiBaseUrl]);
 
   // Cleanup on unmount
@@ -3690,9 +3724,9 @@ function WellnessValleyApp() {
     setDuplicateInfo(null);
     setPendingSaveData(null);
 
-    localStorage.removeItem("isOtpVerified");
-    localStorage.removeItem("otpUser");
-    localStorage.removeItem("currentPage");
+    Session.clearOtpVerified();
+    Session.clearOtpUser();
+    Session.clearCurrentPage();
 
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -3705,8 +3739,8 @@ function WellnessValleyApp() {
       setError(null);
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
-      localStorage.removeItem("userSignedOut");
-      localStorage.removeItem("accountDeleted");
+      Session.clearUserSignedOut();
+      Session.clearAccountDeleted();
       setForceLoggedOut(false);
 
       // Flag should already be set by Login component
@@ -3726,7 +3760,7 @@ function WellnessValleyApp() {
           // Store user email in localStorage for API calls
           const userEmail = user.email || user.Email;
           if (userEmail) {
-            localStorage.setItem("userEmail", userEmail);
+            Session.setUserEmail(userEmail);
             console.log(
               "✅ [handleSignIn] Stored user email in localStorage:",
               userEmail,
@@ -3845,8 +3879,8 @@ function WellnessValleyApp() {
       setError(null);
 
       // ✅ User is intentionally signing in — clear the sign-out block flags
-      localStorage.removeItem("userSignedOut");
-      localStorage.removeItem("accountDeleted");
+      Session.clearUserSignedOut();
+      Session.clearAccountDeleted();
       setForceLoggedOut(false);
 
       // Flag is already set by Login component before this function is called
@@ -3862,7 +3896,7 @@ function WellnessValleyApp() {
           // Store user email in localStorage for API calls
           const userEmail = user.email || user.Email;
           if (userEmail) {
-            localStorage.setItem("userEmail", userEmail);
+            Session.setUserEmail(userEmail);
             console.log(
               "✅ [handlePopupSignIn] Stored user email in localStorage:",
               userEmail,
@@ -4021,6 +4055,9 @@ function WellnessValleyApp() {
 
   const handleSignOut = async () => {
     try {
+      // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+      authFsm.send({ type: authFsm.E.SIGN_OUT_REQUESTED, reason: "user" });
+
       // Do NOT set loading=true here — it would pass loading=true to Login
       // which immediately shows "Signing in..." on the Google button after sign-out.
 
@@ -4045,12 +4082,12 @@ function WellnessValleyApp() {
 
       // Clear userId session cache
       clearUserIdCache();
-      localStorage.removeItem("dbUserId");
+      Session.clearDbUserId();
       // Clear demo meal history on sign-out
-      localStorage.removeItem("demo_meals");
+      Session.clearDemoMeals();
       // Clear profile-complete flag so a new/different user sees the gate if needed
-      const emailKey = localStorage.getItem("userEmail") || "";
-      if (emailKey) localStorage.removeItem("profileComplete_v2_" + emailKey);
+      const emailKey = Session.getUserEmail() || "";
+      Session.clearProfileComplete(emailKey);
       profileCompletedRef.current = false;
       console.log("ðŸ—‘ï¸ [Sign Out] UserId cache cleared");
 
@@ -4066,12 +4103,14 @@ function WellnessValleyApp() {
         }
       }
       await signOutUser();
+      // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+      authFsm.send({ type: authFsm.E.SIGN_OUT_COMPLETED });
       // ✅ Clear all auth-related localStorage keys
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("isOtpVerified");
-      localStorage.removeItem("otpUser");
-      localStorage.removeItem("currentPage");
-      localStorage.removeItem("dbUserId");
+      Session.clearUserEmail();
+      Session.clearOtpVerified();
+      Session.clearOtpUser();
+      Session.clearCurrentPage();
+      Session.clearDbUserId();
       // ✅ Clear nutrition / background analysis caches so a new login never sees old images
       localStorage.removeItem("backgroundAnalyses");
       localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
@@ -4083,11 +4122,11 @@ function WellnessValleyApp() {
     } catch (error) {
       console.error("âŒ Sign out error:", error);
       // ✅ Even if signOut throws, force clear the UI so user isn't stuck
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("isOtpVerified");
-      localStorage.removeItem("otpUser");
-      localStorage.removeItem("currentPage");
-      localStorage.removeItem("dbUserId");
+      Session.clearUserEmail();
+      Session.clearOtpVerified();
+      Session.clearOtpUser();
+      Session.clearCurrentPage();
+      Session.clearDbUserId();
       localStorage.removeItem("backgroundAnalyses");
       localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
       localStorage.removeItem("dashboard_activeTab");
@@ -4108,11 +4147,18 @@ function WellnessValleyApp() {
     console.log("ðŸ” [handleOtpVerified] Called with isNewUser:", isNewUser);
 
     // Get the OTP user from localStorage
-    const otpUser = localStorage.getItem("otpUser");
+    const otpUserRaw = Session.getOtpUserRaw();
 
-    if (otpUser) {
+    // Phase 3d-a: Observe in shadow FSM (no behaviour change).
+    authFsm.send({
+      type: authFsm.E.OTP_VERIFIED,
+      isNewUser,
+      email: Session.getUserEmail(),
+    });
+
+    if (otpUserRaw) {
       try {
-        const parsedUser = JSON.parse(otpUser);
+        const parsedUser = JSON.parse(otpUserRaw);
 
         // Check user status with timeout for iOS
         let isActive = true;
@@ -4132,16 +4178,16 @@ function WellnessValleyApp() {
         }
 
         setIsOtpVerified(true);
-        localStorage.setItem("isOtpVerified", "true");
+        Session.markOtpVerified();
 
         // ✅ User is logging in via OTP — clear the sign-out gate
-        localStorage.removeItem("userSignedOut");
+        Session.clearUserSignedOut();
         setForceLoggedOut(false);
 
         // Store user email in localStorage for API calls
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
-          localStorage.setItem("userEmail", userEmail);
+          Session.setUserEmail(userEmail);
           console.log(
             "✅ [handleOtpVerified] Stored user email in localStorage:",
             userEmail,
@@ -4164,18 +4210,18 @@ function WellnessValleyApp() {
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
         // On iOS, if everything fails, still try to log in
-        localStorage.removeItem("userSignedOut");
+        Session.clearUserSignedOut();
         setForceLoggedOut(false);
         setIsOtpVerified(true);
-        localStorage.setItem("isOtpVerified", "true");
+        Session.markOtpVerified();
       }
     } else {
       // No OTP user found, proceed with verification
-      localStorage.removeItem("userSignedOut");
-      localStorage.removeItem("accountDeleted");
+      Session.clearUserSignedOut();
+      Session.clearAccountDeleted();
       setForceLoggedOut(false);
       setIsOtpVerified(true);
-      localStorage.setItem("isOtpVerified", "true");
+      Session.markOtpVerified();
     }
   };
 
@@ -4320,7 +4366,7 @@ function WellnessValleyApp() {
           user={user}
           onBack={() => {
             setShowDisciplineReport(false);
-            localStorage.setItem("currentPage", "main");
+            Session.setCurrentPage("main");
           }}
           apiBaseUrl={apiBaseUrl}
           userRole={userRole}
@@ -4339,7 +4385,7 @@ function WellnessValleyApp() {
           user={user}
           onBack={() => {
             setShowActivityTimeReport(false);
-            localStorage.setItem("currentPage", "main");
+            Session.setCurrentPage("main");
           }}
           apiBaseUrl={apiBaseUrl}
           userRole={userRole}
@@ -4378,11 +4424,11 @@ function WellnessValleyApp() {
         }
         onShowDisciplineReport={() => {
           startTransition(() => setShowDisciplineReport(true));
-          localStorage.setItem("currentPage", "discipline-report");
+          Session.setCurrentPage("discipline-report");
         }}
         onShowActivityTimeReport={() => {
           startTransition(() => setShowActivityTimeReport(true));
-          localStorage.setItem("currentPage", "activity-time-report");
+          Session.setCurrentPage("activity-time-report");
         }}
         onShowWellnessEnrollment={() => startTransition(() => setShowWellnessEnrollment(true))}
         onShowWellnessReport={
@@ -4401,7 +4447,7 @@ function WellnessValleyApp() {
         // manualModeActive={manualModeActive}   // AI TOGGLE DISABLED
         // onToggleManualMode={toggleManualMode}  // AI TOGGLE DISABLED
         onProfileSaved={(profileData) => {
-          const email = user?.email || localStorage.getItem("userEmail") || "";
+          const email = user?.email || Session.getUserEmail() || "";
           profileCompletedRef.current = false;
           checkProfileCompletion(email, null, { afterSave: true });
           // If a new BMR was saved, force NutritionDashboard to re-fetch it
@@ -5401,15 +5447,15 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           showPictureSection={true}
           snoozeData={profilePicSnoozeData}
-          userId={user.id || user.UserId || localStorage.getItem("dbUserId")}
+          userId={user.id || user.UserId || Session.getDbUserId()}
           onComplete={async (savedData) => {
             const email =
               user?.email ||
               user?.Email ||
-              localStorage.getItem("userEmail") ||
+              Session.getUserEmail() ||
               "";
             profileCompletedRef.current = true;
-            localStorage.setItem("profileComplete_v2_" + email, "true");
+            Session.markProfileComplete(email);
             setShowCompleteProfile(false);
             setProfileChecking(false);
 
@@ -5436,7 +5482,7 @@ function WellnessValleyApp() {
           apiBaseUrl={apiBaseUrl}
           snoozeData={profilePicSnoozeData}
           onRemindLater={async () => {
-            const userId = user.id || user.UserId || localStorage.getItem("dbUserId");
+            const userId = user.id || user.UserId || Session.getDbUserId();
             if (userId) {
               try {
                 const res = await fetch(`${apiBaseUrl}/api/user/snooze-pic`, {
@@ -5459,7 +5505,7 @@ function WellnessValleyApp() {
             console.log("✅ [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
             if (userEmail) {
-              localStorage.setItem("profilePictureUploaded_" + userEmail, "true");
+              Session.markProfilePictureUploaded(userEmail);
             }
             
             // Immediately update user state with the uploaded image for instant UI update
@@ -5560,7 +5606,7 @@ function WellnessValleyApp() {
         <Suspense fallback={<LoadingSpinner message="Loading setup..." />}>
           <SetupWizard
             userEmail={
-              user?.email || user?.Email || localStorage.getItem("userEmail")
+              user?.email || user?.Email || Session.getUserEmail()
             }
             onClose={() => setShowSetupWizard(false)}
             onNavigateToOTP={() => {

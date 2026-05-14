@@ -1,4 +1,6 @@
 // Auth REST helpers — OTP send/verify, account deletion.
+import * as Session from '../../../shared/services/sessionStorage';
+
 const API = process.env.REACT_APP_API_BASE_URL;
 
 const post = async (path, body) => {
@@ -39,8 +41,8 @@ export const purgeLocalAfterDelete = () => {
       if (k) keys.push(k);
     }
     keys.forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem('userSignedOut', 'true');
-    localStorage.setItem('accountDeleted', 'true');
+    Session.markUserSignedOut();
+    Session.markAccountDeleted();
     sessionStorage.clear();
     if ('caches' in window) {
       caches.keys().then((names) => names.forEach((n) => caches.delete(n)));
