@@ -1,31 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
-import {
-  ArrowLeft,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  AlertCircle,
-} from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import "../../../LazyLoadStyles.css";
 import { geminiService } from "../../../shared/services/geminiService";
-import TouchFeedbackButton from "../../../shared/components/TouchFeedbackButton";
 import {
   isMobileDevice,
-  isSmallChartDevice,
-  generateHorizontalCalendarDates,
   generateScrollableDates,
-  resolveFoodItemIndex,
   transformDbItemToEditable,
   parseAnalysisData,
-  recalculateTotals,
-  persistMealItems as persistMealItemsService,
 } from "../services/nutritionDashboard";
 import {
-  NutritionSummaryCards,
-  NutritionFilters,
   NutritionMealList,
-  NutritionAnalysisPanel,
+  DashboardHeader,
+  HorizontalCalendarStrip,
+  OverviewPanels,
+  MealAnalysisModal,
 } from "./dashboard";
 import {
   useUserCalorieTarget,
@@ -33,10 +22,52 @@ import {
   useCalorieTrend,
   useCalorieChartData,
   useResolveUserId,
+  useDayAnalyses,
+  useInfiniteScroll,
+  useSwipePanelHeight,
+  useMealMutations,
 } from "../hooks";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
+/**
+ * NutritionDashboard
+ * -----------------------------------------------------------------------------
+ * ROLE: Orchestrator shell for the nutrition feature.
+ *
+ * This component is intentionally NOT a presentation component. Its job is to:
+ *   1. Compose feature-scoped hooks (data fetching, swipe state, mutations,
+ *      derived chart data) and wire their outputs together.
+ *   2. Compute lightweight derived values that several presentation children
+ *      need (calorie status label, burn-to-balance percentages, trend
+ *      aggregates).
+ *   3. Mount the dumb presentation components from `./dashboard/` and pass
+ *      them everything they need via explicit props.
+ *
+ * WHY HOOKS OWN ASYNC ORCHESTRATION:
+ *   All async / side-effectful work (Supabase fetches, retry/refresh, infinite
+ *   scroll, meal mutations, swipe panel height measurement, calorie chart
+ *   transforms) is encapsulated in `../hooks/`. Hooks own:
+ *     - data shape and loading/error state for that concern,
+ *     - cleanup of subscriptions, timers, and observers,
+ *     - cross-call invariants (optimistic updates + rollback for mutations).
+ *   This keeps each concern testable in isolation and lets this component stay
+ *   focused on composition rather than effect bookkeeping.
+ *
+ * WHY PRESENTATION COMPONENTS REMAIN DUMB:
+ *   Components in `./dashboard/` (DashboardHeader, HorizontalCalendarStrip,
+ *   InlineCalendarPanel, OverviewPanels, MealAnalysisModal,
+ *   NutritionSummaryCards, NutritionFilters, NutritionMealList,
+ *   NutritionAnalysisPanel, MealCard, UndoRow) own no async work and no shared
+ *   state. They receive values + setters as props and render. This makes them:
+ *     - trivial to reason about and unit-test,
+ *     - swappable / restyle-able without touching orchestration,
+ *     - safe to memoize later without hidden coupling to feature data flow.
+ *
+ * If you find yourself adding a `useEffect` with a fetch inside a presentation
+ * component, lift it into a hook here instead.
+ * -----------------------------------------------------------------------------
+ */
 const NutritionDashboard = ({
   user,
   onBack,
@@ -48,22 +79,11 @@ const NutritionDashboard = ({
   bmrUpdateKey = 0,
   watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
 }) => {
-  const [analyses, setAnalyses] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
   const [localSelectedDate, setLocalSelectedDate] = useState(new Date());
   const selectedDate = propSelectedDate || localSelectedDate;
   const setSelectedDate = propSetSelectedDate || setLocalSelectedDate;
-  const [dailyStats, setDailyStats] = useState({
-    totalCalories: 0,
-    totalProtein: 0,
-    totalCarbs: 0,
-    totalFat: 0,
-    totalFiber: 0,
-    mealCount: 0,
-  });
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const [selectedMeal, setSelectedMeal] = useState(null);
@@ -73,16 +93,12 @@ const NutritionDashboard = ({
   const [localDetailedItems, setLocalDetailedItems] = useState([]);
   const [localNutrition, setLocalNutrition] = useState({});
   const [isEditing, setIsEditing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
   const [editingStates, setEditingStates] = useState({});
   // eslint-disable-next-line no-unused-vars -- value unread; setter retained for re-render side effect
   const [editingIndex, setEditingIndex] = useState(null);
   const [resetKey] = useState(0);
   const itemRefs = useRef({});
-
-  // delete button state
-  const [deletingId, setDeletingId] = useState(null);
 
   // undo placeholders: key -> { originalMeal, expiresAt }
   const [undoState, setUndoState] = useState({});
@@ -92,17 +108,20 @@ const NutritionDashboard = ({
 
   const watchUploadRef = useRef(null);
   const [trendRangeDays, setTrendRangeDays] = useState(7);
-  const [activeOverviewPanel, setActiveOverviewPanel] = useState("summary");
-  const [overviewPanelHeight, setOverviewPanelHeight] = useState(null);
-  const overviewSwipeRef = useRef({
-    active: false,
-    startX: 0,
-    lastX: 0,
-  });
-  const summaryPanelRef = useRef(null);
-  const trendPanelRef = useRef(null);
 
   const resolveUserId = useResolveUserId({ user, apiBaseUrl });
+
+  // Day analyses + daily stats orchestration (auto-fetch on user/date change).
+  const {
+    analyses,
+    setAnalyses,
+    dailyStats,
+    loading,
+    error,
+    setError,
+    fetchDayAnalyses,
+    applyDailyDelta,
+  } = useDayAnalyses({ user, selectedDate, apiBaseUrl, resolveUserId });
 
   // Calorie target from user's BMR (fallback handled inside the hook)
   const calorieTarget = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
@@ -124,6 +143,53 @@ const NutritionDashboard = ({
     apiBaseUrl,
     resolveUserId,
     calorieTarget,
+  });
+
+  // Overview panel swipe + dynamic height (re-measure when content changes).
+  const {
+    activeOverviewPanel,
+    setActiveOverviewPanel,
+    overviewPanelHeight,
+    summaryPanelRef,
+    trendPanelRef,
+    swipeHandlers: overviewSwipeHandlers,
+  } = useSwipePanelHeight({
+    heightDeps: [trendLoading, calorieTrendData, trendRangeDays, dailyStats],
+  });
+
+  // Infinite scroll pagination over analyses.
+  const { displayedMeals, hasMoreMeals, loadingMore, sentinelRef } =
+    useInfiniteScroll({ analyses, perPage: 10 });
+
+  // Meal mutations: per-item edits + optimistic row delete with undo/rollback.
+  const {
+    isSaving,
+    setIsSaving,
+    handleFoodUpdate,
+    handleDeleteFoodItem,
+    handleRestoreFoodItem,
+    deletingId,
+    handleDeleteMeal,
+    handleOptimisticDelete,
+  } = useMealMutations({
+    apiBaseUrl,
+    user,
+    selectedMeal,
+    setSelectedMeal,
+    selectedDate,
+    resolveUserId,
+    setAnalyses,
+    setUndoState,
+    setError,
+    applyDailyDelta,
+    fetchDayAnalyses,
+    localDetailedItems,
+    setLocalDetailedItems,
+    localNutrition,
+    setLocalNutrition,
+    isAutoSaveUpdateRef,
+    onMealDelete,
+    undoSeconds: UNDO_SECONDS,
   });
 
   // Initialize local editable data when meal changes
@@ -196,135 +262,14 @@ const NutritionDashboard = ({
       // Track if any item is actively saving/retrying (blocks modal close)
       setIsSaving(isBlocking);
     },
-    [],
+    [setIsSaving],
   );
 
   // Wrap shared persistMealItems with local state setters and saving flag.
-  const persistMealItems = async (newItems, newTotals, options = {}) => {
-    if (!selectedMeal?.ID) return;
+  // persistMealItems + handleFoodUpdate / handleDeleteFoodItem / handleRestoreFoodItem
+  // moved to useMealMutations hook (declared above).
 
-    const { syncSelectedMeal = true, refreshStats = true } = options;
-
-    setIsSaving(true);
-    try {
-      const resolvedUserId = await resolveUserId();
-      if (!resolvedUserId) {
-        throw new Error("User not authenticated or not found in database");
-      }
-
-      await persistMealItemsService({
-        apiBaseUrl,
-        mealId: selectedMeal.ID,
-        userId: resolvedUserId,
-        newItems,
-        newTotals,
-        setAnalyses,
-        syncSelectedMeal,
-        setSelectedMeal,
-        refresh: refreshStats ? fetchDayAnalyses : null,
-        selectedDate,
-        markAutoSave: () => {
-          isAutoSaveUpdateRef.current = true;
-        },
-      });
-    } catch (error) {
-      console.error("[NutritionDashboard] Failed to persist meal items:", error);
-      throw error;
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const handleFoodUpdate = async (index, updatedFood) => {
-    const newItems = [...localDetailedItems];
-    newItems[index] = updatedFood;
-    setLocalDetailedItems(newItems);
-
-    const newTotals = recalculateTotals(newItems);
-    setLocalNutrition(newTotals);
-
-    try {
-      await persistMealItems(newItems, newTotals);
-    } catch (error) {
-      console.error("? Error updating meal:", error);
-      throw error;
-    }
-  };
-
-  const handleDeleteFoodItem = async (index, options = {}) => {
-    const phase = options?.phase || "finalize";
-    const snapshot = options?.itemSnapshot || null;
-
-    if (!Array.isArray(localDetailedItems) || localDetailedItems.length === 0)
-      return;
-
-    const targetIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
-    if (targetIndex === -1) return;
-
-    const previousTotals = localNutrition;
-
-    const newItems = localDetailedItems.filter((_, i) => i !== targetIndex);
-    const newTotals = recalculateTotals(newItems);
-
-    if (phase === "immediate") {
-      // Persist deletion immediately in backend, keep row visible for undo UI.
-      setLocalNutrition(newTotals);
-
-      try {
-        await persistMealItems(newItems, newTotals, {
-          syncSelectedMeal: false,
-          refreshStats: false,
-        });
-      } catch (error) {
-        console.error("? Error deleting food item:", error);
-        setLocalNutrition(previousTotals);
-        throw error;
-      }
-      return;
-    }
-
-    // Finalize phase: remove row from local UI after undo timer ends.
-    setLocalDetailedItems(newItems);
-    setLocalNutrition(newTotals);
-  };
-
-  const handleRestoreFoodItem = async (index, snapshot) => {
-    const previousItems = localDetailedItems;
-    const previousTotals = localNutrition;
-
-    let restoreItems = localDetailedItems;
-    const existingIndex = resolveFoodItemIndex(localDetailedItems, index, snapshot);
-
-    // If row was already removed in UI, reinsert before persisting restore.
-    if (existingIndex === -1 && snapshot) {
-      const insertAt = Math.max(0, Math.min(index, localDetailedItems.length));
-      restoreItems = [
-        ...localDetailedItems.slice(0, insertAt),
-        snapshot,
-        ...localDetailedItems.slice(insertAt),
-      ];
-      setLocalDetailedItems(restoreItems);
-    }
-
-    const restoreTotals = recalculateTotals(restoreItems);
-    setLocalNutrition(restoreTotals);
-
-    try {
-      await persistMealItems(restoreItems, restoreTotals);
-    } catch (error) {
-      console.error("? Error restoring food item:", error);
-      setLocalDetailedItems(previousItems);
-      setLocalNutrition(previousTotals);
-      throw error;
-    }
-  };
-
-  // ? PAGINATION STATE
-  const [displayedMeals, setDisplayedMeals] = useState([]);
-  const [hasMoreMeals, setHasMoreMeals] = useState(false);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const MEALS_PER_PAGE = 10;
-  const sentinelRef = useRef(null);
+  // ? PAGINATION STATE moved to useInfiniteScroll hook (declared above).
 
   /* ---------------- Helpers ---------------- */
 
@@ -351,105 +296,7 @@ const NutritionDashboard = ({
     setShowCalendar(false);
   }, [selectedDate]);
 
-  const fetchDayAnalyses = useCallback(
-    async (date) => {
-      setLoading(true);
-      setError(null);
-
-      const calculateDailyStats = (dayAnalyses) => {
-        const stats = dayAnalyses.reduce(
-          (acc, analysis) => {
-            if (analysis.isUndoPlaceholder) return acc;
-            const foodData = parseAnalysisData(analysis.AnalysisData);
-            const n = foodData.nutrition || {};
-            const calories = n.calories || analysis.TotalCalories || 0;
-            const protein = n.protein || analysis.TotalProtein || 0;
-            const carbs = n.carbs || analysis.TotalCarbs || 0;
-            const fat = n.fat || analysis.TotalFat || 0;
-            const fiber = n.fiber || analysis.TotalFiber || 0;
-            return {
-              totalCalories: acc.totalCalories + calories,
-              totalProtein: acc.totalProtein + protein,
-              totalCarbs: acc.totalCarbs + carbs,
-              totalFat: acc.totalFat + fat,
-              totalFiber: acc.totalFiber + fiber,
-              mealCount: acc.mealCount + 1,
-            };
-          },
-          {
-            totalCalories: 0,
-            totalProtein: 0,
-            totalCarbs: 0,
-            totalFat: 0,
-            totalFiber: 0,
-            mealCount: 0,
-          },
-        );
-        setDailyStats(stats);
-      };
-
-      try {
-        const actualUserId = await resolveUserId();
-        if (!actualUserId) {
-          setError(
-            "Unable to determine user account. Please try logging in again.",
-          );
-          return;
-        }
-
-        // âœ… TIMEZONE FIX: Use local date formatting instead of toISOString()
-        // toISOString() converts to UTC which can shift the date for users in positive UTC offsets
-        const dateString =
-          date.getFullYear() +
-          "-" +
-          String(date.getMonth() + 1).padStart(2, "0") +
-          "-" +
-          String(date.getDate()).padStart(2, "0");
-        // Add cache busting parameter to force fresh data
-        const cacheBuster = Date.now();
-        const response = await fetch(
-          `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
-          {
-            cache: "no-store", // Disable browser cache
-            headers: {
-              "Cache-Control": "no-cache",
-              Pragma: "no-cache",
-            },
-          },
-        );
-        const data = await response.json();
-
-        if (data.success) {
-          let list = data.data || [];
-
-          // ðŸ”’ Demo account â€” merge localStorage meals for the selected date
-          if (actualUserId === 'DEMO_USER') {
-            try {
-              const demoMeals = JSON.parse(localStorage.getItem('demo_meals') || '[]');
-              const dayMeals = demoMeals.filter(m => m.dateKey === dateString);
-              list = [...list, ...dayMeals];
-            } catch (e) { /* ignore */ }
-          }
-
-          setAnalyses(list);
-          calculateDailyStats(list);
-        } else {
-          setError("Failed to load nutrition data");
-        }
-      } catch (err) {
-        setError(
-          "Failed to load nutrition data. Please check your connection.",
-        );
-      } finally {
-        setLoading(false);
-      }
-    },
-    [user, apiBaseUrl, resolveUserId],
-  );
-
-  useEffect(() => {
-    if (user) fetchDayAnalyses(selectedDate);
-  }, [user, selectedDate, fetchDayAnalyses]);
+  // fetchDayAnalyses + auto-refresh effect moved to useDayAnalyses hook.
 
   // â”€â”€â”€ Fetch burned calories from daily_step_activity for the selected date â”€â”€â”€â”€
   // STEP COUNTER DISABLED â€” entire fetchBurnedCalories function commented out
@@ -520,92 +367,8 @@ const NutritionDashboard = ({
     [],
   );
 
-  const handleOverviewPointerDown = (e) => {
-    if (!e.isPrimary) return;
-    overviewSwipeRef.current.active = true;
-    overviewSwipeRef.current.startX = e.clientX;
-    overviewSwipeRef.current.lastX = e.clientX;
-  };
-
-  const handleOverviewPointerMove = (e) => {
-    if (!overviewSwipeRef.current.active || !e.isPrimary) return;
-    overviewSwipeRef.current.lastX = e.clientX;
-  };
-
-  const handleOverviewPointerEnd = () => {
-    const swipe = overviewSwipeRef.current;
-    if (!swipe.active) return;
-    swipe.active = false;
-
-    const deltaX = swipe.lastX - swipe.startX;
-    const threshold = 36;
-    if (Math.abs(deltaX) < threshold) return;
-
-    if (deltaX < 0) {
-      setActiveOverviewPanel("trend");
-    } else {
-      setActiveOverviewPanel("summary");
-    }
-  };
-
-  useEffect(() => {
-    const updateOverviewHeight = () => {
-      const activeRef =
-        activeOverviewPanel === "summary" ? summaryPanelRef : trendPanelRef;
-      if (activeRef.current) {
-        setOverviewPanelHeight(activeRef.current.scrollHeight);
-      }
-    };
-
-    // Wait one frame so content/layout is fully settled.
-    const rafId = requestAnimationFrame(updateOverviewHeight);
-    window.addEventListener("resize", updateOverviewHeight);
-
-    return () => {
-      cancelAnimationFrame(rafId);
-      window.removeEventListener("resize", updateOverviewHeight);
-    };
-  }, [activeOverviewPanel, trendLoading, calorieTrendData, trendRangeDays, dailyStats]);
-
-
-  // âœ… UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
-  useEffect(() => {
-    const initialMeals = analyses.slice(0, MEALS_PER_PAGE);
-    setDisplayedMeals(initialMeals);
-    setHasMoreMeals(analyses.length > MEALS_PER_PAGE);
-  }, [analyses]);
-
-  // âœ… INFINITE SCROLL: Load more meals when sentinel is visible
-  useEffect(() => {
-    if (!sentinelRef.current || !hasMoreMeals || loadingMore) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMoreMeals && !loadingMore) {
-          setLoadingMore(true);
-
-          setTimeout(() => {
-            const currentLength = displayedMeals.length;
-            const nextMeals = analyses.slice(0, currentLength + MEALS_PER_PAGE);
-            setDisplayedMeals(nextMeals);
-            setHasMoreMeals(nextMeals.length < analyses.length);
-            setLoadingMore(false);
-          }, 300);
-        }
-      },
-      {
-        root: null,
-        rootMargin: "100px",
-        threshold: 0.1,
-      },
-    );
-
-    observer.observe(sentinelRef.current);
-
-    return () => {
-      if (observer) observer.disconnect();
-    };
-  }, [displayedMeals, analyses, hasMoreMeals, loadingMore]);
+  // Overview swipe handlers + height measurement moved to useSwipePanelHeight hook.
+  // Infinite scroll pagination moved to useInfiniteScroll hook.
 
   const formatDateHeader = (date) => {
     const today = new Date();
@@ -642,178 +405,11 @@ const NutritionDashboard = ({
     }, 300);
   };
 
-  // Wrapper for the modal delete button: optimistic delete with undo + rollback
-  const handleDeleteMeal = async (meal) => {
-    if (!meal?.ID) return;
-    setDeletingId(meal.ID);
-
-    const n = parseAnalysisData(meal.AnalysisData).nutrition || {};
-    const deltas = {
-      calories: -(n.calories || meal.TotalCalories || 0),
-      protein: -(n.protein || meal.TotalProtein || 0),
-      carbs: -(n.carbs || meal.TotalCarbs || 0),
-      fat: -(n.fat || meal.TotalFat || 0),
-      fiber: -(n.fiber || meal.TotalFiber || 0),
-      mealCountDelta: -1,
-    };
-
-    const placeholder = {
-      ID: `undo-${meal.ID}`,
-      isUndoPlaceholder: true,
-      CreatedAt: meal.CreatedAt,
-    };
-
-    setAnalyses((prev) => {
-      const idx = prev.findIndex((m) => m.ID === meal.ID);
-      if (idx === -1) {
-        return prev.filter((m) => m.ID !== meal.ID).concat(placeholder);
-      }
-      const next = prev.slice();
-      next.splice(idx, 1, placeholder);
-      return next;
-    });
-
-    setUndoState((prev) => ({
-      ...prev,
-      [placeholder.ID]: {
-        originalMeal: meal,
-        expiresAt: Date.now() + UNDO_SECONDS * 1000,
-        ttlSeconds: UNDO_SECONDS,
-      },
-    }));
-
-    applyDailyDelta(deltas);
-    setSelectedMeal(null);
-
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: meal.ID, userId: user?.id }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || "Failed to delete.");
-      if (onMealDelete) onMealDelete(meal.ID);
-    } catch (err) {
-      setAnalyses((prev) => {
-        const idx = prev.findIndex((m) => m.ID === placeholder.ID);
-        if (idx === -1) return prev;
-        const next = prev.slice();
-        next.splice(idx, 1, meal);
-        return next;
-      });
-      setUndoState((prev) => {
-        const next = { ...prev };
-        delete next[placeholder.ID];
-        return next;
-      });
-      applyDailyDelta({
-        calories: -deltas.calories,
-        protein: -deltas.protein,
-        carbs: -deltas.carbs,
-        fat: -deltas.fat,
-        fiber: -deltas.fiber,
-        mealCountDelta: -deltas.mealCountDelta,
-      });
-      setError(err.message || "Failed to delete. Please try again.");
-      setTimeout(() => setError(null), 5000);
-    } finally {
-      setDeletingId(null);
-    }
-  };
+  // Meal delete handlers (handleDeleteMeal, handleOptimisticDelete) moved to
+  // useMealMutations hook (declared above). applyDailyDelta lives in useDayAnalyses.
 
   // Parent: pass this to <MealCard onDelete={...} />
-  const handleOptimisticDelete = async (mealToDelete) => {
-    const n = parseAnalysisData(mealToDelete.AnalysisData).nutrition || {};
-    const deltas = {
-      calories: -(n.calories || mealToDelete.TotalCalories || 0),
-      protein: -(n.protein || mealToDelete.TotalProtein || 0),
-      carbs: -(n.carbs || mealToDelete.TotalCarbs || 0),
-      fat: -(n.fat || mealToDelete.TotalFat || 0),
-      fiber: -(n.fiber || mealToDelete.TotalFiber || 0),
-      mealCountDelta: -1,
-    };
-
-    const placeholder = {
-      ID: `undo-${mealToDelete.ID}`,
-      isUndoPlaceholder: true,
-      CreatedAt: mealToDelete.CreatedAt,
-    };
-
-    // Replace in place (critical for no flicker / no â€œfloating deleteÃ¢â‚¬Â)
-    setAnalyses((prev) => {
-      const idx = prev.findIndex((m) => m.ID === mealToDelete.ID);
-      if (idx === -1) return prev;
-      const next = prev.slice();
-      next.splice(idx, 1, placeholder);
-      return next;
-    });
-
-    setUndoState((prev) => ({
-      ...prev,
-      [placeholder.ID]: {
-        originalMeal: mealToDelete,
-        expiresAt: Date.now() + UNDO_SECONDS * 1000,
-        ttlSeconds: UNDO_SECONDS,
-      },
-    }));
-
-    applyDailyDelta(deltas);
-
-    try {
-      const res = await fetch(`${apiBaseUrl}/api/background-analysis`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: mealToDelete.ID, userId: user?.id }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || "Delete failed");
-      if (onMealDelete) onMealDelete(mealToDelete.ID);
-    } catch (err) {
-      // Rollback on failure
-      setAnalyses((prev) => {
-        const idx = prev.findIndex((m) => m.ID === placeholder.ID);
-        if (idx === -1) return prev;
-        const next = prev.slice();
-        next.splice(idx, 1, mealToDelete);
-        return next;
-      });
-      setUndoState((prev) => {
-        const next = { ...prev };
-        delete next[placeholder.ID];
-        return next;
-      });
-      applyDailyDelta({
-        calories: -deltas.calories,
-        protein: -deltas.protein,
-        carbs: -deltas.carbs,
-        fat: -deltas.fat,
-        fiber: -deltas.fiber,
-        mealCountDelta: -deltas.mealCountDelta,
-      });
-      setError(err.message || "Failed to delete. Please try again.");
-      setTimeout(() => setError(null), 5000); // Clear after 5 seconds
-    }
-  };
-
-  const applyDailyDelta = ({
-    calories = 0,
-    protein = 0,
-    carbs = 0,
-    fat = 0,
-    fiber = 0,
-    mealCountDelta = 0,
-  }) => {
-    setDailyStats((prev) => ({
-      totalCalories: Math.max(0, prev.totalCalories + calories),
-      totalProtein: Math.max(0, prev.totalProtein + protein),
-      totalCarbs: Math.max(0, prev.totalCarbs + carbs),
-      totalFat: Math.max(0, prev.totalFat + fat),
-      totalFiber: Math.max(0, prev.totalFiber + fiber),
-      mealCount: Math.max(0, prev.mealCount + mealCountDelta),
-    }));
-  };
-
+  // handleOptimisticDelete moved to useMealMutations hook (declared above).
 
   const consumedCalories = dailyStats.totalCalories || 0;
   const caloriesProgressPercent = Math.min(
@@ -900,357 +496,25 @@ const NutritionDashboard = ({
 
       {/* Header - Only show if not hidden */}
       {!hideHeader && (
-        <>
-          <div className="sticky top-0 z-30 bg-white border-b border-gray-200 shadow-sm">
-            <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
-              <div className="flex items-center justify-between p-4 md:p-6">
-                <TouchFeedbackButton
-                  onClick={onBack}
-                  className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
-                  ariaLabel="Go back"
-                >
-                  <ArrowLeft className="h-5 w-5 text-gray-700" />
-                </TouchFeedbackButton>
-
-                <div className="text-center">
-                  <h1 className="text-lg md:text-xl font-semibold text-gray-900">
-                    Nutrition
-                  </h1>
-                  <p className="text-sm text-gray-600">
-                    {formatDateHeader(selectedDate)}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setShowCalendar(!showCalendar)}
-                    className="p-2 md:p-3 hover:bg-gray-100 rounded-xl transition-colors"
-                  >
-                    <Calendar className="h-5 w-5 text-gray-700" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </>
+        <DashboardHeader
+          onBack={onBack}
+          selectedDate={selectedDate}
+          formatDateHeader={formatDateHeader}
+          showCalendar={showCalendar}
+          setShowCalendar={setShowCalendar}
+        />
       )}
 
       {/* Date selector */}
-      <div className="bg-white border-b border-gray-200 shadow-sm">
-        <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
-          {isMobileDevice() ? (
-            <div className="px-4 py-3">
-              <div
-                className="overflow-x-auto"
-                style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
-              >
-                <style>{`
-                  div::-webkit-scrollbar {
-                    display: none;
-                  }
-                `}</style>
-                <div
-                  className="flex space-x-2 pb-1"
-                  style={{ minWidth: "max-content" }}
-                >
-                  {generateScrollableDates(selectedDate).map((day, index) => (
-                    <React.Fragment key={index}>
-                      {day.isNewMonth && index > 0 && (
-                        <div className="flex items-center justify-center mx-1 relative">
-                          <div className="backdrop-blur-sm bg-white/30 rounded-lg px-1.5 py-1.5 shadow-sm border border-white/20">
-                            <div
-                              className="text-xs font-semibold text-gray-600"
-                              style={{
-                                writingMode: "vertical-rl",
-                                textOrientation: "mixed",
-                                fontSize: "9px",
-                                letterSpacing: "1px",
-                              }}
-                            >
-                              {day.monthName.toUpperCase()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <button
-                        data-date-index={index}
-                        onClick={() => setSelectedDate(day.date)}
-                        className={`flex-shrink-0 w-12 text-center py-2 px-1 rounded-lg transition-all duration-300 relative backdrop-blur-sm border
-                          ${
-                            day.isSelected
-                              ? "bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg scale-105 border-emerald-300"
-                              : day.isToday
-                              ? "bg-white/40 text-gray-800 border-white/30 shadow-md"
-                              : "text-gray-600 hover:bg-white/30 bg-white/20 border-white/20"
-                          }`}
-                      >
-                        <div className="text-xs font-medium mb-0.5">
-                          {day.dayName}
-                        </div>
-                        <div className="text-sm font-semibold">
-                          {day.dayNumber}
-                        </div>
-                        {day.isToday && (
-                          <div
-                            className={`w-1 h-1 rounded-full mx-auto mt-0.5 ${
-                              day.isSelected ? "bg-white" : "bg-emerald-500"
-                            }`}
-                          />
-                        )}
-                      </button>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center px-4 py-3 md:px-6 md:py-2">
-              <TouchFeedbackButton
-                onClick={() => navigateDate(-1)}
-                className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 mr-2 md:mr-3 backdrop-blur-sm border border-white/20"
-                ariaLabel="Previous day"
-              >
-                <ChevronLeft className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </TouchFeedbackButton>
-
-              <div className="flex-1 overflow-hidden">
-                <div className="flex items-center justify-center space-x-1 md:space-x-2">
-                  {generateHorizontalCalendarDates(selectedDate).map((day, index) => (
-                    <React.Fragment key={index}>
-                      {day.isNewMonth && index > 0 && (
-                        <div className="flex items-center justify-center mx-1 md:mx-2 relative h-full">
-                          <div className="backdrop-blur-sm bg-white/30 rounded-lg md:rounded-xl px-1.5 md:px-2 py-2 md:py-3 shadow-sm border border-white/20">
-                            <div
-                              className="text-xs font-bold text-gray-600 tracking-wider"
-                              style={{
-                                writingMode: "vertical-rl",
-                                textOrientation: "mixed",
-                                letterSpacing: "2px",
-                              }}
-                            >
-                              {day.monthName.toUpperCase()}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      <TouchFeedbackButton
-                        onClick={() =>
-                          !day.isFuture && setSelectedDate(day.date)
-                        }
-                        disabled={day.isFuture}
-                        className={`w-12 h-12 md:w-16 md:h-16 text-center rounded-lg md:rounded-2xl transition-all duration-300 relative backdrop-blur-sm border
-                          ${
-                            day.isSelected
-                              ? "bg-gradient-to-br from-emerald-400 to-teal-500 text-white shadow-lg scale-105 border-emerald-300"
-                              : day.isToday
-                              ? "bg-white/40 text-gray-800 border-white/30 shadow-md"
-                              : day.isFuture
-                              ? "text-gray-300 cursor-not-allowed bg-white/10 border-white/10"
-                              : "text-gray-600 hover:bg-white/30 bg-white/20 border-white/20"
-                          }`}
-                        ariaLabel={`${day.dayName} ${day.dayNumber}`}
-                      >
-                        <div className="text-xs font-medium mb-0.5 md:mb-1">
-                          {day.dayName}
-                        </div>
-                        <div className="text-sm md:text-lg font-semibold">
-                          {day.dayNumber}
-                        </div>
-                        {day.isToday && (
-                          <div
-                            className={`w-1 h-1 md:w-1.5 md:h-1.5 rounded-full mx-auto mt-0.5 md:mt-1 ${
-                              day.isSelected ? "bg-white" : "bg-emerald-500"
-                            }`}
-                          />
-                        )}
-                      </TouchFeedbackButton>
-                    </React.Fragment>
-                  ))}
-                </div>
-              </div>
-
-              <TouchFeedbackButton
-                onClick={() => navigateDate(1)}
-                disabled={(() => {
-                  const nextDay = new Date(selectedDate);
-                  nextDay.setDate(selectedDate.getDate() + 1);
-                  return nextDay > new Date();
-                })()}
-                className="p-2 md:p-3 hover:bg-white/30 rounded-xl md:rounded-2xl transition-all duration-300 ml-2 md:ml-3 disabled:opacity-50 disabled:cursor-not-allowed backdrop-blur-sm border border-white/20"
-                ariaLabel="Next day"
-              >
-                <ChevronRight className="h-4 w-4 md:h-5 md:w-5 text-gray-600" />
-              </TouchFeedbackButton>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Inline Calendar with Slide Animation */}
-      <div
-        className={`bg-white shadow-sm overflow-hidden transition-all duration-300 ease-in-out ${
-          showCalendar ? "max-h-[32rem] opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div
-          className={`max-w-md mx-auto p-0 md:p-4 transform transition-transform duration-300 ease-in-out ${
-            showCalendar ? "translate-y-0" : "-translate-y-4"
-          }`}
-        >
-          <div className="bg-white rounded-2xl border-0 md:border md:border-grey-100">
-            {/* Calendar Header */}
-            <div className="flex items-center justify-between p-4 border-b border-grey-100">
-              <TouchFeedbackButton
-                onClick={() => {
-                  const prevMonth = new Date(calendarMonth);
-                  prevMonth.setMonth(prevMonth.getMonth() - 1);
-                  setCalendarMonth(prevMonth);
-                }}
-                className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
-                ariaLabel="Previous month"
-              >
-                <ChevronLeft className="w-5 h-5 text-grey-600" />
-              </TouchFeedbackButton>
-
-              <h3 className="text-lg font-semibold text-grey-900">
-                {calendarMonth.toLocaleDateString("en-US", {
-                  month: "long",
-                  year: "numeric",
-                })}
-              </h3>
-
-              <TouchFeedbackButton
-                onClick={() => {
-                  const nextMonth = new Date(calendarMonth);
-                  nextMonth.setMonth(nextMonth.getMonth() + 1);
-                  setCalendarMonth(nextMonth);
-                }}
-                className="p-2 hover:bg-emerald-50 rounded-lg transition-colors"
-                ariaLabel="Next month"
-              >
-                <ChevronRight className="w-5 h-5 text-grey-600" />
-              </TouchFeedbackButton>
-            </div>
-
-            {/* Days of Week Headers */}
-            <div className="grid grid-cols-7 gap-1 px-4 pt-4 pb-2">
-              {["S", "M", "T", "W", "T", "F", "S"].map((day, index) => (
-                <div
-                  key={index}
-                  className="text-center text-sm font-semibold text-gray-500 py-2"
-                >
-                  {day}
-                </div>
-              ))}
-            </div>
-
-            {/* Calendar Grid */}
-            <div className="grid grid-cols-7 gap-1 px-4 pb-4">
-              {(() => {
-                const year = calendarMonth.getFullYear();
-                const month = calendarMonth.getMonth();
-                const today = new Date();
-
-                // Get first day of month and number of days
-                const firstDay = new Date(year, month, 1);
-                const lastDay = new Date(year, month + 1, 0);
-                const daysInMonth = lastDay.getDate();
-                const startingDayOfWeek = firstDay.getDay(); // 0 = Sunday
-
-                const days = [];
-
-                // Add empty cells for days before the month starts
-                for (let i = 0; i < startingDayOfWeek; i++) {
-                  const prevDate = new Date(
-                    year,
-                    month,
-                    -startingDayOfWeek + i + 1,
-                  );
-                  days.push({
-                    date: prevDate,
-                    dayNumber: prevDate.getDate(),
-                    isCurrentMonth: false,
-                    isToday: prevDate.toDateString() === today.toDateString(),
-                    isSelected:
-                      prevDate.toDateString() === selectedDate.toDateString(),
-                    isFuture: prevDate > today,
-                  });
-                }
-
-                // Add days of current month
-                for (let day = 1; day <= daysInMonth; day++) {
-                  const date = new Date(year, month, day);
-                  days.push({
-                    date: date,
-                    dayNumber: day,
-                    isCurrentMonth: true,
-                    isToday: date.toDateString() === today.toDateString(),
-                    isSelected:
-                      date.toDateString() === selectedDate.toDateString(),
-                    isFuture: date > today,
-                  });
-                }
-
-                // Add days from next month to fill the grid
-                const remainingCells = 42 - days.length; // 6 rows Ã— 7 days
-                for (let day = 1; day <= remainingCells; day++) {
-                  const nextDate = new Date(year, month + 1, day);
-                  days.push({
-                    date: nextDate,
-                    dayNumber: day,
-                    isCurrentMonth: false,
-                    isToday: nextDate.toDateString() === today.toDateString(),
-                    isSelected:
-                      nextDate.toDateString() === selectedDate.toDateString(),
-                    isFuture: nextDate > today,
-                  });
-                }
-
-                return days.map((day, index) => {
-                  const isDisabled = day.isFuture;
-
-                  return (
-                    <TouchFeedbackButton
-                      key={index}
-                      onClick={() => {
-                        if (!isDisabled) {
-                          setSelectedDate(day.date);
-                          setShowCalendar(false);
-                        }
-                      }}
-                      disabled={isDisabled}
-                      className={`
-                        aspect-square p-2 text-sm font-medium rounded-lg transition-all duration-200 relative
-                        ${
-                          day.isSelected
-                            ? "bg-emerald-500 text-white shadow-lg transform scale-105"
-                            : day.isToday && !day.isSelected
-                            ? "bg-emerald-100 text-emerald-700 border-2 border-emerald-300 font-bold"
-                            : day.isCurrentMonth
-                            ? isDisabled
-                              ? "text-gray-400 cursor-not-allowed opacity-50"
-                              : "text-gray-700 hover:bg-emerald-50 hover:scale-105"
-                            : isDisabled
-                            ? "text-gray-300 cursor-not-allowed opacity-30"
-                            : "text-gray-400 hover:bg-emerald-50 hover:scale-105"
-                        }
-                      `}
-                    >
-                      {day.dayNumber}
-
-                      {/* Today indicator dot */}
-                      {day.isToday && !day.isSelected && (
-                        <div className="absolute bottom-1 left-1/2 transform -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                      )}
-                    </TouchFeedbackButton>
-                  );
-                });
-              })()}
-            </div>
-          </div>
-        </div>
-      </div>
-
+      <HorizontalCalendarStrip
+        selectedDate={selectedDate}
+        setSelectedDate={setSelectedDate}
+        navigateDate={navigateDate}
+        showCalendar={showCalendar}
+        setShowCalendar={setShowCalendar}
+        calendarMonth={calendarMonth}
+        setCalendarMonth={setCalendarMonth}
+      />
       {/* Content */}
       <div className="w-full md:max-w-2xl lg:max-w-4xl md:mx-auto pb-4 md:pb-6">
         {loading ? (
@@ -1304,7 +568,6 @@ const NutritionDashboard = ({
             </div>
           </div>
         ) : error ? (
-          /* error state ... (unchanged) */
           <div className="text-center py-12 md:py-20 px-4 md:px-6">
             <div className="backdrop-blur-xl bg-white/30 rounded-2xl md:rounded-3xl p-8 md:p-12 border border-white/30 shadow-2xl flex flex-col items-center">
               {isIOS ? (
@@ -1312,7 +575,7 @@ const NutritionDashboard = ({
                   <AlertCircle className="w-9 h-9 md:w-11 md:h-11 text-red-400" />
                 </div>
               ) : (
-                <div className="text-5xl md:text-7xl mb-4 md:mb-6">ðŸ˜”</div>
+                <div className="text-5xl md:text-7xl mb-4 md:mb-6">😔</div>
               )}
               <div className="text-red-600 mb-3 md:mb-4 text-lg md:text-xl font-semibold">
                 {error}
@@ -1327,126 +590,38 @@ const NutritionDashboard = ({
           </div>
         ) : (
           <>
-            <div className="px-3 md:px-4 mt-3 md:mt-5 mb-4">
-              <div
-                className={`w-full max-w-md mx-auto bg-white/70 backdrop-blur-xl rounded-2xl shadow-md border border-gray-100 overflow-hidden transition-all duration-500 ease-out ${
-                  showTrendCard ? "opacity-100 translate-x-0" : "opacity-0 translate-x-6"
-                }`}
-                onPointerDown={handleOverviewPointerDown}
-                onPointerMove={handleOverviewPointerMove}
-                onPointerUp={handleOverviewPointerEnd}
-                onPointerCancel={handleOverviewPointerEnd}
-                onPointerLeave={handleOverviewPointerEnd}
-              >
-                <div className="px-4 md:px-5 pt-4 md:pt-5 pb-2 flex items-center justify-between">
-                  <div className="text-xs md:text-sm text-gray-500">
-                    {activeOverviewPanel === "summary"
-                      ? "Daily Summary"
-                      : `Calorie Trend (${trendRangeDays}D)`}
-                  </div>
-                  <div className="flex items-center gap-1 bg-gray-100 rounded-full p-1">
-                    <button
-                      type="button"
-                      onClick={() => setActiveOverviewPanel("summary")}
-                      className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
-                        activeOverviewPanel === "summary"
-                          ? "bg-emerald-500 text-white shadow-sm"
-                          : "text-gray-600 hover:bg-white"
-                      }`}
-                    >
-                      Summary
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveOverviewPanel("trend")}
-                      className={`px-2.5 py-1 text-[11px] md:text-xs rounded-full transition-all duration-300 ${
-                        activeOverviewPanel === "trend"
-                          ? "bg-emerald-500 text-white shadow-sm"
-                          : "text-gray-600 hover:bg-white"
-                      }`}
-                    >
-                      Trend
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  className="overflow-hidden transition-[height] duration-400 ease-out"
-                  style={
-                    overviewPanelHeight
-                      ? { height: `${overviewPanelHeight}px` }
-                      : undefined
-                  }
-                >
-                  <div
-                    className="flex items-start w-[200%] transition-transform duration-500 ease-out"
-                    style={{
-                      transform:
-                        activeOverviewPanel === "summary"
-                          ? "translateX(0%)"
-                          : "translateX(-50%)",
-                    }}
-                  >
-                    <NutritionSummaryCards
-                      summaryPanelRef={summaryPanelRef}
-                      dailyStats={dailyStats}
-                      calorieTarget={calorieTarget}
-                      consumedCalories={consumedCalories}
-                      caloriesProgressPercent={caloriesProgressPercent}
-                      calorieStatus={calorieStatus}
-                      isOverTarget={isOverTarget}
-                      burnedCalories={burnedCalories}
-                      extraCalories={extraCalories}
-                      burnProgress={burnProgress}
-                      isBalanced={isBalanced}
-                      watchBurned={watchBurned}
-                      stepsBurned={stepsBurned}
-                    />
-
-                    <NutritionFilters
-                      trendRangeDays={trendRangeDays}
-                      setTrendRangeDays={setTrendRangeDays}
-                      trendLoading={trendLoading}
-                      calorieTrendData={calorieTrendData}
-                      calorieChartRenderData={calorieChartRenderData}
-                      visibleNutritionDotIndices={visibleNutritionDotIndices}
-                      visibleNutritionTickLabels={visibleNutritionTickLabels}
-                      trendAverageCalories={trendAverageCalories}
-                      trendBestDay={trendBestDay}
-                      trendAboveTargetDays={trendAboveTargetDays}
-                      calorieTarget={calorieTarget}
-                      renderCaloriePointLabel={renderCaloriePointLabel}
-                      trendPanelRef={trendPanelRef}
-                    />
-                  </div>
-                </div>
-
-                <div className="pb-3 md:pb-4 flex items-center justify-center gap-1.5">
-                  <button
-                    type="button"
-                    aria-label="Go to summary slide"
-                    onClick={() => setActiveOverviewPanel("summary")}
-                    style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
-                    className={`rounded-full transition-all duration-300 ${
-                      activeOverviewPanel === "summary"
-                        ? "bg-emerald-500"
-                        : "bg-gray-300 hover:bg-gray-400"
-                    }`}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Go to trend slide"
-                    onClick={() => setActiveOverviewPanel("trend")}
-                    style={{ width: 7, height: 7, minWidth: 0, minHeight: 0, padding: 0 }}
-                    className={`rounded-full transition-all duration-300 ${
-                      activeOverviewPanel === "trend"
-                        ? "bg-emerald-500"
-                        : "bg-gray-300 hover:bg-gray-400"
-                    }`}
-                  />
-                </div>
-              </div>
-            </div>
+            <OverviewPanels
+              showTrendCard={showTrendCard}
+              overviewSwipeHandlers={overviewSwipeHandlers}
+              activeOverviewPanel={activeOverviewPanel}
+              setActiveOverviewPanel={setActiveOverviewPanel}
+              overviewPanelHeight={overviewPanelHeight}
+              summaryPanelRef={summaryPanelRef}
+              dailyStats={dailyStats}
+              calorieTarget={calorieTarget}
+              consumedCalories={consumedCalories}
+              caloriesProgressPercent={caloriesProgressPercent}
+              calorieStatus={calorieStatus}
+              isOverTarget={isOverTarget}
+              burnedCalories={burnedCalories}
+              extraCalories={extraCalories}
+              burnProgress={burnProgress}
+              isBalanced={isBalanced}
+              watchBurned={watchBurned}
+              stepsBurned={stepsBurned}
+              trendPanelRef={trendPanelRef}
+              trendRangeDays={trendRangeDays}
+              setTrendRangeDays={setTrendRangeDays}
+              trendLoading={trendLoading}
+              calorieTrendData={calorieTrendData}
+              calorieChartRenderData={calorieChartRenderData}
+              visibleNutritionDotIndices={visibleNutritionDotIndices}
+              visibleNutritionTickLabels={visibleNutritionTickLabels}
+              trendAverageCalories={trendAverageCalories}
+              trendBestDay={trendBestDay}
+              trendAboveTargetDays={trendAboveTargetDays}
+              renderCaloriePointLabel={renderCaloriePointLabel}
+            />
             {/* Meals */}
             <div className="px-4 md:px-6 space-y-4">
               <NutritionMealList
@@ -1470,7 +645,7 @@ const NutritionDashboard = ({
       </div>
 
       {/* Modal */}
-      <NutritionAnalysisPanel
+      <MealAnalysisModal
         selectedMeal={selectedMeal}
         isClosingModal={isClosingModal}
         isEditing={isEditing}
@@ -1496,4 +671,3 @@ const NutritionDashboard = ({
 };
 
 export default NutritionDashboard;
-
