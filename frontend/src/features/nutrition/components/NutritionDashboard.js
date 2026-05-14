@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ArrowLeft,
   ChevronLeft,
@@ -17,6 +17,7 @@ import {
   generateScrollableDates,
   resolveFoodItemIndex,
   transformDbItemToEditable,
+  parseAnalysisData,
 } from "../services/nutritionDashboard";
 import {
   NutritionSummaryCards,
@@ -24,6 +25,13 @@ import {
   NutritionMealList,
   NutritionAnalysisPanel,
 } from "./dashboard";
+import {
+  useUserCalorieTarget,
+  useBurnedCalories,
+  useCalorieTrend,
+  useCalorieChartData,
+  useResolveUserId,
+} from "../hooks";
 
 const UNDO_SECONDS = 5; // cooldown duration
 
@@ -80,24 +88,8 @@ const NutritionDashboard = ({
   // Track when update is from auto-save to prevent UI reset
   const isAutoSaveUpdateRef = useRef(false);
 
-  // Calorie target from user's BMR (fallback to 1500 if not set)
-  const [calorieTarget, setCalorieTarget] = useState(1500);
-
-  // Burned calories split by source: steps (from DB) + watch (from DB via education_logs_table)
-  // const [stepsBurned, setStepsBurned] = useState(0);    // from daily_step_activity â€” STEP COUNTER DISABLED
-  const stepsBurned = 0; // Step counter disabled
-  const [dbWatchBurned, setDbWatchBurned] = useState(0); // from education_logs_table (today's watch entries)
-  // Use the highest of: DB watch value OR the just-uploaded prop (in case DB hasn't been committed yet)
-  const watchBurned = Math.max(dbWatchBurned, watchBurnedCalories);
-  const burnedCalories = stepsBurned + watchBurned;      // combined total used in all calculations (steps disabled)
-  // eslint-disable-next-line no-unused-vars -- value unread; setter retained for re-render side effect
-  const [burnedLoading, setBurnedLoading] = useState(false);
   const watchUploadRef = useRef(null);
-
   const [trendRangeDays, setTrendRangeDays] = useState(7);
-  const [calorieTrendData, setCalorieTrendData] = useState([]);
-  const [trendLoading, setTrendLoading] = useState(false);
-  const [showTrendCard, setShowTrendCard] = useState(false);
   const [activeOverviewPanel, setActiveOverviewPanel] = useState("summary");
   const [overviewPanelHeight, setOverviewPanelHeight] = useState(null);
   const overviewSwipeRef = useRef({
@@ -108,31 +100,29 @@ const NutritionDashboard = ({
   const summaryPanelRef = useRef(null);
   const trendPanelRef = useRef(null);
 
-  const resolveUserId = useCallback(async () => {
-    // ðŸ”’ Demo account â€” return sentinel so dashboard renders empty instead of erroring
-    const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
-    if (DEMO_ACCOUNTS.includes((user?.email || '').toLowerCase().trim())) {
-      return 'DEMO_USER';
-    }
-    if (user?.id) return user.id;
-    if (!user?.email) return null;
+  const resolveUserId = useResolveUserId({ user, apiBaseUrl });
 
-    try {
-      const lookupResponse = await fetch(`${apiBaseUrl}/api/user/lookup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email }),
-      });
-      const lookupData = await lookupResponse.json();
-      if (lookupData.success && lookupData.userId) {
-        return lookupData.userId;
-      }
-      return null;
-    } catch (error) {
-      console.error("[NutritionDashboard] Failed to resolve userId:", error);
-      return null;
-    }
-  }, [user?.id, user?.email, apiBaseUrl]);
+  // Calorie target from user's BMR (fallback handled inside the hook)
+  const calorieTarget = useUserCalorieTarget({ user, apiBaseUrl, bmrUpdateKey });
+
+  // Burn-to-Balance: today's calories burned (steps disabled, watch-derived only)
+  const { burnedCalories, watchBurned, stepsBurned } = useBurnedCalories({
+    user,
+    selectedDate,
+    apiBaseUrl,
+    resolveUserId,
+    watchBurnedCalories,
+  });
+
+  // Multi-day calorie totals for the trend chart
+  const { calorieTrendData, trendLoading, showTrendCard } = useCalorieTrend({
+    user,
+    selectedDate,
+    trendRangeDays,
+    apiBaseUrl,
+    resolveUserId,
+    calorieTarget,
+  });
 
   // Initialize local editable data when meal changes
   useEffect(() => {
@@ -153,10 +143,93 @@ const NutritionDashboard = ({
       });
 
       // Transform database format to EditableFoodItem expected format
-      const transformedItems = (foodData.detailedItems || []).map((item) =>
-        transformDbItemToEditable(item),
-      );
-            setLocalDetailedItems(transformedItems);
+      const transformedItems = (foodData.detailedItems || []).map((item) => {
+        // Auto-detect liquids from name if not explicitly set (for backwards compatibility)
+        const nameToCheck = (item.name || "").toLowerCase();
+        const liquidKeywords = [
+          "shake",
+          "juice",
+          "milk",
+          "Lassi",
+          "coffee",
+          "tea",
+          "water",
+          "smoothie",
+          "soup",
+          "drink",
+          "beverage",
+          "cola",
+          "soda",
+          "beer",
+          "wine",
+          "cocktail",
+          "latte",
+          "cappuccino",
+          "espresso",
+        ];
+        const isLiquidByName = liquidKeywords.some((keyword) =>
+          nameToCheck.includes(keyword),
+        );
+
+        // Determine if this is a liquid food - check both explicit flag and volume_ml presence
+        const isLiquid =
+          item.isLiquid === true ||
+          (item.volume_ml !== null && item.volume_ml !== undefined) ||
+          isLiquidByName;
+
+        // âœ… Get the correct value based on liquid/solid
+        const actualGrams = isLiquid
+          ? item.volume_ml || item.grams || item.weight_g || 100
+          : item.weight_g || item.grams || item.volume_ml || 100;
+
+        const unit = item.unit || (isLiquid ? "ml" : "g");
+
+        // Calculate per100g if not present (needed for editing)
+        const nutrition = item.nutrition || {};
+        const per100g = item.per100g || {
+          calories: (nutrition.calories || 0) * (100 / actualGrams),
+          protein: (nutrition.protein || 0) * (100 / actualGrams),
+          carbs: (nutrition.carbs || 0) * (100 / actualGrams),
+          fat: (nutrition.fat || 0) * (100 / actualGrams),
+          fiber: (nutrition.fiber || 0) * (100 / actualGrams),
+        };
+
+        const transformed = {
+          ...item,
+          serving: {
+            description: item.portion,
+            grams: actualGrams,
+            unit: unit,
+            isLiquid: isLiquid,
+          },
+          portionDescription: item.portion,
+          grams: actualGrams,
+          unit: unit,
+          isLiquid: isLiquid,
+          per100g: per100g, // âœ… Add per100g for editing calculations
+          // ðŸ”´ CRITICAL: Preserve correction metadata if it exists
+          // If originalAiName doesn't exist, mark it so EditableFoodItem will reverse-lookup
+          originalAiName: item.originalAiName || null, // Use null instead of fallback
+          wasAutoCorrected:
+            item.wasAutoCorrected || (item.originalAiName ? true : false),
+          correctionSource: item.correctionSource || null,
+          correctionMetadata: item.correctionMetadata || null,
+          // Flag to indicate this item needs reverse-lookup
+          needsReverseLookup: !item.originalAiName && !item.correctionMetadata,
+        };
+        console.log("Ã°Å¸â€Â [NutritionDashboard] Transformed item:", {
+          name: item.name,
+          originalAiName: transformed.originalAiName,
+          wasAutoCorrected: transformed.wasAutoCorrected,
+          needsReverseLookup: transformed.needsReverseLookup,
+          correctionMetadataAiDetected: item.correctionMetadata?.aiDetected,
+          isLiquidByName,
+          original: item,
+          transformed: transformed,
+        });
+        return transformed;
+      });
+      setLocalDetailedItems(transformedItems);
       setLocalNutrition(foodData.nutrition || {});
 
       // Only reset editing states if NOT from auto-save
@@ -360,6 +433,31 @@ const NutritionDashboard = ({
     }
   };
 
+  const getFoodSignature = (item) => {
+    const name = (item?.name || "").trim().toLowerCase();
+    const grams =
+      item?.serving?.grams ?? item?.grams ?? item?.estimatedWeight ?? "";
+    const unit =
+      (item?.serving?.unit || item?.unit || "").trim().toLowerCase();
+    return `${name}::${grams}::${unit}`;
+  };
+
+  const resolveFoodItemIndex = (items, fallbackIndex, snapshot) => {
+    if (snapshot) {
+      const snapSig = getFoodSignature(snapshot);
+      const bySignature = items.findIndex(
+        (item) => getFoodSignature(item) === snapSig,
+      );
+      if (bySignature !== -1) return bySignature;
+    }
+
+    if (fallbackIndex >= 0 && fallbackIndex < items.length) {
+      return fallbackIndex;
+    }
+
+    return -1;
+  };
+
   const handleDeleteFoodItem = async (index, options = {}) => {
     const phase = options?.phase || "finalize";
     const snapshot = options?.itemSnapshot || null;
@@ -434,6 +532,8 @@ const NutritionDashboard = ({
   const [loadingMore, setLoadingMore] = useState(false);
   const MEALS_PER_PAGE = 10;
   const sentinelRef = useRef(null);
+
+  /* ---------------- Helpers ---------------- */
 
   useEffect(() => {
     if (isMobileDevice()) {
@@ -599,38 +699,6 @@ const NutritionDashboard = ({
   }, [user, selectedDate, fetchBurnedCalories]);
   */
 
-  // â”€â”€â”€ Fetch watch-burned calories from education_logs_table for the selected date â”€
-  const fetchWatchBurnedCalories = useCallback(
-    async (date) => {
-      if (!user) return;
-      try {
-        const actualUserId = await resolveUserId();
-        if (!actualUserId) return;
-        const dateStr =
-          date.getFullYear() +
-          "-" +
-          String(date.getMonth() + 1).padStart(2, "0") +
-          "-" +
-          String(date.getDate()).padStart(2, "0");
-        const res = await fetch(
-          `${apiBaseUrl}/api/activity/watch-calories?userId=${actualUserId}&date=${dateStr}&_t=${Date.now()}`,
-        );
-        const json = await res.json();
-        if (json.success) {
-          setDbWatchBurned(json.caloriesBurned || 0);
-        }
-      } catch (err) {
-        console.warn("[NutritionDashboard] fetchWatchBurnedCalories failed:", err);
-      }
-    },
-    [user, apiBaseUrl, resolveUserId],
-  );
-
-  useEffect(() => {
-    if (user) fetchWatchBurnedCalories(selectedDate);
-  }, [user, selectedDate, fetchWatchBurnedCalories, watchBurnedCalories]);
-  // â†‘ also re-fetch when watchBurnedCalories changes (just saved a new watch image)
-
   // â”€â”€â”€ Smartwatch screenshot handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleWatchScreenshot = useCallback(
     async (e) => {
@@ -639,7 +707,6 @@ const NutritionDashboard = ({
       // Reset the input so the same file can be re-selected
       e.target.value = "";
 
-      setBurnedLoading(true);
       try {
         const result = await geminiService.analyzeWatchScreenshot(file);
         if (result.caloriesBurned > 0) {
@@ -655,96 +722,10 @@ const NutritionDashboard = ({
       } catch (err) {
         console.error("[BurnToBalance] Screenshot analysis failed:", err);
         alert("Failed to analyze screenshot. Please check your connection and try again.");
-      } finally {
-        setBurnedLoading(false);
       }
     },
     [],
   );
-
-  const toLocalDateString = (date) => {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, "0");
-    const day = String(date.getDate()).padStart(2, "0");
-    return `${year}-${month}-${day}`;
-  };
-
-  const fetchCalorieTrend = useCallback(
-    async (days) => {
-      if (!user) return;
-
-      setTrendLoading(true);
-
-      try {
-        const actualUserId = await resolveUserId();
-        if (!actualUserId) {
-          setCalorieTrendData([]);
-          return;
-        }
-
-        const dates = [];
-        for (let i = days - 1; i >= 0; i--) {
-          const d = new Date(selectedDate);
-          d.setDate(selectedDate.getDate() - i);
-          dates.push(d);
-        }
-
-        const responses = await Promise.all(
-          dates.map(async (d) => {
-            const dateString = toLocalDateString(d);
-            const cacheBuster = Date.now() + Math.random();
-            const response = await fetch(
-              `${apiBaseUrl}/api/food-corrections/stats?userId=${actualUserId}&date=${dateString}&detailed=true&_t=${cacheBuster}`,
-              {
-                cache: "no-store",
-                headers: {
-                  "Cache-Control": "no-cache",
-                  Pragma: "no-cache",
-                },
-              },
-            );
-
-            const data = await response.json();
-            const list = data?.success ? data.data || [] : [];
-            const calories = list.reduce((sum, analysis) => {
-              if (analysis.isUndoPlaceholder) return sum;
-              const foodData = parseAnalysisData(analysis.AnalysisData);
-              const n = foodData.nutrition || {};
-              return sum + (n.calories || analysis.TotalCalories || 0);
-            }, 0);
-
-            return {
-              key: dateString,
-              date: d,
-              label: d.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
-              calories: Math.round(calories),
-              hasData: list.some((analysis) => !analysis.isUndoPlaceholder),
-              target: calorieTarget,
-            };
-          }),
-        );
-
-        setCalorieTrendData(responses);
-      } catch (err) {
-        console.error("[NutritionDashboard] Failed to fetch calorie trend:", err);
-        setCalorieTrendData([]);
-      } finally {
-        setTrendLoading(false);
-      }
-    },
-    [user, resolveUserId, selectedDate, apiBaseUrl, calorieTarget],
-  );
-
-  useEffect(() => {
-    if (!user) return;
-    fetchCalorieTrend(trendRangeDays);
-  }, [user, selectedDate, trendRangeDays, fetchCalorieTrend]);
-
-  useEffect(() => {
-    setShowTrendCard(false);
-    const timer = setTimeout(() => setShowTrendCard(true), 40);
-    return () => clearTimeout(timer);
-  }, [calorieTrendData, trendRangeDays]);
 
   const handleOverviewPointerDown = (e) => {
     if (!e.isPrimary) return;
@@ -793,54 +774,6 @@ const NutritionDashboard = ({
     };
   }, [activeOverviewPanel, trendLoading, calorieTrendData, trendRangeDays, dailyStats]);
 
-  // Fetch user's BMR from profile for calorie target
-  useEffect(() => {
-    const fetchUserBmr = async () => {
-      if (!user?.email) return;
-
-      try {
-        // Add timestamp to bust cache and get fresh data
-        const response = await fetch(
-          `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(
-            user.email,
-          )}&_t=${Date.now()}`,
-        );
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success && data.data?.latestBmr) {
-            // Use BMR from profile, fallback to 1500 if not available
-            setCalorieTarget(Math.round(data.data.latestBmr));
-            console.log(
-              "ðŸ”¥ [NutritionDashboard] BMR loaded from profile:",
-              data.data.latestBmr,
-            );
-          } else {
-            console.log(
-              "Ã¢Å¡Â Ã¯Â¸Â [NutritionDashboard] No BMR in profile, using default 1500",
-            );
-            setCalorieTarget(1500);
-          }
-        }
-      } catch (err) {
-        console.error("Ã¢ÂÅ’ [NutritionDashboard] Failed to fetch BMR:", err);
-        // Keep default fallback of 1500
-      }
-    };
-
-    fetchUserBmr();
-
-    // Re-fetch BMR when user returns to the tab/app (e.g. after editing profile)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible") {
-        fetchUserBmr();
-      }
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    return () => {
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, [user?.email, apiBaseUrl, bmrUpdateKey]);
 
   // âœ… UPDATE DISPLAYED MEALS WHEN ANALYSES CHANGE
   useEffect(() => {
@@ -1070,79 +1003,6 @@ const NutritionDashboard = ({
     }
   };
 
-  const parseAnalysisData = (analysisData, moreTextColor = "text-gray-500") => {
-    try {
-      const parsed =
-        typeof analysisData === "string"
-          ? JSON.parse(analysisData)
-          : analysisData;
-
-      // Helper: user-friendly title from foods[]
-      const formatFoodsTitle = (foods = []) => {
-        const count = foods.length || 0;
-        if (count === 0) return "Unknown Food";
-
-        const first = (foods[0]?.name || "Unknown Food").trim();
-        if (count === 1) return first;
-
-        // For 2 items: "First & Second"
-        if (count === 2) {
-          const second = (foods[1]?.name || "another item").trim();
-          return `${first} & ${second}`;
-        }
-
-        // For 3+ items: "First & other {count-1} item(s)"
-        const others = count - 1;
-        return (
-          <>
-            {first}{" "}
-            <span className={`${moreTextColor} text-sm font-normal`}>
-              + {others} more
-            </span>
-          </>
-        );
-      };
-
-      // Unified format: foods[] + total
-      if (parsed?.foods?.length > 0 && parsed?.total) {
-        return {
-          name: formatFoodsTitle(parsed.foods),
-          nutrition: {
-            calories: parsed.total.calories || 0,
-            protein: parsed.total.protein || 0,
-            carbs: parsed.total.carbs || 0,
-            fat: parsed.total.fat || 0,
-            fiber: parsed.total.fiber || 0,
-          },
-          detailedItems: parsed.foods || [],
-        };
-      }
-
-      // Legacy manual: category + nutrition
-      if (parsed?.category?.name) {
-        return {
-          name: parsed.category.name,
-          nutrition: parsed.nutrition || {},
-          detailedItems: parsed.detailedItems || [],
-        };
-      }
-
-      // Legacy background: foods[] without total
-      if (parsed?.foods?.length > 0) {
-        const firstFood = parsed.foods[0] || {};
-        return {
-          name: formatFoodsTitle(parsed.foods),
-          nutrition: firstFood.nutrition || {},
-          detailedItems: parsed.foods || [],
-        };
-      }
-
-      return { name: "Unknown Food", nutrition: {}, detailedItems: [] };
-    } catch {
-      return { name: "Error parsing data", nutrition: {}, detailedItems: [] };
-    }
-  };
-
   const applyDailyDelta = ({
     calories = 0,
     protein = 0,
@@ -1216,89 +1076,12 @@ const NutritionDashboard = ({
     null,
   );
 
-  const calorieChartData = useMemo(
-    () =>
-      calorieTrendData.map((point, index) => {
-        const previousCalories =
-          index > 0 ? calorieTrendData[index - 1]?.calories || 0 : null;
-        const currentCalories = point.calories || 0;
-        const changeDirection =
-          previousCalories === null
-            ? null
-            : currentCalories > previousCalories
-              ? "up"
-              : currentCalories < previousCalories
-                ? "down"
-                : "same";
-
-        return {
-          ...point,
-          calories: currentCalories,
-          previousCalories,
-          changeDirection,
-        };
-      }),
-    [calorieTrendData, calorieTarget],
-  );
-
-  const calorieChartRenderData = useMemo(() => {
-    const total = calorieChartData.length;
-    if (total === 0) return [];
-    if (trendRangeDays <= 7) return calorieChartData;
-
-    const targetCount = Math.min(7, total);
-    if (targetCount <= 1) return [calorieChartData[total - 1]];
-
-    const sampledIndices = Array.from({ length: targetCount }, (_, i) =>
-      Math.round((i * (total - 1)) / (targetCount - 1)),
-    );
-
-    return Array.from(new Set(sampledIndices))
-      .sort((a, b) => a - b)
-      .map((idx) => calorieChartData[idx]);
-  }, [calorieChartData, trendRangeDays]);
-
-  const visibleNutritionDotIndices = useMemo(() => {
-    const total = calorieChartRenderData.length;
-    if (total === 0) return new Set();
-    return new Set(Array.from({ length: total }, (_, i) => i));
-  }, [calorieChartRenderData]);
-
-  const visibleNutritionTickLabels = useMemo(
-    () =>
-      Array.from(visibleNutritionDotIndices)
-        .sort((a, b) => a - b)
-        .map((index) => calorieChartRenderData[index]?.label)
-        .filter(Boolean),
-    [calorieChartRenderData, visibleNutritionDotIndices],
-  );
-
-  const renderCaloriePointLabel = useCallback(
-    ({ x, y, index }) => {
-      if (x === undefined || y === undefined || index === undefined) return null;
-      if (!visibleNutritionDotIndices.has(index)) return null;
-
-      const point = calorieChartRenderData[index];
-      if (!point) return null;
-
-      const text = point.hasData ? `${point.calories}` : "0";
-      const labelFontSize = isSmallChartDevice() ? 7 : 9;
-      const labelY = y - (isSmallChartDevice() ? 8 : 11);
-      return (
-        <text
-          x={x}
-          y={labelY}
-          textAnchor="middle"
-          fill="#9ca3af"
-          fontSize={labelFontSize}
-          fontWeight={500}
-        >
-          {text}
-        </text>
-      );
-    },
-    [calorieChartRenderData, visibleNutritionDotIndices],
-  );
+  const {
+    calorieChartRenderData,
+    visibleNutritionDotIndices,
+    visibleNutritionTickLabels,
+    renderCaloriePointLabel,
+  } = useCalorieChartData({ calorieTrendData, trendRangeDays, calorieTarget });
 
   /* ---------------- UI ---------------- */
 
@@ -1359,7 +1142,7 @@ const NutritionDashboard = ({
         </>
       )}
 
-      {/* Date selector */}
+      {/* Date selector */selectedDate}
       <div className="bg-white border-b border-gray-200 shadow-sm">
         <div className="w-full max-w-md mx-auto md:max-w-2xl lg:max-w-4xl">
           {isMobileDevice() ? (

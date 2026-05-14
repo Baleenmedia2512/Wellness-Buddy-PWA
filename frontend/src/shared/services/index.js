@@ -8,7 +8,6 @@
 
 // New canonical entry points (use these in new code).
 export * from './userIdentity.js';
-export * from './serverTime.js';
 
 // Existing shared services (re-exported for discoverability).
 export * as apiClient from './apiClient.js';
