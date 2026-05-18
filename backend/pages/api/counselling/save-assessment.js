@@ -9,6 +9,7 @@
  */
 
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all responses
@@ -65,7 +66,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('📋 Saving Counselling Assessment:', {
+    logger.debug('📋 Saving Counselling Assessment:', {
       userId: userIdInt,
       counsellorId: counsellorIdInt,
       healthProblemsCount: healthProblems?.length,
@@ -102,7 +103,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✅ Assessment saved successfully:', data.id);
+    logger.debug('✅ Assessment saved successfully:', data.id);
 
     return res.status(200).json({
       success: true,

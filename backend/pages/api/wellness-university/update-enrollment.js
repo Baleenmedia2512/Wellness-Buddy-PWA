@@ -7,6 +7,7 @@
 
 
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✏️ [update-enrollment] Update request:', { email, programCount: programs.length });
+    logger.debug('✏️ [update-enrollment] Update request:', { email, programCount: programs.length });
 
     const supabase = getSupabaseClient();
 
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✅ [update-enrollment] User found:', { userId: user.UserId, userName: user.UserName });
+    logger.debug('✅ [update-enrollment] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Update enrollment record — preserve existing per-program dates, add new ones
     const updateTime = getISTTimestamp();
@@ -126,7 +127,7 @@ export default async function handler(req, res) {
       throw new Error(updateError.message);
     }
 
-    console.log('✅ [update-enrollment] Enrollment updated successfully:', { enrollmentId: updatedEnrollment.Id });
+    logger.debug('✅ [update-enrollment] Enrollment updated successfully:', { enrollmentId: updatedEnrollment.Id });
 
     return res.status(200).json({
       success: true,

@@ -16,6 +16,7 @@ import { useCallback } from 'react';
 import { saveStepsForDate } from '../services/stepCounterPersistence';
 import { toDateKey } from '../services/stepCounterCalculations';
 import { AUTO_SAVE_STEP_DELTA, AUTO_SAVE_INTERVAL_MS } from '../services/stepCounterConstants';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 export function useStepPersistence({ refs }) {
   const saveStepsToDatabase = useCallback(async () => {
@@ -45,12 +46,12 @@ export function useStepPersistence({ refs }) {
         steps,
         sensorTotal: refs.latestSensorTotalRef.current,
       });
-      console.log('[StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
+      debugLog('[StepCounter] Auto-save:', steps, 'steps (+' + delta + ')');
     } catch (err) {
       refs.lastSavedStepsRef.current = lastSaved; // rollback
       console.warn('[StepCounter] Auto-save failed:', err?.message || err);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, []);
 
   return { saveStepsToDatabase };

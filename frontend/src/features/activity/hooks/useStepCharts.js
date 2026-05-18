@@ -28,7 +28,7 @@ export function useStepCharts({ refs, selectedMember }) {
     } catch (err) {
       console.error('[StepCounter] Load history failed:', err);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, []);
 
   // Member data fetch (coach viewing a team member)

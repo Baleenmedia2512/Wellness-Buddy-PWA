@@ -6,6 +6,7 @@ import EditableFoodItem from "./EditableFoodItem";
 import { getUserId } from "../../../shared/services/userIdentity";
 import { geminiService } from "../../../shared/services/geminiService";
 import { captureAndShare, shareImageDirectly, precaptureShareImage, shareCachedDataUrl } from "../../../shared/utils/shareUtils";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const NutritionCard = ({
   data,
@@ -50,7 +51,7 @@ const NutritionCard = ({
       // Create object URL from original file (no compression)
       const url = URL.createObjectURL(selectedImage);
       setHighResImageUrl(url);
-      console.log("📸 Created high-res image URL for sharing");
+      debugLog("📸 Created high-res image URL for sharing");
 
       // Cleanup on unmount
       return () => {
@@ -100,9 +101,9 @@ const NutritionCard = ({
 
   // Sync local state when data prop changes (e.g., after correction is applied)
   useEffect(() => {
-    console.log("🔄 [NutritionCard] Data prop changed, syncing local state");
-    console.log("   New nutrition values:", data?.nutrition);
-    console.log("   New detailedItems count:", data?.detailedItems?.length);
+    debugLog("🔄 [NutritionCard] Data prop changed, syncing local state");
+    debugLog("   New nutrition values:", data?.nutrition);
+    debugLog("   New detailedItems count:", data?.detailedItems?.length);
 
     if (data?.nutrition) {
       setLocalNutrition(data.nutrition);
@@ -300,7 +301,7 @@ const NutritionCard = ({
 
   // Recalculate total nutrition from all food items
   const recalculateTotals = (items) => {
-    console.log(
+    debugLog(
       "🧮 [NutritionCard] recalculateTotals - Processing items:",
       items.length,
     );
@@ -313,14 +314,14 @@ const NutritionCard = ({
         const itemFat = item.nutrition?.fat || item.fat || 0;
         const itemFiber = item.nutrition?.fiber || item.fiber || 0;
 
-        console.log(`   📊 Item ${index + 1}: ${item.name}`);
-        console.log(
+        debugLog(`   📊 Item ${index + 1}: ${item.name}`);
+        debugLog(
           `      - calories: nutrition=${item.nutrition?.calories}, top-level=${item.calories}, using=${itemCalories}`,
         );
-        console.log(
+        debugLog(
           `      - carbs: nutrition=${item.nutrition?.carbs}, top-level=${item.carbs}, using=${itemCarbs}`,
         );
-        console.log(
+        debugLog(
           `      - protein: nutrition=${item.nutrition?.protein}, top-level=${item.protein}, using=${itemProtein}`,
         );
 
@@ -344,7 +345,7 @@ const NutritionCard = ({
       fiber: Math.round(totals.fiber * 10) / 10,
     };
 
-    console.log("   ✅ Final totals:", rounded);
+    debugLog("   ✅ Final totals:", rounded);
     return rounded;
   };
 
@@ -426,7 +427,7 @@ const NutritionCard = ({
       confidence: "high",
     };
 
-    console.log(
+    debugLog(
       "ðŸ” [NutritionCard] Sending to API - Foods with weights:",
       analysisData.foods.map((f) => ({
         name: f.name,
@@ -439,7 +440,7 @@ const NutritionCard = ({
       })),
     );
 
-    console.log("ðŸ“ [NutritionCard] Auto-saving update to meal ID:", savedMealId);
+    debugLog("ðŸ“ [NutritionCard] Auto-saving update to meal ID:", savedMealId);
 
     const response = await fetch(`${apiBaseUrl}/api/food-corrections/nutrition`, {
       method: "PUT",
@@ -465,8 +466,8 @@ const NutritionCard = ({
 
   // Handle food item update with auto-save
   const handleFoodUpdate = async (index, updatedFood) => {
-    console.log("[NutritionCard] Updating food item at index:", index);
-    console.log("[NutritionCard] Received updatedFood:", {
+    debugLog("[NutritionCard] Updating food item at index:", index);
+    debugLog("[NutritionCard] Received updatedFood:", {
       name: updatedFood.name,
       grams: updatedFood.grams,
       serving_grams: updatedFood.serving?.grams,
@@ -490,7 +491,7 @@ const NutritionCard = ({
     const newTotals = recalculateTotals(newItems);
     updateLocalAndParentState(newItems, newTotals);
 
-    console.log("[NutritionCard] Updated totals:", newTotals);
+    debugLog("[NutritionCard] Updated totals:", newTotals);
 
     try {
       await saveMealUpdate(newItems, newTotals);
@@ -713,7 +714,7 @@ const NutritionCard = ({
 
     // Early return if already sharing
     if (isSharing) {
-      console.log("âš ï¸ Share already in progress, ignoring duplicate call");
+      debugLog("âš ï¸ Share already in progress, ignoring duplicate call");
       return;
     }
 

@@ -9,6 +9,11 @@ const path = require('path');
 
 const SCOPES = ['backend/features', 'backend/pages', 'frontend/src'];
 const EXCLUDE = /(__tests__|\.test\.|\.spec\.|node_modules|build|\.next|out|dist)/;
+// Logger implementation files are allowed to call console.* — they ARE the logger.
+const LOGGER_FILES = new Set([
+  'frontend/src/shared/utils/logger.js',
+  'backend/shared/lib/logger.js',
+].map(p => require('path').resolve(p)));
 
 const RULES = [
   { name: 'console.log',            re: /console\.log\(/g,                msg: 'Use the shared logger.' },
@@ -32,6 +37,7 @@ SCOPES.forEach(s => fs.existsSync(s) && walk(s, files));
 
 let violations = 0;
 for (const f of files) {
+  if (LOGGER_FILES.has(require('path').resolve(f))) continue; // logger impl is exempt
   const src = fs.readFileSync(f, 'utf8');
   for (const rule of RULES) {
     if (rule.scopeIncludes && !rule.scopeIncludes.some(s => f.includes(s))) continue;

@@ -33,6 +33,7 @@ import { Geolocation } from "@capacitor/geolocation";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Capacitor } from "@capacitor/core";
+import { debugLog } from '../../utils/logger.js';
 
 /**
  * Returns true on iOS/Android (Capacitor native), false on web.
@@ -128,7 +129,7 @@ export function addAppStateListener(handler) {
 export async function requestAllPermissions() {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    console.log("📱 Requesting all permissions at once...");
+    debugLog("📱 Requesting all permissions at once...");
 
     // Request camera/gallery permissions
     await Camera.requestPermissions({ permissions: ["camera", "photos"] });
@@ -142,7 +143,7 @@ export async function requestAllPermissions() {
     // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
     // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
 
-    console.log("✅ All permissions requested");
+    debugLog("✅ All permissions requested");
   } catch (err) {
     console.warn("❌ Permission request failed:", err);
   }

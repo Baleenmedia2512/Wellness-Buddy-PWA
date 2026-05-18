@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getUserContext, formatContextForAI } from "./userIdentity";
-import { applyGlobalAutoCorrections } from "../../features/nutrition";
+import { applyGlobalAutoCorrections } from "../../features/nutrition/services/foodCorrection/applyCorrections";
+import { debugLog } from '../utils/logger.js';
 
 // Comprehensive network debugging to catch ALL requests
 const originalFetch = window.fetch;
@@ -34,7 +35,7 @@ window.XMLHttpRequest = function () {
   const originalOpen = xhr.open;
 
   xhr.open = function (method, url, ...args) {
-    console.log("ðŸŒ XHR REQUEST:", {
+    debugLog("ðŸŒ XHR REQUEST:", {
       method: method,
       url: url,
       timestamp: new Date().toISOString(),
@@ -168,7 +169,7 @@ class GeminiService {
 
     // Only compress if somehow a large image got through
     if (imageFile.size <= maxSize) {
-      console.log('⚡ Skipping preprocessing (already compressed)');
+      debugLog('⚡ Skipping preprocessing (already compressed)');
       return imageFile;
     }
 
@@ -274,7 +275,7 @@ class GeminiService {
         promptParts.push("===================================");
         promptParts.push("");
 
-        console.log("ðŸ“ [AI Personalization] Context injected into prompt:", {
+        debugLog("ðŸ“ [AI Personalization] Context injected into prompt:", {
           corrections: userContext.personalCorrections?.length || 0,
           diet: userContext.dietPreference,
           globalPatterns: userContext.globalPatterns?.length || 0,
@@ -353,8 +354,8 @@ class GeminiService {
 
   async analyzeImageForNutrition(imageFile, userId = null, userContext = null) {
     const startTime = Date.now();
-    // console.log('ðŸ” GeminiService: Starting optimized image analysis...');
-    // console.log('📸 Original image:', imageFile.name, imageFile.type, imageFile.size);
+    // debugLog('ðŸ” GeminiService: Starting optimized image analysis...');
+    // debugLog('📸 Original image:', imageFile.name, imageFile.type, imageFile.size);
 
     if (!this.model) {
       throw new Error("Gemini API key is not configured");
@@ -364,12 +365,12 @@ class GeminiService {
       // Use provided context or fetch if userId given but no context
       if (!userContext && userId) {
         try {
-          console.log(
+          debugLog(
             "🎯 [AI Personalization] Fetching user context for userId:",
             userId,
           );
           userContext = await getUserContext(userId);
-          console.log("✅ [AI Personalization] Context fetched:", {
+          debugLog("✅ [AI Personalization] Context fetched:", {
             corrections: userContext?.personalCorrections?.length || 0,
             diet: userContext?.dietPreference,
             patterns: userContext?.globalPatterns?.length || 0,
@@ -381,7 +382,7 @@ class GeminiService {
           );
         }
       } else if (userContext) {
-        console.log("✅ [AI Personalization] Using pre-loaded context:", {
+        debugLog("✅ [AI Personalization] Using pre-loaded context:", {
           corrections: userContext?.personalCorrections?.length || 0,
           diet: userContext?.dietPreference,
           patterns: userContext?.globalPatterns?.length || 0,
@@ -390,7 +391,7 @@ class GeminiService {
 
       // Preprocess image for faster processing
       const processedImage = await this.preprocessImage(imageFile);
-      // console.log('📸 Processed image size:', processedImage.size);
+      // debugLog('📸 Processed image size:', processedImage.size);
 
       // Convert to base64 with timeout
       const imageBase64 = await Promise.race([
@@ -398,7 +399,7 @@ class GeminiService {
         this.timeoutPromise(10000, "Image processing timeout"),
       ]);
 
-      // console.log('📋 Image converted to base64, length:', imageBase64.length);
+      // debugLog('📋 Image converted to base64, length:', imageBase64.length);
 
       // Build personalized prompt with user context
       const prompt = this.buildPersonalizedPrompt(userContext);
@@ -440,10 +441,10 @@ class GeminiService {
       }
 
       // ðŸ” LOG AI DETECTION RESULTS (AFTER AUTO-CORRECTIONS FOR ACCURACY)
-      console.log("🤖 ========== AI DETECTION RESULTS ==========");
+      debugLog("🤖 ========== AI DETECTION RESULTS ==========");
       if (nutritionData.foods && Array.isArray(nutritionData.foods)) {
         nutritionData.foods.forEach((food, index) => {
-          console.log(`ðŸ” AI Detected Food ${index + 1}:`, {
+          debugLog(`ðŸ” AI Detected Food ${index + 1}:`, {
             originalAiDetected: food.originalAiName || food.name,
             currentDisplayName: food.name,
             wasAutoCorrected: food.wasAutoCorrected || false,
@@ -454,7 +455,7 @@ class GeminiService {
           });
         });
       }
-      console.log("============================================");
+      debugLog("============================================");
 
       return this.transformOptimizedResponse(nutritionData, "image");
     } catch (error) {
@@ -467,7 +468,7 @@ class GeminiService {
 
   async analyzeTextForNutrition(foodText) {
     const startTime = Date.now();
-    // console.log('ðŸ” GeminiService: Starting text analysis for:', foodText);
+    // debugLog('ðŸ” GeminiService: Starting text analysis for:', foodText);
 
     if (!this.model) {
       throw new Error("Gemini API key is not configured");
@@ -509,7 +510,7 @@ USDA values. JSON only.`;
       // Log token usage
       this.logTokenUsage(response, "text_analysis", processingTime);
 
-      // console.log(`✅ Text analysis completed in ${processingTime}ms`);
+      // debugLog(`✅ Text analysis completed in ${processingTime}ms`);
 
       return this.transformOptimizedResponse(nutritionData, "text");
     } catch (error) {
@@ -554,7 +555,7 @@ USDA values. JSON only.`;
    */
   async searchFood(foodQuery) {
     const startTime = Date.now();
-    console.log("ðŸ” GeminiService: Starting food search for:", foodQuery);
+    debugLog("ðŸ” GeminiService: Starting food search for:", foodQuery);
 
     if (!this.model) {
       throw new Error("Gemini API key is not configured");
@@ -571,8 +572,8 @@ USDA values. JSON only.`;
 
     if (cached && Date.now() - cached.timestamp < this.cacheExpiry) {
       const cacheTime = Date.now() - startTime;
-      console.log(`💾 Using cached result (${cacheTime}ms)`);
-      console.log(`✅ Food search completed in ${cacheTime}ms (CACHED)`);
+      debugLog(`💾 Using cached result (${cacheTime}ms)`);
+      debugLog(`✅ Food search completed in ${cacheTime}ms (CACHED)`);
       return cached.data;
     }
 
@@ -587,7 +588,7 @@ RULES:
 4. Return defaultServing nutrition + per100g nutrition
 Note: Serving options generated locally, don't include servingOptions array.`;
 
-      console.log("📤 Sending search request to Gemini...");
+      debugLog("📤 Sending search request to Gemini...");
 
       // Make API call with timeout
       const result = await Promise.race([
@@ -601,7 +602,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       const response = await result.response;
       const text = response.text();
 
-      console.log("📥 Received response from Gemini, parsing...");
+      debugLog("📥 Received response from Gemini, parsing...");
 
       const searchResults = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
@@ -609,8 +610,8 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       // Log token usage
       this.logTokenUsage(response, "food_search", processingTime);
 
-      console.log(`✅ Food search completed in ${processingTime}ms`);
-      console.log(
+      debugLog(`✅ Food search completed in ${processingTime}ms`);
+      debugLog(
         `📊 Found ${
           searchResults.results?.length || 0
         } results for "${foodQuery}"`,
@@ -624,7 +625,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // Log first result for debugging
       if (searchResults.results.length > 0) {
-        console.log("🔎 First result:", {
+        debugLog("🔎 First result:", {
           name: searchResults.results[0].name,
           category: searchResults.results[0].category,
           defaultCalories:
@@ -637,7 +638,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
         data: searchResults,
         timestamp: Date.now(),
       });
-      console.log(`💾 Cached results for "${cacheKey}" (expires in 24h)`);
+      debugLog(`💾 Cached results for "${cacheKey}" (expires in 24h)`);
 
       return searchResults;
     } catch (error) {
@@ -682,7 +683,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
           for (let i = 0; i < openBrackets - closeBrackets; i++)
             cleanText += "]";
 
-          console.log("🔧 Attempted fix, trying parse again...");
+          debugLog("🔧 Attempted fix, trying parse again...");
           parsed = JSON.parse(cleanText);
         } else {
           throw firstError;
@@ -691,19 +692,19 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // Handle both formats: {results: [...]} or directly [...]
       if (Array.isArray(parsed)) {
-        console.log("✅ Parsed array format, wrapping in results object");
+        debugLog("✅ Parsed array format, wrapping in results object");
         return { results: parsed };
       }
 
       // If already has results property, return as-is
       if (parsed.results) {
-        console.log("✅ Parsed object with results property");
+        debugLog("✅ Parsed object with results property");
         return parsed;
       }
 
       // If it has foods property (nutrition analysis format), return as-is
       if (parsed.foods) {
-        console.log("✅ Parsed nutrition analysis with foods property");
+        debugLog("✅ Parsed nutrition analysis with foods property");
         return parsed;
       }
 
@@ -782,7 +783,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       this.sessionMetrics.requestsByType[requestType]++;
 
       // Log to console with nice formatting
-      console.log(`📊 Token Usage [${requestType}]:`, {
+      debugLog(`📊 Token Usage [${requestType}]:`, {
         "🔤 Prompt Tokens": tokenData.promptTokens,
         "💬 Response Tokens (Output)": tokenData.completionTokens,
         "📈 Total Tokens": tokenData.totalTokens,
@@ -791,7 +792,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       });
 
       // Log response quality
-      console.log(`ðŸ” Response Quality [${requestType}]:`, {
+      debugLog(`ðŸ” Response Quality [${requestType}]:`, {
         "✅ Finish Reason": tokenData.finishReason,
         "ðŸ›¡ï¸ Safety Ratings":
           tokenData.safetyRatings.length > 0 ? "Passed" : "N/A",
@@ -801,11 +802,11 @@ Note: Serving options generated locally, don't include servingOptions array.`;
 
       // // Log safety ratings detail
       // if (tokenData.safetyRatings.length > 0) {
-      //   console.log('ðŸ›¡ï¸ Safety Details:', tokenData.safetyRatings);
+      //   debugLog('ðŸ›¡ï¸ Safety Details:', tokenData.safetyRatings);
       // }
 
       // // Log session summary
-      // console.log(`📈 Session Summary:`, {
+      // debugLog(`📈 Session Summary:`, {
       //   'Total Requests': this.sessionMetrics.totalRequests,
       //   'Total Tokens': this.sessionMetrics.totalTokens,
       //   'Total Cost': `$${this.sessionMetrics.totalCost.toFixed(6)}`,
@@ -825,7 +826,7 @@ Note: Serving options generated locally, don't include servingOptions array.`;
       //   session: this.sessionMetrics
       // };
 
-      // console.log('📋 Structured Token Data:', JSON.stringify(structuredLog));
+      // debugLog('📋 Structured Token Data:', JSON.stringify(structuredLog));
     } catch (error) {
       console.warn("âš ï¸ Could not extract token usage:", error.message);
     }

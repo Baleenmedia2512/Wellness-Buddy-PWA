@@ -7,6 +7,7 @@
  */
 
 import { getSupabaseClient, getISTTimestamp } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -49,7 +50,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('🎓 [enroll] Enrollment request:', { email, programCount: programs.length });
+    logger.debug('🎓 [enroll] Enrollment request:', { email, programCount: programs.length });
 
     const supabase = getSupabaseClient();
 
@@ -72,7 +73,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✅ [enroll] User found:', { userId: user.UserId, userName: user.UserName });
+    logger.debug('✅ [enroll] User found:', { userId: user.UserId, userName: user.UserName });
 
     // Check if user is already enrolled
     const { data: existingEnrollment, error: checkError } = await supabase
@@ -116,11 +117,11 @@ export default async function handler(req, res) {
       throw new Error(insertError.message);
     }
 
-    console.log('✅ [enroll] Enrollment created successfully:', { enrollmentId: newEnrollment.Id });
+    logger.debug('✅ [enroll] Enrollment created successfully:', { enrollmentId: newEnrollment.Id });
 
-    // TODO: Send notification to coach (optional)
+    // TODO(#0): Send notification to coach (optional)
     if (user.CoachId) {
-      console.log('📧 [enroll] Coach notification needed for coach:', user.CoachId);
+      logger.debug('📧 [enroll] Coach notification needed for coach:', user.CoachId);
       // You can add email notification here similar to upline/request.js
     }
 

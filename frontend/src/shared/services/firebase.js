@@ -12,6 +12,7 @@ import {
 } from 'firebase/auth';
 import { Capacitor } from '@capacitor/core';
 import { GoogleAuth } from '@southdevs/capacitor-google-auth';
+import { debugLog } from '../utils/logger.js';
 
 //  Firebase config — platform-aware
 const isIOS = Capacitor.getPlatform() === 'ios';
@@ -148,7 +149,7 @@ export const signInWithGoogle = async (forceRedirect = false) => {
           await updateProfile(userCredential.user, {
             photoURL: photoURL
           });
-          console.log('✅ Profile photo updated with high quality version');
+          debugLog('✅ Profile photo updated with high quality version');
         } catch (error) {
           console.warn('⚠️ Failed to update profile photo:', error);
         }
@@ -157,14 +158,14 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       return userCredential.user;
     } else {
       // Web-based authentication - ALWAYS use popup since redirect doesn't work
-      console.log('🔍 Sign-in attempt:', {
+      debugLog('🔍 Sign-in attempt:', {
         isMobile: isMobile(),
         userAgent: navigator.userAgent,
         screenWidth: window.innerWidth,
         hasTouch: ('ontouchstart' in window) || (navigator.maxTouchPoints > 0)
       });
       
-      console.log('🖥️ Using popup flow');
+      debugLog('🖥️ Using popup flow');
       const result = await signInWithPopup(auth, googleProvider);
       return result.user;
     }
@@ -178,7 +179,7 @@ export const signInWithGoogle = async (forceRedirect = false) => {
     }
 
     if (error.code === 'auth/popup-closed-by-user') {
-      console.log('ℹ️ User closed popup');
+      debugLog('ℹ️ User closed popup');
       throw new Error('Sign-in was cancelled. Please try again.');
     }
 
@@ -224,22 +225,22 @@ export const signInWithGooglePopup = async () => {
 // 🔄 Get redirect result
 export const handleRedirectResult = async () => {
   try {
-    console.log('🔍 Checking for redirect result...');
+    debugLog('🔍 Checking for redirect result...');
     
     if (!isRedirectPending()) {
-      console.log('ℹ️ No redirect pending');
+      debugLog('ℹ️ No redirect pending');
       return null;
     }
 
-    console.log('⏳ Redirect pending, getting result...');
+    debugLog('⏳ Redirect pending, getting result...');
     const result = await getRedirectResult(auth);
     
     if (result?.user) {
-      console.log('✅ Redirect result successful:', result.user.email);
+      debugLog('✅ Redirect result successful:', result.user.email);
       clearRedirectPending();
       return result.user;
     } else {
-      console.log('ℹ️ No user in redirect result');
+      debugLog('ℹ️ No user in redirect result');
       return null;
     }
   } catch (error) {
@@ -304,9 +305,9 @@ export const onAuthStateChange = (callback) => {
     auth,
     (user) => {
       if (user) {
-        console.log('✅ Auth state: User authenticated');
+        debugLog('✅ Auth state: User authenticated');
       } else {
-        console.log('❌ Auth state: User not authenticated');
+        debugLog('❌ Auth state: User not authenticated');
       }
       callback(user);
     },
@@ -370,7 +371,7 @@ export const deleteFirebaseUser = async () => {
     const currentUser = auth.currentUser;
     if (currentUser) {
       await deleteUser(currentUser);
-      console.log('✅ [deleteFirebaseUser] Firebase Auth user deleted successfully');
+      debugLog('✅ [deleteFirebaseUser] Firebase Auth user deleted successfully');
     } else {
       console.warn('⚠️ [deleteFirebaseUser] No current Firebase user to delete');
     }

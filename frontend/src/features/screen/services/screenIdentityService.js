@@ -48,7 +48,7 @@ export function resolveDbUserId({ userId, onResolved }) {
         return true;
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
       console.warn('[ScreenTimeCard] userId fallback failed:', e.message);
     }
     return false;

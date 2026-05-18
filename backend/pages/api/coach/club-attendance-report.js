@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Prevent browser/service worker caching.
@@ -24,7 +25,7 @@ export default async function handler(req, res) {
 
   const { userId, clubId, startDate, endDate } = req.query;
 
-  console.log('🏢 [club-attendance-report] Request:', { userId, clubId, startDate, endDate });
+  logger.debug('🏢 [club-attendance-report] Request:', { userId, clubId, startDate, endDate });
 
   if (!userId) {
     res.status(400).json({
@@ -42,12 +43,12 @@ export default async function handler(req, res) {
     const start = startDate || formatDateForMySQL(new Date());
     const end = endDate || formatDateForMySQL(new Date());
 
-    console.log('📅 [club-attendance-report] Date range:', { start, end });
+    logger.debug('📅 [club-attendance-report] Date range:', { start, end });
 
     // If clubId is provided, fetch attendance for that specific club
     // Otherwise, return empty data (require club selection)
     if (!clubId) {
-      console.log('⚠️ [club-attendance-report] No clubId provided, returning empty data');
+      logger.debug('⚠️ [club-attendance-report] No clubId provided, returning empty data');
       return res.status(200).json({
         success: true,
         data: {
@@ -86,7 +87,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✅ [club-attendance-report] Club verified:', clubData.center_name);
+    logger.debug('✅ [club-attendance-report] Club verified:', clubData.center_name);
 
     // Fetch all education logs with attendance_type = 'club' for this club within the date range
     // Note: We need to join with club location data or use a nutrition_center_id field
@@ -111,7 +112,7 @@ export default async function handler(req, res) {
       throw new Error(logsError.message);
     }
 
-    console.log('📊 [club-attendance-report] Found', educationLogs?.length || 0, 'club education logs');
+    logger.debug('📊 [club-attendance-report] Found', educationLogs?.length || 0, 'club education logs');
 
     if (!educationLogs || educationLogs.length === 0) {
       return res.status(200).json({
@@ -130,7 +131,7 @@ export default async function handler(req, res) {
     // Get unique user IDs who attended
     const attendeeUserIds = [...new Set(educationLogs.map(log => log.UserId))];
     
-    console.log('👥 [club-attendance-report] Unique attendees:', attendeeUserIds.length);
+    logger.debug('👥 [club-attendance-report] Unique attendees:', attendeeUserIds.length);
 
     // Fetch user details including coach information
     const { data: usersData, error: usersError } = await supabase
@@ -143,7 +144,7 @@ export default async function handler(req, res) {
       throw new Error(usersError.message);
     }
 
-    console.log('👤 [club-attendance-report] Fetched user data for', usersData?.length || 0, 'users');
+    logger.debug('👤 [club-attendance-report] Fetched user data for', usersData?.length || 0, 'users');
 
     // Build attendee list with attendance count
     const attendeeMap = new Map();
@@ -187,7 +188,7 @@ export default async function handler(req, res) {
     // Sort by attendance days (descending)
     attendees.sort((a, b) => b.attendanceDays - a.attendanceDays);
 
-    console.log('✅ [club-attendance-report] Generated report:', {
+    logger.debug('✅ [club-attendance-report] Generated report:', {
       clubName: clubData.center_name,
       totalAttendees: attendees.length,
       dateRange: { start, end },

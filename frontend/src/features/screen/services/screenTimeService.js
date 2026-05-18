@@ -1,5 +1,6 @@
 import { apiClient } from '../../../shared/services/apiClient';
 import { ScreenTimePlugin } from '../../../shared/plugins/screenTimePlugin';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * Check if screen time permission is granted
@@ -137,7 +138,7 @@ export async function backfillMissingScreenTimeDays(userId) {
     )
   );
 
-  console.log(`✅ [ScreenTime] Backfilled ${toSave.length} day(s):`, toSave.map(e => e.date));
+  debugLog(`✅ [ScreenTime] Backfilled ${toSave.length} day(s):`, toSave.map(e => e.date));
   return toSave;
 }
 

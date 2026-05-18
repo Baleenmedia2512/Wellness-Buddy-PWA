@@ -6,6 +6,7 @@
  */
 
 import { getModelPricing } from "./tokenCostConfig";
+import { debugLog } from '../../utils/logger.js';
 
 // Cache for user-specific pricing (keyed by email)
 const userPricingCache = new Map();
@@ -31,7 +32,7 @@ export async function fetchUserPricing(
   const cached = userPricingCache.get(cacheKey);
 
   if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
-    console.log("💾 Using cached user pricing for:", email);
+    debugLog("💾 Using cached user pricing for:", email);
     return cached.pricing;
   }
 
@@ -70,7 +71,7 @@ export async function fetchUserPricing(
           timestamp: Date.now(),
         });
 
-        console.log(
+        debugLog(
           `💰 ${
             data.data.isDefault ? "Default" : "Custom"
           } pricing loaded for ${email}:`,
@@ -83,7 +84,7 @@ export async function fetchUserPricing(
     throw new Error("Failed to fetch user pricing");
   } catch (error) {
     console.error("❌ Error fetching user pricing:", error.message);
-    console.log("📊 Falling back to default pricing");
+    debugLog("📊 Falling back to default pricing");
 
     // Return default pricing on error
     return await getModelPricing(modelName);
@@ -102,11 +103,11 @@ export function clearUserPricingCache(email = null) {
         userPricingCache.delete(key);
       }
     }
-    console.log("🗑️ Cleared pricing cache for:", email);
+    debugLog("🗑️ Cleared pricing cache for:", email);
   } else {
     // Clear all cache
     userPricingCache.clear();
-    console.log("🗑️ Cleared all pricing cache");
+    debugLog("🗑️ Cleared all pricing cache");
   }
 }
 

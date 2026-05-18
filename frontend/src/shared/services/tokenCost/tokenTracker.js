@@ -8,6 +8,7 @@
 
 import { getUsdToInrRate } from "./tokenCostConfig";
 import {
+import { debugLog } from '../../utils/logger.js';
   calculateTokenCosts,
   extractTokenMetadata,
 } from "./tokenCostCalculator";
@@ -59,7 +60,7 @@ export async function trackTokenUsage({
     // Deduplication: Skip if this exact response has already been tracked
     // This prevents React StrictMode double-invocations from causing duplicate DB entries
     if (processedResponses.has(response)) {
-      console.log("Token tracking skipped - response already processed");
+      debugLog("Token tracking skipped - response already processed");
       return;
     }
     processedResponses.add(response);
@@ -144,7 +145,7 @@ export async function trackCombinedTokenUsage({
     // Check for duplicate processing
     for (const { response } of responses) {
       if (processedResponses.has(response)) {
-        console.log(
+        debugLog(
           "Combined token tracking skipped - responses already processed",
         );
         return;
@@ -216,60 +217,60 @@ export async function trackCombinedTokenUsage({
  * Log token usage to console for development visibility
  */
 function logTokenUsageToConsole(operationType, costs, processingTime) {
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`📊 Token Usage [${operationType}]`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`� Input Tokens:  ${costs.inputTokens}`);
-  console.log(`💬 Output Tokens: ${costs.outputTokens}`);
-  console.log(`📈 Total Tokens:  ${costs.totalTokens}`);
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog(`📊 Token Usage [${operationType}]`);
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog(`� Input Tokens:  ${costs.inputTokens}`);
+  debugLog(`💬 Output Tokens: ${costs.outputTokens}`);
+  debugLog(`📈 Total Tokens:  ${costs.totalTokens}`);
   if (processingTime) {
-    console.log(`⏱️  Processing:    ${processingTime}ms`);
+    debugLog(`⏱️  Processing:    ${processingTime}ms`);
   }
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`💵 Input Cost (USD):  $${costs.inputCostUsd.toFixed(6)}`);
-  console.log(`💵 Output Cost (USD): $${costs.outputCostUsd.toFixed(6)}`);
-  console.log(`💵 Total Cost (USD):  $${costs.totalCostUsd.toFixed(6)}`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog(`💵 Input Cost (USD):  $${costs.inputCostUsd.toFixed(6)}`);
+  debugLog(`💵 Output Cost (USD): $${costs.outputCostUsd.toFixed(6)}`);
+  debugLog(`💵 Total Cost (USD):  $${costs.totalCostUsd.toFixed(6)}`);
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
   if (costs.hasExchangeRate) {
-    console.log(`💰 Input Cost (INR):  ₹${costs.inputCostInr.toFixed(4)}`);
-    console.log(`💰 Output Cost (INR): ₹${costs.outputCostInr.toFixed(4)}`);
-    console.log(`💰 Total Cost (INR):  ₹${costs.totalCostInr.toFixed(4)}`);
-    console.log(`💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
+    debugLog(`💰 Input Cost (INR):  ₹${costs.inputCostInr.toFixed(4)}`);
+    debugLog(`💰 Output Cost (INR): ₹${costs.outputCostInr.toFixed(4)}`);
+    debugLog(`💰 Total Cost (INR):  ₹${costs.totalCostInr.toFixed(4)}`);
+    debugLog(`💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
   } else {
-    console.log(`💰 INR: ⚠️ Exchange rate unavailable`);
+    debugLog(`💰 INR: ⚠️ Exchange rate unavailable`);
   }
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
 /**
  * Log combined totals to console (without per-call breakdown)
  */
 function logCombinedTotalsToConsole(operationType, costs, processingTime) {
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`📊 Token Usage [${operationType}]`);
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-  console.log(`📥 Input Tokens:  ${costs.inputTokens}`);
-  console.log(`💬 Output Tokens: ${costs.outputTokens}`);
-  console.log(`📈 Total Tokens:  ${costs.totalTokens}`);
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog(`📊 Token Usage [${operationType}]`);
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog(`📥 Input Tokens:  ${costs.inputTokens}`);
+  debugLog(`💬 Output Tokens: ${costs.outputTokens}`);
+  debugLog(`📈 Total Tokens:  ${costs.totalTokens}`);
   if (processingTime) {
-    console.log(`⏱️  Processing:    ${processingTime}ms`);
+    debugLog(`⏱️  Processing:    ${processingTime}ms`);
   }
-  console.log("----------------------------------------");
-  console.log("💵 COSTS (USD)");
-  console.log(`   📥 Input:  $${costs.inputCostUsd.toFixed(6)}`);
-  console.log(`   💬 Output: $${costs.outputCostUsd.toFixed(6)}`);
-  console.log(`   💰 Total:  $${costs.totalCostUsd.toFixed(6)}`);
-  console.log("----------------------------------------");
+  debugLog("----------------------------------------");
+  debugLog("💵 COSTS (USD)");
+  debugLog(`   📥 Input:  $${costs.inputCostUsd.toFixed(6)}`);
+  debugLog(`   💬 Output: $${costs.outputCostUsd.toFixed(6)}`);
+  debugLog(`   💰 Total:  $${costs.totalCostUsd.toFixed(6)}`);
+  debugLog("----------------------------------------");
   if (costs.hasExchangeRate) {
-    console.log("💰 COSTS (INR)");
-    console.log(`   📥 Input:  ₹${costs.inputCostInr.toFixed(4)}`);
-    console.log(`   💬 Output: ₹${costs.outputCostInr.toFixed(4)}`);
-    console.log(`   💰 Total:  ₹${costs.totalCostInr.toFixed(4)}`);
-    // console.log(`   💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
+    debugLog("💰 COSTS (INR)");
+    debugLog(`   📥 Input:  ₹${costs.inputCostInr.toFixed(4)}`);
+    debugLog(`   💬 Output: ₹${costs.outputCostInr.toFixed(4)}`);
+    debugLog(`   💰 Total:  ₹${costs.totalCostInr.toFixed(4)}`);
+    // debugLog(`   💱 Rate: $1 = ₹${costs.exchangeRate.toFixed(2)}`);
   } else {
-    console.log("💰 INR: ⚠️ Exchange rate unavailable");
+    debugLog("💰 INR: ⚠️ Exchange rate unavailable");
   }
-  console.log("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+  debugLog("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
 }
 
 /**
@@ -278,7 +279,7 @@ function logCombinedTotalsToConsole(operationType, costs, processingTime) {
 async function saveTokenUsageToDatabase(tokenData) {
   const url = `${API_BASE_URL}/api/token/usage`;
 
-  console.log("📤 Saving token usage to:", url);
+  debugLog("📤 Saving token usage to:", url);
 
   const response = await fetch(url, {
     method: "POST",
@@ -300,9 +301,9 @@ async function saveTokenUsageToDatabase(tokenData) {
   const result = await response.json();
 
   if (result.success) {
-    console.log("✅ Token usage saved, ID:", result.id);
+    debugLog("✅ Token usage saved, ID:", result.id);
     if (result.tokenData) {
-      console.log("📊 Token Response:", {
+      debugLog("📊 Token Response:", {
         "📥 Input Tokens": result.tokenData.inputTokens,
         "💬 Output Tokens": result.tokenData.outputTokens,
         "📈 Total Tokens": result.tokenData.totalTokens,
@@ -345,7 +346,7 @@ export function createTokenTracker(defaultModelName = "gemini-2.5-flash-lite") {
     setCurrentUser(userId, email) {
       currentUserId = userId;
       currentUserEmail = email;
-      console.log("📊 [TokenTracker] User set:", { userId, email });
+      debugLog("📊 [TokenTracker] User set:", { userId, email });
     },
 
     /**

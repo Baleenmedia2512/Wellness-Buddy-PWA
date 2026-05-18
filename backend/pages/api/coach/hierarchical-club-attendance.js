@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
 import { buildTeamHierarchy } from '../../../utils/teamHierarchyBuilder.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * API: Hierarchical Club Attendance Report
@@ -43,7 +44,7 @@ export default async function handler(req, res) {
 
   const { userId, date, clubId } = req.query;
 
-  console.log('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId });
+  logger.debug('🏢 [hierarchical-club-attendance] Request:', { userId, date, clubId });
 
   if (!userId) {
     res.status(400).json({ success: false, message: 'Missing required parameter: userId' });
@@ -59,7 +60,7 @@ export default async function handler(req, res) {
     const startOfDay = targetDate + 'T00:00:00';
     const endOfDay = targetDate + 'T23:59:59';
 
-    console.log('📅 [hierarchical-club-attendance] Target date:', targetDate);
+    logger.debug('📅 [hierarchical-club-attendance] Target date:', targetDate);
 
     // ─────────────────────────────────────────────────────────────────────
     // Step 0: Owned clubs (unchanged)
@@ -80,7 +81,7 @@ export default async function handler(req, res) {
     const { hierarchy, allMembers } = await buildTeamHierarchy(supabase, userIdNum);
 
     if (!hierarchy) {
-      console.log('⚠️ [hierarchical-club-attendance] No team hierarchy found');
+      logger.debug('⚠️ [hierarchical-club-attendance] No team hierarchy found');
       return res.status(200).json({
         success: true,
         data: {
@@ -101,7 +102,7 @@ export default async function handler(req, res) {
     if (hierarchy.coCoachInfo?.userId) allUserIds.add(hierarchy.coCoachInfo.userId);
     allMembers.forEach(m => allUserIds.add(m.UserId));
 
-    console.log(
+    logger.debug(
       `👥 [hierarchical-club-attendance] Tree from buildTeamHierarchy: ${allUserIds.size} unique users`
     );
 
@@ -130,11 +131,11 @@ export default async function handler(req, res) {
     const { data: attendanceLogs, error: logsError } = await attendanceQuery;
     if (logsError) throw new Error(logsError.message);
 
-    console.log('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'attendance records (before dedup)');
+    logger.debug('📊 [hierarchical-club-attendance] Found', attendanceLogs?.length || 0, 'attendance records (before dedup)');
     if (attendanceLogs && attendanceLogs.length > 0) {
-      console.log('📊 [hierarchical-club-attendance] Records:', JSON.stringify(attendanceLogs));
+      logger.debug('📊 [hierarchical-club-attendance] Records:', JSON.stringify(attendanceLogs));
     } else {
-      console.log('📊 [hierarchical-club-attendance] NO records found. Params:', { startOfDay, endOfDay, allUserIds });
+      logger.debug('📊 [hierarchical-club-attendance] NO records found. Params:', { startOfDay, endOfDay, allUserIds });
     }
 
     // Step 3a: Deduplicate attendance logs — keep only the LATEST entry per user
@@ -157,7 +158,7 @@ export default async function handler(req, res) {
       // Create deduplicated array
       dedupedLogs = Array.from(latestByUser.values());
       
-      console.log('🔁 [hierarchical-club-attendance] After dedup:', dedupedLogs.length, 'unique users (was', attendanceLogs?.length || 0, 'records)');
+      logger.debug('🔁 [hierarchical-club-attendance] After dedup:', dedupedLogs.length, 'unique users (was', attendanceLogs?.length || 0, 'records)');
     }
 
     // Step 3b: Fetch external attendees (people NOT in team who attended the club)
@@ -354,7 +355,7 @@ export default async function handler(req, res) {
         hierarchy.coCoachInfo.email || hierarchy.coCoachInfo.userEmail;
       hierarchy.coCoachInfo.directTeamCount = hierarchy.directTeamCount;
       hierarchy.coCoachInfo.fullTeamCount = hierarchy.fullTeamCount;
-      console.log(
+      logger.debug(
         `👥 [hierarchical-club-attendance] coCoachInfo enriched for ${hierarchy.coCoachInfo.userName}`
       );
     }
@@ -370,7 +371,7 @@ export default async function handler(req, res) {
     const directTeamMembers = hierarchy.directTeamCount?.total || 0;
     const directTeamAttendees = hierarchy.directTeamCount?.qualified || 0;
 
-    console.log('✅ [hierarchical-club-attendance] Generated report:', {
+    logger.debug('✅ [hierarchical-club-attendance] Generated report:', {
       date: targetDate,
       clubFilter: clubIdNum || 'All clubs',
       totalTeamMembers,

@@ -4,6 +4,7 @@
 import { transformToBackgroundServiceFormat } from './transformAnalysisFormat';
 import { resolveTeamUserId } from './userIdLookup';
 import { isDemoUser, saveDemoMeal } from './demoMealStore';
+import { debugLog } from '../../utils/logger.js';
 
 const parseSaveResponse = async (res) => {
   const ct = res.headers.get('content-type');
@@ -25,7 +26,7 @@ export async function saveNutritionAnalysis({
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
     if (isDemoUser(userId, userEmail)) {
-      console.log('ℹ️ [saveNutritionAnalysis] Demo account — saving to localStorage');
+      debugLog('ℹ️ [saveNutritionAnalysis] Demo account — saving to localStorage');
       return saveDemoMeal({ imageBase64, analysisResult, captureTimestamp });
     }
 

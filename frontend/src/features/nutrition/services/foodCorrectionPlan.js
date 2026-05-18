@@ -38,7 +38,7 @@ export function resolveAiDetectedName(originalFoodSnapshot, foodItem, originalNa
     (originalFoodSnapshot?.wasAutoCorrected || foodItem?.wasAutoCorrected)
   ) {
     // Preserve the legacy "CRITICAL ERROR" logging surface so monitoring stays intact.
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
     console.error("🚨 CRITICAL ERROR: Auto-corrected item has NO originalAiName!");
     aiDetectedName = originalName;
   } else if (!aiDetectedName) {

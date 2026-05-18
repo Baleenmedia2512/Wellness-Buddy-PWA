@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * Global Weight Loss Leaderboard API
@@ -45,7 +46,7 @@ export default async function handler(req, res) {
     // Get topN parameter (default to 10, max 10)
     const topN = Math.min(parseInt(req.query.topN) || 10, 10);
 
-    console.log(
+    logger.debug(
       `🏆 [LEADERBOARD] Calculating global weight loss leaderboard (Top ${topN})...`,
     );
 
@@ -58,7 +59,7 @@ export default async function handler(req, res) {
     if (usersError) throw usersError;
 
     if (!activeUsers || activeUsers.length === 0) {
-      console.log("⚠️ [LEADERBOARD] No active users found");
+      logger.debug("⚠️ [LEADERBOARD] No active users found");
       return res.status(200).json({
         success: true,
         data: [],
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(`✅ [LEADERBOARD] Found ${activeUsers.length} active users`);
+    logger.debug(`✅ [LEADERBOARD] Found ${activeUsers.length} active users`);
 
     // Step 2: Get coach names for CoachId
     const allCoachIds = new Set();
@@ -123,8 +124,8 @@ export default async function handler(req, res) {
     const yesterdayStartStr = toISTString(yesterdayStart);
     const yesterdayEndStr = toISTString(yesterdayEnd);
 
-    console.log(`📅 [LEADERBOARD] Today: ${todayStartStr} to ${todayEndStr}`);
-    console.log(
+    logger.debug(`📅 [LEADERBOARD] Today: ${todayStartStr} to ${todayEndStr}`);
+    logger.debug(
       `📅 [LEADERBOARD] Yesterday: ${yesterdayStartStr} to ${yesterdayEndStr}`,
     );
 
@@ -171,7 +172,7 @@ export default async function handler(req, res) {
       }
     });
 
-    console.log(
+    logger.debug(
       `📊 [LEADERBOARD] Found ${todayWeightMap.size} users with today's weight, ${yesterdayWeightMap.size} with yesterday's weight`,
     );
 
@@ -243,7 +244,7 @@ export default async function handler(req, res) {
     // Step 7: Reverse order for display (show worst to best: Rank 10 → Rank 1)
     topResults.reverse();
 
-    console.log(
+    logger.debug(
       `🏆 [LEADERBOARD] Top ${topResults.length} weight losers calculated`,
     );
     console.table(

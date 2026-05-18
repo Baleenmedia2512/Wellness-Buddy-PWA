@@ -9,6 +9,7 @@
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Set CORS headers for all responses
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('📋 Fetching counselling assessments for userId:', userIdInt);
+    logger.debug('📋 Fetching counselling assessments for userId:', userIdInt);
 
     // Get Supabase client
     const supabase = getSupabaseClient();
@@ -102,7 +103,7 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log(`✅ Found ${Object.keys(assessmentMap).length} assessments`);
+    logger.debug(`✅ Found ${Object.keys(assessmentMap).length} assessments`);
 
     return res.status(200).json({
       success: true,

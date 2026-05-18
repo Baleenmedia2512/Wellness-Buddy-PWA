@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 export function validateSave(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');

@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import { Capacitor } from '@capacitor/core';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 // --- Single Day Picker ---
 const SingleDayPicker = ({ selectedDate, onSelect, onClose }) => {
@@ -245,10 +246,10 @@ const NutritionCentersMap = ({ user, onBack }) => {
 
   // Open Street View for a center
   const openStreetView = (center) => {
-    console.log('ðŸ—ºï¸ Opening Street View for:', center.center_name, center);
-    console.log('ðŸ“ Coordinates:', center.latitude, center.longitude);
-    console.log('ðŸ” Google Maps available:', !!window.google?.maps);
-    console.log('ðŸ” StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
+    debugLog('ðŸ—ºï¸ Opening Street View for:', center.center_name, center);
+    debugLog('ðŸ“ Coordinates:', center.latitude, center.longitude);
+    debugLog('ðŸ” Google Maps available:', !!window.google?.maps);
+    debugLog('ðŸ” StreetViewPanorama available:', !!window.google?.maps?.StreetViewPanorama);
     
     if (!window.google || !window.google.maps) {
       alert('Google Maps is not loaded yet. Please wait a moment and try again.');
@@ -262,7 +263,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
   // Initialize Street View when overlay is shown
   useEffect(() => {
     if (showStreetView && selectedCenter && panoramaRef.current && window.google && window.google.maps) {
-      console.log('ðŸ—ï¸ Initializing Street View...');
+      debugLog('ðŸ—ï¸ Initializing Street View...');
       
       const position = {
         lat: parseFloat(selectedCenter.latitude),
@@ -323,7 +324,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
         }, 500);
 
         streetViewRef.current = panorama;
-        console.log('✅ Street View initialized successfully with marker');
+        debugLog('✅ Street View initialized successfully with marker');
       } catch (err) {
         console.error('âŒ Error initializing Street View:', err);
       }
@@ -481,7 +482,7 @@ const NutritionCentersMap = ({ user, onBack }) => {
     if (mapLoaded && user) {
       fetchCenters();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, [mapLoaded, user, teamFilter, dateRange, customDate]);
 
   // Set up global functions for info window buttons

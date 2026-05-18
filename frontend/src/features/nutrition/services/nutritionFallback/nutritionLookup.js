@@ -1,6 +1,7 @@
 // Look up fallback nutrition for a food: exact match → partial match → category average.
 import { INDIAN_FOOD_DATABASE, normalizeFoodName } from './foodDatabase';
 import { CATEGORY_AVERAGES, detectFoodCategory } from './categoryAverages';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const round1 = (n) => Math.round(n * 10) / 10;
 
@@ -18,12 +19,12 @@ const scaleToWeight = (entry, actualWeight) => {
 export function getFallbackNutrition(food) {
   if (!food || !food.name) return null;
   const normalizedName = normalizeFoodName(food.name);
-  console.log(`🔍 [NUTRITION-FALLBACK] Looking up: "${food.name}" (normalized: "${normalizedName}")`);
+  debugLog(`🔍 [NUTRITION-FALLBACK] Looking up: "${food.name}" (normalized: "${normalizedName}")`);
 
   // Exact match
   const exact = INDIAN_FOOD_DATABASE[normalizedName];
   if (exact) {
-    console.log(`✅ [NUTRITION-FALLBACK] Found exact match: ${exact.description}`);
+    debugLog(`✅ [NUTRITION-FALLBACK] Found exact match: ${exact.description}`);
     const actualWeight = food.weight_g || food.volume_ml || food.grams || exact.servingSize;
     let nutrition = {
       calories: exact.calories, protein: exact.protein, carbs: exact.carbs,
@@ -31,7 +32,7 @@ export function getFallbackNutrition(food) {
     };
     if (actualWeight && actualWeight !== exact.servingSize) {
       nutrition = scaleToWeight(exact, actualWeight);
-      console.log(`   ⚖️ Scaled from ${exact.servingSize}${exact.unit} to ${actualWeight}${food.unit || exact.unit}`);
+      debugLog(`   ⚖️ Scaled from ${exact.servingSize}${exact.unit} to ${actualWeight}${food.unit || exact.unit}`);
     }
     return { ...nutrition, source: 'database', matched: normalizedName, servingDescription: exact.description };
   }
@@ -39,7 +40,7 @@ export function getFallbackNutrition(food) {
   // Partial match (substring either direction)
   for (const [key, value] of Object.entries(INDIAN_FOOD_DATABASE)) {
     if (normalizedName.includes(key) || key.includes(normalizedName)) {
-      console.log(`✅ [NUTRITION-FALLBACK] Found partial match: "${key}"`);
+      debugLog(`✅ [NUTRITION-FALLBACK] Found partial match: "${key}"`);
       return {
         calories: value.calories, protein: value.protein, carbs: value.carbs,
         fat: value.fat, fiber: value.fiber,
@@ -54,7 +55,7 @@ export function getFallbackNutrition(food) {
     const avg = CATEGORY_AVERAGES[category];
     const weight = food.weight_g || food.volume_ml || food.grams || 100;
     const factor = weight / 100;
-    console.log(`⚠️ [NUTRITION-FALLBACK] Using category average: "${category}" (${weight}g)`);
+    debugLog(`⚠️ [NUTRITION-FALLBACK] Using category average: "${category}" (${weight}g)`);
     return {
       calories: Math.round(avg.calories * factor),
       protein: round1(avg.protein * factor),
@@ -66,6 +67,6 @@ export function getFallbackNutrition(food) {
     };
   }
 
-  console.log(`❌ [NUTRITION-FALLBACK] No match found for: "${food.name}"`);
+  debugLog(`❌ [NUTRITION-FALLBACK] No match found for: "${food.name}"`);
   return null;
 }

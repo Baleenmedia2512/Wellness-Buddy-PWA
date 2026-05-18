@@ -1,7 +1,7 @@
 /**
  * Screen feature — input validators.
  */
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

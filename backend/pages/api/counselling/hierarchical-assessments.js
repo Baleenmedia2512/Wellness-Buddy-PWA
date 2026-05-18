@@ -10,6 +10,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
 import { buildHierarchyWithMetricCounts } from '../../../utils/hierarchyHelpers.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Prevent caching
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('📋 [hierarchical-assessments] Fetching counselling data for userId:', userIdInt);
+    logger.debug('📋 [hierarchical-assessments] Fetching counselling data for userId:', userIdInt);
 
     const supabase = getSupabaseClient();
 
@@ -61,7 +62,7 @@ export default async function handler(req, res) {
     const teamHierarchy = await getDualCoachingTeamHierarchy(userIdInt, false);
     
     if (!teamHierarchy || teamHierarchy.length === 0) {
-      console.log('⚠️ [hierarchical-assessments] No team members found');
+      logger.debug('⚠️ [hierarchical-assessments] No team members found');
       return res.status(200).json({
         success: true,
         data: null,
@@ -70,7 +71,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('👥 [hierarchical-assessments] Team hierarchy has', teamHierarchy.length, 'members');
+    logger.debug('👥 [hierarchical-assessments] Team hierarchy has', teamHierarchy.length, 'members');
 
     // Step 2: Get all user IDs from hierarchy
     const allUserIds = teamHierarchy.map(m => m.UserId);
@@ -122,7 +123,7 @@ export default async function handler(req, res) {
       }
     }
 
-    console.log(`✅ [hierarchical-assessments] Found ${Object.keys(assessmentMap).length} assessments`);
+    logger.debug(`✅ [hierarchical-assessments] Found ${Object.keys(assessmentMap).length} assessments`);
 
     // Step 5: Create a Map for use with buildHierarchyWithMetricCounts
     const assessmentDataMap = new Map();
@@ -244,12 +245,12 @@ export default async function handler(req, res) {
           teamMembers: [],
         };
 
-        console.log(`👥 [hierarchical-assessments] Added co-coach partnership info for ${coCoachData.UserName}`);
-        console.log(`📊 [hierarchical-assessments] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
+        logger.debug(`👥 [hierarchical-assessments] Added co-coach partnership info for ${coCoachData.UserName}`);
+        logger.debug(`📊 [hierarchical-assessments] Recalculated team counts - Direct: ${counts.direct.total}, Full: ${counts.full.total}`);
       }
     }
 
-    console.log('✅ [hierarchical-assessments] Built hierarchy successfully');
+    logger.debug('✅ [hierarchical-assessments] Built hierarchy successfully');
 
     return res.status(200).json({
       success: true,

@@ -7,6 +7,7 @@
 } from "react";
 import { Award, Star } from "lucide-react";
 import LEADERBOARD_CONFIG from "../../../config/leaderboardConfig";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * DisciplineLeaderboard Component
@@ -31,7 +32,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // console.log(
+      // debugLog(
       //   "⭐ [DISCIPLINE-LEADERBOARD] Fetching data from:",
       //   `${apiBaseUrl}/api/leaderboard/get-discipline-leaderboard?topN=${topN}`,
       // );
@@ -47,15 +48,15 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      // console.log(
+      // debugLog(
       //   "⭐ [DISCIPLINE-LEADERBOARD] Response status:",
       //   response.status,
       // );
       const result = await response.json();
-      // console.log("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
+      // debugLog("⭐ [DISCIPLINE-LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        // console.log(
+        // debugLog(
         //   "✅ [DISCIPLINE-LEADERBOARD] Data found:",
         //   result.data.length,
         //   "users",
@@ -63,7 +64,7 @@ const DisciplineLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {
-        console.log(
+        debugLog(
           "ΓÜá∩╕Å [DISCIPLINE-LEADERBOARD] No data available:",
           result.message || "Empty data",
         );

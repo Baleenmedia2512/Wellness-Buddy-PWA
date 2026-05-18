@@ -5,7 +5,7 @@ import {
   groupRecordsByDate, pickEarliestRecordPerActivity,
   computeAverageTime, convertISTToLocalDate, extractLocalDateString,
 } from '../../utils/timeReportHelpers.js';
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 import * as repo from './time-report.repository.js';
 
 const DEFAULT_WINDOWS = {

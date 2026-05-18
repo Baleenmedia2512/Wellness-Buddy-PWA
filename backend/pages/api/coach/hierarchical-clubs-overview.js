@@ -1,6 +1,7 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { getDualCoachingTeamHierarchy } from '../../../utils/disciplineCalculationsSupabase.js';
 import { buildHierarchyWithMetricCounts } from '../../../utils/hierarchyHelpers.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * API: Hierarchical Clubs Overview
@@ -30,7 +31,7 @@ export default async function handler(req, res) {
 
   const { userId, date } = req.query;
 
-  console.log('🏢 [hierarchical-clubs-overview] Request:', { userId, date });
+  logger.debug('🏢 [hierarchical-clubs-overview] Request:', { userId, date });
 
   if (!userId) {
     res.status(400).json({
@@ -48,7 +49,7 @@ export default async function handler(req, res) {
     const teamHierarchy = await getDualCoachingTeamHierarchy(userIdNum, false);
     
     if (!teamHierarchy || teamHierarchy.length === 0) {
-      console.log('⚠️ [hierarchical-clubs-overview] No team members found');
+      logger.debug('⚠️ [hierarchical-clubs-overview] No team members found');
       return res.status(200).json({
         success: true,
         data: {
@@ -59,7 +60,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('👥 [hierarchical-clubs-overview] Team hierarchy has', teamHierarchy.length, 'members');
+    logger.debug('👥 [hierarchical-clubs-overview] Team hierarchy has', teamHierarchy.length, 'members');
 
     // Step 2: Get all user IDs from hierarchy
     const allUserIds = teamHierarchy.map(m => m.UserId);
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
       throw new Error(clubsError.message);
     }
 
-    console.log('🏢 [hierarchical-clubs-overview] Found', teamClubs?.length || 0, 'clubs owned by team');
+    logger.debug('🏢 [hierarchical-clubs-overview] Found', teamClubs?.length || 0, 'clubs owned by team');
 
     // Step 4: Calculate participant counts for each club
     const clubsWithMetrics = await Promise.all(
@@ -194,7 +195,7 @@ export default async function handler(req, res) {
     // Count team members with clubs
     const membersWithClubs = allUserIds.filter(id => clubsMap.has(id)).length;
 
-    console.log('✅ [hierarchical-clubs-overview] Generated hierarchical clubs overview:', {
+    logger.debug('✅ [hierarchical-clubs-overview] Generated hierarchical clubs overview:', {
       totalTeamMembers: teamHierarchy.length,
       membersWithClubs,
       totalClubs,

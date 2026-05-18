@@ -2,6 +2,7 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import * as repo from './misc.repository.js';
 import { getTimeWindows } from '../../utils/disciplineCalculationsSupabase.js';
 import { formatDateForMySQL } from '../../utils/disciplineHelpers.js';
+import logger from '../../shared/lib/logger.js';
 
 // ─── server-time ────────────────────────────────────────────────────────────
 export async function getServerTime() {
@@ -56,7 +57,7 @@ export async function detectFace({ imageBase64 }) {
 
     const text = result.response.text().trim().toLowerCase();
     const hasFace = text.startsWith('yes');
-    console.log(`✅ [detect-face] Detection result: ${hasFace ? 'face found' : 'no face'} (raw: "${text}")`);
+    logger.debug(`✅ [detect-face] Detection result: ${hasFace ? 'face found' : 'no face'} (raw: "${text}")`);
     return { httpStatus: 200, body: { success: true, hasFace } };
   } catch (err) {
     console.error('❌ [detect-face] Error calling Gemini:', err.message, err.status, err?.errorDetails);

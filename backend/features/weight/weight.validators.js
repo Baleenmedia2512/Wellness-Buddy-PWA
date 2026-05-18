@@ -3,12 +3,9 @@
  * Pure functions. Throw on invalid input via { status, message } error objects.
  */
 
-class ValidationError extends Error {
-  constructor(status, message) {
-    super(message);
-    this.status = status;
-  }
-}
+import { ValidationError } from '../../shared/lib/ValidationError.js';
+export { ValidationError };
+
 
 export function validateSaveInput(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');

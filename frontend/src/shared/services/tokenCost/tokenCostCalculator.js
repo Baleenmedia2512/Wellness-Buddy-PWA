@@ -6,6 +6,7 @@
  */
 
 import { getModelPricing } from "./tokenCostConfig";
+import { debugLog } from '../../utils/logger.js';
 
 /**
  * Calculate token costs in both USD and INR
@@ -28,7 +29,7 @@ export async function calculateTokenCosts({
   // Get pricing for the model (user-specific if email provided)
   const pricing = await getModelPricing(modelName, userEmail);
 
-  console.log("🔢 [CALC] Pricing:", pricing);
+  debugLog("🔢 [CALC] Pricing:", pricing);
 
   // Ensure valid numbers (default to 0 for missing values)
   const safeInputTokens = inputTokens || 0;
@@ -39,17 +40,17 @@ export async function calculateTokenCosts({
   const outputCostUsd = (safeOutputTokens / 1000000) * pricing.outputPerMillion;
   const totalCostUsd = inputCostUsd + outputCostUsd;
 
-  console.log("🔢 [CALC] Input:", {
+  debugLog("🔢 [CALC] Input:", {
     tokens: safeInputTokens,
     pricePerM: pricing.inputPerMillion,
     costUsd: inputCostUsd,
   });
-  console.log("🔢 [CALC] Output:", {
+  debugLog("🔢 [CALC] Output:", {
     tokens: safeOutputTokens,
     pricePerM: pricing.outputPerMillion,
     costUsd: outputCostUsd,
   });
-  console.log(
+  debugLog(
     "🔢 [CALC] Total USD:",
     totalCostUsd,
     "=",
@@ -105,7 +106,7 @@ export function extractTokenMetadata(response) {
   const totalOutputTokens = candidateTokens + thinkingTokens;
 
   if (thinkingTokens > 0) {
-    console.log(
+    debugLog(
       `🧠 Thinking tokens detected: ${thinkingTokens} (charged as output)`,
     );
   }

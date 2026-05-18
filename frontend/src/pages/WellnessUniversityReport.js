@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { SelfLogo, DirectLogo, FullTeamLogo } from "../shared/components/common/DisciplineScoreLogos";
 import { TeamMemberProfileModal } from "../shared/components/TeamMemberProfileModal";
+import { debugLog } from '../shared/utils/logger.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -70,7 +71,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               user.email,
             )}&includeInactive=true&_t=${cacheBuster}`;
 
-        console.log("📡 Fetching team hierarchy:", teamUrl);
+        debugLog("📡 Fetching team hierarchy:", teamUrl);
 
         const teamResponse = await fetch(teamUrl);
 
@@ -91,12 +92,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           teamData.allMembers &&
           teamData.allMembers.length > 0
         ) {
-          console.log(
+          debugLog(
             "✅ Team hierarchy loaded:",
             teamData.allMembers?.length,
             "members",
           );
-          console.log(
+          debugLog(
             "👥 All team members from API (detailed):",
             teamData.allMembers.map((m) => ({
               name: m.UserName || m.Email,
@@ -108,21 +109,21 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               status: m.Status,
             })),
           );
-          console.log(
+          debugLog(
             "📊 Hierarchy structure:",
             JSON.stringify(teamData.hierarchy, null, 2),
           );
 
           // Get current user ID as number for filtering
           const currentUserIdNum = Number(userProfileData.data?.userId);
-          console.log("ðŸ” Current User ID:", currentUserIdNum);
+          debugLog("ðŸ” Current User ID:", currentUserIdNum);
 
           // Store ALL team members for building full hierarchy
           // Don't filter - we need everyone to calculate full team
           teamMembers = teamData.allMembers || [];
 
-          console.log("✅ Stored all team members:", teamMembers.length);
-          console.log(
+          debugLog("✅ Stored all team members:", teamMembers.length);
+          debugLog(
             "👥 Team members:",
             teamMembers.map((m) => ({
               name: m.UserName,
@@ -147,7 +148,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             })
             .map((m) => Number(m.UserId));
 
-          console.log("✅ Direct team IDs:", myDirectTeamIds);
+          debugLog("✅ Direct team IDs:", myDirectTeamIds);
 
           setAllTeamMembers(teamMembers);
         } else {
@@ -166,12 +167,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       const data = await response.json();
 
       if (data.success) {
-        console.log(
+        debugLog(
           "✅ Enrollments loaded:",
           data.enrollments?.length,
           "enrollments",
         );
-        console.log("Sample enrollment data:", data.enrollments[0]);
+        debugLog("Sample enrollment data:", data.enrollments[0]);
         setEnrollments(data.enrollments || []);
 
         // If team hierarchy failed, use enrollments as fallback
@@ -208,7 +209,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         return programs.includes(programName);
       });
 
-      console.log(
+      debugLog(
         `[${programName}] Program enrollments:`,
         programEnrollments.length,
       );
@@ -221,17 +222,17 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
 
       // If we have team hierarchy data, use it
       if (allTeamMembers.length > 0) {
-        console.log(
+        debugLog(
           `[${programName}] Using team members path. Total members:`,
           allTeamMembers.length,
         );
-        console.log(
+        debugLog(
           `[${programName}] Current user ID:`,
           currentUserId,
           "Type:",
           typeof currentUserId,
         );
-        console.log(
+        debugLog(
           `[${programName}] All team members in data:`,
           allTeamMembers.map((m) => ({
             UserId: m.UserId,
@@ -256,7 +257,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           const isDirect = (coachIdMatch || coCoachIdMatch) && notSelf;
 
           if (!notSelf || isDirect) {
-            console.log(
+            debugLog(
               `[${programName}] Member:`,
               member.UserName || member.Email,
               "| UserId:",
@@ -279,11 +280,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           return isDirect;
         });
 
-        console.log(
+        debugLog(
           `[${programName}] ✅ Direct members found:`,
           allDirectMembers.length,
         );
-        console.log(
+        debugLog(
           `[${programName}] ✅ Direct members:`,
           allDirectMembers.map((m) => m.UserName || m.Email),
         );
@@ -294,13 +295,13 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           const fullTeam = new Map(); // Use Map to avoid duplicates
           const queue = [...startMembers];
 
-          console.log(
+          debugLog(
             `[${programName}] 🔧 Building full team from ${startMembers.length} direct members`,
           );
-          console.log(
+          debugLog(
             `[${programName}] 🔧 Using ${allMembers.length} total members for hierarchy traversal`,
           );
-          console.log(
+          debugLog(
             `[${programName}] 🔧 All members sample:`,
             allMembers.slice(0, 5).map((m) => ({
               UserId: m.UserId,
@@ -317,7 +318,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             // Add current member to full team
             if (!fullTeam.has(currentUserId)) {
               fullTeam.set(currentUserId, current);
-              console.log(
+              debugLog(
                 `[${programName}] ➕ Added to full team:`,
                 current.UserName || current.Email,
                 "(UserId:",
@@ -342,7 +343,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                   reportsToAsPrimaryCoach || reportsToAsCoCoach;
 
                 if (isSubTeamMember) {
-                  console.log(
+                  debugLog(
                     `[${programName}] 👤 Found sub-team member:`,
                     m.UserName || m.Email,
                     "(UserId:",
@@ -363,7 +364,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
                 return isSubTeamMember;
               });
 
-              console.log(
+              debugLog(
                 `[${programName}] 📋 ${current.UserName || current.Email} has ${
                   subTeam.length
                 } direct reports`,
@@ -379,7 +380,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           }
 
           const result = Array.from(fullTeam.values());
-          console.log(
+          debugLog(
             `[${programName}] ✅ Full team build complete: ${result.length} members`,
           );
           return result;
@@ -389,11 +390,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         // This includes ALL team members regardless of enrollment status
         const allFullMembers = buildFullTeam(allDirectMembers, allTeamMembers);
 
-        console.log(
+        debugLog(
           `[${programName}] 📊 Full team members (entire downline):`,
           allFullMembers.length,
         );
-        console.log(
+        debugLog(
           `[${programName}] 📊 Full team:`,
           allFullMembers.map((m) => m.UserName || m.Email),
         );
@@ -427,12 +428,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         const fullEnrolled = [];
         const fullNotEnrolled = [];
 
-        console.log(
+        debugLog(
           `[${programName}] ðŸ” Processing full team members:`,
           allFullMembers.length,
         );
         allFullMembers.forEach((member) => {
-          console.log(
+          debugLog(
             `[${programName}] Full team member:`,
             member.UserName,
             "| UserId:",
@@ -460,12 +461,12 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
           }
         });
 
-        console.log(
+        debugLog(
           `[${programName}] 📊 Full enrolled:`,
           fullEnrolled.length,
           fullEnrolled.map((m) => m.UserName),
         );
-        console.log(
+        debugLog(
           `[${programName}] 📊 Full unenrolled:`,
           fullNotEnrolled.length,
           fullNotEnrolled.map((m) => m.UserName),
@@ -486,11 +487,11 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
         };
       } else {
         // Fallback: Use enrollment data with CoachId/CoCoachId to determine hierarchy
-        console.log(
+        debugLog(
           `[${programName}] Using fallback - CurrentUserId:`,
           currentUserId,
         );
-        console.log(
+        debugLog(
           `[${programName}] Sample enrollment:`,
           programEnrollments[0],
         );
@@ -509,7 +510,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
               (memberCoachId === currentUserIdNum ||
                 memberCoCoachId === currentUserIdNum);
             if (isDirect) {
-              console.log(
+              debugLog(
                 `[${programName}] Direct member found:`,
                 e.UserName,
                 "CoachId:",
@@ -536,7 +537,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
             UserName: e.UserName || "Unknown",
           }));
 
-        console.log(
+        debugLog(
           `[${programName}] Direct enrolled:`,
           directEnrolledMembers.length,
           "Full enrolled:",
@@ -555,7 +556,7 @@ const WellnessUniversityReport = ({ onClose, user, userRole }) => {
       }
     });
 
-    console.log("Program stats calculated:", stats);
+    debugLog("Program stats calculated:", stats);
     return stats;
   };
 

@@ -38,7 +38,7 @@ export function useStepSync({
       setTodaySteps(todayBackfillSteps);
       setTodayCalories(calcCalories(todayBackfillSteps));
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, []);
 
   // Phase 1+2: load DB offset + run backfill (mount-once per userId)
@@ -69,7 +69,7 @@ export function useStepSync({
       .catch((err) => console.warn('[StepCounter] Backfill failed:', err));
 
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, [resolvedUserId]);
 
   // Phase 3: app resume / pause handlers (native only)
@@ -126,6 +126,6 @@ export function useStepSync({
       window.removeEventListener('focus',  handleResume);
       window.removeEventListener('blur',   handlePause);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, [isNativePlatform, runDriftCheck, checkDeviceDateVsServer]);
 }

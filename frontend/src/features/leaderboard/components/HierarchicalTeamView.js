@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
 import { motion, AnimatePresence } from "framer-motion";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * Hierarchical Team Node Component
@@ -38,7 +39,7 @@ const TeamNode = ({
   const hasChildren = node.teamMembers && node.teamMembers.length > 0;
 
   // Debug logging
-  console.log("TeamNode render:", {
+  debugLog("TeamNode render:", {
     name: node.userName,
     userId: node.userId,
     hasChildren,
@@ -62,7 +63,7 @@ const TeamNode = ({
   const activities = memberActivities[node.userId];
 
   // Debug logging for scores
-  console.log("TeamNode score check:", {
+  debugLog("TeamNode score check:", {
     name: node.userName,
     userId: node.userId,
     userIdType: typeof node.userId,
@@ -456,7 +457,7 @@ const HierarchicalTeamView = ({
   // Auto-expand first level on initial load (root coach + direct reports)
   React.useEffect(() => {
     if (hierarchy) {
-      console.log("Auto-expanding first level:", hierarchy);
+      debugLog("Auto-expanding first level:", hierarchy);
       const firstLevelIds = new Set();
 
       // Expand root node
@@ -469,7 +470,7 @@ const HierarchicalTeamView = ({
         });
       }
 
-      console.log("First level expanded IDs:", Array.from(firstLevelIds));
+      debugLog("First level expanded IDs:", Array.from(firstLevelIds));
       setExpandedNodes(firstLevelIds);
     }
   }, [hierarchy]);

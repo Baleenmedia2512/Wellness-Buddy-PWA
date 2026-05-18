@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 function todayIST() {
   const now = new Date();

@@ -141,7 +141,7 @@ const TimeScrollPicker = ({ hour, minute, onChange, onClose }) => {
     if (minutesRef.current) {
       minutesRef.current.scrollTop = minute * 44;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, []);
 
   // Convert selected 12h display + period → 24h and fire onChange

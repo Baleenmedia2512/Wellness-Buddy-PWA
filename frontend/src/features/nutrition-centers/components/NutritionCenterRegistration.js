@@ -4,6 +4,7 @@ import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton'
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import CustomAlertModal from '../../../shared/components/CustomAlertModal';
 import { Geolocation } from '@capacitor/geolocation';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const NutritionCenterRegistration = ({ user, onBack }) => {
   const [centerName, setCenterName] = useState('');
@@ -308,7 +309,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       // Add click/tap listener to place marker
       // Using 'click' event which Google Maps handles for both mouse clicks and touch taps
       map.addListener('click', (event) => {
-        console.log('ðŸ“ Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
+        debugLog('ðŸ“ Map clicked/tapped at:', event.latLng.lat(), event.latLng.lng());
         if (event.latLng) {
           placeMarker(event.latLng);
         }
@@ -330,7 +331,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       return;
     }
 
-    console.log('✅ Placing marker at:', location.lat(), location.lng());
+    debugLog('✅ Placing marker at:', location.lat(), location.lng());
 
     // Remove existing marker
     if (markerRef.current && markerRef.current.setMap) {
@@ -357,7 +358,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     const lng = location.lng().toFixed(8);
     setLatitude(lat);
     setLongitude(lng);
-    console.log('ðŸ“ Coordinates updated:', lat, lng);
+    debugLog('ðŸ“ Coordinates updated:', lat, lng);
 
     // Add drag listener
     marker.addListener('dragend', (event) => {
@@ -365,7 +366,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
       const newLng = event.latLng.lng().toFixed(8);
       setLatitude(newLat);
       setLongitude(newLng);
-      console.log('ðŸ“ Marker dragged to:', newLat, newLng);
+      debugLog('ðŸ“ Marker dragged to:', newLat, newLng);
     });
   };
 
@@ -477,7 +478,7 @@ const NutritionCenterRegistration = ({ user, onBack }) => {
     if (user) {
       fetchMyCenters();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, [user]);
 
   // Handle form submission

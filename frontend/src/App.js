@@ -922,7 +922,7 @@ function WellnessValleyApp() {
           if (dbUserId) {
             resultUser.id = dbUserId;
             Session.setDbUserId(dbUserId);
-            console.log(
+            debugLog(
               "✅ [Redirect] Attached database UserId to user object:",
               resultUser.id,
             );
@@ -971,7 +971,7 @@ function WellnessValleyApp() {
       }
 
       if (result.status === "incomplete") {
-        console.log(
+        debugLog(
           "⚠️ [Profile] Mandatory fields missing — showing CompleteProfilePage",
           result.missingFields,
         );
@@ -998,7 +998,7 @@ function WellnessValleyApp() {
       const userEmail = user.email || user.Email;
       if (!userEmail) return;
 
-      console.log("🖼️ [Profile Picture] Checking for valid profile picture...");
+      debugLog("🖼️ [Profile Picture] Checking for valid profile picture...");
 
       const result = await fetchProfilePicture({ apiBaseUrl, email: userEmail });
 
@@ -1012,9 +1012,9 @@ function WellnessValleyApp() {
 
       if (result.status === "valid") {
         if (result.source === "custom") {
-          console.log("✅ [Profile Picture] User has custom uploaded profile picture");
+          debugLog("✅ [Profile Picture] User has custom uploaded profile picture");
         } else {
-          console.log(
+          debugLog(
             "✅ [Profile Picture] User has Google profile picture:",
             (result.profileImage || "").substring(0, 50) + "...",
           );
@@ -1024,7 +1024,7 @@ function WellnessValleyApp() {
 
       if (result.status === "snoozed") {
         const snoozeUntil = new Date(result.snooze.until).getTime();
-        console.log(
+        debugLog(
           "⏰ [Profile Picture] Snoozed (DB) until",
           new Date(snoozeUntil).toLocaleString(),
         );
@@ -1034,7 +1034,7 @@ function WellnessValleyApp() {
       if (result.status === "missing") {
         // Store snooze data in state so modal can use count/max
         setProfilePicSnoozeData(result.snooze || null);
-        console.log(
+        debugLog(
           "⚠️ [Profile Picture] No valid profile picture found, showing mandatory upload modal",
         );
         setShowMandatoryProfilePictureModal(true);
@@ -1099,11 +1099,13 @@ function WellnessValleyApp() {
       }
     } catch (err) {
       // Shadow FSM must never destabilize the host.
-      // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console // FSM/lifecycle code must reach crash reporters before logger is ready
+ // FSM / lifecycle code — must reach crash reporters before logger is ready
       console.warn("[AuthFSM] startShadow threw (ignored):", err);
     }
     // Intentionally empty deps — this must run exactly once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: adding this dep causes an infinite re-render loop
+ // intentional: listed deps would cause an infinite re-render
   }, []);
 
   // Auth state listener
@@ -1149,7 +1151,7 @@ function WellnessValleyApp() {
           if (dbUserId) {
             user.id = dbUserId;
             Session.setDbUserId(dbUserId);
-            console.log(
+            debugLog(
               "✅ [Auth State] Attached database UserId to user object:",
               user.id,
             );
@@ -1160,7 +1162,7 @@ function WellnessValleyApp() {
         const userEmail = user.email || user.Email;
         if (userEmail) {
           Session.setUserEmail(userEmail);
-          console.log(
+          debugLog(
             "✅ [Auth State] Stored user email in localStorage:",
             userEmail,
           );
@@ -1168,12 +1170,12 @@ function WellnessValleyApp() {
 
         // Load user context for AI personalization
         if (user.id) {
-          console.log("🔄 [Auth State] Loading user context...");
+          debugLog("🔄 [Auth State] Loading user context...");
           setUserContextLoading(true);
           try {
             const context = await getUserContext(user.id);
             setUserContext(context);
-            console.log("✅ [Auth State] User context stored in state");
+            debugLog("✅ [Auth State] User context stored in state");
           } catch (error) {
             console.error("âŒ [Auth State] Failed to load context:", error);
           } finally {
@@ -1204,7 +1206,7 @@ function WellnessValleyApp() {
 
             // Check if user manually skipped setup (check localStorage first for quick bypass)
             if (Session.isSetupSkipped()) {
-              console.log(
+              debugLog(
                 "â­ï¸ [Auth State] User skipped setup (localStorage), bypassing wizard",
               );
               // Still check profile completion even if setup was skipped
@@ -1231,7 +1233,7 @@ function WellnessValleyApp() {
                   status.error,
                 );
               } else if (status.result === "skipped") {
-                console.log(
+                debugLog(
                   "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
                 );
                 Session.markSetupSkipped();
@@ -1239,28 +1241,28 @@ function WellnessValleyApp() {
                 return;
               } else if (status.result === "pendingOtp") {
                 if (Session.isCoachOtpVerified()) {
-                  console.log("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
+                  debugLog("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
                   await checkProfileCompletion(userEmail, user);
                 } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  console.log("🤖 [Auth State] Demo account pending OTP — completing silently");
+                  debugLog("🤖 [Auth State] Demo account pending OTP — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user);
                 } else {
-                  console.log("📧 [Auth State] Pending OTP detected, showing OTP modal");
+                  debugLog("📧 [Auth State] Pending OTP detected, showing OTP modal");
                   setShowValidateOTP(true);
                 }
               } else if (status.result === "incomplete") {
                 if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-                  console.log("🤖 [Auth State] Demo account setup incomplete — completing silently");
+                  debugLog("🤖 [Auth State] Demo account setup incomplete — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
                   await checkProfileCompletion(userEmail, user);
                 } else {
-                  console.log("🔧 [Auth State] Setup incomplete, showing setup wizard");
+                  debugLog("🔧 [Auth State] Setup incomplete, showing setup wizard");
                   setShowSetupWizard(true);
                 }
               } else {
                 // status.result === "complete"
-                console.log("✅ [Auth State] Setup already complete");
+                debugLog("✅ [Auth State] Setup already complete");
                 await checkProfileCompletion(userEmail, user);
               }
             } catch (setupError) {
@@ -1273,7 +1275,7 @@ function WellnessValleyApp() {
           }
         } else {
           // Don't clear the flag here - let the sign-in handler clear it after save completes
-          console.log(
+          debugLog(
             "ðŸ” [Auth State] Fresh sign-in detected, skipping status check",
           );
         }
@@ -1288,7 +1290,7 @@ function WellnessValleyApp() {
       if (user && Capacitor.isNativePlatform() && !isFreshSignIn) {
         handleSaveUserCache(user);
       } else if (isFreshSignIn) {
-        console.log(
+        debugLog(
           "ðŸ” [Auth State] Skipping handleSaveUserCache for fresh sign-in",
         );
       }
@@ -1304,7 +1306,7 @@ function WellnessValleyApp() {
       subscribeToContextUpdates,
     } = require("./shared/services/userIdentity");
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
-      console.log("✅ [App] User context updated in state:", {
+      debugLog("✅ [App] User context updated in state:", {
         corrections: updatedContext?.personalCorrections?.length || 0,
         diet: updatedContext?.dietPreference,
       });
@@ -1334,7 +1336,7 @@ function WellnessValleyApp() {
         // API returns: { success: true, windows: { education: { start, end }, weight: {...}, ... } }
         if (data.success && data.windows?.education) {
           const eduWindow = data.windows.education;
-          console.log("✅ Education window fetched from DB:", eduWindow);
+          debugLog("✅ Education window fetched from DB:", eduWindow);
           setEducationWindow(eduWindow);
         } else {
           console.warn("âš ï¸ Education window not found in response:", data);
@@ -1365,7 +1367,7 @@ function WellnessValleyApp() {
               if (dbUserId) {
                 parsedUser.id = dbUserId;
                 Session.setDbUserId(dbUserId);
-                console.log(
+                debugLog(
                   "✅ [OTP Restore] Attached database UserId to user object:",
                   parsedUser.id,
                 );
@@ -1376,7 +1378,7 @@ function WellnessValleyApp() {
             const userEmail = parsedUser.email || parsedUser.Email;
             if (userEmail) {
               Session.setUserEmail(userEmail);
-              console.log(
+              debugLog(
                 "✅ [OTP Restore] Stored user email in localStorage:",
                 userEmail,
               );
@@ -1384,12 +1386,12 @@ function WellnessValleyApp() {
 
             // Load user context for AI personalization
             if (parsedUser.id) {
-              console.log("🔄 [OTP Restore] Loading user context...");
+              debugLog("🔄 [OTP Restore] Loading user context...");
               setUserContextLoading(true);
               try {
                 const context = await getUserContext(parsedUser.id);
                 setUserContext(context);
-                console.log("✅ [OTP Restore] User context stored in state");
+                debugLog("✅ [OTP Restore] User context stored in state");
               } catch (error) {
                 console.error(
                   "âŒ [OTP Restore] Failed to load context:",
@@ -1495,7 +1497,7 @@ function WellnessValleyApp() {
 
       // Check if user manually skipped setup (check localStorage first for quick bypass)
       if (Session.isSetupSkipped()) {
-        console.log(
+        debugLog(
           "â­ï¸ [Setup Check] User skipped setup (localStorage), bypassing wizard",
         );
         return;
@@ -1517,36 +1519,36 @@ function WellnessValleyApp() {
         if (status.result === "error") {
           console.warn("⚠️ [Setup Check] Setup status check failed", status.error);
         } else if (status.result === "skipped") {
-          console.log("⏭️ [Setup Check] User skipped setup (database), bypassing wizard");
+          debugLog("⏭️ [Setup Check] User skipped setup (database), bypassing wizard");
           Session.markSetupSkipped();
           return;
         } else if (status.result === "pendingOtp") {
           if (Session.isCoachOtpVerified()) {
-            console.log("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
+            debugLog("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
             await checkProfileCompletion(userEmail);
             setTimeout(() => checkProfilePicture(user), 800);
           } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            console.log("🤖 [Setup Check] Demo account pending OTP — completing silently");
+            debugLog("🤖 [Setup Check] Demo account pending OTP — completing silently");
             await silentlyCompleteDemoSetup(userEmail);
             await checkProfileCompletion(userEmail);
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
-            console.log("📧 [Setup Check] Pending OTP detected, showing OTP modal");
+            debugLog("📧 [Setup Check] Pending OTP detected, showing OTP modal");
             setShowValidateOTP(true);
           }
         } else if (status.result === "incomplete") {
           if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
-            console.log("🤖 [Setup Check] Demo account setup incomplete — completing silently");
+            debugLog("🤖 [Setup Check] Demo account setup incomplete — completing silently");
             await silentlyCompleteDemoSetup(userEmail);
             await checkProfileCompletion(userEmail);
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
-            console.log("🔧 [Setup Check] Setup incomplete, showing setup wizard");
+            debugLog("🔧 [Setup Check] Setup incomplete, showing setup wizard");
             setShowSetupWizard(true);
           }
         } else {
           // status.result === "complete"
-          console.log("✅ [Setup Check] Setup already complete");
+          debugLog("✅ [Setup Check] Setup already complete");
           await checkProfileCompletion(userEmail);
           setTimeout(() => checkProfilePicture(user), 800);
         }
@@ -1572,11 +1574,11 @@ function WellnessValleyApp() {
       if (!user || !user.id) return;
 
       try {
-        console.log("⚡ [PRELOAD] Warming user context cache...");
+        debugLog("⚡ [PRELOAD] Warming user context cache...");
         const context = await getUserContext(user.id);
         if (context) {
           setUserContext(context);
-          console.log(
+          debugLog(
             "✅ [PRELOAD] Context cached - image analysis will be faster",
           );
         }
@@ -1792,10 +1794,10 @@ function WellnessValleyApp() {
       // This allows multiple weight entries per day with different timestamps
       // if (savedWeightIdRef.current) {
       //   payload.entryId = savedWeightIdRef.current;
-      //   console.log("🔄 Reusing existing weight entry ID:", savedWeightIdRef.current);
+      //   debugLog("🔄 Reusing existing weight entry ID:", savedWeightIdRef.current);
       // }
 
-      // console.log('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
+      // debugLog('💾 Saving weight entry...', { weightValue: weightData.weightValue, unit: weightData.unit });
 
       const response = await fetch(`${apiBaseUrl}/api/weight/save`, {
         method: "POST",
@@ -1807,12 +1809,12 @@ function WellnessValleyApp() {
 
       if (!response.ok || !data.success) {
         // Weight validation failed - show user-friendly alert modal
-        console.log('âŒ Weight validation failed:', data.validation);
+        debugLog('âŒ Weight validation failed:', data.validation);
 
         // 🔥 Even though weight was rejected, BMR may have been saved by the backend.
         // Trigger NutritionDashboard re-fetch so the new BMR is reflected immediately.
         if (data.bmrSaved && weightData.bmr) {
-          console.log('🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:', weightData.bmr);
+          debugLog('🔥 [BMR] Weight rejected but BMR was saved — triggering re-fetch:', weightData.bmr);
           setBmrUpdateKey((prev) => prev + 1);
         }
         
@@ -1840,7 +1842,7 @@ function WellnessValleyApp() {
         throw new Error(data.message || "Weight validation failed");
       }
 
-      console.log("✅ Weight entry saved successfully");
+      debugLog("✅ Weight entry saved successfully");
 
       // ✅ ALWAYS update weight result with final saved weight (corrected or original)
       // Use data.data.weightValue which backend ALWAYS returns as the final saved weight
@@ -1896,7 +1898,7 @@ function WellnessValleyApp() {
           });
         }, 500);
         
-        console.log('🔄 Weight auto-corrected:', corrInfo);
+        debugLog('🔄 Weight auto-corrected:', corrInfo);
       } else if (data.correction && data.correction.message) {
         // Weight changed significantly but within limits - only show if change is notable
         const change = Math.abs(data.correction.difference || 0);
@@ -1922,7 +1924,7 @@ function WellnessValleyApp() {
       // BMR is synced to team_table by the backend — increment the key so it re-reads it
       if (weightData.bmr) {
         setBmrUpdateKey((prev) => prev + 1);
-        console.log("🔥 [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:", weightData.bmr);
+        debugLog("🔥 [BMR] BMR saved with weight entry, forcing NutritionDashboard re-fetch:", weightData.bmr);
       }
 
       // Hide saving overlay
@@ -2067,7 +2069,7 @@ function WellnessValleyApp() {
 
         if (duplicateCheck.isDuplicate) {
           // Found duplicate - hide saving overlay and show confirmation modal
-          // console.log('âš ï¸ Duplicate weight detected:', duplicateCheck);
+          // debugLog('âš ï¸ Duplicate weight detected:', duplicateCheck);
           setSaveLoading(false); // Hide saving overlay while showing duplicate modal
           setLoadingState("idle");
           setDuplicateWeightInfo(duplicateCheck);
@@ -2368,7 +2370,7 @@ function WellnessValleyApp() {
     captureTimestamp = null,
   ) => {
     try {
-      console.log("💾 Auto-saving education log:", educationData);
+      debugLog("💾 Auto-saving education log:", educationData);
 
       // Get the actual database UserId
       let userId = user?.id;
@@ -2383,7 +2385,7 @@ function WellnessValleyApp() {
       // ALWAYS check GPS for club attendance regardless of platform (Zoom, Teams, or in-person)
       // If within 100m of club → club attendance
       // If not near club → remote attendance
-      console.log("ðŸ“ Checking GPS for nearby clubs...");
+      debugLog("ðŸ“ Checking GPS for nearby clubs...");
 
       let attendance;
       try {
@@ -2391,7 +2393,7 @@ function WellnessValleyApp() {
           apiBaseUrl,
           userId,
         );
-        console.log("✅ Attendance determined:", attendance);
+        debugLog("✅ Attendance determined:", attendance);
 
         // Check if location permission was denied
         if (attendance.locationError === "PERMISSION_DENIED") {
@@ -2424,7 +2426,7 @@ function WellnessValleyApp() {
         attendance.nearbyCenters.length > 1 &&
         !selectedClub
       ) {
-        console.log("ðŸ¢ Multiple clubs detected, showing selection modal");
+        debugLog("ðŸ¢ Multiple clubs detected, showing selection modal");
         setNearbyCenters(attendance.nearbyCenters);
         // Store captureTimestamp so club-selection callback can pass it through
         setPendingEducationData({ educationData, imageBase64, attendance, captureTimestamp });
@@ -2440,7 +2442,7 @@ function WellnessValleyApp() {
       
       if (attendance.latitude && attendance.longitude) {
         try {
-          console.log("ðŸ“ Fetching address from GPS:", {
+          debugLog("ðŸ“ Fetching address from GPS:", {
             lat: attendance.latitude,
             lon: attendance.longitude
           });
@@ -2471,7 +2473,7 @@ function WellnessValleyApp() {
               
               userVillage = villageParts.length > 0 ? villageParts.join(", ") : null;
               
-              console.log("✅ Address extracted:", {
+              debugLog("✅ Address extracted:", {
                 city: userCity,
                 village: userVillage,
                 fullAddress: geoData.display_name
@@ -2493,7 +2495,7 @@ function WellnessValleyApp() {
       // Use captureTimestamp (passed directly) → imageTimestamp state → current time
       // Using the direct parameter avoids reading stale React state
       const logTimestamp = captureTimestamp || imageTimestamp || new Date().toISOString();
-      console.log(
+      debugLog(
         "📅 Education log timestamp:",
         logTimestamp,
         captureTimestamp ? "(from EXIF param)" : imageTimestamp ? "(from state)" : "(current time)",
@@ -2529,26 +2531,26 @@ function WellnessValleyApp() {
         throw new Error(data.message || "Failed to save education log");
       }
 
-      console.log("✅ Education log auto-saved successfully:", data.id);
+      debugLog("✅ Education log auto-saved successfully:", data.id);
 
       // Refresh discipline scores and leaderboards after education save
       handleLeaderboardRefresh();
 
-      console.log(
+      debugLog(
         `   ðŸ“ Attendance: ${attendance.attendanceType.toUpperCase()}`,
       );
       if (finalCenterName) {
-        console.log(`   ðŸ¢ Club: ${finalCenterName}`);
+        debugLog(`   ðŸ¢ Club: ${finalCenterName}`);
       }
       if (educationData.participantCount) {
-        console.log(`   👥 Participants: ${educationData.participantCount}`);
+        debugLog(`   👥 Participants: ${educationData.participantCount}`);
       }
       if (data.isOnTime !== undefined) {
         const status = data.isOnTime
           ? "✅ ON-TIME (Present)"
           : "âš ï¸ LATE (Absent)";
-        console.log(`   â° Timing: ${status}`);
-        console.log(
+        debugLog(`   â° Timing: ${status}`);
+        debugLog(
           `   ðŸ• Upload Time: ${data.uploadTime} (Window: ${data.timeWindow?.start}-${data.timeWindow?.end})`,
         );
       }
@@ -2566,7 +2568,7 @@ function WellnessValleyApp() {
 
   // Handle club selection from modal
   const handleClubSelection = async (selectedCenter) => {
-    console.log("ðŸ¢ Club selected:", selectedCenter);
+    debugLog("ðŸ¢ Club selected:", selectedCenter);
     setShowClubSelectionModal(false);
 
     if (pendingEducationData) {
@@ -2586,7 +2588,7 @@ function WellnessValleyApp() {
   const performNutritionSave = async (saveData) => {
     const saveStart = Date.now();
     try {
-      console.log("🔵 [App] Starting nutrition save:", {
+      debugLog("🔵 [App] Starting nutrition save:", {
         userId: saveData.userId,
         imagePath: saveData.imagePath,
         hasImageBase64: !!saveData.imageBase64,
@@ -2594,16 +2596,16 @@ function WellnessValleyApp() {
       setSaveLoading(true);
 
       const saveRes = await saveNutritionAnalysis(saveData);
-      console.log("✅ [App] Save successful:", saveRes);
-      console.log(`â±ï¸ [PERF] Database save: ${Date.now() - saveStart}ms`);
+      debugLog("✅ [App] Save successful:", saveRes);
+      debugLog(`â±ï¸ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
       if (process.env.NODE_ENV !== "production") {
-        // console.log('✅ Save successful:', saveRes);
+        // debugLog('✅ Save successful:', saveRes);
       }
 
       // Store meal ID for NutritionCard auto-save updates
       setSavedNutritionMealId(saveRes.id || saveRes.insertId);
-      console.log("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
+      debugLog("✅ [App] Meal ID stored:", saveRes.id || saveRes.insertId);
 
       // Refresh discipline scores and leaderboards after meal save
       handleLeaderboardRefresh();
@@ -2619,7 +2621,7 @@ function WellnessValleyApp() {
       throw err;
     } finally {
       setSaveLoading(false);
-      console.log("✅ [App] Save loading finished");
+      debugLog("✅ [App] Save loading finished");
     }
   };
 
@@ -2738,7 +2740,7 @@ function WellnessValleyApp() {
 
   const handleImageSelect = async (file, exifTimestamp = null) => {
     if (imageProcessingInProgress.current) {
-      console.log(
+      debugLog(
         "Image processing already in progress, skipping duplicate call",
       );
       return;
@@ -2747,7 +2749,7 @@ function WellnessValleyApp() {
 
     // Store EXIF timestamp for education logs
     if (exifTimestamp) {
-      console.log("📸 EXIF Timestamp received:", exifTimestamp);
+      debugLog("📸 EXIF Timestamp received:", exifTimestamp);
       setImageTimestamp(exifTimestamp);
     } else {
       setImageTimestamp(null);
@@ -2788,7 +2790,7 @@ function WellnessValleyApp() {
     // 🚨 FRAUD PREVENTION: On web only — native handles this per-source in ImageUpload
     // (native camera = always live; native gallery = checked via Capacitor photo.exif)
     if (!Capacitor.isNativePlatform()) {
-      console.log("ðŸ” Validating image freshness (web)...");
+      debugLog("ðŸ” Validating image freshness (web)...");
       const validation = await validateImageFreshness(file, 0);
       if (!validation.isValid) {
         console.error("âŒ Image validation failed:", validation);
@@ -2802,7 +2804,7 @@ function WellnessValleyApp() {
         imageProcessingInProgress.current = false;
         return;
       }
-      console.log("✅ Image validated:", validation.message);
+      debugLog("✅ Image validated:", validation.message);
     }
 
     setSelectedImage(file);
@@ -2821,7 +2823,7 @@ function WellnessValleyApp() {
 
     // ⚡ PERFORMANCE TRACKING
     const perfStart = Date.now();
-    console.log("â±ï¸ [PERF] 🟢 Image processing started");
+    debugLog("â±ï¸ [PERF] 🟢 Image processing started");
 
     // ✅ ANDROID PERFORMANCE: Use async FileReader for non-blocking operation
     try {
@@ -2832,7 +2834,7 @@ function WellnessValleyApp() {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      console.log(`â±ï¸ [PERF] File reading: ${Date.now() - readStart}ms`);
+      debugLog(`â±ï¸ [PERF] File reading: ${Date.now() - readStart}ms`);
 
       // ⚡ OPTIMIZED: Aggressive compression for faster uploads & API calls
       const compressStart = Date.now();
@@ -2863,13 +2865,13 @@ function WellnessValleyApp() {
 
       if (compressionApplied) {
         const newSizeMB = processedImage.length / (1024 * 1024);
-        console.log(
+        debugLog(
           `â±ï¸ [PERF] Compression: ${
             Date.now() - compressStart
           }ms (${imageSizeMB.toFixed(2)}MB → ${newSizeMB.toFixed(2)}MB)`,
         );
       } else {
-        console.log(
+        debugLog(
           `â±ï¸ [PERF] Compression skipped (${imageSizeMB.toFixed(2)}MB)`,
         );
       }
@@ -2886,8 +2888,8 @@ function WellnessValleyApp() {
       // ✅ Detect image type using Gemini AI (single unified call)
       const apiStart = Date.now();
       const detectedType = await imageTypeDetector.detectImageType(file);
-      console.log(`â±ï¸ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
-      console.log("ðŸ” [DEBUG] Image Type Detection Result:", {
+      debugLog(`â±ï¸ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
+      debugLog("ðŸ” [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
         hasDetails: !!detectedType.details,
@@ -2901,7 +2903,7 @@ function WellnessValleyApp() {
         detectedType.details.foods.length > 0
       ) {
         const foodNames = detectedType.details.foods.map((f) => f.name);
-        console.log(
+        debugLog(
           "ðŸ½ï¸ [AI-DETECTED] Food items identified:",
           foodNames.join(", "),
         );
@@ -2910,11 +2912,11 @@ function WellnessValleyApp() {
 
       // ✅ PRIORITY 0: Smartwatch / fitness app screenshot — show activity card
       if (detectedType.type === "smartwatch" && detectedType.confidence > 0.5) {
-        console.log("⌚ Smartwatch image detected — showing watch activity card.");
+        debugLog("⌚ Smartwatch image detected — showing watch activity card.");
         // Resolve the real DB userId now (same pattern used everywhere in App.js)
         let resolvedUserId = user?.id;
         if (!resolvedUserId) {
-          try { resolvedUserId = await getUserId(user); } catch (_) {}
+          try { resolvedUserId = await getUserId(user); } catch (err) { debugLog('[getUserId] failed, continuing with null userId', { err: err?.message }); }
         }
         setImageType("smartwatch");
         setWatchResult({
@@ -2928,7 +2930,7 @@ function WellnessValleyApp() {
       }
 
       // ✅ PRIORITY 1: Check for education meeting (AUTO-SAVE)
-      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        console.log("🎓 Education meeting detected, analyzing...");
+      if (detectedType.type === "education" && detectedType.confidence > 0.7) {        debugLog("🎓 Education meeting detected, analyzing...");
         setImageType("education");
 
         try {
@@ -2942,7 +2944,7 @@ function WellnessValleyApp() {
           };
 
           if (educationData && educationData.success) {
-            console.log("✅ Education data extracted:", educationData);
+            debugLog("✅ Education data extracted:", educationData);
 
             setEducationResult({
               platform: educationData.platform,
@@ -2972,7 +2974,7 @@ function WellnessValleyApp() {
       // ✅ PRIORITY 2: Check for weight scale
       if (detectedType.type === "weight" && detectedType.confidence > 0.6) {
         // It's a weight scale - try to extract weight
-        console.log("ðŸ” Weight scale detected, extracting metrics...");
+        debugLog("ðŸ” Weight scale detected, extracting metrics...");
         setImageType("weight");
 
         // Use weight data from unified detection (no second API call needed)
@@ -2980,7 +2982,7 @@ function WellnessValleyApp() {
 
         if (detectedType.details?.weightValue) {
           // Weight was already extracted in the unified detection call
-          console.log("✅ Using weight data from unified detection");
+          debugLog("✅ Using weight data from unified detection");
           // Normalize BMR - AI may return different casing or include units
           const rawBmr = detectedType.details?.bmr ?? detectedType.details?.Bmr ?? detectedType.details?.BMR ?? null;
           let normalizedBmr = null;
@@ -3003,7 +3005,7 @@ function WellnessValleyApp() {
           };
         } else {
           // Fallback: Weight value not extracted — prompt user to retake
-          console.log(
+          debugLog(
             "⚠️ Weight value not detected in unified call, prompting retake",
           );
           setAlertModal({
@@ -3021,12 +3023,12 @@ function WellnessValleyApp() {
 
         if (detectedWeight.success && detectedWeight.weightValue) {
           // Successfully detected weight - save to database AND show result
-          // console.log('✅ Weight detected:', detectedWeight);
+          // debugLog('✅ Weight detected:', detectedWeight);
 
           // Convert lbs to kg if needed
           let weightToSave = { ...detectedWeight };
           if (detectedWeight.unit === "lbs") {
-            console.log(
+            debugLog(
               `🔄 Converting ${detectedWeight.weightValue} lbs to kg...`,
             );
             weightToSave.weightValue = weightDetectionService.convertWeight(
@@ -3035,7 +3037,7 @@ function WellnessValleyApp() {
               "kg",
             );
             weightToSave.unit = "kg";
-            console.log(`✅ Converted to ${weightToSave.weightValue} kg`);
+            debugLog(`✅ Converted to ${weightToSave.weightValue} kg`);
           }
 
           // Don't display weight result yet - wait for successful save
@@ -3063,7 +3065,7 @@ function WellnessValleyApp() {
                 previousDate
               );
               
-              console.log('ðŸ” Frontend weight validation:', validation);
+              debugLog('ðŸ” Frontend weight validation:', validation);
               
               // If validation fails or shows major warning, don't save (backend will also validate)
               if (!validation.valid) {
@@ -3071,10 +3073,10 @@ function WellnessValleyApp() {
                 setLoading(false);
                 
                 // Just log and continue - backend will handle validation and show CustomAlertModal
-                console.log('âš ï¸ Frontend detected unrealistic weight change, backend will validate');
+                debugLog('âš ï¸ Frontend detected unrealistic weight change, backend will validate');
               } else if (validation.warning && validation.difference && Math.abs(validation.difference) > 1.5) {
                 // Show info message for moderate changes
-                console.log(`â„¹ï¸ ${validation.message}`);
+                debugLog(`â„¹ï¸ ${validation.message}`);
               }
             }
           } catch (validationError) {
@@ -3131,7 +3133,7 @@ function WellnessValleyApp() {
             }
           } catch (saveError) {
             // Validation failed or other save error - don't show weight result
-            console.log("âŒ Weight save failed, weight not displayed:", saveError.message);
+            debugLog("âŒ Weight save failed, weight not displayed:", saveError.message);
             // Modal is already shown by performWeightSave, just stop here
             setLoading(false);
             return;
@@ -3140,9 +3142,9 @@ function WellnessValleyApp() {
         } else {
           // Weight detection failed — prompt user to retake a clearer photo
           if (detectedWeight.lowConfidence) {
-            console.log(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
+            debugLog(`⚠️ Low confidence detection (${(detectedWeight.confidence * 100).toFixed(0)}%), prompting retake`);
           } else {
-            console.log("⚠️ Weight detection failed, prompting retake");
+            debugLog("⚠️ Weight detection failed, prompting retake");
           }
           setAlertModal({
             isOpen: true,
@@ -3163,8 +3165,8 @@ function WellnessValleyApp() {
 
       // It's a food image - use nutrition data from unified detection
       setImageType("food");
-      console.log("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
-      console.log("ðŸ½ï¸ [DEBUG] Food details check:", {
+      debugLog("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
+      debugLog("ðŸ½ï¸ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
         hasFoodsArray: !!detectedType.details?.foods,
         foodsLength: detectedType.details?.foods?.length || 0,
@@ -3179,14 +3181,14 @@ function WellnessValleyApp() {
           detectedType.details?.foods &&
           detectedType.details.foods.length > 0
         ) {
-          console.log("✅ Using nutrition data from unified detection");
+          debugLog("✅ Using nutrition data from unified detection");
 
           let foods = detectedType.details.foods;
 
           // 🎯 Update detected food names for display
           const foodNames = foods.map((f) => f.name);
           setDetectedFoodNames(foodNames);
-          console.log("ðŸ½ï¸ [AI-DETECTED] Food names:", foodNames.join(", "));
+          debugLog("ðŸ½ï¸ [AI-DETECTED] Food names:", foodNames.join(", "));
 
           // 🔴 CRITICAL: Preserve original AI-detected names BEFORE any corrections
           // This ensures we always know what the AI originally detected, even after auto-corrections
@@ -3194,23 +3196,23 @@ function WellnessValleyApp() {
             ...food,
             originalAiName: food.name, // Store the fresh AI detection
           }));
-          console.log(
+          debugLog(
             "✅ [PRESERVE] Original AI names saved:",
             foods.map((f) => `${f.name}`).join(", "),
           );
 
           // 🎯 APPLY USER'S PAST CORRECTIONS AUTOMATICALLY
-          // console.log("📋 [CORRECTION] Starting auto-correction process...");
-          // console.log(
+          // debugLog("📋 [CORRECTION] Starting auto-correction process...");
+          // debugLog(
           //   "📋 [CORRECTION] Foods before correction:",
           //   foods.map((f) => f.name),
           // );
           try {
             const userId = user?.id || (await getUserId(user));
-            // console.log("📋 [CORRECTION] User ID for corrections:", userId);
+            // debugLog("📋 [CORRECTION] User ID for corrections:", userId);
             if (userId) {
               const correctedFoods = await applyUserCorrections(foods, userId);
-              // console.log(
+              // debugLog(
               //   "📋 [CORRECTION] Foods after correction:",
               //   correctedFoods.map((f) => f.name),
               // );
@@ -3231,7 +3233,7 @@ function WellnessValleyApp() {
 
               if (newLogs.length > 0) {
                 setCorrectionLogs((prev) => [...newLogs, ...prev].slice(0, 50)); // Keep last 50 logs
-                console.log(
+                debugLog(
                   "ðŸ› [DEBUG-LOGS] Captured",
                   newLogs.length,
                   "food detection(s)",
@@ -3252,7 +3254,7 @@ function WellnessValleyApp() {
               error,
             );
           }
-          // console.log(
+          // debugLog(
           //   "📋 [CORRECTION] Final foods to be used:",
           //   foods.map((f) => f.name),
           // );
@@ -3273,7 +3275,7 @@ function WellnessValleyApp() {
             { calories: 0, protein: 0, carbs: 0, fat: 0, fiber: 0 },
           );
 
-          console.log("📊 [App.js] Calculated total from corrected foods:", {
+          debugLog("📊 [App.js] Calculated total from corrected foods:", {
             totalCalories: total.calories,
             totalCarbs: total.carbs,
             totalProtein: total.protein,
@@ -3332,16 +3334,16 @@ function WellnessValleyApp() {
                 fiber: Math.round(food.nutrition?.fiber || food.fiber || 0),
               };
 
-              console.log(
+              debugLog(
                 `📊 [App.js] Mapping food "${food.name}" to detailedItem:`,
               );
-              console.log(
+              debugLog(
                 `   From food object - Top-level: cal=${food.calories} carbs=${food.carbs} protein=${food.protein}`,
               );
-              console.log(
+              debugLog(
                 `   From food object - Nested: cal=${food.nutrition?.calories} carbs=${food.nutrition?.carbs} protein=${food.nutrition?.protein}`,
               );
-              console.log(
+              debugLog(
                 `   To detailedItem: cal=${nutritionValues.calories} carbs=${nutritionValues.carbs} protein=${nutritionValues.protein}`,
               );
 
@@ -3539,7 +3541,7 @@ function WellnessValleyApp() {
 
           if (duplicateCheck.isDuplicate) {
             // Found duplicate - show confirmation modal
-            console.log("âš ï¸ Duplicate food detected:", duplicateCheck);
+            debugLog("âš ï¸ Duplicate food detected:", duplicateCheck);
             setDuplicateInfo(duplicateCheck);
             setPendingSaveData({
               userId: userIdentifier,
@@ -3610,10 +3612,10 @@ function WellnessValleyApp() {
     } finally {
       setLoading(false);
       imageProcessingInProgress.current = false;
-      console.log(
+      debugLog(
         `â±ï¸ [PERF] ✅ TOTAL PROCESSING TIME: ${Date.now() - perfStart}ms`,
       );
-      console.log("â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”");
+      debugLog("â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”");
     }
   };
 
@@ -3761,7 +3763,7 @@ function WellnessValleyApp() {
           const userEmail = user.email || user.Email;
           if (userEmail) {
             Session.setUserEmail(userEmail);
-            console.log(
+            debugLog(
               "✅ [handleSignIn] Stored user email in localStorage:",
               userEmail,
             );
@@ -3769,9 +3771,9 @@ function WellnessValleyApp() {
 
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          console.log("📦 [handleSignIn] saveResult:", saveResult);
+          debugLog("📦 [handleSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          console.log("🆕 [handleSignIn] isNewUser:", isNewUser);
+          debugLog("🆕 [handleSignIn] isNewUser:", isNewUser);
 
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -3817,7 +3819,7 @@ function WellnessValleyApp() {
               }, 600);
             }
             if (isNewUser) {
-              console.log("🆕 [handleSignIn] New user detected");
+              debugLog("🆕 [handleSignIn] New user detected");
             }
           } else {
             // User was saved but is inactive or not found - modal will show
@@ -3839,7 +3841,7 @@ function WellnessValleyApp() {
 
         // Flag is already cleared above - no need to clear again
       } else {
-        console.log("🔄 Redirect initiated, waiting for result...");
+        debugLog("🔄 Redirect initiated, waiting for result...");
         // Don't clear timeout yet for redirect flow
       }
     } catch (error) {
@@ -3897,7 +3899,7 @@ function WellnessValleyApp() {
           const userEmail = user.email || user.Email;
           if (userEmail) {
             Session.setUserEmail(userEmail);
-            console.log(
+            debugLog(
               "✅ [handlePopupSignIn] Stored user email in localStorage:",
               userEmail,
             );
@@ -3905,9 +3907,9 @@ function WellnessValleyApp() {
 
           // Save user to backend first
           const saveResult = await saveUserToBackend(user);
-          console.log("📦 [handlePopupSignIn] saveResult:", saveResult);
+          debugLog("📦 [handlePopupSignIn] saveResult:", saveResult);
           const isNewUser = saveResult?.isNewUser === true;
-          console.log("🆕 [handlePopupSignIn] isNewUser:", isNewUser);
+          debugLog("🆕 [handlePopupSignIn] isNewUser:", isNewUser);
 
           // Clear the safety timeout immediately after save completes
           clearTimeout(safetyTimeout);
@@ -3953,7 +3955,7 @@ function WellnessValleyApp() {
               }, 600);
             }
             if (isNewUser) {
-              console.log("🆕 [handlePopupSignIn] New user detected");
+              debugLog("🆕 [handlePopupSignIn] New user detected");
             }
           } else {
             // User was saved but is inactive or not found - modal will show
@@ -4025,14 +4027,14 @@ function WellnessValleyApp() {
       const data = await response.json();
 
       if (data.success) {
-        console.log(
+        debugLog(
           "✅ [saveUserToBackend] User saved successfully, isNewUser:",
           data.isNewUser,
         );
 
         // If this is a new user, trigger the profile modal
         if (data.isNewUser) {
-          console.log(
+          debugLog(
             "🆕 [saveUserToBackend] New user detected, will show profile modal",
           );
         }
@@ -4078,7 +4080,7 @@ function WellnessValleyApp() {
       clearContextCache();
       setUserContext(null);
       setUserContextLoading(false);
-      console.log("ðŸ—‘ï¸ [Sign Out] User context cache and state cleared");
+      debugLog("ðŸ—‘ï¸ [Sign Out] User context cache and state cleared");
 
       // Clear userId session cache
       clearUserIdCache();
@@ -4089,7 +4091,7 @@ function WellnessValleyApp() {
       const emailKey = Session.getUserEmail() || "";
       Session.clearProfileComplete(emailKey);
       profileCompletedRef.current = false;
-      console.log("ðŸ—‘ï¸ [Sign Out] UserId cache cleared");
+      debugLog("ðŸ—‘ï¸ [Sign Out] UserId cache cleared");
 
       if (Capacitor.isNativePlatform()) {
         try {
@@ -4130,7 +4132,7 @@ function WellnessValleyApp() {
       localStorage.removeItem("backgroundAnalyses");
       localStorage.removeItem("wellnessBuddy_lastBgNutritionId");
       localStorage.removeItem("dashboard_activeTab");
-      try { GalleryMonitor.clearLocalBackgroundAnalyses(); } catch (_) {}
+      try { GalleryMonitor.clearLocalBackgroundAnalyses(); } catch (err) { debugLog('[signOut] clearLocalBackgroundAnalyses failed (non-critical)', { err: err?.message }); }
       // Keep "userSignedOut" flag to block re-auth
       sessionStorage.clear();
       resetApp();
@@ -4144,7 +4146,7 @@ function WellnessValleyApp() {
   };
 
   const handleOtpVerified = async (isNewUser = false) => {
-    console.log("ðŸ” [handleOtpVerified] Called with isNewUser:", isNewUser);
+    debugLog("ðŸ” [handleOtpVerified] Called with isNewUser:", isNewUser);
 
     // Get the OTP user from localStorage
     const otpUserRaw = Session.getOtpUserRaw();
@@ -4188,7 +4190,7 @@ function WellnessValleyApp() {
         const userEmail = parsedUser.email || parsedUser.Email;
         if (userEmail) {
           Session.setUserEmail(userEmail);
-          console.log(
+          debugLog(
             "✅ [handleOtpVerified] Stored user email in localStorage:",
             userEmail,
           );
@@ -4198,7 +4200,7 @@ function WellnessValleyApp() {
 
         // New user — SetupWizard handles profile collection, no popup needed
         if (isNewUser || parsedUser.isNewUser) {
-          console.log(
+          debugLog(
             "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
           );
         } else {
@@ -5338,7 +5340,7 @@ function WellnessValleyApp() {
           setSelectedImage(null);
           let resolvedUserId = user?.id;
           if (!resolvedUserId) {
-            try { resolvedUserId = await getUserId(user); } catch (_) {}
+            try { resolvedUserId = await getUserId(user); } catch (err) { debugLog('[getUserId] failed, continuing with null userId', { err: err?.message }); }
           }
           setImageType("smartwatch");
           setWatchResult({
@@ -5432,7 +5434,7 @@ function WellnessValleyApp() {
         onClose={() => setShowNewUserProfileModal(false)}
         user={user}
         onProfileUpdate={() => {
-          console.log("✅ [NewUserProfile] Profile updated successfully");
+          debugLog("✅ [NewUserProfile] Profile updated successfully");
         }}
       />
 
@@ -5493,7 +5495,7 @@ function WellnessValleyApp() {
                 const data = await res.json();
                 if (data.success) {
                   setProfilePicSnoozeData(data.snooze);
-                  console.log("â° [Profile Picture] Snooze saved to DB:", data.snooze);
+                  debugLog("â° [Profile Picture] Snooze saved to DB:", data.snooze);
                 }
               } catch (err) {
                 console.error("âŒ [Profile Picture] Failed to save snooze to DB:", err);
@@ -5502,7 +5504,7 @@ function WellnessValleyApp() {
             setShowMandatoryProfilePictureModal(false);
           }}
           onComplete={async (uploadedImage) => {
-            console.log("✅ [Profile Picture] Profile picture uploaded successfully");
+            debugLog("✅ [Profile Picture] Profile picture uploaded successfully");
             const userEmail = user.email || user.Email;
             if (userEmail) {
               Session.markProfilePictureUploaded(userEmail);
@@ -5516,12 +5518,12 @@ function WellnessValleyApp() {
                 ProfileImage: uploadedImage, // Some components use ProfileImage
                 photoURL: uploadedImage, // Some components use photoURL
               }));
-              console.log("✅ [Profile Picture] User state updated immediately with new profile picture");
+              debugLog("✅ [Profile Picture] User state updated immediately with new profile picture");
             }
             
             // Also fetch updated user profile in background to ensure consistency
             try {
-              console.log("🔄 [Profile Picture] Refreshing user profile data in background...");
+              debugLog("🔄 [Profile Picture] Refreshing user profile data in background...");
               const res = await fetch(
                 `${apiBaseUrl}/api/user/profile?email=${encodeURIComponent(userEmail)}&_t=${Date.now()}`,
                 { cache: "no-store", headers: { "Cache-Control": "no-cache" } }
@@ -5537,7 +5539,7 @@ function WellnessValleyApp() {
                     ProfileImage: data.data.profileImage,
                     photoURL: data.data.profileImage,
                   }));
-                  console.log("✅ [Profile Picture] User state synced with server data");
+                  debugLog("✅ [Profile Picture] User state synced with server data");
                 }
               }
             } catch (err) {
@@ -5907,7 +5909,7 @@ function WellnessValleyApp() {
                     navigator.clipboard
                       ?.writeText(logText)
                       .then(() => alert("Logs copied to clipboard!"))
-                      .catch(() => console.log("Copy not supported"));
+                      .catch(() => debugLog("Copy not supported"));
                   }}
                   className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-semibold transition-colors text-sm"
                 >

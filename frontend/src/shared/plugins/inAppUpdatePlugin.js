@@ -1,4 +1,5 @@
 ﻿import { registerPlugin } from '@capacitor/core';
+import { debugLog } from '../utils/logger.js';
 
 /**
  * Android In-App Update Plugin Interface
@@ -31,15 +32,15 @@ const InAppUpdate = registerPlugin('InAppUpdate', {
   web: () => ({
     // Web implementation (no-op for web)
     checkForUpdate: async () => {
-      console.log('InAppUpdate: Not available on web platform');
+      debugLog('InAppUpdate: Not available on web platform');
       return Promise.resolve();
     },
     completeUpdate: async () => {
-      console.log('InAppUpdate: Not available on web platform');
+      debugLog('InAppUpdate: Not available on web platform');
       return Promise.resolve();
     },
     checkDownloadedUpdate: async () => {
-      console.log('InAppUpdate: Not available on web platform');
+      debugLog('InAppUpdate: Not available on web platform');
       return Promise.resolve();
     },
   }),
@@ -113,20 +114,20 @@ export const removeUpdateListeners = async (eventName) => {
  * 
  * // Add listeners
  * addUpdateListener(InAppUpdateEvents.UPDATE_AVAILABLE, (data) => {
- *   console.log('Update available:', data.updateType, data.availableVersionCode);
+ *   debugLog('Update available:', data.updateType, data.availableVersionCode);
  *   if (data.updateType === UpdateType.IMMEDIATE) {
- *     console.log('Critical update - user must update');
+ *     debugLog('Critical update - user must update');
  *   } else {
- *     console.log('Optional update available');
+ *     debugLog('Optional update available');
  *   }
  * });
  * 
  * addUpdateListener(InAppUpdateEvents.UPDATE_DOWNLOADING, (data) => {
- *   console.log(`Downloading: ${data.progress}%`);
+ *   debugLog(`Downloading: ${data.progress}%`);
  * });
  * 
  * addUpdateListener(InAppUpdateEvents.UPDATE_DOWNLOADED, () => {
- *   console.log('Update downloaded! Snackbar will show "Restart to install"');
+ *   debugLog('Update downloaded! Snackbar will show "Restart to install"');
  *   // User can choose when to restart
  * });
  * 

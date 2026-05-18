@@ -4,6 +4,7 @@
  */
 
 import { Geolocation } from '@capacitor/geolocation';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 class LocationAttendanceService {
   constructor() {
@@ -46,7 +47,7 @@ class LocationAttendanceService {
 
     try {
       const position = await Geolocation.getCurrentPosition(options);
-      console.log('✅ GPS location obtained:', {
+      debugLog('✅ GPS location obtained:', {
         lat: position.coords.latitude,
         lng: position.coords.longitude,
         accuracy: position.coords.accuracy,
@@ -99,12 +100,12 @@ class LocationAttendanceService {
     nearbyCenters.sort((a, b) => a.distance - b.distance);
 
     if (nearbyCenters.length > 0) {
-      console.log(`✅ Found ${nearbyCenters.length} center(s) within ${this.PROXIMITY_RADIUS_METERS}m:`);
+      debugLog(`✅ Found ${nearbyCenters.length} center(s) within ${this.PROXIMITY_RADIUS_METERS}m:`);
       nearbyCenters.forEach((nc, idx) => {
-        console.log(`  ${idx + 1}. ${nc.center.center_name} (${Math.round(nc.distance)}m away)`);
+        debugLog(`  ${idx + 1}. ${nc.center.center_name} (${Math.round(nc.distance)}m away)`);
       });
     } else {
-      console.log(`⚠️ No centers within ${this.PROXIMITY_RADIUS_METERS}m radius`);
+      debugLog(`⚠️ No centers within ${this.PROXIMITY_RADIUS_METERS}m radius`);
     }
 
     return nearbyCenters;
@@ -168,11 +169,11 @@ class LocationAttendanceService {
 
       // Fetch nutrition centers
       const centers = await this.fetchNutritionCenters(apiBaseUrl, userId);
-      console.log(`📍 [attendance] Fetched ${centers.length} nutrition centers for proximity check`);
+      debugLog(`📍 [attendance] Fetched ${centers.length} nutrition centers for proximity check`);
 
       if (centers.length === 0) {
         // No centers registered -> remote with GPS coords
-        console.log('⚠️ [attendance] No nutrition centers found - marking as remote');
+        debugLog('⚠️ [attendance] No nutrition centers found - marking as remote');
         return {
           attendanceType: 'remote',
           latitude: location.latitude,
@@ -194,7 +195,7 @@ class LocationAttendanceService {
       });
 
       if (centersWithCoords.length === 0) {
-        console.log('⚠️ [attendance] All centers have missing/invalid coordinates - marking as remote');
+        debugLog('⚠️ [attendance] All centers have missing/invalid coordinates - marking as remote');
         return {
           attendanceType: 'remote',
           latitude: location.latitude,
@@ -204,7 +205,7 @@ class LocationAttendanceService {
         };
       }
 
-      console.log(`📍 [attendance] Checking proximity to ${centersWithCoords.length} centers with valid coordinates`);
+      debugLog(`📍 [attendance] Checking proximity to ${centersWithCoords.length} centers with valid coordinates`);
 
       // Check proximity to centers - get ALL nearby centers
       const nearbyCenters = this.findNearbyCenters(

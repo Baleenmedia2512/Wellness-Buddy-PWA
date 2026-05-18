@@ -1,14 +1,15 @@
 // REST endpoints for food corrections (write + per-user read + reverse lookup).
 import { cacheManager } from '../../../../shared/services/cacheManager';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
 export const saveFoodCorrection = async (userId, aiDetected, userCorrected, correctedData = {}) => {
   try {
-    console.log('[CORRECTION SERVICE] saveFoodCorrection called:', { userId, aiDetected, userCorrected, correctedData });
+    debugLog('[CORRECTION SERVICE] saveFoodCorrection called:', { userId, aiDetected, userCorrected, correctedData });
 
     if (aiDetected.trim().toLowerCase() === userCorrected.trim().toLowerCase()) {
-      console.log('[CORRECTION SERVICE] Names are identical, skipping save');
+      debugLog('[CORRECTION SERVICE] Names are identical, skipping save');
       return { success: false, message: 'No correction needed' };
     }
 
@@ -26,7 +27,7 @@ export const saveFoodCorrection = async (userId, aiDetected, userCorrected, corr
     });
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const data = await response.json();
-    console.log('[CORRECTION SERVICE] ✅ Success:', data);
+    debugLog('[CORRECTION SERVICE] ✅ Success:', data);
 
     // Invalidate caches so the new correction applies immediately.
     cacheManager.clearPattern('foodCorrection');
@@ -58,7 +59,7 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
   return cacheManager.execute(
     cacheKey,
     async () => {
-      console.log('[REVERSE-LOOKUP] Querying server for:', correctedName);
+      debugLog('[REVERSE-LOOKUP] Querying server for:', correctedName);
       const response = await fetch(
         `${API_BASE_URL}/api/token/reverse-lookup?correctedName=${encodeURIComponent(correctedName)}`,
         { method: 'GET', headers: { 'Content-Type': 'application/json' } },
@@ -66,10 +67,10 @@ export const reverseLookupOriginalAiName = async (correctedName) => {
       if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
       const data = await response.json();
       if (data.success && data.found) {
-        console.log('✅ [REVERSE-LOOKUP] Found original AI name:', data.originalAiName);
+        debugLog('✅ [REVERSE-LOOKUP] Found original AI name:', data.originalAiName);
         return data.originalAiName;
       }
-      console.log('[REVERSE-LOOKUP] No correction mapping found');
+      debugLog('[REVERSE-LOOKUP] No correction mapping found');
       return null;
     },
     cacheManager.ttls.reverseLookup,

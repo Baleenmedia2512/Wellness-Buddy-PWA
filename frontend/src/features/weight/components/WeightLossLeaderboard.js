@@ -6,6 +6,7 @@
   useImperativeHandle,
 } from "react";
 import { Trophy } from "lucide-react";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * WeightLossLeaderboard Component
@@ -29,7 +30,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
   // Fetch leaderboard data
   const fetchLeaderboard = useCallback(async () => {
     try {
-      // console.log(
+      // debugLog(
       //   "≡ƒÅå [LEADERBOARD] Fetching data from:",
       //   `${apiBaseUrl}/api/leaderboard/get-global-leaderboard?topN=${topN}`,
       // );
@@ -45,12 +46,12 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         },
       );
 
-      // console.log("≡ƒÅå [LEADERBOARD] Response status:", response.status);
+      // debugLog("≡ƒÅå [LEADERBOARD] Response status:", response.status);
       const result = await response.json();
-      // console.log("≡ƒÅå [LEADERBOARD] Result:", result);
+      // debugLog("≡ƒÅå [LEADERBOARD] Result:", result);
 
       if (result.success && result.data && result.data.length > 0) {
-        // console.log(
+        // debugLog(
         //   "Γ£à [LEADERBOARD] Data found:",
         //   result.data.length,
         //   "users",
@@ -58,7 +59,7 @@ const WeightLossLeaderboard = forwardRef(({ apiBaseUrl, topN = 10 }, ref) => {
         setLeaderboardData(result.data);
         setIsVisible(true);
       } else {
-        console.log(
+        debugLog(
           "ΓÜá∩╕Å [LEADERBOARD] No data available:",
           result.message || "Empty data",
         );

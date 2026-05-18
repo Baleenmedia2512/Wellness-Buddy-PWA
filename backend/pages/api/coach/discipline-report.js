@@ -2,6 +2,7 @@ import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
 import {
+import logger from '../../../shared/lib/logger.js';
   parseDateRange,
   calculateExpectedPosts,
   calculateDisciplinePercentage,
@@ -231,7 +232,7 @@ export default async function handler(req, res) {
     const allUserIds = Array.from(processedUserIds.keys());
     
     // 🔍 DEBUG: Log query parameters
-    console.log('🔎 Discipline Query Parameters:', {
+    logger.debug('🔎 Discipline Query Parameters:', {
       startDate: startDateStr,
       endDate: endDateStr,
       endDateTime: endDateStr + "T23:59:59",
@@ -297,11 +298,11 @@ export default async function handler(req, res) {
     }
     
     // 🔍 DEBUG: Log water detection
-    console.log('💧 Water Food Records detected:', waterFoodData.data?.length || 0);
+    logger.debug('💧 Water Food Records detected:', waterFoodData.data?.length || 0);
     if (waterFoodData.data?.length > 0) {
-      console.log('💧 Sample water record AnalysisData:', waterFoodData.data[0]?.AnalysisData?.substring?.(0, 200));
+      logger.debug('💧 Sample water record AnalysisData:', waterFoodData.data[0]?.AnalysisData?.substring?.(0, 200));
     } else if (foodData.data?.length > 0) {
-      console.log('💧 No water records found. Sample food AnalysisData:', (foodData.data || []).concat(waterFoodData.data || [])[0]?.AnalysisData?.substring?.(0, 200));
+      logger.debug('💧 No water records found. Sample food AnalysisData:', (foodData.data || []).concat(waterFoodData.data || [])[0]?.AnalysisData?.substring?.(0, 200));
     }
 
     // Fetch latest body weight per user from weight_records_table (BMR is no
@@ -341,7 +342,7 @@ export default async function handler(req, res) {
     });
     
     // 🔍 DEBUG: Log fetched data counts and sample records
-    console.log('📊 Fetched Data Summary:', {
+    logger.debug('📊 Fetched Data Summary:', {
       weightRecords: weightData.data?.length || 0,
       educationRecords: educationData.data?.length || 0,
       foodRecords: foodData.data?.length || 0,
@@ -357,8 +358,8 @@ export default async function handler(req, res) {
       sampleFoodRecord: foodData.data?.[0]
     });
     // 🔍 DEBUG: Log BMR map
-    console.log('🧮 BMR Map:', userBmrMap);
-    console.log('⚖️ Body Weight Map:', userBodyWeightMap);
+    logger.debug('🧮 BMR Map:', userBmrMap);
+    logger.debug('⚖️ Body Weight Map:', userBodyWeightMap);
     
     // 🔍 DEBUG: Check for query errors
     if (weightData.error) console.error('❌ Weight query error:', weightData.error);
@@ -451,7 +452,7 @@ export default async function handler(req, res) {
           if (r.UserId == userId) {
             const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
             const inWindow = isTimeInWindow(r.CreatedAt, weightWindow.start, weightWindow.end);
-            console.log(`⚖️ Weight Check:`, {
+            logger.debug(`⚖️ Weight Check:`, {
               userId,
               createdAtIST: r.CreatedAt,
               convertedTime,
@@ -471,7 +472,7 @@ export default async function handler(req, res) {
       
       // 🔍 DEBUG: Log weight data summary
       if ((weightData.data || []).filter(r => r.UserId == userId).length > 0) {
-        console.log(`👤 User ${userId} Weight Summary:`, {
+        logger.debug(`👤 User ${userId} Weight Summary:`, {
           totalRecords: (weightData.data || []).filter(r => r.UserId == userId).length,
           weightDates: Array.from(weightDates),
           weightOnTimeDates: Array.from(weightOnTimeDates),
@@ -492,7 +493,7 @@ export default async function handler(req, res) {
           if (r.UserId == userId) {
             const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
             const inWindow = isTimeInWindow(r.CreatedAt, educationWindow.start, educationWindow.end);
-            console.log(`📚 Education Check:`, {
+            logger.debug(`📚 Education Check:`, {
               userId,
               createdAtIST: r.CreatedAt,
               convertedTime,
@@ -512,7 +513,7 @@ export default async function handler(req, res) {
       
       // 🔍 DEBUG: Log education data summary
       if ((educationData.data || []).filter(r => r.UserId == userId).length > 0) {
-        console.log(`📚 User ${userId} Education Summary:`, {
+        logger.debug(`📚 User ${userId} Education Summary:`, {
           totalRecords: (educationData.data || []).filter(r => r.UserId == userId).length,
           educationDates: Array.from(educationDates),
           educationOnTimeDates: Array.from(educationOnTimeDates),
@@ -538,7 +539,7 @@ export default async function handler(req, res) {
             // 🔍 DEBUG: Log meal categorization for USA timezone (offset 300)
             if (tzOffset === 300 || tzOffset >= 240) {
               const convertedTime = tzOffset !== null ? convertISTToUserLocalTime(r.CreatedAt, tzOffset) : null;
-              console.log(`🍽️ Meal Check [${mealType}]:`, {
+              logger.debug(`🍽️ Meal Check [${mealType}]:`, {
                 userId,
                 createdAtIST: r.CreatedAt,
                 convertedTime,
@@ -670,7 +671,7 @@ export default async function handler(req, res) {
         });
 
         // 🔍 DEBUG: Calorie discipline trace
-        console.log(`🍽️ [Calorie] User ${userId}:`, {
+        logger.debug(`🍽️ [Calorie] User ${userId}:`, {
           userBmrTarget,
           consumedByDate: caloriesConsumedByDate,
           burnedByDate: caloriesBurnedByDate,
@@ -678,13 +679,13 @@ export default async function handler(req, res) {
           consideredDates: Array.from(allActivityDates),
         });
       } else {
-        console.log(`🍽️ [Calorie] User ${userId}: SKIPPED — no BMR target (userBmrTarget=${userBmrTarget})`);
+        logger.debug(`🍽️ [Calorie] User ${userId}: SKIPPED — no BMR target (userBmrTarget=${userBmrTarget})`);
       }
       // No BMR set → caloriesBurnedDates stays empty → 0 discipline days for this category
 
       // 🔍 DEBUG: Log meal data summary for USA users
       if (tzOffset === 300 || tzOffset >= 240) {
-        console.log(`🍽️ User ${userId} Meal Summary:`, {
+        logger.debug(`🍽️ User ${userId} Meal Summary:`, {
           userId,
           tzOffset,
           breakfastWindow: mealWindows.breakfast,
@@ -753,7 +754,7 @@ export default async function handler(req, res) {
     
     // 🔍 DEBUG: Log discipline calculation for first member
     if (disciplineData.length > 0) {
-      console.log('📊 Sample Discipline Data (First Member):', {
+      logger.debug('📊 Sample Discipline Data (First Member):', {
         userId: disciplineData[0].userId,
         weight: disciplineData[0].weight,
         education: disciplineData[0].education,
@@ -939,7 +940,7 @@ export default async function handler(req, res) {
 
         if (!discipline) {
           // 🔍 DEBUG: Log missing discipline data
-          console.log('⚠️ No discipline data found for member:', {
+          logger.debug('⚠️ No discipline data found for member:', {
             userId: member.UserId,
             userName: member.UserName,
             email: member.Email,
@@ -1051,7 +1052,7 @@ export default async function handler(req, res) {
         );
         
         // 🔍 DEBUG: Log member score calculation
-        console.log(`📊 Member ${member.UserName} (${member.UserId}):`, {
+        logger.debug(`📊 Member ${member.UserName} (${member.UserId}):`, {
           totalOnTimePosts,
           totalExpectedPosts,
           periodDisciplinePercentage,
@@ -1089,7 +1090,7 @@ export default async function handler(req, res) {
       .filter((m) => m !== null);
     
     // 🔍 DEBUG: Log formatted team members summary
-    console.log('👥 Formatted Team Members Summary:', {
+    logger.debug('👥 Formatted Team Members Summary:', {
       totalFormatted: formattedTeamMembers.length,
       members: formattedTeamMembers.map(m => ({
         userId: m.userId,

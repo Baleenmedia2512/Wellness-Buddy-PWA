@@ -1,4 +1,5 @@
 /**
+import { debugLog } from '../utils/logger.js';
  * @file getUserId — looks up the canonical database UserID for an
  * authenticated principal, with a session-level email→userId cache
  * to avoid redundant `/api/user/lookup` calls.
@@ -32,7 +33,7 @@ export async function getUserId(user) {
   if (!email) return null;
 
   if (userIdCache.has(email)) {
-    console.log('[getUserId] Cache HIT for:', email);
+    debugLog('[getUserId] Cache HIT for:', email);
     return userIdCache.get(email);
   }
 
@@ -45,7 +46,7 @@ export async function getUserId(user) {
     const data = await res.json();
     if (data.success && data.userId) {
       userIdCache.set(email, data.userId);
-      console.log('[getUserId] Cached userId for:', email);
+      debugLog('[getUserId] Cached userId for:', email);
       return data.userId;
     }
     return null;
@@ -77,7 +78,7 @@ export async function lookupUserByEmail(email) {
     // Cache the userId if successful
     if (data.success && data.userId) {
       userIdCache.set(email, data.userId);
-      console.log('[lookupUserByEmail] Cached userId for:', email);
+      debugLog('[lookupUserByEmail] Cached userId for:', email);
     }
     
     return data;

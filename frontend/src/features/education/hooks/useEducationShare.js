@@ -21,7 +21,7 @@ export function useEducationShare({ educationData, imagePreview, deps = [] } = {
       if (!cancelled) cachedRef.current = dataUrl;
     });
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
   }, [educationData, imagePreview, ...deps]);
 
   const handleShare = useCallback(async (e) => {
@@ -43,7 +43,7 @@ export function useEducationShare({ educationData, imagePreview, deps = [] } = {
       }
       await captureAndShare(shareRef.current, shareOpts);
     } catch (err) {
-      // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
       console.error('Failed to share:', err);
     } finally {
       setIsSharing(false);

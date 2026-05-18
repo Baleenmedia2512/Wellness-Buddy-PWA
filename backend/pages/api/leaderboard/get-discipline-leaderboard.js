@@ -2,6 +2,7 @@ import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
 import {
+import logger from '../../../shared/lib/logger.js';
   parseDateRange,
   calculateDisciplinePercentage,
   formatDateForMySQL,
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
     // Get topN parameter (default to 10, max 10)
     const topN = Math.min(parseInt(req.query.topN) || 10, 10);
 
-    console.log(
+    logger.debug(
       `🏆 [DISCIPLINE-LEADERBOARD] Calculating discipline leaderboard (Top ${topN})...`,
     );
 
@@ -80,7 +81,7 @@ export default async function handler(req, res) {
     if (usersError) throw usersError;
 
     if (!activeUsers || activeUsers.length === 0) {
-      console.log("⚠️ [DISCIPLINE-LEADERBOARD] No active users found");
+      logger.debug("⚠️ [DISCIPLINE-LEADERBOARD] No active users found");
       return res.status(200).json({
         success: true,
         data: [],
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(
+    logger.debug(
       `✅ [DISCIPLINE-LEADERBOARD] Found ${activeUsers.length} active users`,
     );
 
@@ -124,7 +125,7 @@ export default async function handler(req, res) {
     const endDateStr = formatDateForMySQL(dates.end);
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
 
-    console.log(
+    logger.debug(
       `📅 [DISCIPLINE-LEADERBOARD] Period: ${startDateStr} to ${endDateStr} (${daysInPeriod} days)`,
     );
 
@@ -415,7 +416,7 @@ export default async function handler(req, res) {
       previousPercentage = user.disciplinePercentage;
     });
 
-    console.log(
+    logger.debug(
       `🏆 [DISCIPLINE-LEADERBOARD] Top ${topResults.length} discipline champions calculated`,
     );
     console.table(

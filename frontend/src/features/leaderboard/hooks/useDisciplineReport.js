@@ -9,6 +9,7 @@ import { teamHierarchyService } from '../../../shared/services/teamHierarchyServ
 import { disciplineReportService, clearDisciplineReportCache } from '../services/disciplineReportService';
 import { enrichHierarchy, buildDisciplineMaps } from '../services/disciplineReportEnricher';
 import {
+import { debugLog } from '../../../shared/utils/logger.js';
   sortHierarchy, applyTeamView, getTeamCounts,
   buildSummaryStats, buildHierarchySummaryStats, hasVisibleNodes,
 } from '../services/disciplineReportFormatter';
@@ -92,7 +93,7 @@ export function useDisciplineReport({ user }) {
   const handleCollapseAll = () => { lastExpandState.current = 'collapsed'; setExpandOverride('collapsed'); };
   const handleSettings = () => setShowSettings((v) => !v);
   const handleSettingsUpdate = () => { clearDisciplineReportCache(); fetchData(true); };
-  const handleDownload = () => { console.log('Download discipline report'); };
+  const handleDownload = () => { debugLog('Download discipline report'); };
 
   return {
     loading, refreshing, error,

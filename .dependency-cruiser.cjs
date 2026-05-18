@@ -36,7 +36,8 @@ module.exports = {
     {
       name: 'shared-cannot-import-features',
       severity: 'error',
-      from: { path: '(shared/|backend/shared/)' },
+      comment: 'The top-level shared/ dirs must not import from features/.',
+      from: { path: '(^frontend/src/shared/|^backend/shared/)' },
       to: { path: '(backend/features/|frontend/src/features/)' }
     },
     {

@@ -1,4 +1,5 @@
 /**
+import { debugLog } from './logger.js';
  * Image Validator Utility
  * Validates images for freshness to prevent fraud (old/proxy images)
  * Supports multiple image formats: JPEG, PNG, HEIF/HEIC, WebP, and more
@@ -233,7 +234,7 @@ export async function extractImageMetadata(file) {
         
         // Detect image format
         const format = detectImageFormat(dataView);
-        console.log(`📸 Image format detected: ${format} (${file.name})`);
+        debugLog(`📸 Image format detected: ${format} (${file.name})`);
         
         let exifDate = null;
         
@@ -262,12 +263,12 @@ export async function extractImageMetadata(file) {
           
           default:
             // For other formats (GIF, BMP, etc.), try generic search
-            console.log(`⚠️ Unsupported format for EXIF extraction: ${format}`);
+            debugLog(`⚠️ Unsupported format for EXIF extraction: ${format}`);
             break;
         }
         
         if (exifDate && !isNaN(exifDate.getTime())) {
-          console.log(`✅ EXIF date extracted from ${format}:`, exifDate.toISOString());
+          debugLog(`✅ EXIF date extracted from ${format}:`, exifDate.toISOString());
           resolve({
             hasExif: true,
             dateTime: exifDate,
@@ -277,7 +278,7 @@ export async function extractImageMetadata(file) {
           });
         } else {
           // No EXIF date found - fall back to file modified date
-          console.log(`⚠️ No EXIF date found in ${format}, using file modified date`);
+          debugLog(`⚠️ No EXIF date found in ${format}, using file modified date`);
           resolve({
             hasExif: false,
             fileModified: new Date(file.lastModified),
@@ -424,7 +425,7 @@ function extractDateTime(dataView, offset, length) {
       if (best) {
         const parsed = parseExifDateString(best);
         if (parsed && !isNaN(parsed.getTime())) {
-          console.log('✅ EXIF tag used:', dateTimeOriginal ? 'DateTimeOriginal(0x9003)' : dateTimeDigitized ? 'DateTimeDigitized(0x9004)' : 'DateTime(0x0132)', '→', best);
+          debugLog('✅ EXIF tag used:', dateTimeOriginal ? 'DateTimeOriginal(0x9003)' : dateTimeDigitized ? 'DateTimeDigitized(0x9004)' : 'DateTime(0x0132)', '→', best);
           return parsed;
         }
       }
@@ -434,7 +435,7 @@ function extractDateTime(dataView, offset, length) {
     if (dateTimeVal) {
       const parsed = parseExifDateString(dateTimeVal);
       if (parsed && !isNaN(parsed.getTime())) {
-        console.log('✅ EXIF fallback DateTime(0x0132) used →', dateTimeVal);
+        debugLog('✅ EXIF fallback DateTime(0x0132) used →', dateTimeVal);
         return parsed;
       }
     }
@@ -533,7 +534,7 @@ export async function validateImageForEducation(file, educationWindow = null) {
     // e.g. "2026-03-25T07:30:00+05:30" instead of "2026-03-25T02:00:00.000Z"
     const imageTimestampLocal = toLocalISOString(imageDate);
     
-    console.log('📅 Image Education Timing Check:', {
+    debugLog('📅 Image Education Timing Check:', {
       imageDate: imageTimestampLocal,
       imageTime: imageTimeStr,
       today: todayStart.toISOString(),
@@ -559,7 +560,7 @@ export async function validateImageForEducation(file, educationWindow = null) {
     
     // ✅ Image is valid - from today (no time window restriction on frontend)
     // Backend will handle on-time vs late marking based on upload time
-    console.log('✅ Education image validated - taken today at', imageTimeStr);
+    debugLog('✅ Education image validated - taken today at', imageTimeStr);
     return {
       isValid: true,
       reason: 'valid',
@@ -590,7 +591,7 @@ export async function validateImageForEducation(file, educationWindow = null) {
  */
 export async function validateImageFreshness(file, allowedDaysOld = 0) {
   try {
-    console.log('📸 File info:', {
+    debugLog('📸 File info:', {
       name: file.name,
       size: file.size,
       type: file.type,
@@ -603,7 +604,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
     // Use EXIF date if available, otherwise fall back to file modified date
     const imageDate = metadata.hasExif ? metadata.dateTime : metadata.fileModified;
     
-    console.log('📊 Metadata extracted:', {
+    debugLog('📊 Metadata extracted:', {
       hasExif: metadata.hasExif,
       imageDate: imageDate ? imageDate.toISOString() : 'null',
       reason: metadata.reason
@@ -625,7 +626,7 @@ export async function validateImageFreshness(file, allowedDaysOld = 0) {
     // Calculate days difference
     const daysDiff = Math.floor((todayStart - imageDateOnly) / (1000 * 60 * 60 * 24));
     
-    console.log('📅 Image Freshness Check:', {
+    debugLog('📅 Image Freshness Check:', {
       imageDate: imageDate.toISOString(),
       imageDateOnly: imageDateOnly.toISOString(),
       today: todayStart.toISOString(),

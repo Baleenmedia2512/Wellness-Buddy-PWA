@@ -1,4 +1,5 @@
 /**
+import { debugLog } from '../utils/logger.js';
  * @file userContextService — loads and caches the personalized AI
  * context for a user (corrections, global patterns, diet preference,
  * recent meals).
@@ -54,7 +55,7 @@ export const getUserContext = async (userId, forceRefresh = false) => {
   } catch (error) {
     console.error('[USER CONTEXT] Error fetching context:', error);
     if (cachedContext) {
-      console.log('[USER CONTEXT] Returning stale cache as fallback');
+      debugLog('[USER CONTEXT] Returning stale cache as fallback');
       return cachedContext;
     }
     return {
@@ -75,7 +76,7 @@ export const getUserContext = async (userId, forceRefresh = false) => {
 
 /** Clear cached context (logout / manual refresh). */
 export const clearContextCache = () => {
-  console.log('[USER CONTEXT] Cache cleared');
+  debugLog('[USER CONTEXT] Cache cleared');
   cachedContext = null;
   cacheTimestamp = null;
 };

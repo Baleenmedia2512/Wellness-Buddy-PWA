@@ -1,4 +1,5 @@
 /**
+import { debugLog } from '../utils/logger.js';
  * Global Cache Manager for All Services
  * Provides unified caching and request deduplication across the app
  * 
@@ -49,7 +50,7 @@ class CacheManager {
     const effectiveTTL = ttl || this.ttls.default;
     
     if (now - cached.timestamp < effectiveTTL) {
-      console.log(`⚡ [CACHE-HIT] ${key}`);
+      debugLog(`⚡ [CACHE-HIT] ${key}`);
       return cached.data;
     }
 
@@ -86,7 +87,7 @@ class CacheManager {
         count++;
       }
     }
-    console.log(`🗑️ [CACHE] Cleared ${count} entries matching "${pattern}"`);
+    debugLog(`🗑️ [CACHE] Cleared ${count} entries matching "${pattern}"`);
   }
 
   /**
@@ -95,7 +96,7 @@ class CacheManager {
   clearAll() {
     this.cache.clear();
     this.pendingRequests.clear();
-    console.log('🗑️ [CACHE] Cleared all cache');
+    debugLog('🗑️ [CACHE] Cleared all cache');
   }
 
   /**
@@ -123,7 +124,7 @@ class CacheManager {
 
     // Check if request is already in flight
     if (this.pendingRequests.has(key)) {
-      console.log(`⏳ [DEDUP] Waiting for pending request: ${key}`);
+      debugLog(`⏳ [DEDUP] Waiting for pending request: ${key}`);
       return this.pendingRequests.get(key);
     }
 
@@ -174,7 +175,7 @@ class CacheManager {
    */
   logStats() {
     const stats = this.getStats();
-    console.log('📊 [CACHE-STATS]', {
+    debugLog('📊 [CACHE-STATS]', {
       'Cache Entries': stats.cacheSize,
       'Pending Requests': stats.pendingRequests,
       'Memory (KB)': stats.totalMemoryKB,

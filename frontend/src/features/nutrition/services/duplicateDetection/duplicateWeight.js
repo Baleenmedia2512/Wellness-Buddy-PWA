@@ -1,6 +1,7 @@
 // Detect whether a new weight entry is "essentially the same" as one already
 // logged today (within 0.5 unit). Always fail-open on errors.
 import { istToLocalDate } from '../../../../shared/utils/timezoneUtils';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const TOLERANCE = 0.5; // kg or lbs
 
@@ -81,7 +82,7 @@ export async function checkForDuplicateWeight({ userId, weightValue, unit = 'kg'
       const entryTime = istToLocalDate(match.entry.CreatedAt);
       const timeDifference = formatTimeAgo(currentTime, entryTime);
       const existingTime = entryTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      console.log('✅ Duplicate weight found:', { newWeight, existingWeight: match.existing, timeDifference });
+      debugLog('✅ Duplicate weight found:', { newWeight, existingWeight: match.existing, timeDifference });
       return { isDuplicate: true, existingWeight: match.existing, timeDifference, existingTime, unit };
     } catch (timeError) {
       console.error('Error calculating time difference:', timeError);

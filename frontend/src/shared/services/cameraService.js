@@ -3,6 +3,7 @@
 import { Capacitor } from '@capacitor/core';
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera';
 import { validateImageFreshness } from '../utils/imageValidator';
+import { debugLog } from '../utils/logger.js';
 
 class CameraService {
   isNativeApp() {
@@ -44,7 +45,7 @@ class CameraService {
             };
           }
           
-          console.log('✅ Image validated:', validation.message);
+          debugLog('✅ Image validated:', validation.message);
         }
 
         return {
@@ -85,7 +86,7 @@ class CameraService {
               return;
             }
             
-            console.log('✅ Image validated:', validation.message);
+            debugLog('✅ Image validated:', validation.message);
           }
 
           const reader = new FileReader();
@@ -141,7 +142,7 @@ class CameraService {
             };
           }
           
-          console.log('✅ Image validated:', validation.message);
+          debugLog('✅ Image validated:', validation.message);
         }
 
         return {
@@ -181,7 +182,7 @@ class CameraService {
               return;
             }
             
-            console.log('✅ Image validated:', validation.message);
+            debugLog('✅ Image validated:', validation.message);
           }
 
           const reader = new FileReader();
