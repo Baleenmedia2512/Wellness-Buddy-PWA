@@ -50,6 +50,22 @@ module.exports = {
       lines: 95,
       branches: 90,
     },
+    'features/education/education.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/food-corrections/food-corrections.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/nutrition-centers/centers.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/misc/misc.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
   },
   clearMocks: true,
   restoreMocks: true,
