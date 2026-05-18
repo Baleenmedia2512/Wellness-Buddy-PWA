@@ -22,7 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - name: Install (backend)
         working-directory: backend
         run: npm ci --no-audit --no-fund
@@ -43,7 +45,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd backend && npm ci --no-audit --no-fund
       - run: cd frontend && npm ci --no-audit --no-fund
       - name: TS check backend
@@ -58,7 +62,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd backend && npm ci --no-audit --no-fund
       - run: cd frontend && npm ci --no-audit --no-fund
       - name: VSA diagnostic
@@ -74,9 +80,11 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 }
+        with:
+          fetch-depth: 0
       - uses: gitleaks/gitleaks-action@v2
-        env: { GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ---------------- STAGE 2 ----------------
   unit:
@@ -92,7 +100,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd ${{ matrix.target }} && npm ci --no-audit --no-fund
       - name: Run unit tests (shard ${{ matrix.shard }}/4)
         working-directory: ${{ matrix.target }}
@@ -120,7 +130,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd backend && npm ci --no-audit --no-fund
       - name: Apply migrations
         env:
@@ -140,9 +152,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
-        with: { pattern: 'coverage-*', path: coverage-raw }
+        with:
+          pattern: 'coverage-*'
+          path: coverage-raw
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
       - name: Enforce per-path coverage floors
         run: node scripts/coverage-gate.js coverage-raw
 
@@ -155,7 +170,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd backend && npm ci --no-audit --no-fund
       - name: Cache .next
         uses: actions/cache@v4
@@ -173,10 +190,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '${{ env.NODE_VERSION }}', cache: 'npm' }
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
       - run: cd frontend && npm ci --no-audit --no-fund
       - name: Build
-        env: { CI: 'true', GENERATE_SOURCEMAP: 'false' }
+        env:
+          CI: 'true'
+          GENERATE_SOURCEMAP: 'false'
         run: cd frontend && npm run build
       - name: Bundle-size guard
         run: node scripts/bundle-size-guard.js frontend/build

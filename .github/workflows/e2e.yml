@@ -20,7 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20', cache: 'npm' }
+        with:
+          node-version: '20'
+          cache: npm
       - run: cd frontend && npm ci --no-audit --no-fund
       - run: cd e2e && npm ci --no-audit --no-fund
       - name: Cache Playwright browsers
@@ -45,7 +47,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
       - run: cd e2e && npm ci --no-audit --no-fund
       - run: cd e2e && npx playwright install --with-deps chromium
       - run: cd e2e && npx playwright test --grep @a11y

@@ -3,12 +3,17 @@
   "private": true,
   "version": "3.0.0",
   "scripts": {
-    "vsa:check": "node scripts/vsa-analyze.js",
+    "vsa:check": "node scripts/vsa-diagnostic.js",
     "smoke": "node scripts/smoke-test.js",
     "smoke:prod": "cross-env SMOKE_BASE_URL=https://wellness-buddy-pwa.vercel.app node scripts/smoke-test.js",
     "lint:backend": "cd backend && npx eslint .",
     "lint:frontend": "cd frontend && npx eslint src",
-    "lint": "npm run lint:backend && npm run lint:frontend"
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "governance:check": "node scripts/forbidden-patterns.js && node scripts/file-size-guard.js && node scripts/find-duplicates.js",
+    "governance:forbidden": "node scripts/forbidden-patterns.js",
+    "governance:size": "node scripts/file-size-guard.js",
+    "governance:duplicates": "node scripts/find-duplicates.js",
+    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src"
   },
   "dependencies": {
     "pg": "^8.16.3",

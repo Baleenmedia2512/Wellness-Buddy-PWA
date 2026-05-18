@@ -1,51 +1,56 @@
 # CODEOWNERS — claude.md §13.1
-# Format: <path> <@owner1> <@owner2>
-# Replace placeholders with real GitHub handles before enabling branch protection.
+#
+# SETUP: do a single find/replace of `@owner` with your real GitHub handle or
+# team slug (e.g. `@your-org/eng`). Then split owners back out per the original
+# matrix in git history as the team grows.
 
 # ---------- Repo-wide fallback ----------
-*                                           @principal-eng
+*                                           @owner
 
 # ---------- Governance & infra ----------
-/claude.md                                  @cto
-/.github/                                   @devops @principal-eng
-/.github/workflows/                         @devops @principal-eng
-/scripts/                                   @devops @principal-eng
-/docs/adr/                                  @principal-eng @cto
+/claude.md                                  @owner
+/AGENTS.md                                  @owner
+/governance/                                @owner
+/.github/                                   @owner
+/.github/workflows/                         @owner
+/scripts/                                   @owner
+/docs/adr/                                  @owner
+
+# ---------- Backend security-critical ----------
+/backend/features/auth/                     @owner
+/backend/features/token/                    @owner
+/backend/features/user/                     @owner
+/backend/migrations/                        @owner
+
+# ---------- Backend domain helpers (single source of truth) ----------
+/backend/utils/disciplineCalculations*.js   @owner
+/backend/utils/timezoneConverter.js         @owner
+/backend/utils/hierarchyHelpers.js          @owner
+/backend/utils/weightValidation.js          @owner
+/backend/utils/foodTypeDetection.js         @owner
 
 # ---------- Backend features ----------
-/backend/features/auth/                     @security @principal-eng
-/backend/features/token/                    @security @principal-eng
-/backend/features/user/                     @security @feature-user-owner
-/backend/features/water/                    @feature-water-owner
-/backend/features/weight/                   @feature-weight-owner
-/backend/features/activity/                 @feature-activity-owner
-/backend/features/education/                @feature-education-owner
-/backend/features/nutrition-centers/        @feature-nutrition-owner
-/backend/features/food-corrections/         @feature-nutrition-owner
-/backend/features/background-analysis/      @platform-team @principal-eng
-/backend/features/screen/                   @platform-team
-/backend/features/misc/                     @principal-eng
-
-# ---------- Backend shared & utils ----------
-/backend/shared/                            @principal-eng
-/backend/utils/                             @principal-eng
-/backend/utils/disciplineCalculations*.js   @principal-eng @feature-owners-discipline
-/backend/utils/timezoneConverter.js         @principal-eng
-/backend/utils/hierarchyHelpers.js          @principal-eng
-/backend/utils/weightValidation.js          @feature-weight-owner @principal-eng
-/backend/migrations/                        @principal-eng @dba
+/backend/features/water/                    @owner
+/backend/features/weight/                   @owner
+/backend/features/activity/                 @owner
+/backend/features/education/                @owner
+/backend/features/nutrition-centers/        @owner
+/backend/features/food-corrections/         @owner
+/backend/features/background-analysis/      @owner
+/backend/features/screen/                   @owner
+/backend/features/misc/                     @owner
 
 # ---------- Frontend ----------
-/frontend/src/features/                     @frontend-leads
-/frontend/src/shared/                       @frontend-leads @principal-eng
-/frontend/src/config/                       @principal-eng
-/frontend/capacitor.config.js               @mobile-team
-/frontend/ios/                              @mobile-team
-/frontend/android/                          @mobile-team
-/frontend/public/service-worker.js          @frontend-leads @principal-eng
+/frontend/src/features/                     @owner
+/frontend/src/shared/                       @owner
+/frontend/src/config/                       @owner
+/frontend/capacitor.config.js               @owner
+/frontend/ios/                              @owner
+/frontend/android/                          @owner
+/frontend/public/service-worker.js          @owner
 
-# ---------- Security-critical ----------
-**/auth*                                    @security
-**/token*                                   @security
-**/password*                                @security
-**/session*                                 @security
+# ---------- Security-critical glob ----------
+**/auth*                                    @owner
+**/token*                                   @owner
+**/password*                                @owner
+**/session*                                 @owner

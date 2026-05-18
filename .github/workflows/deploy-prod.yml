@@ -35,7 +35,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
       - name: Vercel pull
         run: npx -y vercel@latest pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
       - name: Vercel build
@@ -53,9 +54,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: '20' }
+        with:
+          node-version: '20'
       - name: Smoke production
-        env: { SMOKE_BASE_URL: https://wellness-buddy-pwa.vercel.app }
+        env:
+          SMOKE_BASE_URL: https://wellness-buddy-pwa.vercel.app
         run: node scripts/smoke-test.js
       - name: Notify Slack
         if: always()
