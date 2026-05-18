@@ -1,0 +1,51 @@
+name: E2E
+
+on:
+  pull_request:
+    branches: [staging, 'release/**']
+  push:
+    branches: [staging, 'release/**']
+  workflow_dispatch:
+
+jobs:
+  playwright:
+    name: Playwright (${{ matrix.project }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        project: [chromium, webkit]
+        shard: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20', cache: 'npm' }
+      - run: cd frontend && npm ci --no-audit --no-fund
+      - run: cd e2e && npm ci --no-audit --no-fund
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('e2e/package-lock.json') }}
+      - run: cd e2e && npx playwright install --with-deps ${{ matrix.project }}
+      - name: Start stack
+        run: docker compose -f e2e/docker-compose.yml up -d --wait
+      - name: Run tests (shard ${{ matrix.shard }}/4)
+        run: cd e2e && npx playwright test --project=${{ matrix.project }} --shard=${{ matrix.shard }}/4
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pw-report-${{ matrix.project }}-${{ matrix.shard }}
+          path: e2e/playwright-report
+
+  accessibility:
+    name: Axe accessibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - run: cd e2e && npm ci --no-audit --no-fund
+      - run: cd e2e && npx playwright install --with-deps chromium
+      - run: cd e2e && npx playwright test --grep @a11y

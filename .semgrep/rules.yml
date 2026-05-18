@@ -1,0 +1,52 @@
+# Semgrep custom rules — claude.md §1.2, §8
+rules:
+  - id: forbid-console-log-in-src
+    pattern: console.log(...)
+    message: "console.log is forbidden in shipped code. Use the shared logger."
+    severity: ERROR
+    languages: [javascript]
+    paths:
+      include: ["backend/features", "backend/pages", "frontend/src"]
+      exclude: ["**/__tests__/**", "**/*.test.js", "scripts/**"]
+
+  - id: forbid-empty-catch
+    pattern: |
+      try { ... } catch ($E) { }
+    message: "Silent catch is forbidden (claude.md §1.1 rule 7)."
+    severity: ERROR
+    languages: [javascript]
+
+  - id: forbid-direct-localstorage
+    pattern-either:
+      - pattern: localStorage.$X(...)
+      - pattern: window.localStorage.$X(...)
+    message: "Use shared/lib/storage wrapper (claude.md §2.5)."
+    severity: ERROR
+    languages: [javascript]
+    paths:
+      include: ["frontend/src/features"]
+
+  - id: forbid-raw-sql-in-features
+    pattern-either:
+      - pattern: pool.query("...")
+      - pattern: client.query("...")
+    message: "Raw SQL in feature code is forbidden. Use data/ repo layer with parameterised queries."
+    severity: ERROR
+    languages: [javascript]
+    paths:
+      include: ["backend/features"]
+      exclude: ["**/data/**"]
+
+  - id: forbid-todo-without-id
+    pattern-regex: 'TODO(?!\(#?\d)'
+    message: "TODO must reference an issue id, e.g. TODO(#123)."
+    severity: WARNING
+    languages: [generic]
+
+  - id: forbid-process-env-in-domain
+    pattern: process.env.$X
+    message: "Domain layer must be pure. Inject config rather than reading env."
+    severity: ERROR
+    languages: [javascript]
+    paths:
+      include: ["**/domain/**"]

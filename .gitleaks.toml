@@ -1,0 +1,28 @@
+# Gitleaks — claude.md §1.2 / §8.2
+title = "Wellness Valley PWA secret patterns"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "supabase-service-role"
+description = "Supabase service-role key"
+regex = '''eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}'''
+keywords = ["supabase", "service_role", "SERVICE_ROLE"]
+
+[[rules]]
+id = "vercel-token"
+regex = '''(?i)vercel[_-]?token['\"=:\s]+[A-Za-z0-9]{24}'''
+
+[[rules]]
+id = "gemini-api-key"
+regex = '''AIza[0-9A-Za-z_-]{35}'''
+
+[[rules]]
+id = "generic-jwt"
+regex = '''eyJ[A-Za-z0-9_=-]+\.eyJ[A-Za-z0-9_=-]+\.[A-Za-z0-9_=-]{20,}'''
+
+[allowlist]
+paths = [
+  '''(.*?)(\.md|\.example|test-.*\.js|.*__tests__.*)'''
+]
