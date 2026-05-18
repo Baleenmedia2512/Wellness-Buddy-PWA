@@ -27,9 +27,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: google/osv-scanner-action@v1
+      - uses: google/osv-scanner-action@v2.3.8
         with:
-          scan-args: |
+          scan-args: |-
             --recursive
             --skip-git
             ./
