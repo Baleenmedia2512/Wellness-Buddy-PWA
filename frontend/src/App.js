@@ -131,6 +131,9 @@ import {
 import TouchFeedbackButton from "./shared/components/TouchFeedbackButton";
 import LocationGuard from "./shared/components/LocationGuard";
 
+// ── Quick-share feature (ff.quick-share.camera-first, default OFF) ──────────
+import { QuickShareCamera, useQuickShareEntry } from "./features/quick-share";
+
 // ✅ PERFORMANCE: Lazy-load leaderboards — they fire API calls on mount and are below the fold
 const WeightLossLeaderboard = lazy(() => import("./features/weight/components/WeightLossLeaderboard"));
 const DisciplineLeaderboard = lazy(() => import("./features/leaderboard/components/DisciplineLeaderboard"));
@@ -319,7 +322,12 @@ function WellnessValleyApp() {
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
 
-  // Admin dashboard state
+  // ── Quick-share camera-first entry (feature-flagged OFF by default) ──────
+  // Set REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST=true in .env to enable.
+  const _qsCameraFirst = process.env.REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST === 'true';
+  const { showCamera: showQuickShareCamera, onCaptured: onQuickShareCaptured } =
+    useQuickShareEntry({ userId: user?.uid || null, userRole, cameraFirstEnabled: _qsCameraFirst });
+  // ─────────────────────────────────────────────────────────────────────────
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Discipline report state (for coaches) - with localStorage persistence
@@ -4310,6 +4318,17 @@ function WellnessValleyApp() {
           />
         )}
       </>
+    );
+  }
+
+  // ── Quick-share camera-first screen ────────────────────────────────────────
+  // Renders BEFORE any other full-page view when flag is ON + role is member.
+  // Dismissed or completed → delegates navigation to hook (sets showMainPage).
+  if (showQuickShareCamera) {
+    return (
+      <QuickShareCamera
+        onDone={() => { onQuickShareCaptured(); showMainPage(); }}
+      />
     );
   }
 
