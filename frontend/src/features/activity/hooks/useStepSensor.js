@@ -15,8 +15,8 @@ import { StepCounterPlugin } from '../../../shared/plugins/stepCounterPlugin';
 import { runAntiCheatEngine } from '../services/stepCounterAntiCheat';
 import { readBaseline, writeBaseline } from '../services/stepCounterStorage';
 import { toDateKey, calcCalories } from '../services/stepCounterCalculations';
-import {
 import { debugLog } from '../../../shared/utils/logger.js';
+import {
   POLL_INTERVAL_MS, UPDATE_THROTTLE_MS, AC_QUARANTINE_RATIO,
 } from '../services/stepCounterConstants';
 
@@ -87,7 +87,7 @@ export function useStepSensor({
       setLastUpdated(new Date());
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   const initStepTracking = useCallback(async () => {
@@ -132,7 +132,7 @@ export function useStepSensor({
       setError('Failed to initialize step counter');
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   return { processSensorValue, initStepTracking };

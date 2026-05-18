@@ -51,7 +51,7 @@ export function useStepPersistence({ refs }) {
       refs.lastSavedStepsRef.current = lastSaved; // rollback
       console.warn('[StepCounter] Auto-save failed:', err?.message || err);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   return { saveStepsToDatabase };

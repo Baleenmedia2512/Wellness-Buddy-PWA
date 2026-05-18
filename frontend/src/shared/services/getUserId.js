@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../utils/logger.js';
+
+/**
  * @file getUserId — looks up the canonical database UserID for an
  * authenticated principal, with a session-level email→userId cache
  * to avoid redundant `/api/user/lookup` calls.

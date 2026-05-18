@@ -67,7 +67,7 @@ export function useScreenTimeData({ userId, isNative, permissionGranted } = {}) 
     if (!isNative) { setIsLoading(false); return; }
     if (permissionGranted) loadData();
     else setIsLoading(false);
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isNative, permissionGranted, resolvedUserId]);
 
   // Period change → reload only the history.

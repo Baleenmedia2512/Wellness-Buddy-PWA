@@ -10,7 +10,7 @@
  * ---------------------------------------------------------------------------
  */
 import { useState, useRef, useCallback } from 'react';
-import cameraService from '../../../shared/services/cameraService';
+import { cameraService } from '../../../shared/services/cameraService';
 import { shareImageDirectly } from '../../../shared/utils/shareUtils';
 import { debugLog } from '../../../shared/utils/logger';
 

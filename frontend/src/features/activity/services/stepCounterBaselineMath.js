@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../../../shared/utils/logger.js';
+
+/**
  * stepCounterBaselineMath.js — picks the correct sensor baseline on app open.
  *
  * Pure function: takes the inputs the original component computed inline

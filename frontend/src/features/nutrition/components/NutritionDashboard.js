@@ -16,8 +16,8 @@ import {
   OverviewPanels,
   MealAnalysisModal,
 } from "./dashboard";
-import {
 import { debugLog } from '../../../shared/utils/logger.js';
+import {
   useUserCalorieTarget,
   useBurnedCalories,
   useCalorieTrend,

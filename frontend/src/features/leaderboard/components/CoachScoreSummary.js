@@ -1,8 +1,8 @@
 // src/components/CoachScoreSummary.js
 import React, { useState, useEffect } from "react";
 import { Users, User } from "lucide-react";
-import {
 import { debugLog } from '../../../shared/utils/logger.js';
+import {
   SelfLogo,
   DirectLogo,
   FullTeamLogo,

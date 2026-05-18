@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../utils/logger.js';
+
+/**
  * Global Cache Manager for All Services
  * Provides unified caching and request deduplication across the app
  * 

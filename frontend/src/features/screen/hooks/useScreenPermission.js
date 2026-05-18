@@ -28,7 +28,7 @@ export function useScreenPermission({ onGranted } = {}) {
       if (status.granted) onGranted?.();
     })();
     return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isNative]);
 
   // Re-check on resume (user may have toggled the setting).
@@ -44,7 +44,7 @@ export function useScreenPermission({ onGranted } = {}) {
     };
     document.addEventListener('resume', onResume);
     return () => document.removeEventListener('resume', onResume);
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isNative, granted]);
 
   const request = useCallback(async () => {

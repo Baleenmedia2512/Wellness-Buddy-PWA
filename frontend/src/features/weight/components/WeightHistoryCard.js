@@ -16,7 +16,7 @@ const WeightHistoryCard = React.memo(function WeightHistoryCard({
   const swipe = useSwipeToDelete({ onDelete: () => onDelete?.(data) });
 
   if (!data || !data.Weight || !data.CreatedAt) {
-    // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
+    // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
     console.warn('WeightHistoryCard received invalid data:', data);
     return null;
   }

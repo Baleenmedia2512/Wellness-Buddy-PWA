@@ -1,5 +1,6 @@
-/**
 import { debugLog } from './logger.js';
+
+/**
  * Image Validator Utility
  * Validates images for freshness to prevent fraud (old/proxy images)
  * Supports multiple image formats: JPEG, PNG, HEIF/HEIC, WebP, and more

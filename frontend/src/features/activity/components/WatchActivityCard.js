@@ -103,7 +103,7 @@ const WatchActivityCard = ({
     };
 
     autoSave();
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
   // ───────────────────────────────────────────────────────────────────────────
 

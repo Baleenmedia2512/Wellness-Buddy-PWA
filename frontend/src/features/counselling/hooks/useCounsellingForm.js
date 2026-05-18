@@ -78,7 +78,7 @@ export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClos
         const formData = buildPayload();
         // Preserve legacy 1s artificial delay so success animation feels right.
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
+        // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
         debugLog('✅ Wellness Counselling Data:', formData);
         await saveAssessment(formData);
         setSaveSuccess(true);
@@ -89,7 +89,7 @@ export function useCounsellingForm({ user, selectedMember, onSaveSuccess, onClos
           if (onClose) onClose();
         }, SUCCESS_TOAST_MS);
       } catch (err) {
-        // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
+        // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
         console.error('❌ Error saving data:', err);
         setError('Failed to save. Please try again.');
       } finally {

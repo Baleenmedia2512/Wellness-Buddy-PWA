@@ -8,8 +8,8 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { teamHierarchyService } from '../../../shared/services/teamHierarchyService';
 import { disciplineReportService, clearDisciplineReportCache } from '../services/disciplineReportService';
 import { enrichHierarchy, buildDisciplineMaps } from '../services/disciplineReportEnricher';
-import {
 import { debugLog } from '../../../shared/utils/logger.js';
+import {
   sortHierarchy, applyTeamView, getTeamCounts,
   buildSummaryStats, buildHierarchySummaryStats, hasVisibleNodes,
 } from '../services/disciplineReportFormatter';

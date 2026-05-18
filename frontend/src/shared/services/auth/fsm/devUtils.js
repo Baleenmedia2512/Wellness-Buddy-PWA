@@ -81,7 +81,7 @@ export function printTimeline(limit = 30) {
       event: it.event && it.event.type,
     };
   });
-  // eslint-disable-next-line no-console // FSM / lifecycle code — must reach crash reporters before logger is ready // FSM/lifecycle code must reach crash reporters before logger is ready
+  // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
   console.table(items);
 }
 
@@ -295,7 +295,7 @@ export function exportSession(runtime) {
 
 export function exposeOnWindow(runtime) {
   if (typeof window === "undefined") return;
-  // eslint-disable-next-line no-underscore-dangle // required by platform constraints; see inline context // required by platform constraints — see surrounding context
+  // eslint-disable-next-line no-underscore-dangle -- required by platform constraints; see inline context
   window.__authFsm = {
     snapshot: () => runtime.getSnapshot(),
     timeline: getTimeline,

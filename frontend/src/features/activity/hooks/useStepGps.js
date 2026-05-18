@@ -55,7 +55,7 @@ export function useStepGps({ refs, setSuspiciousActivity }) {
     refs.routeDateRef.current = toDateKey();
     const restored = readLastGpsPos();
     if (restored) setLastGpsPos(restored);
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   useEffect(() => {
@@ -94,7 +94,7 @@ export function useStepGps({ refs, setSuspiciousActivity }) {
       if (watchId !== null) Geolocation.clearWatch({ id: watchId }).catch(() => {});
       if (refs.gpsIntervalRef.current) clearInterval(refs.gpsIntervalRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   return { lastGpsPos, outdoorDistance, outdoorSteps };

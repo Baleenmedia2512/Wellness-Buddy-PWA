@@ -6,6 +6,7 @@ export { default as ManualFoodEntryModal } from './components/ManualFoodEntryMod
 export { default as DuplicateFoodModal } from './components/DuplicateFoodModal';
 export { default as EditableFoodItem } from './components/EditableFoodItem';
 export * from './services/foodCorrectionService';
+export * from './services/foodCorrection';
 export * from './services/duplicateDetectionService';
 export * from './services/backgroundNutritionService';
 export * from './services/nutritionSaveService';

@@ -105,14 +105,14 @@ export function useStepCounter({ userId, user, userRole = 'user' }) {
         refs.sensorListenerRef.current?.remove?.().catch(() => {});
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   // Start auto-save timer once userId resolves
   useEffect(() => {
     if (!perms.resolvedUserId) return;
     autoSave.setupAutoSave();
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [perms.resolvedUserId]);
 
   const calc  = useStepCalculations({

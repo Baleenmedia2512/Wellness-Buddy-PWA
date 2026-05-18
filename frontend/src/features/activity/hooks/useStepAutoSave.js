@@ -22,7 +22,7 @@ export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
       refs.saveStepsToDatabaseRef.current?.();
     }, AUTO_SAVE_INTERVAL_MS);
     debugLog(`[StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   const setupMidnightReset = useCallback(() => {
@@ -51,7 +51,7 @@ export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
     }, msUntilMidnight);
 
     debugLog(`[StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: listed deps would cause an infinite re-render // intentional: adding this dep causes an infinite re-render loop
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   return { setupAutoSave, setupMidnightReset };

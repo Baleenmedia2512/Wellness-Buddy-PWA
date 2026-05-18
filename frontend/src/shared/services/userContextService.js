@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../utils/logger.js';
+
+/**
  * @file userContextService — loads and caches the personalized AI
  * context for a user (corrections, global patterns, diet preference,
  * recent meals).

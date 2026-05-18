@@ -1107,13 +1107,11 @@ function WellnessValleyApp() {
       }
     } catch (err) {
       // Shadow FSM must never destabilize the host.
-      // eslint-disable-next-line no-console // FSM/lifecycle code must reach crash reporters before logger is ready
- // FSM / lifecycle code — must reach crash reporters before logger is ready
+      // eslint-disable-next-line no-console -- FSM/lifecycle code must reach crash reporters before logger is ready
       console.warn("[AuthFSM] startShadow threw (ignored):", err);
     }
     // Intentionally empty deps — this must run exactly once on mount.
-    // eslint-disable-next-line react-hooks/exhaustive-deps // intentional: adding this dep causes an infinite re-render loop
- // intentional: listed deps would cause an infinite re-render
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: adding this dep causes an infinite re-render loop
   }, []);
 
   // Auth state listener

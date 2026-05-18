@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../../utils/logger.js';
+
+/**
  * Token Cost Configuration - Single Source of Truth
  *
  * All AI model pricing and currency conversion rates are defined here.

@@ -13,8 +13,8 @@ import { Filesystem } from "@capacitor/filesystem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
 import { Camera as CameraIcon, Image as GalleryIcon } from "lucide-react";
-import {
 import { debugLog } from '../utils/logger.js';
+import {
   validateImageFreshness,
   validateImageForEducation,
 } from "../utils/imageValidator";

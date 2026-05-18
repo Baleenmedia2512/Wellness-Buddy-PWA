@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
-import {
 import { debugLog } from '../shared/utils/logger.js';
+import {
   Salad,
   TrendingDown,
   TrendingUp,

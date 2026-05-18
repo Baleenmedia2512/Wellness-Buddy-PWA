@@ -1,5 +1,6 @@
-/**
 import { debugLog } from '../utils/logger.js';
+
+/**
  * Optimized API Client
  * 
  * PERFORMANCE IMPROVEMENTS:
