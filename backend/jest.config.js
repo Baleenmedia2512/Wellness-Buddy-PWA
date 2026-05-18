@@ -74,6 +74,14 @@ module.exports = {
       lines: 95,
       branches: 90,
     },
+    'features/auth/auth.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/token/token.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
     'features/water/api/': {
       lines: 85,
       branches: 75,
