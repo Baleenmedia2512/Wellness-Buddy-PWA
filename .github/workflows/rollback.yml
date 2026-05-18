@@ -17,10 +17,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Promote previous deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG: ${{ secrets.VERCEL_ORG }}
         run: |
           npx -y vercel@latest promote ${{ inputs.target_deployment }} \
-            --token=${{ secrets.VERCEL_TOKEN }} \
-            --scope=${{ secrets.VERCEL_ORG }}
+            --token=$VERCEL_TOKEN \
+            --scope=$VERCEL_ORG
       - name: Smoke after rollback
         env:
           SMOKE_BASE_URL: https://wellness-buddy-pwa.vercel.app

@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    "baseUrl": "src",
     "paths": {
-      "@/*": ["*"],
-      "@features/*": ["features/*"],
-      "@shared/*": ["shared/*"],
-      "@config/*": ["config/*"]
+      "@/*": ["./src/*"],
+      "@features/*": ["./src/features/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@config/*": ["./src/config/*"]
     }
   },
   "include": ["src"]
