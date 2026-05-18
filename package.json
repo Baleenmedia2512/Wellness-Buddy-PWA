@@ -13,9 +13,16 @@
     "governance:forbidden": "node scripts/forbidden-patterns.js",
     "governance:size": "node scripts/file-size-guard.js",
     "governance:duplicates": "node scripts/find-duplicates.js",
-    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src"
+    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
+    "e2e:smoke": "playwright test --grep @smoke",
+    "e2e:journey": "playwright test --grep @journey",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@playwright/test": "^1.60.0",
     "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"
   }
