@@ -322,12 +322,14 @@ function WellnessValleyApp() {
   // User role state - for role-based access control
   const [userRole, setUserRole] = useState("user");
 
-  // ── Quick-share camera-first entry (feature-flagged OFF by default) ──────
-  // Set REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST=true in .env to enable.
-  const _qsCameraFirst = process.env.REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST === 'true';
+  // ── Quick-share camera-first entry ───────────────────────────────────────
+  // ON by default for member role (per product requirement: camera opens
+  // before home on every cold-start / resume-from-lock; recipient gets a
+  // public link in the share caption).
+  // Set REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST=false in .env to disable.
+  const _qsCameraFirst = process.env.REACT_APP_FF_QUICK_SHARE_CAMERA_FIRST !== 'false';
   const { showCamera: showQuickShareCamera, onCaptured: onQuickShareCaptured } =
     useQuickShareEntry({ userId: user?.uid || null, userRole, cameraFirstEnabled: _qsCameraFirst });
-  // ─────────────────────────────────────────────────────────────────────────
   const [showAdminDashboard, setShowAdminDashboard] = useState(false);
 
   // Discipline report state (for coaches) - with localStorage persistence
@@ -4325,6 +4327,7 @@ function WellnessValleyApp() {
   if (showQuickShareCamera) {
     return (
       <QuickShareCamera
+        userId={user?.id || null}
         onDone={() => { onQuickShareCaptured(); showMainPage(); }}
       />
     );

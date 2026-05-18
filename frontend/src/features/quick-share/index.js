@@ -5,3 +5,5 @@
 export { default as QuickShareCamera } from './components/QuickShareCamera';
 export { useQuickShareEntry }          from './hooks/useQuickShareEntry';
 export { useShareCapture }             from './hooks/useShareCapture';
+export { createCapture }               from './api/captures.client';
+export { buildShareCaption }           from './domain/share-caption.rules';

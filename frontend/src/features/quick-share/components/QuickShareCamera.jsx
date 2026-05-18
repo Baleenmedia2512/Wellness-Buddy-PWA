@@ -13,10 +13,10 @@ import { Capacitor } from '@capacitor/core';
 import { useShareCapture } from '../hooks/useShareCapture';
 
 /**
- * @param {{ onDone: () => void }} props
+ * @param {{ onDone: () => void, userId?: string|number|null }} props
  */
-export default function QuickShareCamera({ onDone }) {
-  const { capture, status, errorMsg } = useShareCapture({ onDone });
+export default function QuickShareCamera({ onDone, userId = null }) {
+  const { capture, status, errorMsg } = useShareCapture({ onDone, userId });
 
   const handlePermissionDenied = useCallback(async () => {
     if (Capacitor.isNativePlatform()) {

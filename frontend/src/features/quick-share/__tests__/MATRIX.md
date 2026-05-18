@@ -7,6 +7,8 @@ Per claude.md §9.3.
 | entry-route: shouldShowCamera (member + flag ON) | ✅ entry-route.rules.test.js | — | ✅ cold-start-launches-camera.spec.js | — | ✅ coach role blocked |
 | entry-route: camera skipped for in-app nav | ✅ entry-route.rules.test.js | — | — | — | ✅ active flow not hijacked |
 | useShareCapture: capture + upload + shareToken | ✅ useShareCapture.test.js | — | ✅ capture-then-share.spec.js | — | ✅ double-tap debounce |
+| useShareCapture: upload failure → share without caption | ✅ useShareCapture.test.js | — | — | — | ✅ network down, missing userId |
+| share-caption.rules: buildShareCaption | ✅ share-caption.rules.test.js | — | — | — | ✅ empty / null / non-string |
 | useShareCapture: share sheet open (native) | — | — | ✅ capture-then-share.spec.js | — | ✅ offline state |
 | useShareCapture: navigate Home after share | ✅ | — | ✅ | — | ✅ share dismissed |
 | useShareCapture: camera permission denied | ✅ | — | — | — | ✅ permission denied flow |
