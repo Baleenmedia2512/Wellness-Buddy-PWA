@@ -66,6 +66,22 @@ module.exports = {
       lines: 95,
       branches: 90,
     },
+    'features/background-analysis/analysis.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/user/user.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/water/api/': {
+      lines: 85,
+      branches: 75,
+    },
+    'features/water/data/': {
+      lines: 70,
+      branches: 60,
+    },
   },
   clearMocks: true,
   restoreMocks: true,
