@@ -38,6 +38,18 @@ module.exports = {
       lines: 95,
       branches: 90,
     },
+    'features/weight/weight.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/activity/activity.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
+    'features/screen/screen.validators.js': {
+      lines: 95,
+      branches: 90,
+    },
   },
   clearMocks: true,
   restoreMocks: true,

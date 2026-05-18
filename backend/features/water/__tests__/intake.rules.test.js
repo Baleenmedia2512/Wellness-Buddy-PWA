@@ -100,6 +100,24 @@ describe('extractWaterFromRecord', () => {
       extractWaterFromRecord({ CreatedAt: 'x', AnalysisData: 'garbage' }),
     ).toEqual({ recordMl: 0, items: [] });
   });
+
+  it('ignores foods with missing name (optional-chaining null branch)', () => {
+    const { recordMl, items } = extractWaterFromRecord({
+      CreatedAt: 'x',
+      AnalysisData: { foods: [{ volume_ml: 250 }, null, { name: null, volume_ml: 100 }] },
+    });
+    expect(recordMl).toBe(0);
+    expect(items).toEqual([]);
+  });
+
+  it('ignores exempted foods whose computed ml is 0', () => {
+    const { recordMl, items } = extractWaterFromRecord({
+      CreatedAt: 'x',
+      AnalysisData: { foods: [{ name: 'water', volume_ml: 0, weight_g: 0, estimatedWeight: 0 }] },
+    });
+    expect(recordMl).toBe(0);
+    expect(items).toEqual([]);
+  });
 });
 
 describe('computeDailyIntake', () => {

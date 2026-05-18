@@ -58,5 +58,3 @@ export function validateUndoInput(body) {
   if (!id) throw new ValidationError(400, 'Weight entry ID is required');
   return { id, userId };
 }
-
-export { ValidationError };
