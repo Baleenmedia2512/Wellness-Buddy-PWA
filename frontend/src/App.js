@@ -112,6 +112,7 @@ import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
+import { useQuickShareEntry, QuickShareCamera } from "./features/quick-share";
 import * as authFsm from "./shared/services/auth/fsm";
 import { fetchProfileCompletion, fetchProfilePicture } from "./shared/services/auth/userProfile";
 import { fetchUserStatus, fetchSetupStatus } from "./shared/services/auth/userSetup";
@@ -377,6 +378,35 @@ function WellnessValleyApp() {
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
+
+  // ── Quick-share camera-first entry ──────────────────────────────────────
+  // useQuickShareEntry manages: capture, AI detection, backend post, WhatsApp share.
+  // It registers its own appStateChange listener for the app-resume-to-camera flow.
+  // Use a closure wrapper: showMainPage is defined later (line ~731); the callback
+  // is only called after render so there is no temporal dead zone issue.
+  const {
+    phase: qsPhase,
+    capturedDataUrl: qsCapturedDataUrl,
+    imageType: qsImageType,
+    viewUrl: qsViewUrl,
+    errorMsg: qsErrorMsg,
+    triggerCapture: openCamera,
+    handleShare: handleQsShare,
+    dismiss: dismissCamera,
+  } = useQuickShareEntry({ user, onDismiss: () => showMainPage() });
+
+  // Open camera once when user first logs in (and is active).
+  // The hook's internal listener handles subsequent app-resume openings.
+  const _hasFiredCameraOnLogin = useRef(false);
+  useEffect(() => {
+    if (!user) { _hasFiredCameraOnLogin.current = false; return; }
+    if (_hasFiredCameraOnLogin.current) return;
+    if (!isUserActive) return;
+    if (!Capacitor.isNativePlatform()) return;
+    _hasFiredCameraOnLogin.current = true;
+    const t = setTimeout(() => openCamera(), 1500);
+    return () => clearTimeout(t);
+  }, [user, isUserActive, openCamera]);
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
@@ -5922,6 +5952,35 @@ function WellnessValleyApp() {
             </div>
           </div>
         </div>
+      )}
+      {/* ── DEV ONLY: web test button — remove before release ── */}
+      {process.env.NODE_ENV === 'development' && user && (
+        <button
+          onClick={openCamera}
+          style={{
+            position: 'fixed', bottom: 80, right: 16, zIndex: 60,
+            background: '#2563eb', color: '#fff', border: 'none',
+            borderRadius: 8, padding: '10px 14px', fontSize: 13,
+            cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+          }}
+          title="DEV: open quick-share camera"
+        >
+          📸 Test Camera
+        </button>
+      )}
+
+      {/* ── Quick-share camera overlay (fixed, z-50, covers everything) ── */}
+      {qsPhase !== 'idle' && qsPhase !== 'done' && (
+        <QuickShareCamera
+          phase={qsPhase}
+          capturedDataUrl={qsCapturedDataUrl}
+          imageType={qsImageType}
+          viewUrl={qsViewUrl}
+          errorMsg={qsErrorMsg}
+          onCapture={openCamera}
+          onShare={handleQsShare}
+          onDismiss={dismissCamera}
+        />
       )}
     </div>
     </LocationGuard>
