@@ -398,15 +398,18 @@ function WellnessValleyApp() {
   // Open camera once when user first logs in (and is active).
   // The hook's internal listener handles subsequent app-resume openings.
   const _hasFiredCameraOnLogin = useRef(false);
+  // Camera-first entry: open camera once after login, but only after the auth
+  // loading screen has fully dismissed so the home page is actually visible.
   useEffect(() => {
     if (!user) { _hasFiredCameraOnLogin.current = false; return; }
     if (_hasFiredCameraOnLogin.current) return;
     if (!isUserActive) return;
+    if (authLoading) return; // home page not rendered yet — wait
     if (!Capacitor.isNativePlatform()) return;
     _hasFiredCameraOnLogin.current = true;
-    const t = setTimeout(() => openCamera(), 1500);
+    const t = setTimeout(() => openCamera(), 1000);
     return () => clearTimeout(t);
-  }, [user, isUserActive, openCamera]);
+  }, [user, isUserActive, authLoading, openCamera]);
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);

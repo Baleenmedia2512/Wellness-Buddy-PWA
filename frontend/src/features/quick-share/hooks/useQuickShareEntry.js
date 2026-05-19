@@ -20,23 +20,12 @@ import { imageTypeDetector } from '../../../shared/services/imageTypeDetector.js
 import { shareImageDirectly } from '../../../shared/utils/shareUtils.js';
 import { postCapture } from '../api/captures.client.js';
 import * as nativeLifecycle from '../../../shared/services/nativeLifecycle/index.js';
-import {
-  DAILY_CAPTURE_KEY,
-  parseDailyState,
-  incrementDailyState,
-  serializeDailyState,
-  isFirstCaptureOfDay,
-  getTodayIST,
-} from '../domain/daily-capture.rules.js';
+// daily-capture.rules.js exports are kept in the domain layer but the hook
+// no longer needs a daily counter — AI detection always runs so weight photos
+// are handled correctly regardless of how many captures were made today.
 import { buildShareCaption, buildShareTitle } from '../domain/share-caption.rules.js';
 
-// ── tiny localStorage helpers (no shared/lib/storage.js exists) ──────────
-const lsGet = (key) => {
-  try { return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null; } catch { return null; }
-};
-const lsSet = (key, val) => {
-  try { if (typeof window !== 'undefined') window.localStorage.setItem(key, val); } catch { /* quota */ }
-};
+
 
 /**
  * Convert a base64 string (with or without data-URL prefix) to a File.
@@ -73,17 +62,6 @@ export function useQuickShareEntry({ user, onDismiss }) {
 
   const isMountedRef = useRef(true);
   useEffect(() => () => { isMountedRef.current = false; }, []);
-
-  // ── Daily counter helpers ─────────────────────────────────────────────────
-  const readDailyState = useCallback(() => {
-    const raw = lsGet(DAILY_CAPTURE_KEY);
-    const today = getTodayIST();
-    return parseDailyState(raw, today);
-  }, []);
-
-  const writeDailyState = useCallback((state) => {
-    lsSet(DAILY_CAPTURE_KEY, serializeDailyState(state));
-  }, []);
 
   // ── Native camera capture ─────────────────────────────────────────────────
   const triggerCapture = useCallback(async () => {
@@ -137,18 +115,9 @@ export function useQuickShareEntry({ user, onDismiss }) {
       if (!isMountedRef.current) return;
       setCapturedDataUrl(dataUrl);
 
-      // ── Decide flow based on daily counter ───────────────────────────────
-      const dailyState = readDailyState();
-      const firstToday = isFirstCaptureOfDay(dailyState);
-
-      // Increment before async work so a second parallel call won't also run sync detection
-      writeDailyState(incrementDailyState(dailyState));
-
-      if (firstToday) {
-        await handleFirstCapture(dataUrl, mimeType);
-      } else {
-        await handleSubsequentCapture(dataUrl, mimeType);
-      }
+      // Always run AI type detection so weight photos are correctly identified
+      // regardless of how many captures have been made today.
+      await handleFirstCapture(dataUrl, mimeType);
     } catch (err) {
       const cancelled =
         err?.message?.toLowerCase().includes('cancel') ||
@@ -168,7 +137,7 @@ export function useQuickShareEntry({ user, onDismiss }) {
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- onDismiss + user are stable refs
-  }, [user, onDismiss, readDailyState, writeDailyState]);
+  }, [user, onDismiss]);
 
   // ── First-capture flow: sync AI type detection ────────────────────────────
   const handleFirstCapture = useCallback(async (dataUrl, mimeType) => {
@@ -200,16 +169,6 @@ export function useQuickShareEntry({ user, onDismiss }) {
     } else {
       setPhase('share_ready');
     }
-  }, []);
-
-  // ── Subsequent-capture flow: skip sync detection ──────────────────────────
-  const handleSubsequentCapture = useCallback(async (dataUrl, mimeType) => {
-    // Show share immediately while posting in background
-    if (isMountedRef.current) {
-      setImageType('food');
-      setPhase('posting');
-    }
-    await postCaptureToBackend(dataUrl, mimeType, 'food');
   }, []);
 
   // ── POST to backend (background analysis) ────────────────────────────────

@@ -28,9 +28,8 @@ export async function createCaptureHandler(req, res) {
   }
 
   const { imageBase64, mimeType, userId } = req.body;
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-    ? `https://${process.env.VERCEL_URL}`
-    : 'http://localhost:3000';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL
+    || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
 
   const token = generateShareToken();
   const expiresAt = computeShareExpiry();
