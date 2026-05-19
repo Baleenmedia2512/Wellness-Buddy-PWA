@@ -225,32 +225,8 @@ export function useQuickShareEntry({ user, onDismiss }) {
     }
   }, [capturedDataUrl, phase, viewUrl, imageType, onDismiss]);
 
-  // ── App resume listener: re-open camera ──────────────────────────────────
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return;
-    if (!user) return;
-
-    let handle = null;
-    let cancelled = false;
-
-    nativeLifecycle.addAppStateListener(({ isActive }) => {
-      if (isActive && isMountedRef.current && !cancelled) {
-        debugLog('[useQuickShareEntry] App resumed — triggering camera');
-        // Small delay so Capacitor finishes its own resume tasks first
-        setTimeout(() => {
-          if (isMountedRef.current && !cancelled) triggerCapture();
-        }, 400);
-      }
-    }).then((h) => {
-      handle = h;
-      if (cancelled) handle?.remove?.();
-    }).catch(() => {});
-
-    return () => {
-      cancelled = true;
-      handle?.remove?.();
-    };
-  }, [user, triggerCapture]);
+  // App resume is handled by App.js which calls fileInputRef.current.openCamera()
+  // so the existing ImageUpload flow (nutrition analysis) runs instead.
 
   return {
     phase,

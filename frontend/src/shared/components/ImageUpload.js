@@ -513,13 +513,15 @@ const ImageUpload = forwardRef(
       }
     };
 
-    // Expose reset method to parent component
+    // Expose reset method and openCamera to parent component
     useImperativeHandle(ref, () => ({
       resetInputs: () => {
         if (cameraInputRef.current) cameraInputRef.current.value = "";
         if (galleryInputRef.current) galleryInputRef.current.value = "";
         if (fallbackInputRef.current) fallbackInputRef.current.value = "";
       },
+      // Called by App.js to auto-open the camera (same as tapping Take Photo)
+      openCamera: () => triggerCamera(),
     }));
 
     // Taglines for loading overlay based on state and image type

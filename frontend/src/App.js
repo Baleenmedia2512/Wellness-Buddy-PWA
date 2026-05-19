@@ -395,9 +395,8 @@ function WellnessValleyApp() {
     dismiss: dismissCamera,
   } = useQuickShareEntry({ user, onDismiss: () => showMainPage() });
 
-  // Open camera automatically when the user lands on the home screen.
-  // Guards: user logged in, auth resolved, home screen visible (no other page open),
-  // native platform only. Fires once per login session.
+  // ── Auto-camera: fire the existing Take Photo action automatically ────────
+  // Fires once per login session when the home screen is fully visible.
   const _hasFiredCameraOnLogin = useRef(false);
   useEffect(() => {
     if (!user) { _hasFiredCameraOnLogin.current = false; return; }
@@ -409,9 +408,40 @@ function WellnessValleyApp() {
     if (showScreenTime) return;               // user is on screen-time page
     if (!Capacitor.isNativePlatform()) return;
     _hasFiredCameraOnLogin.current = true;
-    const t = setTimeout(() => openCamera(), 800);
+    // Same as user tapping "Take Photo" — uses existing ImageUpload flow
+    const t = setTimeout(() => fileInputRef.current?.openCamera?.(), 800);
     return () => clearTimeout(t);
-  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime, openCamera]);
+  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+
+  // Ref that always reflects whether the home screen is currently visible.
+  // Used by the app-resume listener to avoid stale closure over state.
+  const _homeScreenActiveRef = useRef(false);
+  useEffect(() => {
+    _homeScreenActiveRef.current =
+      !!user && !authLoading && !showDashboard &&
+      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
+  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+
+  // App resume (phone unlocked / app foregrounded) → open camera if on home screen.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform() || !user) return;
+    let handle = null;
+    let cancelled = false;
+    nativeLifecycle.addAppStateListener(({ isActive }) => {
+      if (isActive && _homeScreenActiveRef.current && !cancelled) {
+        setTimeout(() => {
+          if (!cancelled) fileInputRef.current?.openCamera?.();
+        }, 600);
+      }
+    }).then((h) => {
+      handle = h;
+      if (cancelled) handle?.remove?.();
+    }).catch(() => {});
+    return () => {
+      cancelled = true;
+      handle?.remove?.();
+    };
+  }, [user]);
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
