@@ -15,6 +15,11 @@
  */
 module.exports = {
   testEnvironment: 'node',
+  // babel.jest.config.js is intentionally NOT named babel.config.js so that
+  // Next.js keeps using SWC for production builds. Jest must reference it explicitly.
+  transform: {
+    '^.+\\.jsx?$': ['babel-jest', { configFile: './babel.jest.config.js' }],
+  },
   rootDir: '.',
   roots: ['<rootDir>/features', '<rootDir>/shared', '<rootDir>/utils'],
   testMatch: ['**/__tests__/**/*.test.js'],

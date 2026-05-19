@@ -4,11 +4,11 @@ import {
   getTeamHierarchy,
   getDualCoachingTeamHierarchy 
 } from '../../../utils/disciplineCalculationsSupabase.js';
-import { 
 import logger from '../../../shared/lib/logger.js';
+import {
   formatDateForMySQL,
   getDaysBetween,
-  calculateDisciplinePercentage 
+  calculateDisciplinePercentage,
 } from '../../../utils/disciplineHelpers.js';
 
 export default async function handler(req, res) {
