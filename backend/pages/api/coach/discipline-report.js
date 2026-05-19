@@ -2,13 +2,13 @@ import { getSupabaseClient } from "../../../utils/supabaseClient.js";
 import { convertISTToUserLocalTime } from "../../../utils/timezoneConverter.js";
 import { isExemptedBeverageOnly, isExemptedFood } from "../../../utils/foodTypeDetection.js";
 import {
-import logger from '../../../shared/lib/logger.js';
   parseDateRange,
   calculateExpectedPosts,
   calculateDisciplinePercentage,
   getDaysBetween,
   formatDateForMySQL,
 } from "../../../utils/disciplineHelpers.js";
+import logger from '../../../shared/lib/logger.js';
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:35) are counted on-time

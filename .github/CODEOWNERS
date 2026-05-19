@@ -40,9 +40,6 @@
 /backend/features/screen/                   @owner
 /backend/features/misc/                     @owner
 
-# ---------- Quick-share feature ----------
-/frontend/src/features/quick-share/         @owner
-
 # ---------- Frontend ----------
 /frontend/src/features/                     @owner
 /frontend/src/shared/                       @owner
