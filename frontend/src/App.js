@@ -395,21 +395,23 @@ function WellnessValleyApp() {
     dismiss: dismissCamera,
   } = useQuickShareEntry({ user, onDismiss: () => showMainPage() });
 
-  // Open camera once when user first logs in (and is active).
-  // The hook's internal listener handles subsequent app-resume openings.
+  // Open camera automatically when the user lands on the home screen.
+  // Guards: user logged in, auth resolved, home screen visible (no other page open),
+  // native platform only. Fires once per login session.
   const _hasFiredCameraOnLogin = useRef(false);
-  // Camera-first entry: open camera once after login, but only after the auth
-  // loading screen has fully dismissed so the home page is actually visible.
   useEffect(() => {
     if (!user) { _hasFiredCameraOnLogin.current = false; return; }
     if (_hasFiredCameraOnLogin.current) return;
-    if (!isUserActive) return;
-    if (authLoading) return; // home page not rendered yet — wait
+    if (authLoading) return;                  // loading screen still showing
+    if (showDashboard) return;                // user is on the dashboard
+    if (showActivityTimeReport) return;       // user is on activity report
+    if (showDisciplineReport) return;         // user is on discipline report
+    if (showScreenTime) return;               // user is on screen-time page
     if (!Capacitor.isNativePlatform()) return;
     _hasFiredCameraOnLogin.current = true;
-    const t = setTimeout(() => openCamera(), 1000);
+    const t = setTimeout(() => openCamera(), 800);
     return () => clearTimeout(t);
-  }, [user, isUserActive, authLoading, openCamera]);
+  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime, openCamera]);
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
@@ -5973,7 +5975,8 @@ function WellnessValleyApp() {
       )}
 
       {/* ── Quick-share camera overlay (fixed, z-50, covers everything) ── */}
-      {qsPhase !== 'idle' && qsPhase !== 'done' && (
+      {/* 'capturing' is excluded: native camera opens directly, no overlay needed */}
+      {qsPhase !== 'idle' && qsPhase !== 'done' && qsPhase !== 'capturing' && (
         <QuickShareCamera
           phase={qsPhase}
           capturedDataUrl={qsCapturedDataUrl}

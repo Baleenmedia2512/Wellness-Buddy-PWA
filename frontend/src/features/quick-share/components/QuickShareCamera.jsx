@@ -43,6 +43,10 @@ export default function QuickShareCamera({
   const isCaptured = !!capturedDataUrl;
   const canShare = phase === 'share_ready';
 
+  // While the native camera is opening, render nothing — the Capacitor camera
+  // opens on top of the app so there's no need for an intermediate screen.
+  if (phase === 'capturing') return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black"
