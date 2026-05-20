@@ -21,7 +21,7 @@ const parseSaveResponse = async (res) => {
 };
 
 export async function saveNutritionAnalysis({
-  userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail, captureTimestamp = null,
+  userId, imagePath, imageBase64, analysisResult, deviceInfo, userEmail, captureTimestamp = null, captureId = null,
 }) {
   const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
   try {
@@ -47,6 +47,9 @@ export async function saveNutritionAnalysis({
         // not when it was uploaded. Falls back to upload time if absent.
         clientTimestamp: captureTimestamp || new Date().toISOString(),
         clientTimezoneOffset: new Date().getTimezoneOffset(),
+        // If a pending capture row was pre-created (instant-share flow), update
+        // it instead of inserting a new row so there is exactly one DB record.
+        ...(captureId ? { captureId } : {}),
       }),
     });
 

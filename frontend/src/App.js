@@ -64,7 +64,7 @@ import { useIonRouter } from "@ionic/react";
 import { Capacitor } from "@capacitor/core";
 import { Bug, Share2, Pencil, Check, X as XIcon } from "lucide-react";
 import ImageUpload from "./shared/components/ImageUpload";
-import { NutritionCard } from "./features/nutrition";
+import { NutritionCard, FoodImageShareCard } from "./features/nutrition";
 import { EducationLogCard } from "./features/education";
 import { WatchActivityCard } from "./features/activity";
 import { TestImageGuide } from "./features/admin";
@@ -83,6 +83,7 @@ import {
 } from "./shared/utils/backButtonHandler";
 import { getUserId, clearUserIdCache } from "./shared/services/userIdentity";
 import { getVersionString } from "./config/version";
+import { getApiBaseUrl } from "./config/api.config";
 import {
   saveNutritionAnalysis,
   deleteNutritionAnalysis,
@@ -93,7 +94,7 @@ import { weightDetectionService } from "./features/weight";
 import { educationDetectionService } from "./features/education";
 import { duplicateDetectionService } from "./features/nutrition";
 import { applyUserCorrections } from "./features/nutrition";
-import { captureAndShare, precaptureShareImage, shareCachedDataUrl } from "./shared/utils/shareUtils";
+import { captureAndShare, precaptureShareImage, shareCachedDataUrl, shareImageWithLink, shareViaCapacitorAPI } from "./shared/utils/shareUtils";
 import { locationAttendanceService } from "./features/nutrition-centers";
 import { checkExactAlarmPermission, openExactAlarmSettings } from "./shared/services/reminderService";
 import { validateImageFreshness } from "./shared/utils/imageValidator";
@@ -165,7 +166,7 @@ const WellnessCounselling = lazy(() =>
 // const ReminderSettingsPage = lazy(() => import("./pages/ReminderSettingsPage")); // FEATURE DISABLED
 
 function WellnessValleyApp() {
-  const apiBaseUrl = process.env.REACT_APP_API_BASE_URL;
+  const apiBaseUrl = getApiBaseUrl();
   const [selectedImage, setSelectedImage] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
   const [nutritionData, setNutritionData] = useState(null);
@@ -269,6 +270,120 @@ function WellnessValleyApp() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [duplicateInfo, setDuplicateInfo] = useState(null);
   const [pendingSaveData, setPendingSaveData] = useState(null);
+
+  // Instant-share state: pre-created capture row + shareable URL.
+  // foodCaptureIdRef holds the DB row ID across the async save flow without
+  // requiring prop-drilling through every performNutritionSave call site.
+  // processedImageRef holds the compressed base64 so the share handler can
+  // include the actual food photo even after state has been replaced.
+  // foodShareCardRef points at the off-screen FoodImageShareCard so we can
+  // paint it to a JPEG before the user taps share (zero-latency tap-to-share).
+  // foodShareImageDataUrlRef caches that pre-painted JPEG.
+  const foodCaptureIdRef = useRef(null);
+  const processedImageRef = useRef(null);
+  const foodShareCardRef = useRef(null);
+  const foodShareImageDataUrlRef = useRef(null);
+  const [foodShareUrl, setFoodShareUrl] = useState(null);
+
+  // Pre-paint the off-screen food-share card to a JPEG during idle time, so
+  // when the user taps "Share Image + Link" the share sheet appears instantly
+  // (no html2canvas in the click handler). Re-runs whenever the underlying
+  // image changes.
+  useEffect(() => {
+    foodShareImageDataUrlRef.current = null;
+    if (imageType !== "food") return;
+    if (!imagePreview) return;
+    let cancelled = false;
+    const t = setTimeout(() => {
+      if (!foodShareCardRef.current) return;
+      precaptureShareImage(foodShareCardRef.current).then((dataUrl) => {
+        if (!cancelled && dataUrl) {
+          foodShareImageDataUrlRef.current = dataUrl;
+        }
+      });
+    }, 250);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [imageType, imagePreview, savedProfileImage, sharePhotoBase64, savedUserName]);
+
+  // Tracks whether we've already auto-launched the share sheet for the current
+  // food capture, so we don't re-open it after the user dismisses it.
+  const foodAutoSharedRef = useRef(false);
+
+  // Reset the home/capture surface back to its initial state. Called after the
+  // share sheet completes so the user lands back on Home, ready for the next
+  // capture. Does NOT cancel the in-flight Gemini analysis — that continues
+  // and writes to the same public share URL the user already sent.
+  const resetCaptureToHome = useCallback(() => {
+    setImagePreview(null);
+    setSelectedImage(null);
+    setImageType(null);
+    setNutritionData(null);
+    setFoodShareUrl(null);
+    setLoading(false);
+    processedImageRef.current = null;
+    foodCaptureIdRef.current = null;
+    foodShareImageDataUrlRef.current = null;
+    foodAutoSharedRef.current = false;
+    if (fileInputRef.current && fileInputRef.current.resetInputs) {
+      fileInputRef.current.resetInputs();
+    }
+  }, []);
+
+  // Auto-open the native share sheet as soon as the upload is finished and
+  // the share image is ready. Uses Capacitor Share API (image + caption +
+  // public link in one payload). After the share sheet closes (sent OR
+  // dismissed) we return to Home. The AI nutrition analysis keeps running
+  // in the background and updates the same public link.
+  useEffect(() => {
+    if (imageType !== "food") return;
+    if (!foodShareUrl) return;
+    if (foodAutoSharedRef.current) return;
+    foodAutoSharedRef.current = true;
+
+    let cancelled = false;
+    (async () => {
+      // Wait up to 6s for the pre-captured share image to be ready.
+      const start = Date.now();
+      while (!foodShareImageDataUrlRef.current && Date.now() - start < 6000) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+      if (cancelled) return;
+
+      const dataUrl = foodShareImageDataUrlRef.current;
+      if (!dataUrl) {
+        // Pre-capture didn't produce an image — leave the manual share
+        // button visible so the user can still share when they choose.
+        foodAutoSharedRef.current = false;
+        return;
+      }
+
+      const captionText =
+        `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
+      const result = await shareViaCapacitorAPI(dataUrl, {
+        title: "My Meal",
+        text: captionText,
+        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
+      });
+
+      if (cancelled) return;
+
+      if (result.ok) {
+        // Sent OR dismissed by user → return to Home.
+        resetCaptureToHome();
+      } else {
+        // Hard failure (e.g. Share API not available) — let the user fall
+        // back to the manual "Share Image + Link" button.
+        foodAutoSharedRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [foodShareUrl, imageType, resetCaptureToHome]);
 
   // Duplicate weight detection state
   const [showDuplicateWeightModal, setShowDuplicateWeightModal] =
@@ -406,6 +521,19 @@ function WellnessValleyApp() {
       cancelled = true;
       handle?.remove?.();
     };
+  }, [user]);
+
+  // Auto-open camera once per session when the user first arrives at the home
+  // screen on a native device (fresh app launch or login).
+  const _hasFiredCameraOnLoginRef = useRef(false);
+  useEffect(() => {
+    if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
+    if (!fileInputRef.current?.openCamera) return;
+    _hasFiredCameraOnLoginRef.current = true;
+    const t = setTimeout(() => {
+      if (fileInputRef.current?.openCamera) fileInputRef.current.openCamera();
+    }, 1200);
+    return () => clearTimeout(t);
   }, [user]);
 
   // Weight analysis share state
@@ -780,6 +908,11 @@ function WellnessValleyApp() {
     if (imagePreview) setImagePreview(null);
     if (selectedImage) setSelectedImage(null);
     if (imageType) setImageType(null);
+    // Clear instant-share state so stale URLs don't carry over to the next capture.
+    foodCaptureIdRef.current = null;
+    processedImageRef.current = null;
+    foodShareImageDataUrlRef.current = null;
+    setFoodShareUrl(null);
 
     // Reset file inputs to allow selecting the same image again
     if (fileInputRef.current && fileInputRef.current.resetInputs) {
@@ -1323,7 +1456,7 @@ function WellnessValleyApp() {
       }
     });
     return () => unsubscribe();
-  }, [checkUserStatus, checkProfileCompletion, checkProfilePicture]);
+  }, [checkUserStatus, checkProfileCompletion, checkProfilePicture, apiBaseUrl, forceLoggedOut]);
 
   // Subscribe to user context updates (from profile edits, food corrections, etc.)
   useEffect(() => {
@@ -1349,7 +1482,7 @@ function WellnessValleyApp() {
       requestAllPermissions();
       handleSaveUserCache(user);
     }
-  }, [user]);
+  }, [user, requestAllPermissions, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
   useEffect(() => {
@@ -1617,7 +1750,7 @@ function WellnessValleyApp() {
     // Preload after a short delay to avoid blocking auth flow
     const timeoutId = setTimeout(preloadUserContext, 500);
     return () => clearTimeout(timeoutId);
-  }, [user?.id]); // Re-run when user ID changes
+  }, [user]); // Re-run when user changes
 
   // Convert user profile photo to base64 for CORS-safe use in html2canvas share cards.
   // Uses an AbortController so an in-flight fetch is cancelled if the user logs
@@ -1914,7 +2047,6 @@ function WellnessValleyApp() {
       if (data.correction && data.correction.wasCorrected) {
         // Show custom alert modal about auto-correction with user-friendly message
         const corrInfo = data.correction;
-        const difference = Math.abs(corrInfo.originalWeight - corrInfo.correctedWeight).toFixed(1);
         
         setTimeout(() => {
           setAlertModal({
@@ -2211,17 +2343,6 @@ function WellnessValleyApp() {
         },
       },
     ].filter(Boolean);
-  };
-
-  /** Toggle manual mode on/off and persist to localStorage */
-  const toggleManualMode = () => {
-    setManualModeActive((prev) => {
-      const next = !prev;
-      localStorage.setItem("manualModeActive", String(next));
-      setManualModeToast(next ? "enabled" : "disabled");
-      setTimeout(() => setManualModeToast(""), 2500);
-      return next;
-    });
   };
 
   /** When AI is unavailable, auto-open the best manual entry modal based on time windows */
@@ -2622,7 +2743,14 @@ function WellnessValleyApp() {
       });
       setSaveLoading(true);
 
-      const saveRes = await saveNutritionAnalysis(saveData);
+      const saveRes = await saveNutritionAnalysis({
+        ...saveData,
+        // Pass captureId so the backend updates the pre-created pending row
+        // instead of inserting a duplicate.  Reset the ref immediately after
+        // so a retry cannot accidentally reuse the same row.
+        captureId: foodCaptureIdRef.current || undefined,
+      });
+      foodCaptureIdRef.current = null;
       debugLog("✅ [App] Save successful:", saveRes);
       debugLog(`â±ï¸ [PERF] Database save: ${Date.now() - saveStart}ms`);
 
@@ -3191,7 +3319,52 @@ function WellnessValleyApp() {
       }
 
       // It's a food image - use nutrition data from unified detection
+      console.log("🍽️ [Food Detection] Setting imageType to food");
       setImageType("food");
+      // Store image bytes and pre-create a pending capture row immediately so the
+      // Share button is visible from the first second of food analysis, before
+      // Gemini returns the full NutritionCard data.
+      processedImageRef.current = processedImage;
+      foodCaptureIdRef.current = null;
+      setFoodShareUrl(null);
+      console.log("🔗 [Share] Starting share URL generation IIFE");
+      (async () => {
+        try {
+          console.log("🔗 [Share] Inside IIFE, getting user ID...");
+          const capUserId = user?.id || (await getUserId(user));
+          console.log("🔗 [Share] User ID:", capUserId);
+          if (!capUserId) {
+            console.warn("❌ [Share] No user ID available");
+            return;
+          }
+          console.log("🔗 [Share] Posting to:", `${apiBaseUrl}/api/background-analysis/captures`);
+          const capRes = await fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: capUserId, imageBase64: processedImage }),
+          });
+          console.log("🔗 [Share] Response status:", capRes.status);
+          if (!capRes.ok) {
+            console.warn(`❌ [Share] Capture POST failed with status ${capRes.status}`);
+            const errorText = await capRes.text();
+            console.error("❌ [Share] Error response:", errorText);
+            return;
+          }
+          const capData = await capRes.json();
+          console.log("🔗 [Share] Capture response data:", capData);
+          if (capData.ok && capData.data?.id) {
+            foodCaptureIdRef.current = capData.data.id;
+            const shareUrl = `${apiBaseUrl}/share/${capData.data.token}`;
+            setFoodShareUrl(shareUrl);
+            console.log("✅ [Share] Share URL set successfully:", shareUrl);
+          } else {
+            console.warn("❌ [Share] Response missing id or token", capData);
+          }
+        } catch (err) {
+          console.error("❌ [Share] Failed to create pending capture:", err);
+          console.error("❌ [Share] Error stack:", err.stack);
+        }
+      })();
       debugLog("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
       debugLog("ðŸ½ï¸ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
@@ -4570,6 +4743,66 @@ function WellnessValleyApp() {
             );
           })()}
 
+          {imageType === "food" && foodShareUrl && (
+            <div className="px-4 pb-3">
+              <TouchFeedbackButton
+                onClick={async () => {
+                  const captionText =
+                    `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
+                  const dataUrl = foodShareImageDataUrlRef.current;
+                  // Fast path: cached pre-painted card image.
+                  if (dataUrl) {
+                    const result = await shareViaCapacitorAPI(dataUrl, {
+                      title: "My Meal",
+                      text: captionText,
+                      fileName: `wellness-valley-meal-${Date.now()}.jpg`,
+                    });
+                    if (result.ok) {
+                      resetCaptureToHome();
+                      return;
+                    }
+                  }
+                  // Fallback: capture live, or share raw photo with link.
+                  try {
+                    if (foodShareCardRef.current) {
+                      await captureAndShare(foodShareCardRef.current, {
+                        title: "My Meal",
+                        text: captionText,
+                        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
+                      });
+                      resetCaptureToHome();
+                      return;
+                    }
+                    await shareImageWithLink(
+                      processedImageRef.current || imagePreview,
+                      foodShareUrl,
+                      { title: "My Meal", text: "Check out my meal on Wellness Valley!" },
+                    );
+                    resetCaptureToHome();
+                  } catch (_) { /* user cancelled */ }
+                }}
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors"
+              >
+                <Share2 className="w-4 h-4 flex-shrink-0" />
+                Share Image + Link
+              </TouchFeedbackButton>
+            </div>
+          )}
+
+          {/* Hidden off-screen template captured to image for the instant-share
+              button. Matches the post-analysis NutritionCard share template
+              (profile header + photo) minus the nutrition breakdown. */}
+          {imageType === "food" && (imagePreview || processedImageRef.current) && (
+            <FoodImageShareCard
+              ref={foodShareCardRef}
+              user={user}
+              savedUserName={savedUserName}
+              savedProfileImage={savedProfileImage}
+              sharePhotoBase64={sharePhotoBase64}
+              imageSrc={imagePreview || processedImageRef.current}
+            />
+          )}
+
           {imageType === "food" && nutritionData && (
             <NutritionCard
               data={nutritionData}
@@ -4585,6 +4818,10 @@ function WellnessValleyApp() {
                 setImagePreview(null);
                 setSelectedImage(null);
                 setSavedNutritionMealId(null);
+                foodCaptureIdRef.current = null;
+                processedImageRef.current = null;
+                foodShareImageDataUrlRef.current = null;
+                setFoodShareUrl(null);
               }}
             />
           )}

@@ -68,6 +68,104 @@ export const precaptureShareImage = (element, options = {}) => {
 };
 
 /**
+ * Share a pre-captured image data URL via the standard Capacitor Share API
+ * (NOT the custom WhatsAppShare plugin). The image, caption text, and link
+ * are all passed to `Share.share({ files, text, title })` so the user can
+ * pick any target (WhatsApp, Telegram, Messages, etc.) from the native
+ * share sheet. No clipboard, no manual paste.
+ *
+ * Returns:
+ *   { ok: true, dismissed: false } — share completed
+ *   { ok: true, dismissed: true }  — user cancelled the share sheet
+ *   { ok: false, error }           — fatal failure (caller should fall back)
+ *
+ * @param {string} dataUrl  - JPEG/PNG data URL of the image to share
+ * @param {object} options  - { title, text, fileName }
+ */
+export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
+  const {
+    title = "Wellness Valley",
+    text = "",
+    fileName = `wellness-valley-${Date.now()}.jpg`,
+  } = options;
+
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
+    return { ok: false, error: new Error("invalid dataUrl") };
+  }
+
+  const isCanceled = (err) => {
+    const msg = (err?.message || "").toLowerCase();
+    return msg.includes("cancel") || msg.includes("dismiss") || msg.includes("abort");
+  };
+
+  // ── NATIVE (iOS / Android) ────────────────────────────────────────────
+  if (Capacitor.isNativePlatform()) {
+    let writtenPath = null;
+    try {
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      const writeResult = await Filesystem.writeFile({
+        path: fileName,
+        data: base64,
+        directory: Directory.Cache,
+      });
+      writtenPath = fileName;
+      debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
+
+      await Share.share({
+        title,
+        text,
+        files: [writeResult.uri],
+        dialogTitle: title,
+      });
+
+      debugLog("✅ [CapacitorShare] Share.share resolved");
+      return { ok: true, dismissed: false };
+    } catch (err) {
+      if (isCanceled(err)) {
+        debugLog("ℹ️ [CapacitorShare] user cancelled share sheet");
+        return { ok: true, dismissed: true };
+      }
+      console.error("❌ [CapacitorShare] native share failed:", err);
+      return { ok: false, error: err };
+    } finally {
+      if (writtenPath) {
+        setTimeout(() => {
+          Filesystem.deleteFile({
+            path: writtenPath,
+            directory: Directory.Cache,
+          }).catch(() => {});
+        }, 120000);
+      }
+    }
+  }
+
+  // ── WEB (navigator.share with file) ──────────────────────────────────
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ title, text, files: [file] });
+      return { ok: true, dismissed: false };
+    }
+
+    // Last-resort web fallback — share text/url only.
+    if (navigator.share) {
+      await navigator.share({ title, text });
+      return { ok: true, dismissed: false };
+    }
+
+    return { ok: false, error: new Error("Web Share API not available") };
+  } catch (err) {
+    if (isCanceled(err)) {
+      return { ok: true, dismissed: true };
+    }
+    console.error("❌ [CapacitorShare] web share failed:", err);
+    return { ok: false, error: err };
+  }
+};
+
+/**
  * Share a previously pre-captured data URL via the fastest available channel.
  * On Android this hits the custom WhatsAppShare plugin directly — no
  * html2canvas, no toBlob, no FileReader. Tap → share sheet is typically
@@ -823,5 +921,78 @@ export const shareToWhatsApp = async (element, message = "") => {
     throw new Error(
       "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
     );
+  }
+};
+
+/**
+ * Share a food-analysis image together with a clickable link.
+ *
+ * On native (iOS / Android):
+ *   - Writes the base64 image to the device cache.
+ *   - Calls Share.share({ files: [fileUri], text: caption\nurl }) so every
+ *     messaging app (WhatsApp, Telegram, iMessage…) shows the photo AND a
+ *     tappable URL in a single share-sheet action.
+ *
+ * On web:
+ *   - Falls back to Share.share({ url, text }) — no file, just the link.
+ *
+ * @param {string|null} dataUrl  – base64 data URL ("data:image/jpeg;base64,…")
+ * @param {string}      shareUrl – the public viewer URL to include in the text
+ * @param {Object}      [options]
+ * @param {string}      [options.title]
+ * @param {string}      [options.text]
+ * @param {string}      [options.fileName]
+ */
+export const shareImageWithLink = async (dataUrl, shareUrl, options = {}) => {
+  const {
+    title = "My Meal Analysis",
+    text = "Check out my nutrition analysis! \uD83C\uDF7D\uFE0F",
+    fileName = `wellness-valley-meal-${Date.now()}.jpg`,
+  } = options;
+
+  if (!Capacitor.isNativePlatform()) {
+    // Web fallback — pass url separately so the OS/app makes it a tappable link.
+    // Do NOT embed the URL in text as well or it appears twice in the message.
+    const canShare = await Share.canShare().catch(() => ({ value: false }));
+    if (canShare.value) {
+      await Share.share({
+        title,
+        text,
+        url: shareUrl,
+        dialogTitle: "Share Meal Analysis",
+      });
+    }
+    return;
+  }
+
+  // Native: write the image to cache then share file + URL in the text field.
+  // (The `url` field is ignored by most native share targets when `files` is
+  // present, so we embed the link in `text` instead.)
+  const textWithLink = shareUrl ? `${text}\n${shareUrl}` : text;
+  try {
+    if (dataUrl && dataUrl.startsWith("data:")) {
+      const base64String = dataUrl.split(",")[1];
+      const writeResult = await Filesystem.writeFile({
+        path: fileName,
+        data: base64String,
+        directory: Directory.Cache,
+      });
+      await Share.share({
+        title,
+        text: textWithLink,
+        files: [writeResult.uri],
+        dialogTitle: "Share Meal Analysis",
+      });
+    } else {
+      // No image available — share URL only
+      await Share.share({
+        title,
+        text: textWithLink,
+        dialogTitle: "Share Meal Analysis",
+      });
+    }
+  } catch (err) {
+    const cancelled = err?.message?.toLowerCase().includes("cancel");
+    if (!cancelled) throw err;
   }
 };
