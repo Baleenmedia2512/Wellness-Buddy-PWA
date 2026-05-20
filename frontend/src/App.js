@@ -607,9 +607,16 @@ function WellnessValleyApp() {
         if (data.isSelf) {
           setDashboardInitialSelectedMember(null);
         } else {
+          // Shape MUST match team/services/teamSearchService.toSelectedUser
+          // — hooks like resolveDashboardUserId look at `id` (not `userId`).
+          const memberName = data.ownerUserName || "Member";
           setDashboardInitialSelectedMember({
+            id: data.ownerUserId,
             userId: data.ownerUserId,
-            userName: data.ownerUserName || "Member",
+            name: memberName,
+            userName: memberName,
+            email: "",
+            role: "user",
             isSelf: false,
           });
         }
