@@ -112,7 +112,6 @@ import LEADERBOARD_CONFIG from "./config/leaderboardConfig";
 import GalleryMonitor from "./shared/services/galleryMonitor";
 import * as Session from "./shared/services/sessionStorage";
 import * as nativeLifecycle from "./shared/services/nativeLifecycle";
-import { useQuickShareEntry, QuickShareCamera } from "./features/quick-share";
 import * as authFsm from "./shared/services/auth/fsm";
 import { fetchProfileCompletion, fetchProfilePicture } from "./shared/services/auth/userProfile";
 import { fetchUserStatus, fetchSetupStatus } from "./shared/services/auth/userSetup";
@@ -378,40 +377,6 @@ function WellnessValleyApp() {
 
   // Help instructions visibility state
   const [showHowToUse, setShowHowToUse] = useState(false);
-
-  // ── Quick-share camera-first entry ──────────────────────────────────────
-  // useQuickShareEntry manages: capture, AI detection, backend post, WhatsApp share.
-  // It registers its own appStateChange listener for the app-resume-to-camera flow.
-  // Use a closure wrapper: showMainPage is defined later (line ~731); the callback
-  // is only called after render so there is no temporal dead zone issue.
-  const {
-    phase: qsPhase,
-    capturedDataUrl: qsCapturedDataUrl,
-    imageType: qsImageType,
-    viewUrl: qsViewUrl,
-    errorMsg: qsErrorMsg,
-    triggerCapture: openCamera,
-    handleShare: handleQsShare,
-    dismiss: dismissCamera,
-  } = useQuickShareEntry({ user, onDismiss: () => showMainPage() });
-
-  // ── Auto-camera: fire the existing Take Photo action automatically ────────
-  // Fires once per login session when the home screen is fully visible.
-  const _hasFiredCameraOnLogin = useRef(false);
-  useEffect(() => {
-    if (!user) { _hasFiredCameraOnLogin.current = false; return; }
-    if (_hasFiredCameraOnLogin.current) return;
-    if (authLoading) return;                  // loading screen still showing
-    if (showDashboard) return;                // user is on the dashboard
-    if (showActivityTimeReport) return;       // user is on activity report
-    if (showDisciplineReport) return;         // user is on discipline report
-    if (showScreenTime) return;               // user is on screen-time page
-    if (!Capacitor.isNativePlatform()) return;
-    _hasFiredCameraOnLogin.current = true;
-    // Same as user tapping "Take Photo" — uses existing ImageUpload flow
-    const t = setTimeout(() => fileInputRef.current?.openCamera?.(), 800);
-    return () => clearTimeout(t);
-  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime]);
 
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
@@ -5987,36 +5952,6 @@ function WellnessValleyApp() {
             </div>
           </div>
         </div>
-      )}
-      {/* ── DEV ONLY: web test button — remove before release ── */}
-      {process.env.NODE_ENV === 'development' && user && (
-        <button
-          onClick={openCamera}
-          style={{
-            position: 'fixed', bottom: 80, right: 16, zIndex: 60,
-            background: '#2563eb', color: '#fff', border: 'none',
-            borderRadius: 8, padding: '10px 14px', fontSize: 13,
-            cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-          }}
-          title="DEV: open quick-share camera"
-        >
-          📸 Test Camera
-        </button>
-      )}
-
-      {/* ── Quick-share camera overlay (fixed, z-50, covers everything) ── */}
-      {/* 'capturing' is excluded: native camera opens directly, no overlay needed */}
-      {qsPhase !== 'idle' && qsPhase !== 'done' && qsPhase !== 'capturing' && (
-        <QuickShareCamera
-          phase={qsPhase}
-          capturedDataUrl={qsCapturedDataUrl}
-          imageType={qsImageType}
-          viewUrl={qsViewUrl}
-          errorMsg={qsErrorMsg}
-          onCapture={openCamera}
-          onShare={handleQsShare}
-          onDismiss={dismissCamera}
-        />
       )}
     </div>
     </LocationGuard>
