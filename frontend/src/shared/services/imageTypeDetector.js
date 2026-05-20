@@ -389,6 +389,76 @@ Return ONLY JSON matching ONE of the above formats.`;
   }
 
   /**
+   * ⚡ FAST classification-only call. Returns just the image type label as
+   * quickly as possible (typical 400–900 ms vs. 2–4 s for the full unified
+   * call) so the UI can surface the Share button the moment "food" is
+   * confirmed — without waiting for full nutrition extraction.
+   *
+   * Uses the same Gemini model as the unified call but a minimal prompt so
+   * the response is a single short JSON object. The full nutrition analysis
+   * (`detectImageType`) is still run separately by the caller.
+   *
+   * @param {File|string} image - File or data URL
+   * @returns {Promise<{type:string, confidence:number}>}
+   */
+  async classifyImageTypeFast(image) {
+    const t0 = Date.now();
+    try {
+      if (!this.initialized) await this.initialize();
+      if (!this.model) throw new Error('Gemini model not initialised');
+
+      let imgFile = image;
+      if (typeof image === 'string' && image.startsWith('data:')) {
+        imgFile = this.dataURLToFile(image);
+      }
+      const imageBase64 = await this.fileToBase64(imgFile);
+      const imagePart = {
+        inlineData: {
+          data: imageBase64.split(',')[1] || imageBase64,
+          mimeType: imgFile.type || 'image/jpeg',
+        },
+      };
+
+      const prompt = `Classify this image into ONE category and return ONLY JSON.
+Categories:
+- "education" - online meeting (Zoom/Meet/Teams) or in-person group gathering
+- "weight" - weighing scale OR body-composition app screenshot (Huawei Health, Mi Fit, Renpho, etc.)
+- "smartwatch" - smartwatch/fitness band activity screen showing calories burned/steps
+- "food" - food, meal or drink (default)
+Return EXACTLY: {"type":"food|weight|education|smartwatch","confidence":0.0-1.0}`;
+
+      const result = await Promise.race([
+        this.model.generateContent([prompt, imagePart]),
+        this.timeoutPromise(10000, 'Fast classify timeout after 10s'),
+      ]);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = this.parseJsonResponse(text);
+      const out = {
+        type: parsed.type || 'food',
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+      };
+      debugLog(`⚡ [FAST-CLASSIFY] ${Date.now() - t0}ms → ${out.type} (conf=${out.confidence})`);
+
+      // Fire-and-forget token tracking — never block the UI on this.
+      trackCombinedTokenUsage({
+        responses: [{ response, label: 'FastClassify' }],
+        operationType: 'fast_classification',
+        modelName: 'gemini-2.5-flash-lite',
+        userId: this.tokenTracker.getCurrentUserId(),
+        userEmail: this.tokenTracker.getCurrentUserEmail(),
+        processingTime: Date.now() - t0,
+      }).catch(() => {});
+
+      return out;
+    } catch (err) {
+      debugLog(`⚡ [FAST-CLASSIFY] FAILED in ${Date.now() - t0}ms: ${err?.message || err}`);
+      // Soft-fail: pretend unknown so caller falls back to full detect.
+      return { type: 'unknown', confidence: 0 };
+    }
+  }
+
+  /**
    * Timeout helper - rejects after specified ms
    */
   timeoutPromise(ms, message) {

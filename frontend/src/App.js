@@ -289,6 +289,12 @@ function WellnessValleyApp() {
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
   const [foodShareUrl, setFoodShareUrl] = useState(null);
+  // ⏱️ End-to-end timing: stamped when the user picks/captures an image, used
+  // by every downstream step to log "+Nms from capture start" so the full
+  // pipeline (compress → POST captures → Gemini → precapture → Share sheet)
+  // can be reconstructed from a single log dump.
+  const captureFlowStartRef = useRef(0);
+  const foodShareImageReadyAtRef = useRef(0);
 
   // Pre-paint the off-screen food-share card to a JPEG during idle time, so
   // when the user taps "Share Image + Link" the share sheet appears instantly
@@ -296,14 +302,28 @@ function WellnessValleyApp() {
   // image changes.
   useEffect(() => {
     foodShareImageDataUrlRef.current = null;
+    foodShareImageReadyAtRef.current = 0;
     if (imageType !== "food") return;
     if (!imagePreview) return;
     let cancelled = false;
     const t = setTimeout(() => {
       if (!foodShareCardRef.current) return;
+      const preStart = Date.now();
+      const flowStart = captureFlowStartRef.current || preStart;
+      debugLog(
+        `⏱️ [PERF] 🖼️  Precapture (html2canvas) started (+${preStart - flowStart}ms from capture start)`,
+      );
       precaptureShareImage(foodShareCardRef.current).then((dataUrl) => {
         if (!cancelled && dataUrl) {
           foodShareImageDataUrlRef.current = dataUrl;
+          foodShareImageReadyAtRef.current = Date.now();
+          debugLog(
+            `⏱️ [PERF] 🖼️  Precapture ready: ${Date.now() - preStart}ms (+${Date.now() - flowStart}ms from capture start)`,
+          );
+        } else if (!cancelled) {
+          debugLog(
+            `⏱️ [PERF] 🖼️  Precapture FAILED after ${Date.now() - preStart}ms`,
+          );
         }
       });
     }, 250);
@@ -352,26 +372,41 @@ function WellnessValleyApp() {
     (async () => {
       // Wait up to 6s for the pre-captured share image to be ready.
       const start = Date.now();
+      const flowStart = captureFlowStartRef.current || start;
+      debugLog(
+        `⏱️ [PERF] 📤 Auto-share triggered (+${start - flowStart}ms from capture start)`,
+      );
       while (!foodShareImageDataUrlRef.current && Date.now() - start < 6000) {
         await new Promise((r) => setTimeout(r, 100));
       }
       if (cancelled) return;
 
+      const waited = Date.now() - start;
       const dataUrl = foodShareImageDataUrlRef.current;
       if (!dataUrl) {
         // Pre-capture didn't produce an image — leave the manual share
         // button visible so the user can still share when they choose.
+        debugLog(
+          `⏱️ [PERF] 📤 Auto-share ABORTED — no precapture image after ${waited}ms wait`,
+        );
         foodAutoSharedRef.current = false;
         return;
       }
+      debugLog(
+        `⏱️ [PERF] 📤 Auto-share wait for image: ${waited}ms`,
+      );
 
       const captionText =
         `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
+      const shareStart = Date.now();
       const result = await shareViaCapacitorAPI(dataUrl, {
         title: "My Meal",
         text: captionText,
         fileName: `wellness-valley-meal-${Date.now()}.jpg`,
       });
+      debugLog(
+        `⏱️ [PERF] 📤 Native Share.share returned in ${Date.now() - shareStart}ms (ok=${result.ok}) (+${Date.now() - flowStart}ms from capture start)`,
+      );
 
       if (cancelled) return;
 
@@ -3167,6 +3202,10 @@ function WellnessValleyApp() {
       processedImageRef.current = processedImage;
       foodCaptureIdRef.current = null;
       setFoodShareUrl(null);
+      const captureApiStart = Date.now();
+      debugLog(
+        `⏱️ [PERF] 🔗 POST /captures started (+${captureApiStart - perfStart}ms from capture start)`,
+      );
       const pendingSharePromise = (async () => {
         try {
           const capUserId = user?.id || (await getUserId(user));
@@ -3179,25 +3218,82 @@ function WellnessValleyApp() {
               body: JSON.stringify({ userId: capUserId, imageBase64: processedImage }),
             },
           );
-          if (!capRes.ok) return null;
+          if (!capRes.ok) {
+            debugLog(
+              `⏱️ [PERF] 🔗 POST /captures FAILED in ${Date.now() - captureApiStart}ms (status ${capRes.status})`,
+            );
+            return null;
+          }
           const capData = await capRes.json();
+          const capDuration = Date.now() - captureApiStart;
           if (capData.ok && capData.data?.id) {
+            debugLog(
+              `⏱️ [PERF] 🔗 POST /captures: ${capDuration}ms (+${Date.now() - perfStart}ms from capture start) → token ready`,
+            );
             return {
               id: capData.data.id,
               url: `${apiBaseUrl}/share/${capData.data.token}`,
             };
           }
+          debugLog(
+            `⏱️ [PERF] 🔗 POST /captures responded ok=false in ${capDuration}ms`,
+          );
           return null;
         } catch (err) {
+          debugLog(
+            `⏱️ [PERF] 🔗 POST /captures THREW after ${Date.now() - captureApiStart}ms: ${err?.message || err}`,
+          );
           console.warn('[Share] pre-capture failed:', err);
           return null;
         }
       })();
 
+      // ⚡ [Share] FAST CLASSIFICATION — kick off a lightweight Gemini call
+      // that ONLY returns the image type label (no nutrition extraction).
+      // Typical latency ~400–900ms, vs. ~2–4s for the full unified detect
+      // below. As soon as this confirms "food", we flip `imageType` and let
+      // the captures POST `.then` surface the share URL, so the
+      // "Share Image + Link" button appears ~1.5–3s sooner. The full
+      // `detectImageType` call still runs afterwards to produce the actual
+      // nutrition data — and if it disagrees with the fast classifier, the
+      // weight/education/smartwatch branches below clear the optimistic
+      // food state.
+      const fastClassifyStart = Date.now();
+      debugLog(
+        `⏱️ [PERF] ⚡ Fast classify started (+${fastClassifyStart - perfStart}ms from capture start)`,
+      );
+      imageTypeDetector
+        .classifyImageTypeFast(file)
+        .then((fast) => {
+          debugLog(
+            `⏱️ [PERF] ⚡ Fast classify resolved in ${Date.now() - fastClassifyStart}ms (+${Date.now() - perfStart}ms from capture start) → type=${fast?.type}`,
+          );
+          if (fast?.type === 'food') {
+            setImageType('food');
+            pendingSharePromise.then((share) => {
+              if (share) {
+                foodCaptureIdRef.current = share.id;
+                setFoodShareUrl(share.url);
+                debugLog(
+                  `⏱️ [PERF] 🔗 Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
+                );
+              }
+            });
+          }
+        })
+        .catch(() => {
+          // Soft-fail — the full detect below will set imageType correctly.
+        });
+
       // ✅ Detect image type using Gemini AI (single unified call)
       const apiStart = Date.now();
+      debugLog(
+        `⏱️ [PERF] 🔥 Gemini detectImageType started (+${apiStart - perfStart}ms from capture start)`,
+      );
       const detectedType = await imageTypeDetector.detectImageType(file);
-      debugLog(`â±ï¸ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms`);
+      debugLog(
+        `⏱️ [PERF] 🔥 Gemini API call: ${Date.now() - apiStart}ms (+${Date.now() - perfStart}ms from capture start) → type=${detectedType?.type}`,
+      );
       debugLog("ðŸ” [DEBUG] Image Type Detection Result:", {
         type: detectedType.type,
         confidence: detectedType.confidence,
@@ -3483,6 +3579,9 @@ function WellnessValleyApp() {
         if (share) {
           foodCaptureIdRef.current = share.id;
           setFoodShareUrl(share.url);
+          debugLog(
+            `⏱️ [PERF] 🔗 Share URL surfaced to UI (+${Date.now() - perfStart}ms from capture start)`,
+          );
         }
       });
       debugLog("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
