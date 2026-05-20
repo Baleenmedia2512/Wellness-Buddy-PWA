@@ -178,6 +178,11 @@ function WellnessValleyApp() {
   const [showTestGuide, setShowTestGuide] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false); // restored via useEffect to avoid suspending lazy component on mount
   const [dashboardInitialTab, setDashboardInitialTab] = useState(null); // 'nutrition' | 'weight' | null
+  // Deep-link (App Link) seed values for Dashboard — set when the app is
+  // opened via /share/<token> and the resolve API confirms permission.
+  // Cleared in showMainPage so a normal Dashboard open won't reuse them.
+  const [dashboardInitialSelectedMember, setDashboardInitialSelectedMember] = useState(null);
+  const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
   const [user, setUser] = useState(null);
@@ -524,17 +529,120 @@ function WellnessValleyApp() {
   }, [user]);
 
   // Auto-open camera once per session when the user first arrives at the home
-  // screen on a native device (fresh app launch or login).
+  // screen on a native device (fresh app launch or login). Retries until the
+  // ImageUpload component has mounted and exposed its openCamera method.
   const _hasFiredCameraOnLoginRef = useRef(false);
   useEffect(() => {
     if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
-    if (!fileInputRef.current?.openCamera) return;
-    _hasFiredCameraOnLoginRef.current = true;
-    const t = setTimeout(() => {
-      if (fileInputRef.current?.openCamera) fileInputRef.current.openCamera();
-    }, 1200);
-    return () => clearTimeout(t);
+    let cancelled = false;
+    let attempts = 0;
+    const tryOpen = () => {
+      if (cancelled || _hasFiredCameraOnLoginRef.current) return;
+      if (fileInputRef.current?.openCamera) {
+        _hasFiredCameraOnLoginRef.current = true;
+        fileInputRef.current.openCamera();
+        return;
+      }
+      if (attempts++ < 20) {
+        setTimeout(tryOpen, 300);
+      }
+    };
+    const t = setTimeout(tryOpen, 1200);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
   }, [user]);
+
+  // Deep-link handler: open the app via Android App Link
+  // (https://<host>/share/<uuid>) or the custom scheme
+  // (wellnessvalley://share/<uuid>) → resolve the share token against the
+  // backend, then jump straight to Dashboard → Nutrition for that owner /
+  // date. Permission errors and missing/expired shares surface as toasts.
+  useEffect(() => {
+    if (!user || !apiBaseUrl) return;
+
+    let cancelled = false;
+    let handle = null;
+    const seenTokens = new Set(); // guard against duplicate fires
+
+    const SHARE_PATH_RE = /\/share\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+    const extractToken = (rawUrl) => {
+      if (!rawUrl || typeof rawUrl !== "string") return null;
+      // Custom scheme: wellnessvalley://share/<uuid>
+      const customMatch = rawUrl.match(/^wellnessvalley:\/\/share\/([0-9a-f-]{36})/i);
+      if (customMatch) return customMatch[1];
+      // https path: /share/<uuid>
+      const httpsMatch = rawUrl.match(SHARE_PATH_RE);
+      return httpsMatch ? httpsMatch[1] : null;
+    };
+
+    const handleUrl = async (rawUrl) => {
+      const token = extractToken(rawUrl);
+      if (!token || seenTokens.has(token)) return;
+      seenTokens.add(token);
+
+      try {
+        const resp = await fetch(
+          `${apiBaseUrl}/api/background-analysis/captures/resolve?token=${encodeURIComponent(token)}&viewerUserId=${encodeURIComponent(user.id)}`,
+          { method: "GET", headers: { "Content-Type": "application/json" } },
+        );
+        const body = await resp.json().catch(() => ({}));
+        if (cancelled) return;
+
+        if (!resp.ok || !body?.ok) {
+          const code = body?.error?.code;
+          if (code === "FORBIDDEN") {
+            showToast("You don't have access to this meal");
+          } else if (code === "EXPIRED" || code === "NOT_FOUND") {
+            showToast("This shared meal is no longer available");
+          } else {
+            showToast("Could not open shared meal");
+          }
+          return;
+        }
+
+        const data = body.data || {};
+        if (data.isSelf) {
+          setDashboardInitialSelectedMember(null);
+        } else {
+          setDashboardInitialSelectedMember({
+            userId: data.ownerUserId,
+            userName: data.ownerUserName || "Member",
+            isSelf: false,
+          });
+        }
+        setDashboardInitialDate(data.mealDate || null);
+        setDashboardInitialTab("nutrition");
+        startTransition(() => setShowDashboard(true));
+      } catch (err) {
+        if (!cancelled) showToast("Could not open shared meal");
+      }
+    };
+
+    // Register listener for foreground deep-links
+    nativeLifecycle
+      .addAppUrlOpenListener((event) => {
+        handleUrl(event?.url);
+      })
+      .then((h) => {
+        handle = h;
+        if (cancelled) handle?.remove?.();
+      })
+      .catch(() => {});
+
+    // Cold-start: the OS may have already delivered the launch URL before
+    // this effect mounted. Inspect it once on first run.
+    nativeLifecycle.getLaunchUrl().then((url) => {
+      if (!cancelled && url) handleUrl(url);
+    });
+
+    return () => {
+      cancelled = true;
+      handle?.remove?.();
+    };
+  }, [user, apiBaseUrl]);
 
   // Weight analysis share state
   const [isWeightSharing, setIsWeightSharing] = useState(false);
@@ -893,6 +1001,8 @@ function WellnessValleyApp() {
     // setShowStepCounter(false); // feature disabled
     setShowScreenTime(false);
     setDashboardInitialTab(null); // Clear initial tab when going back
+    setDashboardInitialSelectedMember(null); // Clear deep-link member context
+    setDashboardInitialDate(null); // Clear deep-link date context
 
     // Clear weight result, education result, and images when going back to main page
     if (weightResult) {
@@ -3040,6 +3150,43 @@ function WellnessValleyApp() {
         imageTypeDetector.setCurrentUser(user.id, user.email);
       }
 
+      // 🚀 [Share] Pre-create the public-share row IN PARALLEL with Gemini
+      // detection. By the time we know the image is food, the share token is
+      // typically already returned, so the share button appears the same
+      // instant NutritionCard renders — not several hundred ms later.
+      // If the image turns out to be weight/education/smartwatch, the row is
+      // simply left as a pending capture (auto-expires in 30 days) — we never
+      // surface its URL to the user.
+      processedImageRef.current = processedImage;
+      foodCaptureIdRef.current = null;
+      setFoodShareUrl(null);
+      const pendingSharePromise = (async () => {
+        try {
+          const capUserId = user?.id || (await getUserId(user));
+          if (!capUserId) return null;
+          const capRes = await fetch(
+            `${apiBaseUrl}/api/background-analysis/captures`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ userId: capUserId, imageBase64: processedImage }),
+            },
+          );
+          if (!capRes.ok) return null;
+          const capData = await capRes.json();
+          if (capData.ok && capData.data?.id) {
+            return {
+              id: capData.data.id,
+              url: `${apiBaseUrl}/share/${capData.data.token}`,
+            };
+          }
+          return null;
+        } catch (err) {
+          console.warn('[Share] pre-capture failed:', err);
+          return null;
+        }
+      })();
+
       // ✅ Detect image type using Gemini AI (single unified call)
       const apiStart = Date.now();
       const detectedType = await imageTypeDetector.detectImageType(file);
@@ -3321,50 +3468,16 @@ function WellnessValleyApp() {
       // It's a food image - use nutrition data from unified detection
       console.log("🍽️ [Food Detection] Setting imageType to food");
       setImageType("food");
-      // Store image bytes and pre-create a pending capture row immediately so the
-      // Share button is visible from the first second of food analysis, before
-      // Gemini returns the full NutritionCard data.
-      processedImageRef.current = processedImage;
-      foodCaptureIdRef.current = null;
-      setFoodShareUrl(null);
-      console.log("🔗 [Share] Starting share URL generation IIFE");
-      (async () => {
-        try {
-          console.log("🔗 [Share] Inside IIFE, getting user ID...");
-          const capUserId = user?.id || (await getUserId(user));
-          console.log("🔗 [Share] User ID:", capUserId);
-          if (!capUserId) {
-            console.warn("❌ [Share] No user ID available");
-            return;
-          }
-          console.log("🔗 [Share] Posting to:", `${apiBaseUrl}/api/background-analysis/captures`);
-          const capRes = await fetch(`${apiBaseUrl}/api/background-analysis/captures`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: capUserId, imageBase64: processedImage }),
-          });
-          console.log("🔗 [Share] Response status:", capRes.status);
-          if (!capRes.ok) {
-            console.warn(`❌ [Share] Capture POST failed with status ${capRes.status}`);
-            const errorText = await capRes.text();
-            console.error("❌ [Share] Error response:", errorText);
-            return;
-          }
-          const capData = await capRes.json();
-          console.log("🔗 [Share] Capture response data:", capData);
-          if (capData.ok && capData.data?.id) {
-            foodCaptureIdRef.current = capData.data.id;
-            const shareUrl = `${apiBaseUrl}/share/${capData.data.token}`;
-            setFoodShareUrl(shareUrl);
-            console.log("✅ [Share] Share URL set successfully:", shareUrl);
-          } else {
-            console.warn("❌ [Share] Response missing id or token", capData);
-          }
-        } catch (err) {
-          console.error("❌ [Share] Failed to create pending capture:", err);
-          console.error("❌ [Share] Error stack:", err.stack);
+      // The pending-capture POST was kicked off in parallel with the Gemini
+      // detection call (see `pendingSharePromise` above). Surface its URL as
+      // soon as it resolves so the Share button appears the instant food is
+      // confirmed — no extra round-trip wait after detection.
+      pendingSharePromise.then((share) => {
+        if (share) {
+          foodCaptureIdRef.current = share.id;
+          setFoodShareUrl(share.url);
         }
-      })();
+      });
       debugLog("ðŸ½ï¸ [DEBUG] Processing as FOOD image");
       debugLog("ðŸ½ï¸ [DEBUG] Food details check:", {
         hasDetails: !!detectedType.details,
@@ -4526,6 +4639,8 @@ function WellnessValleyApp() {
           bmrUpdateKey={bmrUpdateKey}
           educationRefreshKey={educationRefreshKey}
           watchBurnedCalories={watchBurnedCalories}
+          initialSelectedMember={dashboardInitialSelectedMember}
+          initialDate={dashboardInitialDate}
         />
       </Suspense>
     );

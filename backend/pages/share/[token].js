@@ -1,390 +1,160 @@
 /**
- * Public nutrition share viewer.
- * Served by the Next.js backend at /share/[token].
- * Renders nutrition data for the given public-share token, or a
- * "pending" state with an auto-refresh if analysis is not yet complete.
+ * Public share landing page.
  *
- * The UI mirrors the in-app NutritionCard so recipients see the same
- * design that the sender captured/shared.
+ * Shared meal links (`/share/<token>`) are intended to open the Wellness
+ * Valley app via Android App Links. This page is the FALLBACK shown when:
+ *   - the recipient doesn't have the app installed, OR
+ *   - the link is opened on desktop / unsupported platform.
+ *
+ * We deliberately do NOT render the meal's nutrition data here — meals are
+ * private. The page exists only to bounce installed users into the app and
+ * to point everyone else at the store.
  */
 import Head from 'next/head';
-import { getPublicCapture } from '../../features/background-analysis/analysis.service.js';
-import { validatePublicCapture } from '../../features/background-analysis/analysis.validators.js';
 
-// ─── server-side data fetch ──────────────────────────────────────────────────
+const APP_PACKAGE = 'com.wellnessvalley.app';
+const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
+const APP_STORE_URL = 'https://apps.apple.com/'; // TODO: replace with real App Store URL once published
 
 export async function getServerSideProps({ params }) {
-  const { token } = params;
-
+  const token = (params?.token || '').toString();
   const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!UUID_RE.test(token)) {
-    return { props: { state: 'not_found' } };
-  }
-
-  try {
-    const result = await getPublicCapture(validatePublicCapture({ token }));
-    const { httpStatus, body } = result;
-
-    if (httpStatus === 404) return { props: { state: 'not_found' } };
-    if (httpStatus === 410) return { props: { state: 'expired' } };
-
-    if (body.data?.pending) {
-      return { props: { state: 'pending', imageBase64: body.data.imageBase64 || null } };
-    }
-
-    // Pre-format the date server-side so the rendered string is identical on
-    // server and client, preventing Next.js hydration mismatches.
-    const formattedDate = body.data.createdAt
-      ? new Date(body.data.createdAt).toLocaleString('en-GB', {
-          day: '2-digit', month: 'short', year: 'numeric',
-          hour: '2-digit', minute: '2-digit', timeZone: 'UTC',
-        })
-      : null;
-
-    return {
-      props: {
-        state: 'ready',
-        nutrition: body.data.nutrition,
-        analysis: body.data.analysis,
-        formattedDate,
-        imageBase64: body.data.imageBase64 || null,
-      },
-    };
-  } catch (_) {
-    return { props: { state: 'error' } };
-  }
+  const valid = UUID_RE.test(token);
+  return { props: { token: valid ? token : null } };
 }
-
-// ─── helpers ────────────────────────────────────────────────────────────────
-
-/**
- * Build a usable <img src> regardless of whether the stored base64 already
- * contains a "data:..." prefix or just the raw payload.
- */
-function toImageSrc(imageBase64) {
-  if (!imageBase64) return null;
-  if (imageBase64.startsWith('data:')) return imageBase64;
-  return `data:image/jpeg;base64,${imageBase64}`;
-}
-
-function toNumber(v) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function round(v) {
-  return Math.round(toNumber(v));
-}
-
-// ─── styles (inline; this page is SSR-only, no Tailwind) ────────────────────
 
 const pageBg = {
-  background: '#f3f4f6',
   minHeight: '100vh',
-  padding: '20px 12px',
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+  background: 'linear-gradient(180deg, #ecfdf5 0%, #ffffff 100%)',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '24px',
 };
 
 const card = {
-  maxWidth: 440,
-  margin: '0 auto',
+  width: '100%',
+  maxWidth: 420,
   background: '#fff',
-  borderRadius: 16,
+  border: '1px solid #bbf7d0',
+  borderRadius: 20,
+  boxShadow: '0 8px 24px rgba(16, 185, 129, 0.08)',
   overflow: 'hidden',
-  boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
-  border: '2px solid #bbf7d0',
 };
 
 const header = {
   background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
   color: '#fff',
-  padding: '14px 16px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
+  padding: '24px 20px',
+  textAlign: 'center',
 };
 
 const avatar = {
-  width: 40,
-  height: 40,
+  width: 56,
+  height: 56,
   borderRadius: '50%',
-  background: 'rgba(255,255,255,0.25)',
-  display: 'flex',
+  background: 'rgba(255,255,255,0.2)',
+  border: '2px solid rgba(255,255,255,0.4)',
+  display: 'inline-flex',
   alignItems: 'center',
   justifyContent: 'center',
-  fontSize: 18,
+  fontSize: 24,
   fontWeight: 700,
-  flexShrink: 0,
-};
-
-const tileGrid = {
-  display: 'grid',
-  gridTemplateColumns: '1fr 1fr',
-  gap: 12,
-  padding: '0 20px',
   marginBottom: 12,
 };
 
-const tileBase = {
-  borderRadius: 12,
-  padding: '14px 8px',
+const body = { padding: '24px 20px 20px' };
+const title = { fontSize: 18, fontWeight: 700, color: '#111827', margin: '0 0 8px', textAlign: 'center' };
+const sub = { fontSize: 14, color: '#6b7280', margin: '0 0 20px', textAlign: 'center', lineHeight: 1.5 };
+const primaryBtn = {
+  display: 'block',
+  width: '100%',
+  background: '#10b981',
+  color: '#fff',
   textAlign: 'center',
-  border: '1px solid',
+  padding: '14px 16px',
+  borderRadius: 12,
+  fontSize: 15,
+  fontWeight: 600,
+  textDecoration: 'none',
+  marginBottom: 10,
 };
-
-const tileValue = { fontSize: 26, fontWeight: 700, lineHeight: 1.1 };
-const tileLabel = { fontSize: 12, fontWeight: 600, marginTop: 4 };
-
-const TILES = {
-  calories: { bg: 'linear-gradient(135deg,#fef2f2,#fee2e2)', border: '#fecaca', text: '#dc2626', label: '#b91c1c' },
-  carbs:    { bg: 'linear-gradient(135deg,#fffbeb,#fef3c7)', border: '#fde68a', text: '#d97706', label: '#b45309' },
-  protein:  { bg: 'linear-gradient(135deg,#eff6ff,#dbeafe)', border: '#bfdbfe', text: '#2563eb', label: '#1d4ed8' },
-  fat:      { bg: 'linear-gradient(135deg,#faf5ff,#f3e8ff)', border: '#e9d5ff', text: '#9333ea', label: '#7e22ce' },
-  fiber:    { bg: 'linear-gradient(135deg,#f0fdf4,#dcfce7)', border: '#bbf7d0', text: '#16a34a', label: '#15803d' },
+const secondaryBtn = {
+  display: 'block',
+  width: '100%',
+  background: '#f3f4f6',
+  color: '#111827',
+  textAlign: 'center',
+  padding: '12px 16px',
+  borderRadius: 12,
+  fontSize: 14,
+  fontWeight: 500,
+  textDecoration: 'none',
+  marginBottom: 10,
 };
+const footer = { fontSize: 12, color: '#9ca3af', textAlign: 'center', marginTop: 16 };
 
-function StatTile({ kind, value, suffix, label }) {
-  const c = TILES[kind];
+export default function ShareLanding({ token }) {
+  // Client-side: try to hand off to the app via Android intent:// for users
+  // whose Android App Links haven't auto-verified yet (debug builds, first
+  // launch). Verified production builds intercept the https URL directly
+  // and never see this script. Desktop / iOS users get the install CTAs.
+  const bootstrap = token
+    ? `(function(){try{
+        var ua = navigator.userAgent || '';
+        if (!/Android/i.test(ua)) return;
+        var intentUrl = 'intent://share/${token}#Intent;scheme=wellnessvalley;package=${APP_PACKAGE};end';
+        var fallbackTimer = setTimeout(function(){
+          window.location.href = '${PLAY_STORE_URL}';
+        }, 1500);
+        window.addEventListener('pagehide', function(){ clearTimeout(fallbackTimer); });
+        window.location.href = intentUrl;
+      }catch(e){}})();`
+    : '';
+
   return (
-    <div style={{ ...tileBase, background: c.bg, borderColor: c.border }}>
-      <div style={{ ...tileValue, color: c.text }}>{value}{suffix}</div>
-      <div style={{ ...tileLabel, color: c.label }}>{label}</div>
-    </div>
-  );
-}
-
-// ─── shells ─────────────────────────────────────────────────────────────────
-
-function MessageCard({ title, message }) {
-  return (
-    <div style={pageBg}>
-      <div style={card}>
-        <div style={header}>
-          <div style={avatar}>W</div>
-          <div style={{ flex: 1 }}>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Wellness Valley</div>
-            <div style={{ fontSize: 12, color: '#bbf7ec' }}>Shared meal</div>
-          </div>
-        </div>
-        <div style={{ padding: '28px 20px', textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: '#166534', marginBottom: 8 }}>{title}</div>
-          <div style={{ fontSize: 14, color: '#6b7280' }}>{message}</div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── page component ─────────────────────────────────────────────────────────
-
-export default function SharePage({ state, nutrition, analysis, formattedDate, imageBase64 }) {
-  if (state === 'not_found' || state === 'error') {
-    return <MessageCard title="Link not found" message="This share link doesn’t exist or has been removed." />;
-  }
-
-  if (state === 'expired') {
-    return <MessageCard title="Link expired" message="Share links are valid for 30 days. This one has expired." />;
-  }
-
-  const imgSrc = toImageSrc(imageBase64);
-
-  if (state === 'pending') {
-    return (
+    <>
+      <Head>
+        <title>Open in Wellness Valley</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
+        <meta name="robots" content="noindex" />
+      </Head>
       <div style={pageBg}>
-        <Head>
-          <meta httpEquiv="refresh" content="5" />
-          <title>Analysing meal… · Wellness Valley</title>
-        </Head>
         <div style={card}>
           <div style={header}>
             <div style={avatar}>W</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 700 }}>Wellness Valley</div>
-              <div style={{ fontSize: 12, color: '#bbf7ec' }}>Shared meal</div>
-            </div>
+            <div style={{ fontSize: 18, fontWeight: 700 }}>Wellness Valley</div>
+            <div style={{ fontSize: 13, opacity: 0.9, marginTop: 4 }}>A meal was shared with you</div>
           </div>
-
-          {imgSrc && (
-            <img
-              src={imgSrc}
-              alt="Shared meal"
-              style={{ width: '100%', display: 'block', maxHeight: 320, objectFit: 'cover' }}
-            />
-          )}
-
-          <div style={{ background: '#22c55e', color: '#fff', padding: '14px 16px', textAlign: 'center' }}>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>Analysing your meal…</div>
-            <div style={{ fontSize: 13, color: '#dcfce7', marginTop: 4 }}>
-              Nutrition will appear here in a few seconds
-            </div>
-          </div>
-
-          <div style={{ padding: '32px 20px', textAlign: 'center' }}>
-            <div style={{ fontSize: 48, marginBottom: 12 }}>⏳</div>
-            <div style={{ fontSize: 13, color: '#6b7280' }}>
-              This page refreshes automatically.
-            </div>
+          <div style={body}>
+            {!token ? (
+              <>
+                <h1 style={title}>Invalid share link</h1>
+                <p style={sub}>The link you opened is not valid. Ask the sender to share again.</p>
+              </>
+            ) : (
+              <>
+                <h1 style={title}>Open in the app</h1>
+                <p style={sub}>
+                  Shared meals open inside the Wellness Valley app. Install
+                  the app to view the meal in your dashboard.
+                </p>
+                <a href={PLAY_STORE_URL} style={primaryBtn}>Get the app on Google Play</a>
+                <a href={APP_STORE_URL} style={secondaryBtn}>Available on the App Store</a>
+                <a
+                  href={`wellnessvalley://share/${token}`}
+                  style={{ ...secondaryBtn, background: '#ecfdf5', color: '#065f46' }}
+                >
+                  I already have the app — open it
+                </a>
+              </>
+            )}
+            <div style={footer}>Meals are private. Only people you invite can view them.</div>
           </div>
         </div>
       </div>
-    );
-  }
-
-  // ── ready ──
-  const foods = Array.isArray(analysis?.foods) ? analysis.foods : [];
-  const primaryFood = foods[0]?.name || 'Meal';
-  const moreCount = Math.max(0, foods.length - 1);
-  const itemsLabel = foods.length > 0
-    ? `${foods.length} food item${foods.length === 1 ? '' : 's'} analyzed`
-    : 'Nutrition summary';
-
-  const carbsG = toNumber(nutrition?.carbs);
-  const proteinG = toNumber(nutrition?.protein);
-  const fatG = toNumber(nutrition?.fat);
-  const totalKcalFromMacros = carbsG * 4 + proteinG * 4 + fatG * 9;
-  const carbsPct = totalKcalFromMacros > 0 ? (carbsG * 4 / totalKcalFromMacros) * 100 : 0;
-  const proteinPct = totalKcalFromMacros > 0 ? (proteinG * 4 / totalKcalFromMacros) * 100 : 0;
-  const fatPct = totalKcalFromMacros > 0 ? (fatG * 9 / totalKcalFromMacros) * 100 : 0;
-
-  return (
-    <div style={pageBg}>
-      <Head>
-        <title>{primaryFood} · Wellness Valley</title>
-      </Head>
-
-      <div style={card}>
-        {/* Header */}
-        <div style={header}>
-          <div style={avatar}>W</div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>Wellness Valley</div>
-            <div style={{ fontSize: 12, color: '#bbf7ec' }}>
-              {formattedDate || 'Shared meal'}
-            </div>
-          </div>
-        </div>
-
-        {/* Image */}
-        {imgSrc && (
-          <img
-            src={imgSrc}
-            alt={primaryFood}
-            style={{ width: '100%', display: 'block', maxHeight: 320, objectFit: 'cover' }}
-          />
-        )}
-
-        {/* Meal title banner */}
-        <div style={{
-          background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
-          color: '#fff',
-          padding: '14px 16px',
-          textAlign: 'center',
-        }}>
-          <div style={{ fontSize: 20, fontWeight: 700, textTransform: 'capitalize' }}>
-            {primaryFood}{moreCount > 0 ? ` + ${moreCount} more` : ''}
-          </div>
-          <div style={{ fontSize: 13, color: '#dcfce7', marginTop: 4 }}>{itemsLabel}</div>
-        </div>
-
-        {/* Nutrition tiles */}
-        <div style={{ padding: '20px 0 4px' }}>
-          <div style={tileGrid}>
-            <StatTile kind="calories" value={round(nutrition?.calories)} suffix="" label="Calories" />
-            <StatTile kind="carbs" value={round(nutrition?.carbs)} suffix="g" label="Carbs" />
-            <StatTile kind="protein" value={round(nutrition?.protein)} suffix="g" label="Protein" />
-            <StatTile kind="fat" value={round(nutrition?.fat)} suffix="g" label="Fat" />
-          </div>
-
-          {/* Fiber - full width */}
-          <div style={{ padding: '0 20px', marginBottom: 16 }}>
-            <div style={{ ...tileBase, background: TILES.fiber.bg, borderColor: TILES.fiber.border }}>
-              <div style={{ ...tileValue, color: TILES.fiber.text }}>{round(nutrition?.fiber)}g</div>
-              <div style={{ ...tileLabel, color: TILES.fiber.label }}>Fiber</div>
-            </div>
-          </div>
-
-          {/* Macronutrient distribution */}
-          {totalKcalFromMacros > 0 && (
-            <div style={{ padding: '8px 20px 4px' }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 8 }}>
-                Macronutrient Distribution
-              </div>
-              <div style={{
-                display: 'flex',
-                height: 14,
-                borderRadius: 8,
-                overflow: 'hidden',
-                background: '#e5e7eb',
-              }}>
-                <div style={{ width: `${carbsPct}%`, background: '#facc15' }} />
-                <div style={{ width: `${proteinPct}%`, background: '#60a5fa' }} />
-                <div style={{ width: `${fatPct}%`, background: '#c084fc' }} />
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 11, color: '#6b7280' }}>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#facc15', marginRight: 4 }} />Carbs {Math.round(carbsPct)}%</span>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#60a5fa', marginRight: 4 }} />Protein {Math.round(proteinPct)}%</span>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: '50%', background: '#c084fc', marginRight: 4 }} />Fat {Math.round(fatPct)}%</span>
-              </div>
-            </div>
-          )}
-
-          {/* Food Breakdown */}
-          {foods.length > 0 && (
-            <div style={{ padding: '20px 20px 8px', borderTop: '1px solid #f3f4f6', marginTop: 16 }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#1f2937', marginBottom: 12 }}>
-                Food Breakdown
-              </div>
-              {foods.map((f, i) => {
-                const fn = f.nutrition || f;
-                const kcal = round(fn.calories);
-                const p = round(fn.protein);
-                const c = round(fn.carbs);
-                const fb = round(fn.fiber);
-                const ft = round(fn.fat);
-                const serving = f.serving || f.portion || f.quantity || '';
-                return (
-                  <div key={i} style={{
-                    padding: '12px 0',
-                    borderBottom: i === foods.length - 1 ? 'none' : '1px solid #f3f4f6',
-                  }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 600, color: '#1f2937', textTransform: 'capitalize' }}>
-                          {f.name || 'Item'}
-                        </div>
-                        {serving && (
-                          <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>{serving}</div>
-                        )}
-                      </div>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#dc2626', marginLeft: 12 }}>
-                        {kcal} kcal
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 13, fontWeight: 600 }}>
-                      <span style={{ color: '#2563eb' }}>Protein {p}g</span>
-                      <span style={{ color: '#d97706' }}>Carbs {c}g</span>
-                      <span style={{ color: '#16a34a' }}>Fiber {fb}g</span>
-                      <span style={{ color: '#9333ea' }}>Fat {ft}g</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div style={{
-          padding: '14px 20px 18px',
-          textAlign: 'center',
-          fontSize: 12,
-          color: '#9ca3af',
-          background: '#f9fafb',
-          borderTop: '1px solid #f3f4f6',
-        }}>
-          Shared via Wellness Valley
-        </div>
-      </div>
-    </div>
+      {bootstrap ? <script dangerouslySetInnerHTML={{ __html: bootstrap }} /> : null}
+    </>
   );
 }

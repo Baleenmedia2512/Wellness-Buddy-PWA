@@ -111,6 +111,29 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- Android App Links: open https://<host>/share/<token> directly in the app.
+                 Requires /.well-known/assetlinks.json to be served from both hosts. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https"
+                      android:host="wellness-buddy-pwa-eta.vercel.app"
+                      android:pathPrefix="/share/" />
+                <data android:scheme="https"
+                      android:host="wellness-buddy-pwa-backend-test.vercel.app"
+                      android:pathPrefix="/share/" />
+            </intent-filter>
+
+            <!-- Custom-scheme fallback (used by the web landing page and
+                 debug builds before App Links verification completes). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="wellnessvalley" android:host="share" />
+            </intent-filter>
+
             <!-- Add these intent filters for Firebase Auth redirect -->
             <!-- <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

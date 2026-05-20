@@ -50,3 +50,12 @@ export function validatePublicCapture(query) {
   if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
   return { token };
 }
+
+export function validateResolveCapture(query) {
+  const { token, viewerUserId } = query || {};
+  if (!token) throw new ValidationError(400, 'token is required');
+  if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
+  return { token, viewerUserId: viewerUserId.toString() };
+}

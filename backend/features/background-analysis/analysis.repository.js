@@ -127,12 +127,74 @@ export async function findPublicByToken(token) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('ID, AnalysisData, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ShareExpiresAt, CreatedAt, ImageBase64')
+    .select('ID, UserID, AnalysisData, TotalCalories, TotalProtein, TotalCarbs, TotalFat, TotalFiber, ShareExpiresAt, CreatedAt, ImageBase64')
     .eq('PublicShareToken', token)
     .limit(1)
     .maybeSingle();
   if (error) throw error;
   return data || null;
+}
+
+/**
+ * Lightweight lookup used by the deep-link resolve endpoint. Returns just
+ * the owner UserID, the meal date, and the share expiry — no image / no
+ * nutrition payload. Returns null when no row matches.
+ */
+export async function findOwnerByToken(token) {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('food_nutrition_data_table')
+    .select('UserID, CreatedAt, ShareExpiresAt')
+    .eq('PublicShareToken', token)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data || null;
+}
+
+/**
+ * Walk up the coach chain from `startUserId` (inclusive) and return the
+ * ordered list of ancestor user-ids. Used by the deep-link permission
+ * check: a viewer is allowed to open a shared meal if they are the owner
+ * OR appear anywhere in the owner's coach chain. Cap depth at 10 to
+ * prevent runaway queries on accidental cycles.
+ */
+export async function getCoachChain(startUserId) {
+  const supabase = getSupabaseClient();
+  const chain = [];
+  let current = startUserId?.toString();
+  let depth = 0;
+  while (current && depth < 10) {
+    chain.push(current);
+    const { data, error } = await supabase
+      .from('team_table')
+      .select('"CoachId"')
+      .eq('"UserId"', current)
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    const next = data?.CoachId ? data.CoachId.toString() : null;
+    if (!next || next === current || chain.includes(next)) break;
+    current = next;
+    depth += 1;
+  }
+  return chain;
+}
+
+/**
+ * Fetch a user's display name. Returns null when not found.
+ */
+export async function findUserName(userId) {
+  if (!userId) return null;
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('team_table')
+    .select('"UserName"')
+    .eq('"UserId"', userId.toString())
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return data?.UserName || null;
 }
 
 export { getISTTimestamp, convertToIST };

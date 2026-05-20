@@ -244,6 +244,59 @@ export async function createPendingCapture({ userId, imageBase64 }) {
   };
 }
 
+// ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
+
+/**
+ * Look up the OWNER + meal date for a shared token. Used by the in-app
+ * deep-link handler: the app opens Dashboard for that user/date instead of
+ * rendering the public share page. Enforces permission — viewer must be
+ * the owner OR appear in the owner's upline coach chain.
+ *
+ * Returns:
+ *   { ok: true,  data: { ownerUserId, ownerUserName, mealDate, isSelf } }
+ *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
+ */
+export async function resolvePublicCapture({ token, viewerUserId }) {
+  const row = await repo.findOwnerByToken(token);
+  if (!row) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
+  }
+  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
+    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
+  }
+  const ownerUserId = row.UserID ? row.UserID.toString() : null;
+  if (!ownerUserId) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
+  }
+
+  const viewer = viewerUserId.toString();
+  const isSelf = viewer === ownerUserId;
+  if (!isSelf) {
+    // Permission: viewer must be in the owner's coach chain (i.e. owner is
+    // a descendant of the viewer in the team hierarchy).
+    const chain = await repo.getCoachChain(ownerUserId);
+    if (!chain.includes(viewer)) {
+      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
+    }
+  }
+
+  const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
+  const mealDate = row.CreatedAt ? new Date(row.CreatedAt).toISOString() : null;
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        ownerUserId,
+        ownerUserName,
+        mealDate,
+        isSelf,
+      },
+    },
+  };
+}
+
 // ─── getPublicCapture ─────────────────────────────────────────────────────
 
 /**
