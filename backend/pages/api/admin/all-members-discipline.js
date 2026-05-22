@@ -294,27 +294,38 @@ export default async function handler(req, res) {
       foodData.data = foodData.data.filter(r => !isExemptedBeverageOnly(r.AnalysisData));
     }
 
-    // Fetch latest body weight AND BMR for each member from ANY date (no date restriction)
+    // Fetch latest body weight for each member from ANY date (no date restriction)
     // Uses most recent weight ever recorded — no need to upload weight today
     // Falls back to 2500ml ONLY if user has never logged a weight at all
     const DEFAULT_WATER_REQUIRED_ML = 2500;
     const { data: latestWeightRows } = await supabase
       .from('weight_records_table')
-      .select('UserId, Weight, Bmr, CreatedAt')
+      .select('UserId, Weight, CreatedAt')
       .in('UserId', memberIds)
       .or('IsDeleted.is.null,IsDeleted.eq.0,IsDeleted.eq.false')
       .order('CreatedAt', { ascending: false });
     const userBodyWeightMap = {};
-    const userBmrMap = {}; // BMR (calorie target) per userId
     (latestWeightRows || []).forEach(row => {
       const uid = row.UserId;
       if (!(uid in userBodyWeightMap)) {
         const w = parseFloat(row.Weight);
         userBodyWeightMap[uid] = (!isNaN(w) && w > 0) ? w : null;
       }
-      if (!(uid in userBmrMap)) {
-        const b = parseFloat(row.Bmr);
-        userBmrMap[uid] = (!isNaN(b) && b > 0) ? b : null;
+    });
+
+    // BMR (calorie target) — read from team_table (source of truth, synced by weight.service.js)
+    // weight_records_table.Bmr is NOT the authoritative column — do not read BMR from there
+    const userBmrMap = {};
+    const { data: bmrRows } = await supabase
+      .from('team_table')
+      .select('UserId, Bmr')
+      .in('UserId', memberIds)
+      .not('Bmr', 'is', null);
+    (bmrRows || []).forEach(row => {
+      const uid = row.UserId;
+      const b = parseFloat(row.Bmr);
+      if (!isNaN(b) && b > 0 && (!(uid in userBmrMap) || b > userBmrMap[uid])) {
+        userBmrMap[uid] = b;
       }
     });
 
