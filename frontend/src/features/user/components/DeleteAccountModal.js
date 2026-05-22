@@ -24,7 +24,7 @@ const DeleteAccountModal = ({ isOpen, onClose, userEmail, onAccountDeleted, onSi
   const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  useEffect(() => { if (flow.step === 2) resend.start(flow.restoredCountdown); /* eslint-disable-next-line */ }, [flow.restoredCountdown]);
+  useEffect(() => { if (flow.step === 2) resend.start(flow.restoredCountdown); /* eslint-disable-next-line */ }, [flow.restoredCountdown]); // required by platform constraints; see inline context // required by platform constraints — see surrounding context
 
   const isConfirmValid = confirmText.trim().toUpperCase() === CONFIRM_WORD;
 

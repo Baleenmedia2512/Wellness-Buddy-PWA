@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { Capacitor } from "@capacitor/core";
+import { debugLog } from '../shared/utils/logger.js';
 import {
   Salad,
   TrendingDown,
@@ -108,16 +109,16 @@ const WellnessUniversityEnrollment = ({ onClose, user }) => {
       );
       const profileData = await profileResponse.json();
 
-      console.log("🎓 [Enrollment] Profile data:", profileData);
+      debugLog("🎓 [Enrollment] Profile data:", profileData);
 
       if (profileData.success && profileData.data?.coachName) {
-        console.log(
+        debugLog(
           "✅ [Enrollment] Coach name found:",
           profileData.data.coachName,
         );
         setCoachName(profileData.data.coachName);
       } else {
-        console.log("⚠️ [Enrollment] No coach name in profile data");
+        debugLog("⚠️ [Enrollment] No coach name in profile data");
       }
 
       // Check existing enrollment .

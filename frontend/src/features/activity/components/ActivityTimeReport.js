@@ -555,7 +555,7 @@ function ActivityTimeReport({ user, userRole, apiBaseUrl, onBack }) {
         else setLoading(false);
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
     [user?.id, apiBaseUrl, userRole, dateRange, customStartDate, customEndDate, timezoneOffset],
   );
 

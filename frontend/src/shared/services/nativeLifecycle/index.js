@@ -33,6 +33,7 @@ import { Geolocation } from "@capacitor/geolocation";
 import { PushNotifications } from "@capacitor/push-notifications";
 import { SplashScreen } from "@capacitor/splash-screen";
 import { Capacitor } from "@capacitor/core";
+import { debugLog } from '../../utils/logger.js';
 
 /**
  * Returns true on iOS/Android (Capacitor native), false on web.
@@ -111,6 +112,44 @@ export function addAppStateListener(handler) {
 }
 
 /**
+ * Register a handler for native deep-link / App Link events (Capacitor's
+ * `appUrlOpen`). Fired when the OS launches the app to handle a URL — both
+ * Android App Links (https://<host>/share/...) and custom-scheme
+ * (wellnessvalley://share/...) flow through here.
+ *
+ * Same contract as addAppStateListener: returns a handle whose `remove()`
+ * the caller MUST invoke on cleanup. No-op on web.
+ *
+ * @param {(event: { url: string }) => void} handler
+ * @returns {Promise<{ remove: () => Promise<void> | void }>}
+ */
+export function addAppUrlOpenListener(handler) {
+  if (!Capacitor.isNativePlatform()) {
+    return Promise.resolve({ remove: () => {} });
+  }
+  return Promise.resolve(CapacitorApp.addListener("appUrlOpen", handler));
+}
+
+/**
+ * Returns the URL that launched the app this session, if any. Useful for
+ * cold-start deep links where `appUrlOpen` may have already fired before
+ * the React tree mounted its listener.
+ *
+ * Resolves to `null` on web or when there is no launch URL.
+ *
+ * @returns {Promise<string | null>}
+ */
+export async function getLaunchUrl() {
+  if (!Capacitor.isNativePlatform()) return null;
+  try {
+    const result = await CapacitorApp.getLaunchUrl();
+    return result?.url || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Bootstrap permissions for the authenticated-user flow.
  *
  * Preserved from App.js verbatim:
@@ -128,7 +167,7 @@ export function addAppStateListener(handler) {
 export async function requestAllPermissions() {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    console.log("📱 Requesting all permissions at once...");
+    debugLog("📱 Requesting all permissions at once...");
 
     // Request camera/gallery permissions
     await Camera.requestPermissions({ permissions: ["camera", "photos"] });
@@ -142,7 +181,7 @@ export async function requestAllPermissions() {
     // FEATURE DISABLED — Reminders (Android exact-alarm) commented out, see App.js history
     // FEATURE DISABLED — Step Counter (ACTIVITY_RECOGNITION) commented out, see App.js history
 
-    console.log("✅ All permissions requested");
+    debugLog("✅ All permissions requested");
   } catch (err) {
     console.warn("❌ Permission request failed:", err);
   }

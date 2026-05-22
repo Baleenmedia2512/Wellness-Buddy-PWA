@@ -51,7 +51,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       }
     } catch (e) { setError(e.message || 'Failed to load profile.'); }
     finally { setIsLoading(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [user]);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ const UserProfileModal = ({ isOpen, onClose, user, userRole = 'user', onProfileU
       loadProfile();
     }
     if (!isOpen) { face.reset(); setShowToast(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isOpen, user?.email]);
 
   useEffect(() => {

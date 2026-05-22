@@ -1,6 +1,7 @@
 // src/components/CoachScoreSummary.js
 import React, { useState, useEffect } from "react";
 import { Users, User } from "lucide-react";
+import { debugLog } from '../../../shared/utils/logger.js';
 import {
   SelfLogo,
   DirectLogo,
@@ -23,7 +24,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
       }
 
       try {
-        console.log(
+        debugLog(
           "📊 [CoachScoreSummary] Fetching scores for userId:",
           userId,
         );
@@ -45,7 +46,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         );
         const disciplineResult = await disciplineResponse.json();
 
-        console.log("📊 [CoachScoreSummary] API Response:", {
+        debugLog("📊 [CoachScoreSummary] API Response:", {
           success: disciplineResult.success,
           hasCoachPerformance: !!disciplineResult.coachPerformance,
           teamMembersCount: disciplineResult.teamMembers?.length || 0,
@@ -53,7 +54,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         });
 
         if (!disciplineResult.success) {
-          console.log("📊 [CoachScoreSummary] API returned success=false");
+          debugLog("📊 [CoachScoreSummary] API returned success=false");
           setScores(null);
           setLoading(false);
           return;
@@ -66,7 +67,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
         // Get all team members from the response
         const allMembers = disciplineResult.teamMembers || [];
 
-        console.log("📊 [CoachScoreSummary] Team members data:", {
+        debugLog("📊 [CoachScoreSummary] Team members data:", {
           count: allMembers.length,
           members: allMembers.map((m) => ({
             userName: m.userName,
@@ -79,7 +80,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
 
         // Even if no team members, we should still show the coach's score
         if (allMembers.length === 0) {
-          console.log("📊 [CoachScoreSummary] No team members - showing coach score only");
+          debugLog("📊 [CoachScoreSummary] No team members - showing coach score only");
           setScores({
             myScore,
             directTeamAvg: 0,
@@ -96,7 +97,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
           (m) => m.coachId === userId || m.parentCoachId === userId,
         );
 
-        console.log("📊 [CoachScoreSummary] Direct team members:", {
+        debugLog("📊 [CoachScoreSummary] Direct team members:", {
           count: directTeamMembers.length,
           members: directTeamMembers.map((m) => ({
             userName: m.userName,
@@ -143,7 +144,7 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
               )
             : 0;
 
-        console.log("📊 [CoachScoreSummary] Calculated scores:", {
+        debugLog("📊 [CoachScoreSummary] Calculated scores:", {
           myScore,
           directTeamAvg,
           directTeamCount: directTeamMembers.length,
@@ -184,11 +185,11 @@ const CoachScoreSummary = ({ apiBaseUrl, userId }) => {
 
   // Don't show if no scores at all (error case)
   if (!scores) {
-    console.log("📊 [CoachScoreSummary] Not rendering - no scores available");
+    debugLog("📊 [CoachScoreSummary] Not rendering - no scores available");
     return null;
   }
 
-  console.log("📊 [CoachScoreSummary] Rendering with scores:", scores);
+  debugLog("📊 [CoachScoreSummary] Rendering with scores:", scores);
 
   // Always show coach's score, even if they have no team
   // This fixes the issue where dashboard doesn't show scores

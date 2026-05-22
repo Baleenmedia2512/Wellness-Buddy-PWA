@@ -24,6 +24,7 @@
  */
 
 import * as Session from "../sessionStorage";
+import { debugLog } from '../../utils/logger.js';
 
 export const DEMO_EMAIL = "testereasywork@gmail.com";
 
@@ -75,7 +76,7 @@ export const silentlyCompleteDemoSetup = async (userEmail, opts = {}) => {
     });
 
     Session.markCoachOtpVerified();
-    console.log("✅ [Demo] Coach setup completed silently");
+    debugLog("✅ [Demo] Coach setup completed silently");
     return true;
   } catch (err) {
     console.error("[Demo] Silent setup failed:", err);

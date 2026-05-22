@@ -1,5 +1,6 @@
 // src/services/weightDetectionService.js
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * Weight Detection Service using Google Gemini AI
@@ -33,7 +34,7 @@ class WeightDetectionService {
    * @returns {Promise<{isWeightScale: boolean, confidence: number}>}
    */
   async detectImageType(imageFile) {
-    // console.log('🔍 Detecting image type...');
+    // debugLog('🔍 Detecting image type...');
 
     if (!this.model) {
       throw new Error('Gemini API key is not configured');
@@ -70,7 +71,7 @@ Examples:
       const text = response.text();
       const data = this.parseJsonResponse(text);
 
-      // console.log('✅ Image type detection:', data);
+      // debugLog('✅ Image type detection:', data);
 
       return {
         isWeightScale: data.isWeightScale || false,
@@ -96,7 +97,7 @@ Examples:
    */
   async extractWeightFromImage(imageFile) {
     const startTime = Date.now();
-    // console.log('🔍 WeightDetectionService: Analyzing weight scale image with Gemini AI...');
+    // debugLog('🔍 WeightDetectionService: Analyzing weight scale image with Gemini AI...');
 
     if (!this.model) {
       throw new Error('Gemini API key is not configured');
@@ -160,7 +161,7 @@ ACCURACY IS CRITICAL - A single wrong digit can ruin user experience.`;
       const data = this.parseJsonResponse(text);
       const processingTime = Date.now() - startTime;
 
-      // console.log(`✅ Weight detection completed in ${processingTime}ms:`, data);
+      // debugLog(`✅ Weight detection completed in ${processingTime}ms:`, data);
 
       // Validate weight value
       if (!data.weight) {
@@ -419,7 +420,7 @@ ACCURACY IS CRITICAL - A single wrong digit can ruin user experience.`;
    * Initialize service (optional)
    */
   async initialize() {
-    console.log('✅ WeightDetectionService initialized with Gemini AI');
+    debugLog('✅ WeightDetectionService initialized with Gemini AI');
     return Promise.resolve();
   }
 
@@ -427,7 +428,7 @@ ACCURACY IS CRITICAL - A single wrong digit can ruin user experience.`;
    * Cleanup resources (optional)
    */
   async terminate() {
-    console.log('🔚 WeightDetectionService terminated');
+    debugLog('🔚 WeightDetectionService terminated');
     return Promise.resolve();
   }
 }

@@ -64,7 +64,7 @@ const EducationDashboard = lazy(() => import('../../features/education/component
  * @param {string} userRole - User's role for access control (coach, coCoach, admin, user)
  * @param {string} initialTab - Optional tab to open initially ('nutrition' | 'weight' | 'education')
  */
-const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0 }) => {
+const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRole = 'user', bmrUpdateKey = 0, educationRefreshKey = 0, watchBurnedCalories = 0, initialSelectedMember = null, initialDate = null }) => {
   const [activeTab, setActiveTab] = useState(() => {
     // Use initialTab prop if provided, otherwise restore from localStorage
     if (initialTab && (initialTab === 'nutrition' || initialTab === 'weight' || initialTab === 'education' || initialTab === 'steps' || initialTab === 'screen')) {
@@ -75,12 +75,18 @@ const Dashboard = ({ user, onBack, apiBaseUrl, onMealDelete, initialTab, userRol
   });
 
   // Team member selection state (for coaches)
-  const [selectedMember, setSelectedMember] = useState(null);
+  const [selectedMember, setSelectedMember] = useState(initialSelectedMember);
   // Profile viewer modal for a selected team member
   const [showMemberProfile, setShowMemberProfile] = useState(false);
   
   // Unified date state shared between both tabs
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (initialDate) {
+      const d = new Date(initialDate);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    return new Date();
+  });
   
   // Calendar visibility and month navigation
   const [showCalendar, setShowCalendar] = useState(false);

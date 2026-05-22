@@ -54,7 +54,7 @@ export function recordEvent(event) {
   counters.events++;
   push({ kind: "event", event });
   if (logVerbose) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
     console.debug("[AuthFSM:event]", event?.type, event);
   }
 }
@@ -64,7 +64,7 @@ export function recordTransition(entry) {
   push({ kind: "transition", ...entry });
   if (logVerbose) {
     const arrow = entry.from === entry.to ? "·" : "→";
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
     console.debug(
       `[AuthFSM:${entry.transitionId}] ${entry.from} ${arrow} ${entry.to}`,
       { event: entry.event?.type, ctxDiff: entry.ctxDiff, durationMs: entry.durationMs },
@@ -76,7 +76,7 @@ export function recordActor(entry) {
   counters.actors++;
   push({ kind: "actor", ...entry });
   if (logVerbose) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
     console.debug(`[AuthFSM:actor] ${entry.actor} ${entry.phase}`, entry);
   }
 }
@@ -85,7 +85,7 @@ export function recordDrift(diff) {
   counters.drifts++;
   push({ kind: "drift", diff });
   // Drift is always logged (this is the whole point of shadow mode).
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
   console.warn("[AuthFSM:drift]", diff);
 }
 
@@ -93,7 +93,7 @@ export function recordInvariant(violation) {
   counters.invariants++;
   push({ kind: "invariant", violation });
   // Invariant violations are always logged at error level.
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
   console.error("[AuthFSM:invariant]", violation);
 }
 

@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import * as repo from './auth.repository.js';
+import logger from '../../shared/lib/logger.js';
 
 const { getISTTimestamp } = repo;
 const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
@@ -154,7 +155,7 @@ async function handleDemoVerify({ recipient, otp, purpose }) {
       Email: recipient,
     });
     isNewUser = true;
-    console.log('🆕 [verify-otp] Demo account created in DB:', recipient);
+    logger.debug('🆕 [verify-otp] Demo account created in DB:', recipient);
   }
 
   return {
@@ -218,7 +219,7 @@ export async function verifyOtp(input) {
       Email: recipient,
     });
     isNewUser = true;
-    console.log('🆕 [verify-otp] New user created:', recipient);
+    logger.debug('🆕 [verify-otp] New user created:', recipient);
   }
 
   return {

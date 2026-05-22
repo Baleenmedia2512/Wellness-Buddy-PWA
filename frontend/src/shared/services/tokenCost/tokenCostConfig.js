@@ -1,3 +1,5 @@
+import { debugLog } from '../../utils/logger.js';
+
 /**
  * Token Cost Configuration - Single Source of Truth
  *
@@ -52,7 +54,7 @@ async function fetchPricingFromAPI(email, modelName) {
     if (response.ok) {
       const data = await response.json();
       if (data.success && data.data) {
-        console.log("📊 Pricing fetched from API:", data.data);
+        debugLog("📊 Pricing fetched from API:", data.data);
         return {
           inputPerMillion: data.data.inputPerMillion,
           outputPerMillion: data.data.outputPerMillion,
@@ -111,7 +113,7 @@ export async function getModelPricing(modelName, email = null) {
 export function clearPricingCache(email) {
   cachedPricing = null;
   pricingLastFetchTime = null;
-  console.log("🗑️ Pricing cache cleared for:", email);
+  debugLog("🗑️ Pricing cache cleared for:", email);
 }
 
 /**
@@ -154,7 +156,7 @@ export async function getUsdToInrRate() {
       if (rate && rate > 0) {
         cachedExchangeRate = rate;
         lastFetchTime = Date.now();
-        console.log(`💱 Exchange rate updated: $1 = ₹${rate.toFixed(2)}`);
+        debugLog(`💱 Exchange rate updated: $1 = ₹${rate.toFixed(2)}`);
         return rate;
       }
     }

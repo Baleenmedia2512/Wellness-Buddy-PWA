@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 export function validateCheckName(query) {
   // Empty / short names → service responds available:true; we still pass through

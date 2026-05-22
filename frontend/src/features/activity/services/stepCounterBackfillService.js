@@ -13,6 +13,7 @@ import { GalleryMonitorPlugin } from '../../../shared/plugins/galleryMonitorPlug
 import { fetchDailyActivity } from './dailyActivityService';
 import { ACTIVITY_TYPE, BACKFILL_MAX_DELTA_TODAY } from './stepCounterConstants';
 import { toDateKey } from './stepCounterCalculations';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * Compare BG service totals against DB totals for the past 7 days.
@@ -54,7 +55,7 @@ export const runBackgroundBackfill = async (resolvedUserId) => {
 
   if (toFix.length === 0) return [];
 
-  console.log('[StepCounter] Fixing', toFix.length, 'day(s) from background service');
+  debugLog('[StepCounter] Fixing', toFix.length, 'day(s) from background service');
   // Sequential — service-side in-flight guard would otherwise drop entries
   await toFix.reduce(
     (chain, e) => chain.then(() => GalleryMonitorPlugin.syncDailySteps(e.date, e.steps)),

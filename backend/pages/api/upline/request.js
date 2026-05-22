@@ -12,6 +12,7 @@ import {
 } from "../../../utils/supabaseClient.js";
 import bcrypt from "bcryptjs";
 import nodemailer from "nodemailer";
+import logger from '../../../shared/lib/logger.js';
 
 // Production email service using nodemailer (same as send-otp.js)
 const sendEmail = async ({ to, subject, html }) => {
@@ -31,7 +32,7 @@ const sendEmail = async ({ to, subject, html }) => {
       html: html,
     });
 
-    console.log("✅ OTP email sent successfully to:", to);
+    logger.debug("✅ OTP email sent successfully to:", to);
     return { success: true };
   } catch (error) {
     console.error("❌ Email sending failed:", error.message);
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     // No email is sent; the tester enters 000000 to complete setup.
     const DEMO_ACCOUNTS = ['testereasywork@gmail.com'];
     if (DEMO_ACCOUNTS.includes(email.toLowerCase().trim())) {
-      console.log('ℹ️ [upline/request] Demo account — auto-assigning Yasheer J as coach');
+      logger.debug('ℹ️ [upline/request] Demo account — auto-assigning Yasheer J as coach');
 
       // Look up Yasheer J from DB dynamically (no hardcoded ID)
       const { data: yasheerRows, error: yasheerErr } = await supabase
@@ -159,7 +160,7 @@ export default async function handler(req, res) {
 
       if (demoInsertErr) throw demoInsertErr;
 
-      console.log('✅ [upline/request] Demo request created with Yasheer J. OTP: 000000');
+      logger.debug('✅ [upline/request] Demo request created with Yasheer J. OTP: 000000');
       return res.status(200).json({
         success: true,
         message: 'Request sent! Enter OTP 000000 to complete setup.',

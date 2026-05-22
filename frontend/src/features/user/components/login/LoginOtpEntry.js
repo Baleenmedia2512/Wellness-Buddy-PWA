@@ -13,7 +13,7 @@ const LoginOtpEntry = ({
   const onCellChange = (e, index) => {
     if (isNative) return;
     handleChange(index, e.target.value);
-    // eslint-disable-next-line react/prop-types
+    // eslint-disable-next-line react/prop-types -- JS project without PropTypes enforcement; types enforced at API boundary
     const next = [...otp]; next[index] = e.target.value.slice(-1);
     if (next.every((d) => d !== '')) onVerify(next.join(''));
   };

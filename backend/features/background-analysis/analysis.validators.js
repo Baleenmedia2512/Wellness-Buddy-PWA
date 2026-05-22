@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 export function validateSave(body) {
   if (!body) throw new ValidationError(400, 'Request body is missing or too large. Maximum size is 10MB.');
@@ -32,4 +32,30 @@ export function validateUndo(body) {
   const { id, userId } = body;
   if (!id) throw new ValidationError(400, 'Analysis ID is required');
   return { id, userId };
+}
+
+export function validateCreateCapture(body) {
+  if (!body) throw new ValidationError(400, 'Request body is missing');
+  const { userId, imageBase64 } = body;
+  if (!userId) throw new ValidationError(400, 'userId is required');
+  if (!imageBase64) throw new ValidationError(400, 'imageBase64 is required');
+  return { userId, imageBase64 };
+}
+
+export function validatePublicCapture(query) {
+  const { token } = query || {};
+  if (!token) throw new ValidationError(400, 'token is required');
+  // Validate UUID format to prevent injection via query string.
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
+  return { token };
+}
+
+export function validateResolveCapture(query) {
+  const { token, viewerUserId } = query || {};
+  if (!token) throw new ValidationError(400, 'token is required');
+  if (!viewerUserId) throw new ValidationError(400, 'viewerUserId is required');
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!UUID_RE.test(token)) throw new ValidationError(400, 'Invalid token format');
+  return { token, viewerUserId: viewerUserId.toString() };
 }

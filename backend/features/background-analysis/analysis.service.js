@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import * as repo from './analysis.repository.js';
 import { cache, cacheKeys } from '../../utils/cache.js';
 
@@ -64,8 +65,7 @@ function extractNutrition(analysisResult, deviceInfo) {
 // ─── save ────────────────────────────────────────────────────────────────────
 export async function save(input) {
   const {
-    userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,
-  } = input;
+    userId, imagePath, analysisResult, deviceInfo, ImageBase64, clientTimestamp,    captureId,  } = input;
 
   const nutrition = extractNutrition(analysisResult, deviceInfo);
   const { totalCalories, totalProtein, totalCarbs, totalFat, totalFiber, confidenceScore, processedBy } = nutrition;
@@ -82,25 +82,34 @@ export async function save(input) {
     createdAtIST = currentTime;
   }
 
+  const analysisPayload = {
+    ImagePath: imagePath,
+    AnalysisData: analysisDataJson,
+    ConfidenceScore: confidenceScore,
+    TotalCalories: totalCalories,
+    TotalProtein: totalProtein,
+    TotalCarbs: totalCarbs,
+    TotalFat: totalFat,
+    TotalFiber: totalFiber,
+    ProcessedBy: processedBy,
+    DeviceInfo: deviceInfo
+      || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
+    ImageBase64: imageBase64ToSave,
+  };
+
   let data;
   try {
-    data = await repo.insertAnalysis({
-      UserID: userId.toString(),
-      ImagePath: imagePath,
-      AnalysisData: analysisDataJson,
-      ConfidenceScore: confidenceScore,
-      TotalCalories: totalCalories,
-      TotalProtein: totalProtein,
-      TotalCarbs: totalCarbs,
-      TotalFat: totalFat,
-      TotalFiber: totalFiber,
-      ProcessedBy: processedBy,
-      DeviceInfo: deviceInfo
-        || (processedBy === 'background_service' ? 'Android Background Service' : 'Wellness Valley Web App'),
-      ImageBase64: imageBase64ToSave,
-      CreatedAt: createdAtIST,
-      UpdatedAt: currentTime,
-    });
+    if (captureId) {
+      // Update the pre-created pending capture row (instant-share flow).
+      data = await repo.updateWithAnalysisResult(captureId, userId.toString(), analysisPayload);
+    } else {
+      data = await repo.insertAnalysis({
+        UserID: userId.toString(),
+        ...analysisPayload,
+        CreatedAt: createdAtIST,
+        UpdatedAt: currentTime,
+      });
+    }
   } catch (error) {
     let errorMessage = 'Failed to save analysis';
     if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
@@ -205,5 +214,129 @@ export async function undoDelete({ id, userId }) {
   return {
     httpStatus: 200,
     body: { success: true, message: 'Analysis restored successfully', restoredId: id },
+  };
+}
+// ─── createPendingCapture ─────────────────────────────────────────────────────
+
+/**
+ * Pre-create a "pending" capture row so the user can share a link
+ * immediately after food detection, before Gemini analysis completes.
+ * Returns { id, token } — the caller constructs the full viewUrl.
+ */
+export async function createPendingCapture({ userId, imageBase64 }) {
+  const token = randomUUID();
+  const shareExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+  const row = await repo.insertPendingCapture({
+    userId: userId.toString(),
+    imageBase64: imageBase64 || null,
+    publicShareToken: token,
+    shareExpiresAt,
+  });
+  return {
+    httpStatus: 201,
+    body: {
+      ok: true,
+      data: {
+        id: row.ID || row.id,
+        token,
+      },
+    },
+  };
+}
+
+// ─── resolvePublicCapture (deep-link target lookup) ─────────────────────────
+
+/**
+ * Look up the OWNER + meal date for a shared token. Used by the in-app
+ * deep-link handler: the app opens Dashboard for that user/date instead of
+ * rendering the public share page. Enforces permission — viewer must be
+ * the owner OR appear in the owner's upline coach chain.
+ *
+ * Returns:
+ *   { ok: true,  data: { ownerUserId, ownerUserName, mealDate, isSelf } }
+ *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
+ */
+export async function resolvePublicCapture({ token, viewerUserId }) {
+  const row = await repo.findOwnerByToken(token);
+  if (!row) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found' } } };
+  }
+  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
+    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
+  }
+  const ownerUserId = row.UserID ? row.UserID.toString() : null;
+  if (!ownerUserId) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
+  }
+
+  const viewer = viewerUserId.toString();
+  const isSelf = viewer === ownerUserId;
+  if (!isSelf) {
+    // Permission: viewer must be in the owner's coach chain (i.e. owner is
+    // a descendant of the viewer in the team hierarchy).
+    const chain = await repo.getCoachChain(ownerUserId);
+    if (!chain.includes(viewer)) {
+      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
+    }
+  }
+
+  const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
+  const mealDate = row.CreatedAt ? new Date(row.CreatedAt).toISOString() : null;
+
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        ownerUserId,
+        ownerUserName,
+        mealDate,
+        isSelf,
+      },
+    },
+  };
+}
+
+// ─── getPublicCapture ─────────────────────────────────────────────────────
+
+/**
+ * Fetch publicly shareable nutrition data by token.
+ * Returns { pending: true } when analysis is not yet complete.
+ */
+export async function getPublicCapture({ token }) {
+  const row = await repo.findPublicByToken(token);
+  if (!row) {
+    return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link not found or expired' } } };
+  }
+  if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
+    return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
+  }
+  if (!row.AnalysisData) {
+    return { httpStatus: 200, body: { ok: true, data: { pending: true, imageBase64: row.ImageBase64 || null } } };
+  }
+  let analysisData;
+  try {
+    analysisData = typeof row.AnalysisData === 'string' ? JSON.parse(row.AnalysisData) : row.AnalysisData;
+  } catch (_) {
+    analysisData = null;
+  }
+  return {
+    httpStatus: 200,
+    body: {
+      ok: true,
+      data: {
+        pending: false,
+        analysis: analysisData,
+        nutrition: {
+          calories: row.TotalCalories,
+          protein: row.TotalProtein,
+          carbs: row.TotalCarbs,
+          fat: row.TotalFat,
+          fiber: row.TotalFiber,
+        },
+        createdAt: row.CreatedAt,
+        imageBase64: row.ImageBase64 || null,
+      },
+    },
   };
 }

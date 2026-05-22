@@ -1,6 +1,7 @@
 ﻿// src/services/disciplineReportService.js
 import axios from "axios";
 import { cacheManager } from "../../../shared/services/cacheManager";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
 
@@ -19,7 +20,7 @@ const getCacheKey = (type, userId, dateRange, customRange) => {
  */
 export const clearDisciplineReportCache = () => {
   cacheManager.clearPattern("disciplineReport");
-  console.log("ðŸ—‘ï¸ [CACHE] Cleared discipline report cache");
+  debugLog("ðŸ—‘ï¸ [CACHE] Cleared discipline report cache");
 };
 
 export const disciplineReportService = {

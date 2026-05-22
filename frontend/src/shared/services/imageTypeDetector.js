@@ -3,6 +3,7 @@ import { weightDetectionService } from '../../features/weight';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { createTokenTracker, trackCombinedTokenUsage } from './tokenCost';
 import { applyFallbackNutrition } from '../../features/nutrition';
+import { debugLog } from '../utils/logger.js';
 
 /**
  * Image Type Detector Service using Gemini AI
@@ -23,7 +24,7 @@ class ImageTypeDetector {
   async initialize() {
     if (this.initialized) return;
     
-    console.log('🔧 Initializing Image Type Detector (Gemini AI)...');
+    debugLog('🔧 Initializing Image Type Detector (Gemini AI)...');
     
     try {
       // Initialize own Gemini model for detection
@@ -36,7 +37,7 @@ class ImageTypeDetector {
       // Also initialize sub-services for detailed analysis
       await weightDetectionService.initialize();
       this.initialized = true;
-      console.log('✅ Image Type Detector initialized with Gemini AI');
+      debugLog('✅ Image Type Detector initialized with Gemini AI');
     } catch (error) {
       console.error('âŒ Failed to initialize Gemini AI:', error);
       throw new Error('Failed to initialize image type detector');
@@ -59,20 +60,20 @@ class ImageTypeDetector {
     const startTime = Date.now();
     
     try {
-      console.log('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
-      console.log('🚀 [IMAGE-DETECTOR] Starting image analysis...');
-      console.log('📋 [IMAGE-DETECTOR] Input:', {
+      debugLog('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
+      debugLog('🚀 [IMAGE-DETECTOR] Starting image analysis...');
+      debugLog('📋 [IMAGE-DETECTOR] Input:', {
         imageType: typeof image,
         isDataURL: typeof image === 'string' && image.startsWith('data:'),
         hasImageFile: !!imageFile,
         imageFileType: imageFile?.type || 'N/A',
         imageFileSize: imageFile?.size ? `${(imageFile.size / 1024).toFixed(1)}KB` : 'N/A',
       });
-      console.log('â±ï¸ [IMAGE-DETECTOR] Timeout: 50s per API call');
+      debugLog('â±ï¸ [IMAGE-DETECTOR] Timeout: 50s per API call');
 
       // Initialize if not already done
       if (!this.initialized) {
-        console.log('🔧 [IMAGE-DETECTOR] Not initialized, initializing now...');
+        debugLog('🔧 [IMAGE-DETECTOR] Not initialized, initializing now...');
         await this.initialize();
       }
 
@@ -83,7 +84,7 @@ class ImageTypeDetector {
       }
 
       const imageBase64 = await this.fileToBase64(imgFile);
-      console.log('📸 [IMAGE-DETECTOR] Image prepared:', {
+      debugLog('📸 [IMAGE-DETECTOR] Image prepared:', {
         mimeType: imgFile.type || 'image/jpeg',
         base64Length: imageBase64.length,
         sizeKB: `${(imageBase64.length / 1024).toFixed(1)}KB`,
@@ -187,9 +188,9 @@ CLASSIFY AS "weight" if you see ANY of these:
 
 Return ONLY JSON matching ONE of the above formats.`;
 
-      console.log('⚡ [UNIFIED API] Single call for detection + analysis');
-      console.log('⚡ Model: gemini-2.5-flash-lite');
-      console.log('⚡ Calling Gemini API...');
+      debugLog('⚡ [UNIFIED API] Single call for detection + analysis');
+      debugLog('⚡ Model: gemini-2.5-flash-lite');
+      debugLog('⚡ Calling Gemini API...');
       
       const apiCallStart = Date.now();
       const apiResult = await Promise.race([
@@ -197,16 +198,16 @@ Return ONLY JSON matching ONE of the above formats.`;
         this.timeoutPromise(this.timeout, 'Unified API timeout after 50s')
       ]);
       const apiCallTime = Date.now() - apiCallStart;
-      console.log(`â±ï¸ [PERF] 🎯 Gemini API response received: ${apiCallTime}ms`);
+      debugLog(`â±ï¸ [PERF] 🎯 Gemini API response received: ${apiCallTime}ms`);
       
       const apiResponse = await apiResult.response;
       const apiText = apiResponse.text();
-      console.log('⚡ [UNIFIED API] Raw response:', apiText.substring(0, 300) + '...');
+      debugLog('⚡ [UNIFIED API] Raw response:', apiText.substring(0, 300) + '...');
       
       const parseStart = Date.now();
       const analysisData = this.parseJsonResponse(apiText);
-      console.log(`â±ï¸ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);
-      console.log('🤖 [DEBUG] Parsed Result:', {
+      debugLog(`â±ï¸ [PERF] JSON parsing: ${Date.now() - parseStart}ms`);
+      debugLog('🤖 [DEBUG] Parsed Result:', {
         type: analysisData.type,
         confidence: analysisData.confidence,
         hasFoods: !!analysisData.foods,
@@ -216,14 +217,14 @@ Return ONLY JSON matching ONE of the above formats.`;
       
       // ðŸ” LOG RAW AI NUTRITION DATA (before any fallback)
       if (analysisData.type === 'food' && analysisData.foods) {
-        console.log('🤖 [RAW AI NUTRITION] What AI returned BEFORE fallback:');
+        debugLog('🤖 [RAW AI NUTRITION] What AI returned BEFORE fallback:');
         analysisData.foods.forEach((food, idx) => {
           const cal = food.nutrition?.calories;
           const protein = food.nutrition?.protein;
           const carbs = food.nutrition?.carbs;
           const fat = food.nutrition?.fat;
           const status = (cal === 0 || cal === undefined) ? 'âŒ NEEDS FALLBACK' : '✅ HAS DATA';
-          console.log(`   ${idx + 1}. "${food.name}": ${cal || 0} cal, ${carbs || 0}g carbs, ${protein || 0}g protein, ${fat || 0}g fat ${status}`);
+          debugLog(`   ${idx + 1}. "${food.name}": ${cal || 0} cal, ${carbs || 0}g carbs, ${protein || 0}g protein, ${fat || 0}g fat ${status}`);
         });
       }
       
@@ -233,10 +234,10 @@ Return ONLY JSON matching ONE of the above formats.`;
       if (analysisData.type === 'weight') operationType = 'weight_detection';
       
       // Log detected type
-      console.log(`ðŸ” Detected: ${analysisData.type} (confidence: ${analysisData.confidence})`);
+      debugLog(`ðŸ” Detected: ${analysisData.type} (confidence: ${analysisData.confidence})`);
       
       const totalTime = Date.now() - startTime;
-      console.log(`â±ï¸ [TIMING] Total time: ${totalTime}ms (50% faster!)`);
+      debugLog(`â±ï¸ [TIMING] Total time: ${totalTime}ms (50% faster!)`);
 
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
       // Track token usage (single call)
@@ -257,7 +258,7 @@ Return ONLY JSON matching ONE of the above formats.`;
       // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
       // ⌚ SMARTWATCH / FITNESS APP — highest specificity check first
       if (analysisData.type === 'smartwatch' && analysisData.confidence > 0.5) {
-        console.log('⌚ [RESULT] Returning SMARTWATCH result:', analysisData.caloriesBurned, 'kcal from', analysisData.source);
+        debugLog('⌚ [RESULT] Returning SMARTWATCH result:', analysisData.caloriesBurned, 'kcal from', analysisData.source);
         return {
           type: 'smartwatch',
           confidence: analysisData.confidence,
@@ -303,17 +304,17 @@ Return ONLY JSON matching ONE of the above formats.`;
       }
 
       // Default to food
-      console.log('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
-      console.log('ðŸ½ï¸ [RESULT] Returning FOOD result:');
-      console.log('ðŸ½ï¸ [RESULT] Foods count:', analysisData.foods?.length || 0);
-      console.log('ðŸ½ï¸ [RESULT] Foods:', analysisData.foods?.map(f => `${f.name} (${f.nutrition?.calories || 0} cal)`).join(', ') || 'NONE');
-      console.log('ðŸ½ï¸ [RESULT] Total calories:', analysisData.total?.calories || 0);
-      console.log('ðŸ½ï¸ [RESULT] Confidence:', analysisData.confidence || 0.5);
+      debugLog('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
+      debugLog('ðŸ½ï¸ [RESULT] Returning FOOD result:');
+      debugLog('ðŸ½ï¸ [RESULT] Foods count:', analysisData.foods?.length || 0);
+      debugLog('ðŸ½ï¸ [RESULT] Foods:', analysisData.foods?.map(f => `${f.name} (${f.nutrition?.calories || 0} cal)`).join(', ') || 'NONE');
+      debugLog('ðŸ½ï¸ [RESULT] Total calories:', analysisData.total?.calories || 0);
+      debugLog('ðŸ½ï¸ [RESULT] Confidence:', analysisData.confidence || 0.5);
       
       // 🔴 CRITICAL: Apply fallback nutrition for foods with 0 or missing nutrition
       let foodsWithNutrition = analysisData.foods || [];
       if (foodsWithNutrition.length > 0) {
-        console.log('🔧 [NUTRITION-CHECK] Checking for missing nutrition values...');
+        debugLog('🔧 [NUTRITION-CHECK] Checking for missing nutrition values...');
         const beforeFallback = foodsWithNutrition.map(f => ({
           name: f.name,
           calories: f.nutrition?.calories || 0
@@ -327,10 +328,10 @@ Return ONLY JSON matching ONE of the above formats.`;
           source: f.nutritionSource || 'ai'
         }));
         
-        console.log('🔧 [NUTRITION-CHECK] Before fallback:', beforeFallback);
-        console.log('🔧 [NUTRITION-CHECK] After fallback:', afterFallback);
+        debugLog('🔧 [NUTRITION-CHECK] Before fallback:', beforeFallback);
+        debugLog('🔧 [NUTRITION-CHECK] After fallback:', afterFallback);
       }
-      console.log('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
+      debugLog('â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”â”');
       
       // 🔴 CRITICAL: Set originalAiName for each food BEFORE returning
       // This ensures debug logging shows the correct AI detected name
@@ -385,6 +386,76 @@ Return ONLY JSON matching ONE of the above formats.`;
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  /**
+   * ⚡ FAST classification-only call. Returns just the image type label as
+   * quickly as possible (typical 400–900 ms vs. 2–4 s for the full unified
+   * call) so the UI can surface the Share button the moment "food" is
+   * confirmed — without waiting for full nutrition extraction.
+   *
+   * Uses the same Gemini model as the unified call but a minimal prompt so
+   * the response is a single short JSON object. The full nutrition analysis
+   * (`detectImageType`) is still run separately by the caller.
+   *
+   * @param {File|string} image - File or data URL
+   * @returns {Promise<{type:string, confidence:number}>}
+   */
+  async classifyImageTypeFast(image) {
+    const t0 = Date.now();
+    try {
+      if (!this.initialized) await this.initialize();
+      if (!this.model) throw new Error('Gemini model not initialised');
+
+      let imgFile = image;
+      if (typeof image === 'string' && image.startsWith('data:')) {
+        imgFile = this.dataURLToFile(image);
+      }
+      const imageBase64 = await this.fileToBase64(imgFile);
+      const imagePart = {
+        inlineData: {
+          data: imageBase64.split(',')[1] || imageBase64,
+          mimeType: imgFile.type || 'image/jpeg',
+        },
+      };
+
+      const prompt = `Classify this image into ONE category and return ONLY JSON.
+Categories:
+- "education" - online meeting (Zoom/Meet/Teams) or in-person group gathering
+- "weight" - weighing scale OR body-composition app screenshot (Huawei Health, Mi Fit, Renpho, etc.)
+- "smartwatch" - smartwatch/fitness band activity screen showing calories burned/steps
+- "food" - food, meal or drink (default)
+Return EXACTLY: {"type":"food|weight|education|smartwatch","confidence":0.0-1.0}`;
+
+      const result = await Promise.race([
+        this.model.generateContent([prompt, imagePart]),
+        this.timeoutPromise(10000, 'Fast classify timeout after 10s'),
+      ]);
+      const response = await result.response;
+      const text = response.text();
+      const parsed = this.parseJsonResponse(text);
+      const out = {
+        type: parsed.type || 'food',
+        confidence: typeof parsed.confidence === 'number' ? parsed.confidence : 0.5,
+      };
+      debugLog(`⚡ [FAST-CLASSIFY] ${Date.now() - t0}ms → ${out.type} (conf=${out.confidence})`);
+
+      // Fire-and-forget token tracking — never block the UI on this.
+      trackCombinedTokenUsage({
+        responses: [{ response, label: 'FastClassify' }],
+        operationType: 'fast_classification',
+        modelName: 'gemini-2.5-flash-lite',
+        userId: this.tokenTracker.getCurrentUserId(),
+        userEmail: this.tokenTracker.getCurrentUserEmail(),
+        processingTime: Date.now() - t0,
+      }).catch(() => {});
+
+      return out;
+    } catch (err) {
+      debugLog(`⚡ [FAST-CLASSIFY] FAILED in ${Date.now() - t0}ms: ${err?.message || err}`);
+      // Soft-fail: pretend unknown so caller falls back to full detect.
+      return { type: 'unknown', confidence: 0 };
+    }
   }
 
   /**

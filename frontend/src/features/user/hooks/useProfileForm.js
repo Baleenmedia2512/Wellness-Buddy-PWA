@@ -23,7 +23,7 @@ export default function useProfileForm(initial = {}) {
   // Optionally re-prime when initial reference changes.
   useEffect(() => {
     if (initial.__prime) reload(initial);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [initial.__prime]);
 
   const heightNum = parseFloat(height);

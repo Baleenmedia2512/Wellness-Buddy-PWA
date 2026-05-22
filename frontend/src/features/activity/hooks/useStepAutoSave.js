@@ -13,6 +13,7 @@ import { useCallback } from 'react';
 import { writeBaseline } from '../services/stepCounterStorage';
 import { toDateKey } from '../services/stepCounterCalculations';
 import { AUTO_SAVE_INTERVAL_MS } from '../services/stepCounterConstants';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
   const setupAutoSave = useCallback(() => {
@@ -20,8 +21,8 @@ export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
     refs.autoSaveTimerRef.current = setInterval(() => {
       refs.saveStepsToDatabaseRef.current?.();
     }, AUTO_SAVE_INTERVAL_MS);
-    console.log(`[StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    debugLog(`[StepCounter] UI timer started (${AUTO_SAVE_INTERVAL_MS / 1000}s interval)`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   const setupMidnightReset = useCallback(() => {
@@ -33,7 +34,7 @@ export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
 
     if (refs.midnightTimerRef.current) clearTimeout(refs.midnightTimerRef.current);
     refs.midnightTimerRef.current = setTimeout(async () => {
-      console.log('[StepCounter] Midnight reset');
+      debugLog('[StepCounter] Midnight reset');
       if (refs.latestSensorTotalRef.current !== null) {
         writeBaseline(toDateKey(), refs.latestSensorTotalRef.current);
       }
@@ -49,8 +50,8 @@ export function useStepAutoSave({ refs, setTodaySteps, setTodayCalories }) {
       setupMidnightReset(); // re-arm
     }, msUntilMidnight);
 
-    console.log(`[StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    debugLog(`[StepCounter] Midnight reset scheduled in ${Math.floor(msUntilMidnight / 60000)} min`);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   return { setupAutoSave, setupMidnightReset };

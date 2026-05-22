@@ -16,6 +16,7 @@ import {
   OverviewPanels,
   MealAnalysisModal,
 } from "./dashboard";
+import { debugLog } from '../../../shared/utils/logger.js';
 import {
   useUserCalorieTarget,
   useBurnedCalories,
@@ -95,7 +96,7 @@ const NutritionDashboard = ({
   const [isEditing, setIsEditing] = useState(false);
   const [saveStatus, setSaveStatus] = useState(null); // 'success' | 'error' | null
   const [editingStates, setEditingStates] = useState({});
-  // eslint-disable-next-line no-unused-vars -- value unread; setter retained for re-render side effect
+  // eslint-disable-next-line no-unused-vars -- value unread; setter retained for re-render side effect // variable is used conditionally or for side-effects // variable is used conditionally or for side-effects
   const [editingIndex, setEditingIndex] = useState(null);
   const [resetKey] = useState(0);
   const itemRefs = useRef({});
@@ -198,7 +199,7 @@ const NutritionDashboard = ({
       const foodData = parseAnalysisData(selectedMeal.AnalysisData);
 
       // Ã°Å¸â€Â DEBUG: Log what we're loading from database
-      console.log("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
+      debugLog("Ã°Å¸â€Â [NutritionDashboard] Loading from database:", {
         foods: foodData.detailedItems?.map((item) => ({
           name: item.name,
           weight_g: item.weight_g,
@@ -213,7 +214,7 @@ const NutritionDashboard = ({
       // Transform database format to EditableFoodItem expected format
       const transformedItems = (foodData.detailedItems || []).map((item) => {
         const transformed = transformDbItemToEditable(item);
-        console.log("[NutritionDashboard] Transformed item:", {
+        debugLog("[NutritionDashboard] Transformed item:", {
           name: item.name,
           originalAiName: transformed.originalAiName,
           wasAutoCorrected: transformed.wasAutoCorrected,
@@ -352,7 +353,7 @@ const NutritionDashboard = ({
         if (result.caloriesBurned > 0) {
           // NOTE: watch calories are managed via App.js watchBurnedCalories state (prop).
           // This legacy handler is no longer used â€” upload happens on main page via WatchActivityCard.
-          console.log(
+          debugLog(
             `[BurnToBalance] ðŸ“· Extracted ${result.caloriesBurned} kcal burned from ${result.source} (confidence: ${result.confidence})`,
           );
         } else {

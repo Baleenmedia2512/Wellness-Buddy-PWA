@@ -35,7 +35,9 @@ const config = {
       '*.googleapis.com',
       '*.firebase.com',
       '*.firebaseapp.com',
-      '*.firebaseio.com'
+      '*.firebaseio.com',
+      'share.wellnessvalley.app',
+      '*.wellnessvalley.app'
     ],
     cleartext: false
   },

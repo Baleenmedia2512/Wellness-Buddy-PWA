@@ -1,0 +1,41 @@
+name: Rollback Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_deployment:
+        description: 'Vercel deployment URL or ID to promote'
+        required: true
+      reason:
+        description: 'Why are we rolling back?'
+        required: true
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Promote previous deployment
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG: ${{ secrets.VERCEL_ORG }}
+        run: |
+          npx -y vercel@latest promote ${{ inputs.target_deployment }} \
+            --token=$VERCEL_TOKEN \
+            --scope=$VERCEL_ORG
+      - name: Smoke after rollback
+        env:
+          SMOKE_BASE_URL: https://wellness-buddy-pwa.vercel.app
+        run: node scripts/smoke-test.js
+      - name: Open incident issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Production rollback ${new Date().toISOString()}`,
+              labels: ['incident', 'rollback'],
+              body: `Target: ${{ inputs.target_deployment }}\nReason: ${{ inputs.reason }}\nTriggered by: @${{ github.actor }}`
+            });

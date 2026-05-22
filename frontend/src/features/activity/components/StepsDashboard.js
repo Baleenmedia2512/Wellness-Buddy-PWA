@@ -6,6 +6,7 @@ import {
 import { fetchDailyActivity } from '../services/dailyActivityService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const CALORIES_PER_STEP = 0.04;
 const STEP_GOAL = 10000;
@@ -224,10 +225,10 @@ const StepsDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSet
         const selectedIndex = scrollableDates.findIndex(
           (d) => d.date.toDateString() === selectedDate.toDateString()
         );
-        console.log('[StepsDashboard] Scroll attempt - selectedIndex:', selectedIndex, 'isMobile:', isMobileDevice());
+        debugLog('[StepsDashboard] Scroll attempt - selectedIndex:', selectedIndex, 'isMobile:', isMobileDevice());
         if (selectedIndex !== -1) {
           const el = document.querySelector(`[data-steps-date-index="${selectedIndex}"]`);
-          console.log('[StepsDashboard] Found element:', !!el, 'at index', selectedIndex);
+          debugLog('[StepsDashboard] Found element:', !!el, 'at index', selectedIndex);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
       }, 300);

@@ -9,6 +9,7 @@
  */
 
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
+import logger from '../../../shared/lib/logger.js';
 
 export default async function handler(req, res) {
   // Handle CORS
@@ -46,7 +47,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('📊 [get-enrollments] Request:', { email, userOnly });
+    logger.debug('📊 [get-enrollments] Request:', { email, userOnly });
 
     const supabase = getSupabaseClient();
 
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('✅ [get-enrollments] User found:', {
+    logger.debug('✅ [get-enrollments] User found:', {
       userId: requestingUser.UserId,
       role: requestingUser.Role,
     });
@@ -163,7 +164,7 @@ export default async function handler(req, res) {
         currentLevel++;
       }
 
-      console.log(`✅ [get-enrollments] Coach viewing: ${teamUserIds.length} total members (multi-level hierarchy)`);
+      logger.debug(`✅ [get-enrollments] Coach viewing: ${teamUserIds.length} total members (multi-level hierarchy)`);
       query = query.in('"UserId"', teamUserIds);
     }
 
@@ -230,7 +231,7 @@ export default async function handler(req, res) {
       };
     });
 
-    console.log('✅ [get-enrollments] Returning enrollments:', enrichedEnrollments.length);
+    logger.debug('✅ [get-enrollments] Returning enrollments:', enrichedEnrollments.length);
 
     return res.status(200).json({
       success: true,

@@ -106,7 +106,7 @@ export function createRuntime() {
       }
     } catch (err) {
       // Shadow-mode FSM must never throw into the host.
-      // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
       console.error("[AuthFSM:runtime] send threw", err);
     }
   }

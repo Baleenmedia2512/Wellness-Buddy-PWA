@@ -3,6 +3,7 @@ import html2canvas from "html2canvas";
 import { Share } from "@capacitor/share";
 import { Filesystem, Directory } from "@capacitor/filesystem";
 import { Capacitor } from "@capacitor/core";
+import { debugLog } from './logger.js';
 
 /**
  * Reliably check if running on native platform (not web browser)
@@ -47,7 +48,7 @@ export const precaptureShareImage = (element, options = {}) => {
           foreignObjectRendering: false,
         });
         const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        console.log(
+        debugLog(
           `🟢 Pre-captured share image in ${Math.round(performance.now() - start)} ms (${Math.round(dataUrl.length / 1024)} KB string)`,
         );
         resolve(dataUrl);
@@ -64,6 +65,104 @@ export const precaptureShareImage = (element, options = {}) => {
       setTimeout(run, 50);
     }
   });
+};
+
+/**
+ * Share a pre-captured image data URL via the standard Capacitor Share API
+ * (NOT the custom WhatsAppShare plugin). The image, caption text, and link
+ * are all passed to `Share.share({ files, text, title })` so the user can
+ * pick any target (WhatsApp, Telegram, Messages, etc.) from the native
+ * share sheet. No clipboard, no manual paste.
+ *
+ * Returns:
+ *   { ok: true, dismissed: false } — share completed
+ *   { ok: true, dismissed: true }  — user cancelled the share sheet
+ *   { ok: false, error }           — fatal failure (caller should fall back)
+ *
+ * @param {string} dataUrl  - JPEG/PNG data URL of the image to share
+ * @param {object} options  - { title, text, fileName }
+ */
+export const shareViaCapacitorAPI = async (dataUrl, options = {}) => {
+  const {
+    title = "Wellness Valley",
+    text = "",
+    fileName = `wellness-valley-${Date.now()}.jpg`,
+  } = options;
+
+  if (!dataUrl || typeof dataUrl !== "string" || !dataUrl.startsWith("data:")) {
+    return { ok: false, error: new Error("invalid dataUrl") };
+  }
+
+  const isCanceled = (err) => {
+    const msg = (err?.message || "").toLowerCase();
+    return msg.includes("cancel") || msg.includes("dismiss") || msg.includes("abort");
+  };
+
+  // ── NATIVE (iOS / Android) ────────────────────────────────────────────
+  if (Capacitor.isNativePlatform()) {
+    let writtenPath = null;
+    try {
+      const base64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+      const writeResult = await Filesystem.writeFile({
+        path: fileName,
+        data: base64,
+        directory: Directory.Cache,
+      });
+      writtenPath = fileName;
+      debugLog("📤 [CapacitorShare] file written:", writeResult.uri);
+
+      await Share.share({
+        title,
+        text,
+        files: [writeResult.uri],
+        dialogTitle: title,
+      });
+
+      debugLog("✅ [CapacitorShare] Share.share resolved");
+      return { ok: true, dismissed: false };
+    } catch (err) {
+      if (isCanceled(err)) {
+        debugLog("ℹ️ [CapacitorShare] user cancelled share sheet");
+        return { ok: true, dismissed: true };
+      }
+      console.error("❌ [CapacitorShare] native share failed:", err);
+      return { ok: false, error: err };
+    } finally {
+      if (writtenPath) {
+        setTimeout(() => {
+          Filesystem.deleteFile({
+            path: writtenPath,
+            directory: Directory.Cache,
+          }).catch(() => {});
+        }, 120000);
+      }
+    }
+  }
+
+  // ── WEB (navigator.share with file) ──────────────────────────────────
+  try {
+    const blob = await (await fetch(dataUrl)).blob();
+    const file = new File([blob], fileName, { type: blob.type || "image/jpeg" });
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ title, text, files: [file] });
+      return { ok: true, dismissed: false };
+    }
+
+    // Last-resort web fallback — share text/url only.
+    if (navigator.share) {
+      await navigator.share({ title, text });
+      return { ok: true, dismissed: false };
+    }
+
+    return { ok: false, error: new Error("Web Share API not available") };
+  } catch (err) {
+    if (isCanceled(err)) {
+      return { ok: true, dismissed: true };
+    }
+    console.error("❌ [CapacitorShare] web share failed:", err);
+    return { ok: false, error: err };
+  }
 };
 
 /**
@@ -103,7 +202,7 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
         text,
         mimeType,
       });
-      console.log(
+      debugLog(
         `⚡ Cached share dispatched in ${Math.round(performance.now() - start)} ms`,
       );
       return true;
@@ -112,7 +211,7 @@ export const shareCachedDataUrl = async (dataUrl, options = {}) => {
         err?.message?.toLowerCase().includes("cancel") ||
         err?.message?.toLowerCase().includes("cancelled");
       if (isCanceled) {
-        console.log("ℹ️ User cancelled cached share");
+        debugLog("ℹ️ User cancelled cached share");
         return true; // treat as handled
       }
       console.warn("⚠️ Cached share failed, will fall back:", err);
@@ -166,9 +265,9 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
   } = options;
 
   try {
-    console.log("📸 Starting direct image share...");
+    debugLog("📸 Starting direct image share...");
     const isNative = isNativePlatform();
-    console.log(
+    debugLog(
       "📱 Platform check - Native:",
       isNative,
       "| Capacitor.platform:",
@@ -191,19 +290,19 @@ export const shareImageDirectly = async (imageUrl, options = {}) => {
       blob = await response.blob();
     }
 
-    console.log("✅ Image blob created:", blob.size, "bytes", blob.type);
+    debugLog("✅ Image blob created:", blob.size, "bytes", blob.type);
 
     if (isNative) {
       // Native mobile sharing (Capacitor)
-      console.log("📱 Using native share (Android/iOS app)");
+      debugLog("📱 Using native share (Android/iOS app)");
       await shareNativeImage(blob, { title, text, fileName, shareAsDocument });
     } else {
       // Web browser - try share with fallback to download
-      console.log("💻 Web browser detected, attempting share with fallback...");
+      debugLog("💻 Web browser detected, attempting share with fallback...");
       await shareWithRetryAndFallback(blob, { title, text, fileName, shareAsDocument });
     }
 
-    console.log("✅ Direct image share completed successfully");
+    debugLog("✅ Direct image share completed successfully");
   } catch (error) {
     console.error("❌ Direct image share failed:", error);
     throw new Error("Failed to share image. Please try again.");
@@ -238,9 +337,9 @@ export const captureAndShare = async (element, options = {}) => {
   } = options;
 
   try {
-    console.log("📸 Starting capture and share process...");
+    debugLog("📸 Starting capture and share process...");
     const isNative = isNativePlatform();
-    console.log(
+    debugLog(
       "📱 Platform check - Native:",
       isNative,
       "| Capacitor.platform:",
@@ -251,7 +350,7 @@ export const captureAndShare = async (element, options = {}) => {
     // On web browser, skip waiting — images are already rendered on screen.
     // Waiting breaks the user gesture window needed for navigator.share().
     const images = element.querySelectorAll("img");
-    console.log("🖼️ Found", images.length, "images in element");
+    debugLog("🖼️ Found", images.length, "images in element");
 
     if (isNative) {
       // Native app: only wait for images that aren't ready yet, with a tight cap.
@@ -274,11 +373,11 @@ export const captureAndShare = async (element, options = {}) => {
     } else {
       // Web browser: skip all waits — every ms counts for the gesture window.
       // Images visible on screen are already decoded by the browser.
-      console.log("💻 Web: skipping image-load wait to preserve gesture context for navigator.share()");
+      debugLog("💻 Web: skipping image-load wait to preserve gesture context for navigator.share()");
     }
 
     // Log element dimensions
-    console.log("📏 Element dimensions:", {
+    debugLog("📏 Element dimensions:", {
       scrollWidth: element.scrollWidth,
       scrollHeight: element.scrollHeight,
       offsetWidth: element.offsetWidth,
@@ -297,7 +396,7 @@ export const captureAndShare = async (element, options = {}) => {
     const webScale = 2;
     const nativeScale = 1.5;
     const captureScale = isNative ? nativeScale : webScale;
-    console.log(`📐 Capture scale: ${captureScale}x`);
+    debugLog(`📐 Capture scale: ${captureScale}x`);
 
     const captureStart = performance.now();
     const canvas = await html2canvas(element, {
@@ -315,9 +414,9 @@ export const captureAndShare = async (element, options = {}) => {
       // and risky (could balloon the captured canvas to many MB and cause layout
       // shifts). Images already render at their on-screen size, which is what we want.
     });
-    console.log(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
+    debugLog(`⏱️ html2canvas took ${Math.round(performance.now() - captureStart)} ms`);
 
-    console.log(
+    debugLog(
       "✅ Canvas created successfully with dimensions:",
       canvas.width,
       "x",
@@ -337,7 +436,7 @@ export const captureAndShare = async (element, options = {}) => {
 
       const dataUrlStart = performance.now();
       const dataUrl = canvas.toDataURL(dataUrlMime, dataUrlQuality);
-      console.log(
+      debugLog(
         `⏱️ canvas.toDataURL took ${Math.round(performance.now() - dataUrlStart)} ms (${Math.round(dataUrl.length / 1024)} KB string, ~${Math.round((dataUrl.length * 0.75) / 1024)} KB binary)`,
       );
 
@@ -355,7 +454,7 @@ export const captureAndShare = async (element, options = {}) => {
           text,
           mimeType: dataUrlMime,
         });
-        console.log(
+        debugLog(
           `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms (fast path)`,
           result,
         );
@@ -365,7 +464,7 @@ export const captureAndShare = async (element, options = {}) => {
           pluginError?.message?.toLowerCase().includes("cancel") ||
           pluginError?.message?.toLowerCase().includes("cancelled");
         if (isCanceled) {
-          console.log("ℹ️ User cancelled share (fast path)");
+          debugLog("ℹ️ User cancelled share (fast path)");
           return;
         }
         console.warn(
@@ -402,33 +501,33 @@ export const captureAndShare = async (element, options = {}) => {
     });
 
     const fileSizeKB = Math.round(blob.size / 1024);
-    console.log(
+    debugLog(
       `✅ Blob created (${isNative ? "JPEG native-optimised" : "JPEG web-optimised"}):`,
       blob.size,
       "bytes (",
       fileSizeKB,
       "KB)",
     );
-    console.log("   Resolution:", canvas.width, "x", canvas.height, "pixels");
+    debugLog("   Resolution:", canvas.width, "x", canvas.height, "pixels");
 
     // Step 3: Share based on platform (native or web browser)
     if (isNative) {
       // Native mobile sharing (Capacitor)
-      console.log("📱 Using native share (Android/iOS app)");
+      debugLog("📱 Using native share (Android/iOS app)");
       await shareNative(blob, { title, text, fileName: finalFileName, shareAsDocument, mimeType });
     } else {
       // Web browser - try Web Share API with fallback to download
-      console.log("💻 Web browser detected, attempting share with fallback...");
+      debugLog("💻 Web browser detected, attempting share with fallback...");
       await shareWithRetryAndFallback(blob, { title, text, fileName: finalFileName, shareAsDocument });
     }
 
-    console.log("✅ Share completed successfully");
+    debugLog("✅ Share completed successfully");
   } catch (error) {
     console.error("❌ Share failed:", error);
 
     // Show user-friendly error message
     if (error.message && error.message.includes("Share canceled")) {
-      console.log("ℹ️ User canceled share");
+      debugLog("ℹ️ User canceled share");
     } else {
       throw new Error("Failed to share image. Please try again.");
     }
@@ -448,13 +547,13 @@ const shareNative = async (
     // Convert blob to base64
     const b64Start = performance.now();
     const base64Data = await blobToBase64(blob);
-    console.log(
+    debugLog(
       `📝 Base64 ready in ${Math.round(performance.now() - b64Start)} ms (${Math.round(base64Data.length / 1024)} KB string)`,
     );
 
     // For Android, use custom WhatsAppSharePlugin for better quality
     if (Capacitor.getPlatform() === "android") {
-      console.log(
+      debugLog(
         "📱 Android detected - using custom WhatsAppSharePlugin for high-quality sharing",
       );
 
@@ -466,10 +565,10 @@ const shareNative = async (
           throw new Error("WhatsAppShare plugin not available");
         }
 
-        console.log(
+        debugLog(
           `💾 Sharing via custom plugin (${mimeType})...`,
         );
-        console.log(
+        debugLog(
           "   File size:",
           Math.round(blob.size / 1024),
           "KB",
@@ -483,7 +582,7 @@ const shareNative = async (
           text: text,
           mimeType: mimeType,
         });
-        console.log(
+        debugLog(
           `✅ Native share intent launched in ${Math.round(performance.now() - pluginStart)} ms`,
           result,
         );
@@ -497,12 +596,12 @@ const shareNative = async (
           pluginError?.message?.toLowerCase().includes("cancelled");
 
         if (isCanceled) {
-          console.log("ℹ️ User cancelled share");
+          debugLog("ℹ️ User cancelled share");
           return;
         }
 
         // Fall back to standard Capacitor share method
-        console.log("⚠️ Falling back to standard Capacitor share...");
+        debugLog("⚠️ Falling back to standard Capacitor share...");
         // Continue to fallback method below
       }
     }
@@ -511,7 +610,7 @@ const shareNative = async (
     // For Android, use external storage for better sharing compatibility
     const platform = Capacitor.getPlatform();
     if (platform === "android" || platform === "ios") {
-      console.log("📱 Using standard Capacitor share method");
+      debugLog("📱 Using standard Capacitor share method");
 
       try {
         const timestamp = Date.now();
@@ -520,8 +619,8 @@ const shareNative = async (
         const base64String = base64Data.split(",")[1];
 
         // Write to Cache directory (always exists, no permission issues)
-        console.log("💾 Writing file to cache storage...");
-        console.log(
+        debugLog("💾 Writing file to cache storage...");
+        debugLog(
           "📄 Document mode:",
           shareAsDocument ? "ENABLED (prevents compression)" : "DISABLED",
         );
@@ -531,18 +630,18 @@ const shareNative = async (
           directory: Directory.Cache,
         });
 
-        console.log("✅ File written:", writeResult.uri);
+        debugLog("✅ File written:", writeResult.uri);
 
         // Get the content URI
         let fileUri = writeResult.uri;
 
         // Log the URI for debugging
-        console.log("🔍 Original URI from writeFile:", fileUri);
-        console.log(
+        debugLog("🔍 Original URI from writeFile:", fileUri);
+        debugLog(
           "🔍 URI starts with content://:",
           fileUri.startsWith("content://"),
         );
-        console.log(
+        debugLog(
           "🔍 URI starts with file://:",
           fileUri.startsWith("file://"),
         );
@@ -556,33 +655,33 @@ const shareNative = async (
           dialogTitle: "Share via",
         };
 
-        console.log(
+        debugLog(
           "💡 Share mode:",
           shareAsDocument ? "Document (full quality)" : "Image (may compress)",
         );
 
-        console.log("📤 Share options:", JSON.stringify(shareOptions, null, 2));
+        debugLog("📤 Share options:", JSON.stringify(shareOptions, null, 2));
 
         // Check if Share API is available
         const canShare = await Share.canShare().catch(() => ({ value: false }));
-        console.log("📊 Can share:", canShare);
+        debugLog("📊 Can share:", canShare);
 
         if (!canShare.value) {
           throw new Error("Share API not available on this device");
         }
 
         // Perform the share
-        console.log(
+        debugLog(
           "🚀 Calling Share.share() with options:",
           JSON.stringify(shareOptions, null, 2),
         );
         const shareResult = await Share.share(shareOptions);
 
-        console.log("✅ Share completed:", shareResult);
+        debugLog("✅ Share completed:", shareResult);
 
         // Log activity type if available (iOS specific)
         if (shareResult && shareResult.activityType) {
-          console.log("📱 Shared via:", shareResult.activityType);
+          debugLog("📱 Shared via:", shareResult.activityType);
         }
 
         // Clean up the file from Cache after 2 minutes
@@ -592,7 +691,7 @@ const shareNative = async (
               path: uniqueFileName,
               directory: Directory.Cache,
             });
-            console.log("✅ Temporary file cleaned up from Cache");
+            debugLog("✅ Temporary file cleaned up from Cache");
           } catch (cleanupError) {
             console.warn("⚠️ Failed to clean up temporary file:", cleanupError);
           }
@@ -609,7 +708,7 @@ const shareNative = async (
           shareError === "Share canceled";
 
         if (isCanceled) {
-          console.log("ℹ️ User cancelled share");
+          debugLog("ℹ️ User cancelled share");
           // Don't throw error for user cancellation
           return;
         }
@@ -648,7 +747,7 @@ const shareNative = async (
  * @param {string} fileName - Name for the downloaded file
  */
 const downloadImage = async (blob, fileName) => {
-  console.log("💾 Downloading image...");
+  debugLog("💾 Downloading image...");
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -658,7 +757,7 @@ const downloadImage = async (blob, fileName) => {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  console.log("✅ Image downloaded successfully");
+  debugLog("✅ Image downloaded successfully");
   
   // Show helpful message
   alert(
@@ -688,17 +787,17 @@ const shareWithRetryAndFallback = async (blob, options) => {
 
   // Check if Web Share API exists at all
   if (!navigator.share) {
-    console.log("❌ Web Share API not supported in this browser, falling back to download");
+    debugLog("❌ Web Share API not supported in this browser, falling back to download");
     await downloadImage(blob, fileName);
     return;
   }
 
   try {
-    console.log("📤 Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
+    debugLog("📤 Attempting Web Share API (files only, no text to avoid NotAllowedError)...");
 
     // ✅ Use blob.type so MIME matches the actual content (JPEG on web, PNG on native fallback)
     const file = new File([blob], fileName, { type: blob.type });
-    console.log(`📄 File prepared: ${fileName} | type: ${blob.type} | size: ${Math.round(blob.size / 1024)} KB`);
+    debugLog(`📄 File prepared: ${fileName} | type: ${blob.type} | size: ${Math.round(blob.size / 1024)} KB`);
 
     // Share with files + title only — DO NOT include text when sharing files.
     // Mixing files+text breaks sharing on iOS Safari and many Android browsers.
@@ -707,7 +806,7 @@ const shareWithRetryAndFallback = async (blob, options) => {
       title: title,
     });
 
-    console.log("✅ Web Share API: share completed successfully!");
+    debugLog("✅ Web Share API: share completed successfully!");
     return;
 
   } catch (error) {
@@ -716,14 +815,14 @@ const shareWithRetryAndFallback = async (blob, options) => {
     // User deliberately cancelled — no fallback, no alert
     if (error.name === "AbortError" ||
         error.message?.toLowerCase().includes("cancel")) {
-      console.log("ℹ️ User cancelled share");
+      debugLog("ℹ️ User cancelled share");
       return;
     }
 
     // NotAllowedError = gesture chain broken OR browser blocked.
     // With JPEG + scale:2, file is ~300-700 KB so size is NOT the issue here.
     if (error.name === "NotAllowedError") {
-      console.log("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
+      debugLog("⚠️ NotAllowedError — gesture context may have expired. Falling back to download.");
       await downloadImage(blob, fileName);
       alert(
         "Image saved to your downloads! 📥\n\n" +
@@ -737,7 +836,7 @@ const shareWithRetryAndFallback = async (blob, options) => {
 
     // File sharing not supported by this browser build — fall back to download
     if (error.name === "TypeError" || error.name === "DataError") {
-      console.log("⚠️ Browser does not support file sharing via Web Share API. Downloading instead.");
+      debugLog("⚠️ Browser does not support file sharing via Web Share API. Downloading instead.");
       await downloadImage(blob, fileName);
       return;
     }
@@ -804,7 +903,7 @@ export const shareToWhatsApp = async (element, message = "") => {
       dialogTitle: "Share to WhatsApp",
     });
 
-    console.log("✅ Shared to WhatsApp:", shareResult);
+    debugLog("✅ Shared to WhatsApp:", shareResult);
 
     // Clean up
     setTimeout(async () => {
@@ -822,5 +921,78 @@ export const shareToWhatsApp = async (element, message = "") => {
     throw new Error(
       "Failed to share to WhatsApp. Make sure WhatsApp is installed.",
     );
+  }
+};
+
+/**
+ * Share a food-analysis image together with a clickable link.
+ *
+ * On native (iOS / Android):
+ *   - Writes the base64 image to the device cache.
+ *   - Calls Share.share({ files: [fileUri], text: caption\nurl }) so every
+ *     messaging app (WhatsApp, Telegram, iMessage…) shows the photo AND a
+ *     tappable URL in a single share-sheet action.
+ *
+ * On web:
+ *   - Falls back to Share.share({ url, text }) — no file, just the link.
+ *
+ * @param {string|null} dataUrl  – base64 data URL ("data:image/jpeg;base64,…")
+ * @param {string}      shareUrl – the public viewer URL to include in the text
+ * @param {Object}      [options]
+ * @param {string}      [options.title]
+ * @param {string}      [options.text]
+ * @param {string}      [options.fileName]
+ */
+export const shareImageWithLink = async (dataUrl, shareUrl, options = {}) => {
+  const {
+    title = "My Meal Analysis",
+    text = "Check out my nutrition analysis! \uD83C\uDF7D\uFE0F",
+    fileName = `wellness-valley-meal-${Date.now()}.jpg`,
+  } = options;
+
+  if (!Capacitor.isNativePlatform()) {
+    // Web fallback — pass url separately so the OS/app makes it a tappable link.
+    // Do NOT embed the URL in text as well or it appears twice in the message.
+    const canShare = await Share.canShare().catch(() => ({ value: false }));
+    if (canShare.value) {
+      await Share.share({
+        title,
+        text,
+        url: shareUrl,
+        dialogTitle: "Share Meal Analysis",
+      });
+    }
+    return;
+  }
+
+  // Native: write the image to cache then share file + URL in the text field.
+  // (The `url` field is ignored by most native share targets when `files` is
+  // present, so we embed the link in `text` instead.)
+  const textWithLink = shareUrl ? `${text}\n${shareUrl}` : text;
+  try {
+    if (dataUrl && dataUrl.startsWith("data:")) {
+      const base64String = dataUrl.split(",")[1];
+      const writeResult = await Filesystem.writeFile({
+        path: fileName,
+        data: base64String,
+        directory: Directory.Cache,
+      });
+      await Share.share({
+        title,
+        text: textWithLink,
+        files: [writeResult.uri],
+        dialogTitle: "Share Meal Analysis",
+      });
+    } else {
+      // No image available — share URL only
+      await Share.share({
+        title,
+        text: textWithLink,
+        dialogTitle: "Share Meal Analysis",
+      });
+    }
+  } catch (err) {
+    const cancelled = err?.message?.toLowerCase().includes("cancel");
+    if (!cancelled) throw err;
   }
 };

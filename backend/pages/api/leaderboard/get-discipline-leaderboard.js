@@ -7,6 +7,7 @@ import {
   formatDateForMySQL,
   getDaysBetween,
 } from "../../../utils/disciplineHelpers.js";
+import logger from '../../../shared/lib/logger.js';
 
 // ✅ HARDCODED BUFFER: Extra seconds added to every meal/activity window end time
 // Ensures uploads made within the last minute of the window (e.g. 08:30:51) are counted on-time
@@ -67,7 +68,7 @@ export default async function handler(req, res) {
     // Get topN parameter (default to 10, max 10)
     const topN = Math.min(parseInt(req.query.topN) || 10, 10);
 
-    console.log(
+    logger.debug(
       `🏆 [DISCIPLINE-LEADERBOARD] Calculating discipline leaderboard (Top ${topN})...`,
     );
 
@@ -80,7 +81,7 @@ export default async function handler(req, res) {
     if (usersError) throw usersError;
 
     if (!activeUsers || activeUsers.length === 0) {
-      console.log("⚠️ [DISCIPLINE-LEADERBOARD] No active users found");
+      logger.debug("⚠️ [DISCIPLINE-LEADERBOARD] No active users found");
       return res.status(200).json({
         success: true,
         data: [],
@@ -89,7 +90,7 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log(
+    logger.debug(
       `✅ [DISCIPLINE-LEADERBOARD] Found ${activeUsers.length} active users`,
     );
 
@@ -124,7 +125,7 @@ export default async function handler(req, res) {
     const endDateStr = formatDateForMySQL(dates.end);
     const daysInPeriod = getDaysBetween(dates.start, dates.end);
 
-    console.log(
+    logger.debug(
       `📅 [DISCIPLINE-LEADERBOARD] Period: ${startDateStr} to ${endDateStr} (${daysInPeriod} days)`,
     );
 
@@ -415,7 +416,7 @@ export default async function handler(req, res) {
       previousPercentage = user.disciplinePercentage;
     });
 
-    console.log(
+    logger.debug(
       `🏆 [DISCIPLINE-LEADERBOARD] Top ${topResults.length} discipline champions calculated`,
     );
     console.table(

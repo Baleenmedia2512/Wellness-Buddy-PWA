@@ -25,6 +25,7 @@
 
 import { registerPlugin, Capacitor } from '@capacitor/core';
 import axios from 'axios';
+import { debugLog } from '../utils/logger.js';
 
 // ── Native plugin bridge ────────────────────────────────────────────────────
 const ReminderPluginNative = registerPlugin('ReminderPlugin', {
@@ -244,7 +245,7 @@ const isNative = () => Capacitor.isNativePlatform();
  */
 export async function applyRemindersToNative(prefs) {
   if (!isNative()) {
-    console.log('[ReminderService] Not on native platform — skipping alarm scheduling');
+    debugLog('[ReminderService] Not on native platform — skipping alarm scheduling');
     return;
   }
 
@@ -266,7 +267,7 @@ export async function applyRemindersToNative(prefs) {
     reminders,
   });
 
-  console.log('[ReminderService] scheduleAll called — masterEnabled:', prefs.masterEnabled,
+  debugLog('[ReminderService] scheduleAll called — masterEnabled:', prefs.masterEnabled,
     'enabled activities:', reminders.filter((r) => r.enabled).map((r) => r.activityType));
 }
 

@@ -34,6 +34,7 @@ import {
   Trash2,
 } from "lucide-react";
 import BathroomScaleIcon from "../../../shared/components/icons/BathroomScaleIcon";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const DELETE_UNDO_SECONDS = 5;
 
@@ -253,18 +254,18 @@ const EditableFoodItem = forwardRef(
 
     // Select food from search results
     const handleFoodSelect = async (food) => {
-      console.log("[CORRECTION DEBUG] handleFoodSelect triggered");
-      console.log(
+      debugLog("[CORRECTION DEBUG] handleFoodSelect triggered");
+      debugLog(
         "[CORRECTION DEBUG] Original food:",
         originalFoodRef.current?.name,
       );
-      console.log("[CORRECTION DEBUG] New food selected:", food.name);
-      console.log("\nðŸ” [GRAM/ML DEBUG] Selected food properties:");
-      console.log("   - food.name:", food.name);
-      console.log("   - food.isLiquid:", food.isLiquid);
-      console.log("   - food.unit:", food.unit);
-      console.log("   - food.defaultServing:", food.defaultServing);
-      console.log("   - food.per100g:", food.per100g);
+      debugLog("[CORRECTION DEBUG] New food selected:", food.name);
+      debugLog("\nðŸ” [GRAM/ML DEBUG] Selected food properties:");
+      debugLog("   - food.name:", food.name);
+      debugLog("   - food.isLiquid:", food.isLiquid);
+      debugLog("   - food.unit:", food.unit);
+      debugLog("   - food.defaultServing:", food.defaultServing);
+      debugLog("   - food.per100g:", food.per100g);
 
       setSelectedFood(food);
       setSearchQuery(food.name);
@@ -273,7 +274,7 @@ const EditableFoodItem = forwardRef(
       // ✅ CRITICAL FIX: Mark that user made a change (food selection)
       // This ensures "Close Edit" button will save the change
       hasUserChangesRef.current = true;
-      console.log("   ✅ Marked as user change - will save on Close Edit");
+      debugLog("   ✅ Marked as user change - will save on Close Edit");
 
       // Mark that name has changed - correction will be saved in handleAutoSave with final nutrition data
       const originalName = originalFoodRef.current?.name;
@@ -284,14 +285,14 @@ const EditableFoodItem = forwardRef(
         newName &&
         originalName.trim().toLowerCase() !== newName.trim().toLowerCase()
       ) {
-        console.log("[CORRECTION DEBUG] ✅ Name changed - will save correction after serving adjustment");
+        debugLog("[CORRECTION DEBUG] ✅ Name changed - will save correction after serving adjustment");
         correctionSavedRef.current = false; // Reset to allow saving in handleAutoSave
       }
 
       // Get userId and cache it for later use in handleAutoSave
       try {
         if (!userIdRef.current && user) {
-          console.log("[CORRECTION DEBUG] Caching userId for later...");
+          debugLog("[CORRECTION DEBUG] Caching userId for later...");
           const userId = await getUserId(user);
           if (userId) {
             userIdRef.current = userId;
@@ -319,7 +320,7 @@ const EditableFoodItem = forwardRef(
           foodItem.serving?.description || foodItem.portionDescription || "";
         const unitMatch = originalDesc.match(/([a-zA-Z]+)\s*$/);
         existingUnit = unitMatch ? unitMatch[1] : null;
-        console.log(
+        debugLog(
           `ðŸ” Original unit from foodItem: "${existingUnit}" (from: "${originalDesc}")`,
         );
       }
@@ -336,7 +337,7 @@ const EditableFoodItem = forwardRef(
           quantity % 1 === 0 ? 0 : 1,
         )} ${existingUnit}`;
         baseServingGrams = existingGrams;
-        console.log(
+        debugLog(
           `✅ Preserving user's existing unit: ${existingUnit} with ${existingGrams}ml as "${baseServingDescription}"`,
         );
       } else {
@@ -377,7 +378,7 @@ const EditableFoodItem = forwardRef(
           food.name,
           baseServingDescription,
         );
-        console.log(
+        debugLog(
           `✅ Generated ${options.length} consistent serving options locally`,
         );
       } else {
@@ -394,11 +395,11 @@ const EditableFoodItem = forwardRef(
 
       setServingOptions(options);
 
-      console.log("\nðŸ½ï¸ [GRAM/ML DEBUG] Generated", options.length, "serving options:");
+      debugLog("\nðŸ½ï¸ [GRAM/ML DEBUG] Generated", options.length, "serving options:");
       options.slice(0, 3).forEach((opt, idx) => {
-        console.log(`   [${idx}]:`, opt.description, "-", opt.grams, "g/ml");
+        debugLog(`   [${idx}]:`, opt.description, "-", opt.grams, "g/ml");
       });
-      if (options.length > 3) console.log("   ... and", options.length - 3, "more options");
+      if (options.length > 3) debugLog("   ... and", options.length - 3, "more options");
 
       // Find the closest serving option to the existing weight (for display purposes)
       if (hasExistingWeight) {
@@ -412,14 +413,14 @@ const EditableFoodItem = forwardRef(
 
         setCurrentServing(options[closestIndex]);
         setCurrentServingIndex(closestIndex);
-        console.log("   ✅ Kept existing weight:", existingGrams, "g/ml (closest option index:", closestIndex, ")");
+        debugLog("   ✅ Kept existing weight:", existingGrams, "g/ml (closest option index:", closestIndex, ")");
         // Keep the existing customGrams value - DO NOT override it
       } else {
         // Fallback to default serving only if no valid existing weight
         setCurrentServing(options[0]);
         setCurrentServingIndex(0);
         setCustomGrams(options[0].grams.toString());
-        console.log("   ✅ Set default serving:", options[0].description, "-", options[0].grams, "g/ml");
+        debugLog("   ✅ Set default serving:", options[0].description, "-", options[0].grams, "g/ml");
       }
 
     };
@@ -428,9 +429,9 @@ const EditableFoodItem = forwardRef(
     const handleGramsChange = (e) => {
       let value = e.target.value;
 
-      console.log("\nâŒ¨ï¸ [GRAM/ML DEBUG] User typing in input:");
-      console.log("   - Raw input value:", value);
-      console.log("   - Previous customGrams:", customGrams);
+      debugLog("\nâŒ¨ï¸ [GRAM/ML DEBUG] User typing in input:");
+      debugLog("   - Raw input value:", value);
+      debugLog("   - Previous customGrams:", customGrams);
 
       // Strip any non-numeric characters except decimal point
       value = value.replace(/[^0-9.]/g, '');
@@ -441,12 +442,12 @@ const EditableFoodItem = forwardRef(
         value = parts[0] + '.' + parts.slice(1).join('');
       }
 
-      console.log("   - Sanitized value:", value);
+      debugLog("   - Sanitized value:", value);
 
       // Allow only numbers and decimal point
       if (value === "" || /^\d*\.?\d*$/.test(value)) {
         setCustomGrams(value);
-        console.log("   ✅ Valid input - customGrams updated to:", value);
+        debugLog("   ✅ Valid input - customGrams updated to:", value);
 
         // Phase 1: Mark that user made a change
         hasUserChangesRef.current = true;
@@ -455,7 +456,7 @@ const EditableFoodItem = forwardRef(
         correctionSavedRef.current = false;
 
         const gramsValue = parseFloat(value);
-        console.log("   - Parsed gramsValue:", gramsValue, "(Type:", typeof gramsValue, ")");
+        debugLog("   - Parsed gramsValue:", gramsValue, "(Type:", typeof gramsValue, ")");
 
         if (!isNaN(gramsValue) && servingOptions.length > 0) {
           // Check if grams exactly match any serving option (within 1g tolerance)
@@ -467,8 +468,8 @@ const EditableFoodItem = forwardRef(
             // Exact match found - update serving display to match
             setCurrentServing(servingOptions[exactMatchIndex]);
             setCurrentServingIndex(exactMatchIndex);
-            console.log("   🎯 Exact match found at index:", exactMatchIndex);
-            console.log("      - Serving:", servingOptions[exactMatchIndex].description);
+            debugLog("   🎯 Exact match found at index:", exactMatchIndex);
+            debugLog("      - Serving:", servingOptions[exactMatchIndex].description);
           } else {
             // Find closest serving option for display only
             // IMPORTANT: Never override customGrams - let user type any value
@@ -485,15 +486,15 @@ const EditableFoodItem = forwardRef(
 
             setCurrentServing(servingOptions[closestIndex]);
             setCurrentServingIndex(closestIndex);
-            console.log("   ðŸ” Closest match at index:", closestIndex);
-            console.log("      - Serving:", servingOptions[closestIndex].description);
+            debugLog("   ðŸ” Closest match at index:", closestIndex);
+            debugLog("      - Serving:", servingOptions[closestIndex].description);
             // customGrams is already set above - don't override it
           }
         } else {
-          console.log("   âš ï¸ No valid gramsValue or no serving options available");
+          debugLog("   âš ï¸ No valid gramsValue or no serving options available");
         }
       } else {
-        console.log("   âŒ Invalid input - not updating customGrams");
+        debugLog("   âŒ Invalid input - not updating customGrams");
       }
     };
 
@@ -539,21 +540,21 @@ const EditableFoodItem = forwardRef(
     ) => {
       const gramsToUse = overrideGrams || customGrams;
 
-      console.log("\n💾 [GRAM/ML DEBUG] handleAutoSave called:");
-      console.log("   - overrideGrams:", overrideGrams);
-      console.log("   - customGrams:", customGrams);
-      console.log("   - gramsToUse:", gramsToUse);
+      debugLog("\n💾 [GRAM/ML DEBUG] handleAutoSave called:");
+      debugLog("   - overrideGrams:", overrideGrams);
+      debugLog("   - customGrams:", customGrams);
+      debugLog("   - gramsToUse:", gramsToUse);
 
       if (!gramsToUse) {
-        console.log("   âŒ No grams to use - aborting save");
+        debugLog("   âŒ No grams to use - aborting save");
         return;
       }
 
       const grams = parseFloat(gramsToUse);
-      console.log("   - Parsed grams:", grams, "(Type:", typeof grams, ")");
+      debugLog("   - Parsed grams:", grams, "(Type:", typeof grams, ")");
       
       if (isNaN(grams) || grams <= 0) {
-        console.log("   âŒ Invalid grams value - aborting save");
+        debugLog("   âŒ Invalid grams value - aborting save");
         return;
       }
 
@@ -584,9 +585,9 @@ const EditableFoodItem = forwardRef(
         };
       }
 
-      console.log("   - foodToSave.name:", foodToSave.name);
-      console.log("   - foodToSave.isLiquid:", foodToSave.isLiquid);
-      console.log("   - foodToSave.per100g:", foodToSave.per100g);
+      debugLog("   - foodToSave.name:", foodToSave.name);
+      debugLog("   - foodToSave.isLiquid:", foodToSave.isLiquid);
+      debugLog("   - foodToSave.per100g:", foodToSave.per100g);
 
       // Validate per100g exists
       if (!foodToSave.per100g) {
@@ -597,12 +598,12 @@ const EditableFoodItem = forwardRef(
 
       // Calculate final nutrition
       const nutrition = computeNutrition(foodToSave.per100g, grams);
-      console.log("   - Calculated nutrition for", grams, "grams:", nutrition);
+      debugLog("   - Calculated nutrition for", grams, "grams:", nutrition);
 
       // ✅ Determine unit based on isLiquid flag (prioritize this over stored unit)
       const isLiquid = foodToSave.isLiquid || false;
       const unit = isLiquid ? "ml" : "g";
-      console.log("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
+      debugLog("   - Determined unit:", unit, "(isLiquid:", isLiquid, ")");
       
       // 🔄 REVERSAL DETECTION:
       // If the user has edited the food name back to the ORIGINAL AI-detected
@@ -618,7 +619,7 @@ const EditableFoodItem = forwardRef(
         editedNameNorm === originalAiNorm;
 
       if (isAutoCorrectionReversal) {
-        console.log(
+        debugLog(
           `🔁 [REVERSAL] User reverted auto-correction back to original AI name "${foodItem.originalAiName}" — clearing wasAutoCorrected for this entry`,
         );
       }
@@ -656,15 +657,15 @@ const EditableFoodItem = forwardRef(
           : (foodItem.correctionMetadata || null),
       };
 
-      console.log("\n📦 [GRAM/ML DEBUG] Final updatedFood object:");
-      console.log("   - updatedFood.grams:", updatedFood.grams);
-      console.log("   - updatedFood.unit:", updatedFood.unit);
-      console.log("   - updatedFood.isLiquid:", updatedFood.isLiquid);
-      console.log("   - updatedFood.serving.grams:", updatedFood.serving.grams);
-      console.log("   - updatedFood.serving.unit:", updatedFood.serving.unit);
-      console.log("   - updatedFood.serving.isLiquid:", updatedFood.serving.isLiquid);
-      console.log("   - updatedFood.serving.description:", updatedFood.serving.description);
-      console.log("   - updatedFood.nutrition:", updatedFood.nutrition);
+      debugLog("\n📦 [GRAM/ML DEBUG] Final updatedFood object:");
+      debugLog("   - updatedFood.grams:", updatedFood.grams);
+      debugLog("   - updatedFood.unit:", updatedFood.unit);
+      debugLog("   - updatedFood.isLiquid:", updatedFood.isLiquid);
+      debugLog("   - updatedFood.serving.grams:", updatedFood.serving.grams);
+      debugLog("   - updatedFood.serving.unit:", updatedFood.serving.unit);
+      debugLog("   - updatedFood.serving.isLiquid:", updatedFood.serving.isLiquid);
+      debugLog("   - updatedFood.serving.description:", updatedFood.serving.description);
+      debugLog("   - updatedFood.nutrition:", updatedFood.nutrition);
 
       try {
         // Phase 7: Cancel any pending save request
@@ -740,23 +741,23 @@ const EditableFoodItem = forwardRef(
 
     // Close edit mode - SAVE FIRST, then close
     const handleDone = async () => {
-      console.log("\n🔒 [CLOSE EDIT] User clicked Close Edit button");
+      debugLog("\n🔒 [CLOSE EDIT] User clicked Close Edit button");
       
       // Check if there are unsaved changes
       if (hasUserChangesRef.current && customGrams) {
-        console.log("   💾 Unsaved changes detected - saving now...");
+        debugLog("   💾 Unsaved changes detected - saving now...");
         
         // Save the changes before closing
         try {
           await handleAutoSave();
-          console.log("   ✅ Save completed successfully");
+          debugLog("   ✅ Save completed successfully");
         } catch (error) {
           console.error("   âŒ Save failed:", error);
           // Don't close if save failed - let user see error and retry
           return;
         }
       } else {
-        console.log("   â­ï¸ No unsaved changes - closing immediately");
+        debugLog("   â­ï¸ No unsaved changes - closing immediately");
       }
       
       // Clear any pending auto-save timers
@@ -796,7 +797,7 @@ const EditableFoodItem = forwardRef(
         onSave(index);
       }
       
-      console.log("   🚪 Modal closed\n");
+      debugLog("   🚪 Modal closed\n");
     };
     
     // Assign to ref for useImperativeHandle
@@ -864,7 +865,7 @@ const EditableFoodItem = forwardRef(
         unit: originalUnit,
       };
       
-      console.log("ðŸ” [EDIT MODE] Captured original values:", {
+      debugLog("ðŸ” [EDIT MODE] Captured original values:", {
         name: originalFoodRef.current.name,
         grams: originalFoodRef.current.grams,
         unit: originalFoodRef.current.unit,
@@ -872,7 +873,7 @@ const EditableFoodItem = forwardRef(
       });
 
       // Debug: Log foodItem to see what data we have
-      console.log("ðŸ” [EditableFoodItem] handleEdit - foodItem:", {
+      debugLog("ðŸ” [EditableFoodItem] handleEdit - foodItem:", {
         name: foodItem.name,
         unit: foodItem.unit,
         isLiquid: foodItem.isLiquid,

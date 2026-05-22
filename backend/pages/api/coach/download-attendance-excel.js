@@ -1,5 +1,6 @@
 import { getSupabaseClient } from '../../../utils/supabaseClient.js';
 import { formatDateForMySQL } from '../../../utils/disciplineHelpers.js';
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * Extract main area name from city string
@@ -138,7 +139,7 @@ async function getTeamHierarchyFromAPI(userId) {
     const coachId = managedTeam.CoachId;
     const coCoachId = managedTeam.CoCoachId;
     
-    console.log(`👥 [download-attendance-excel] Partnership detected: Coach ${coachId}, Co-Coach ${coCoachId}`);
+    logger.debug(`👥 [download-attendance-excel] Partnership detected: Coach ${coachId}, Co-Coach ${coCoachId}`);
     
     // Add both coaches to the team members list
     const coachData = userMap.get(coachId);
@@ -158,8 +159,8 @@ async function getTeamHierarchyFromAPI(userId) {
     collectDownline(coachId);
     collectDownline(coCoachId);
     
-    console.log(`👥 [download-attendance-excel] Total team members (including full downline): ${teamMembers.length}`);
-    console.log(`👥 [download-attendance-excel] Member IDs:`, teamMembers.map(m => m.UserId));
+    logger.debug(`👥 [download-attendance-excel] Total team members (including full downline): ${teamMembers.length}`);
+    logger.debug(`👥 [download-attendance-excel] Member IDs:`, teamMembers.map(m => m.UserId));
   } else {
     // No partnership - collect logged-in user and their full downline
     const loggedInUser = userMap.get(userId);
@@ -198,7 +199,7 @@ export default async function handler(req, res) {
 
   const { userId, date, clubId } = req.query;
 
-  console.log('📥 [download-attendance-excel] Request:', { userId, date, clubId });
+  logger.debug('📥 [download-attendance-excel] Request:', { userId, date, clubId });
 
   if (!userId) {
     res.status(400).json({
@@ -218,13 +219,13 @@ export default async function handler(req, res) {
     const startOfDay = targetDate + 'T00:00:00';
     const endOfDay = targetDate + 'T23:59:59';
 
-    console.log('📅 [download-attendance-excel] Target date:', targetDate);
+    logger.debug('📅 [download-attendance-excel] Target date:', targetDate);
 
     // Step 1: Get team hierarchy using partnership-aware logic
     const teamHierarchy = await getTeamHierarchyFromAPI(userIdNum);
     
     if (!teamHierarchy || teamHierarchy.length === 0) {
-      console.log('⚠️ [download-attendance-excel] No team members found');
+      logger.debug('⚠️ [download-attendance-excel] No team members found');
       return res.status(200).json({
         success: true,
         data: [],
@@ -232,12 +233,12 @@ export default async function handler(req, res) {
       });
     }
 
-    console.log('👥 [download-attendance-excel] Team hierarchy has', teamHierarchy.length, 'members');
+    logger.debug('👥 [download-attendance-excel] Team hierarchy has', teamHierarchy.length, 'members');
 
     // Step 2: Get all user IDs from hierarchy
     const allUserIds = teamHierarchy.map(m => m.UserId);
     
-    console.log('🔍 [download-attendance-excel] Searching attendance for', allUserIds.length, 'team members');
+    logger.debug('🔍 [download-attendance-excel] Searching attendance for', allUserIds.length, 'team members');
 
     // Step 3: Fetch attendance logs for all team members (coach, co-coach, and downline)
     let attendanceQuery = supabase
@@ -263,9 +264,9 @@ export default async function handler(req, res) {
 
     const { data: attendanceLogs, error: logsError } = await attendanceQuery;
 
-    console.log('📊 [download-attendance-excel] Found', attendanceLogs?.length || 0, 'attendance records');
+    logger.debug('📊 [download-attendance-excel] Found', attendanceLogs?.length || 0, 'attendance records');
     if (attendanceLogs && attendanceLogs.length > 0) {
-      console.log('   Attendance by user:', attendanceLogs.reduce((acc, log) => {
+      logger.debug('   Attendance by user:', attendanceLogs.reduce((acc, log) => {
         acc[log.UserId] = (acc[log.UserId] || 0) + 1;
         return acc;
       }, {}));
@@ -338,9 +339,9 @@ export default async function handler(req, res) {
       }
     });
 
-    console.log('📝 [download-attendance-excel] Built', attendanceRecords.length, 'attendance records');
-    console.log('   Remote records:', attendanceRecords.filter(r => r.clubName === 'Remote').length);
-    console.log('   Club records:', attendanceRecords.filter(r => r.clubName !== 'Remote').length);
+    logger.debug('📝 [download-attendance-excel] Built', attendanceRecords.length, 'attendance records');
+    logger.debug('   Remote records:', attendanceRecords.filter(r => r.clubName === 'Remote').length);
+    logger.debug('   Club records:', attendanceRecords.filter(r => r.clubName !== 'Remote').length);
 
     // Step 6: Sort by attended time (ascending so latest overwrites earlier)
     attendanceRecords.sort((a, b) => {
@@ -356,7 +357,7 @@ export default async function handler(req, res) {
     });
     const deduped = Array.from(latestByUser.values());
 
-    console.log('🔁 [download-attendance-excel] After dedup:', deduped.length, 'unique users (was', attendanceRecords.length, 'records)');
+    logger.debug('🔁 [download-attendance-excel] After dedup:', deduped.length, 'unique users (was', attendanceRecords.length, 'records)');
 
     // Step 6c: Sort again by time (ascending order - earliest first)
     deduped.sort((a, b) => {
@@ -371,7 +372,7 @@ export default async function handler(req, res) {
       ...record
     }));
 
-    console.log('✅ [download-attendance-excel] Found', finalData.length, 'attendance records');
+    logger.debug('✅ [download-attendance-excel] Found', finalData.length, 'attendance records');
 
     res.status(200).json({
       success: true,

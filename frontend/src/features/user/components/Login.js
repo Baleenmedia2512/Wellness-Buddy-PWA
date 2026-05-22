@@ -23,7 +23,7 @@ const Login = ({ onOtpVerified, forceOtpVerification }) => {
 
   useEffect(() => {
     if (forceOtpVerification) { setShowEmailForm(true); auth.setOtpSent(true); }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [forceOtpVerification]);
 
   const handleSendOtp = async () => {

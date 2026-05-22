@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 export function validateUserId(query) {
   if (!query?.userId) throw new ValidationError(400, 'Missing required parameter: userId');

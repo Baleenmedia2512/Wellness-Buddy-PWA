@@ -4,10 +4,11 @@ import {
   getTeamHierarchy,
   getDualCoachingTeamHierarchy 
 } from '../../../utils/disciplineCalculationsSupabase.js';
-import { 
+import logger from '../../../shared/lib/logger.js';
+import {
   formatDateForMySQL,
   getDaysBetween,
-  calculateDisciplinePercentage 
+  calculateDisciplinePercentage,
 } from '../../../utils/disciplineHelpers.js';
 
 export default async function handler(req, res) {
@@ -34,7 +35,7 @@ export default async function handler(req, res) {
 
   const { userId, startDate, endDate } = req.query;
 
-  console.log('📈 [attendance-report] Request:', { userId, startDate, endDate });
+  logger.debug('📈 [attendance-report] Request:', { userId, startDate, endDate });
 
   if (!userId) {
     res.status(400).json({
@@ -53,7 +54,7 @@ export default async function handler(req, res) {
     const teamMembers = await getDualCoachingTeamHierarchy(userIdNum, true);
     
     if (!teamMembers || teamMembers.length === 0) {
-      console.log('⚠️ [attendance-report] No team members found for user:', userIdNum);
+      logger.debug('⚠️ [attendance-report] No team members found for user:', userIdNum);
       return res.status(200).json({
         success: true,
         data: {
@@ -69,15 +70,15 @@ export default async function handler(req, res) {
     const start = startDate || formatDateForMySQL(new Date());
     const end = endDate || formatDateForMySQL(new Date());
 
-    console.log('📅 [attendance-report] Date range:', { start, end });
-    console.log('👥 [attendance-report] Team size:', teamMembers.length);
+    logger.debug('📅 [attendance-report] Date range:', { start, end });
+    logger.debug('👥 [attendance-report] Team size:', teamMembers.length);
 
     // Fetch discipline data for all members in bulk
     const allUserIds = teamMembers.map(m => m.UserId);
     const daysInPeriod = getDaysBetween(new Date(start), new Date(end));
     const expectedPostsPerActivity = daysInPeriod;
 
-    console.log('📊 [attendance-report] Fetching discipline data for', allUserIds.length, 'members');
+    logger.debug('📊 [attendance-report] Fetching discipline data for', allUserIds.length, 'members');
 
     const [weightData, educationData, foodData] = await Promise.all([
       // Weight records
@@ -114,7 +115,7 @@ export default async function handler(req, res) {
       data: (foodData.data || []).filter(r => !isExemptedBeverageOnly(r.AnalysisData))
     };
 
-    console.log('📊 [attendance-report] Discipline data fetched:', {
+    logger.debug('📊 [attendance-report] Discipline data fetched:', {
       weight: weightData.data?.length || 0,
       education: educationData.data?.length || 0,
       food: foodData.data?.length || 0,
@@ -284,7 +285,7 @@ export default async function handler(req, res) {
 
         const totalEducation = allEducationLogs?.length || 0;
 
-        console.log(`📊 [attendance-report] User ${member.UserName} (${member.UserId}):`, {
+        logger.debug(`📊 [attendance-report] User ${member.UserName} (${member.UserId}):`, {
           totalEducationLogs: totalEducation,
           educationOnTimeDays,
           clubDays: onTimeClubDays.size,
@@ -371,8 +372,8 @@ export default async function handler(req, res) {
       };
     });
 
-    console.log('✅ [attendance-report] Generated report for', attendanceData.length, 'members');
-    console.log('📤 [attendance-report] Returning response with:', {
+    logger.debug('✅ [attendance-report] Generated report for', attendanceData.length, 'members');
+    logger.debug('📤 [attendance-report] Returning response with:', {
       memberCount: attendanceData.length,
       coachCount: coachSummaries.length,
       teamSize: teamMembers.length,

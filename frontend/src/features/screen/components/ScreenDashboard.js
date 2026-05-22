@@ -14,6 +14,7 @@ import {
 } from '../services/screenTimeService';
 import LoadingSpinner from '../../../shared/components/LoadingSpinner';
 import TouchFeedbackButton from '../../../shared/components/TouchFeedbackButton';
+import { debugLog } from '../../../shared/utils/logger.js';
 
 const SCREEN_TIME_LIMIT = 2 * 3600; // 2-hour daily limit in seconds.
 const RING_RADIUS = 80;
@@ -291,10 +292,10 @@ const ScreenDashboard = ({ user, selectedDate: propDate, setSelectedDate: propSe
         const selectedIndex = scrollableDates.findIndex(
           (d) => d.date.toDateString() === selectedDate.toDateString()
         );
-        console.log('[ScreenDashboard] Scroll attempt - selectedIndex:', selectedIndex, 'isMobile:', isMobileDevice());
+        debugLog('[ScreenDashboard] Scroll attempt - selectedIndex:', selectedIndex, 'isMobile:', isMobileDevice());
         if (selectedIndex !== -1) {
           const el = document.querySelector(`[data-screen-date-index="${selectedIndex}"]`);
-          console.log('[ScreenDashboard] Found element:', !!el, 'at index', selectedIndex);
+          debugLog('[ScreenDashboard] Found element:', !!el, 'at index', selectedIndex);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
         }
       }, 300);

@@ -1,6 +1,7 @@
 ﻿import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { GalleryMonitorPlugin } from '../plugins/galleryMonitorPlugin';
+import { debugLog } from '../utils/logger.js';
 
 export const GalleryMonitor = {
   _isInitialized: false,
@@ -187,7 +188,7 @@ export const GalleryMonitor = {
   async processNewImages(images) {
     try {
       // Log notification to console for now
-      console.log(`New Food Photos Detected: Found ${images.length} new food photos to analyze`);
+      debugLog(`New Food Photos Detected: Found ${images.length} new food photos to analyze`);
       
       // Note: The actual analysis and database saving now happens in the Android background service
       // This JavaScript method is mainly for logging and potential UI notifications
@@ -201,7 +202,7 @@ export const GalleryMonitor = {
       // 3. Showing Android notifications
       // 4. Retry logic for failed operations
       
-      // console.log('âœ… Background service will handle analysis and database saving');
+      // debugLog('âœ… Background service will handle analysis and database saving');
       
     } catch (error) {
       console.error('Image processing failed:', error);

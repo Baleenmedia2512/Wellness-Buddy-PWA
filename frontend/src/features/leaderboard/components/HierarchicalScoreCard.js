@@ -2,6 +2,7 @@
 import React from "react";
 import { ChevronDown, ChevronUp, Users, User } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { debugLog } from '../../../shared/utils/logger.js';
 
 /**
  * Hierarchical Score Card - Shows coach's hierarchy with scores
@@ -22,7 +23,7 @@ const HierarchicalScoreCard = ({
   if (!teamData || !coachPerformance) return null;
 
   // Debug: Log the data to understand structure
-  console.log("🎯 HierarchicalScoreCard Data:", {
+  debugLog("🎯 HierarchicalScoreCard Data:", {
     coachPerformance,
     teamMembers: teamData.teamMembers,
     teamMembersCount: teamData.teamMembers?.length,
@@ -37,13 +38,13 @@ const HierarchicalScoreCard = ({
   const sourceTeamMembers =
     hierarchyData?.hierarchy?.teamMembers || teamData.teamMembers || [];
 
-  console.log(
+  debugLog(
     "📦 Using teamMembers from:",
     hierarchyData?.hierarchy?.teamMembers ? "hierarchyData" : "teamData",
   );
-  console.log("📦 Source teamMembers structure:", sourceTeamMembers);
+  debugLog("📦 Source teamMembers structure:", sourceTeamMembers);
   if (sourceTeamMembers && sourceTeamMembers[0]) {
-    console.log(
+    debugLog(
       "📦 First member has teamMembers?",
       sourceTeamMembers[0].teamMembers,
     );
@@ -54,7 +55,7 @@ const HierarchicalScoreCard = ({
     const flat = [];
     const flatten = (member) => {
       flat.push(member);
-      console.log(
+      debugLog(
         `  Flattening ${member.userName}, has teamMembers: ${
           member.teamMembers ? member.teamMembers.length : 0
         }`,
@@ -70,16 +71,16 @@ const HierarchicalScoreCard = ({
   // Get ALL team members (all levels flattened)
   const allTeamMembersFromHierarchy = flattenHierarchy(sourceTeamMembers);
 
-  console.log(
+  debugLog(
     "🔄 Flattened all team members:",
     allTeamMembersFromHierarchy.length,
     allTeamMembersFromHierarchy.map((m) => m.userName),
   );
-  console.log(
+  debugLog(
     "🔄 First hierarchy member data:",
     allTeamMembersFromHierarchy[0],
   );
-  console.log(
+  debugLog(
     "🔄 Second hierarchy member data:",
     allTeamMembersFromHierarchy[1],
   );
@@ -88,12 +89,12 @@ const HierarchicalScoreCard = ({
   const hierarchyHasScores = allTeamMembersFromHierarchy.some(
     (m) => m.periodDiscipline,
   );
-  console.log("📊 Hierarchy already has scores?", hierarchyHasScores);
+  debugLog("📊 Hierarchy already has scores?", hierarchyHasScores);
 
   // Merge scores: Use allMembersData if available (has ALL members), otherwise teamData.teamMembers
   const scoreDataSource =
     allMembersData?.allMembers || teamData.teamMembers || [];
-  console.log(
+  debugLog(
     "📊 Score data source count:",
     scoreDataSource.length,
     "Members:",
@@ -103,7 +104,7 @@ const HierarchicalScoreCard = ({
   const allTeamMembers = allTeamMembersFromHierarchy.map((hierarchyMember) => {
     // First check if hierarchy member already has score
     if (hierarchyMember.periodDiscipline) {
-      console.log(
+      debugLog(
         `  ✅ Hierarchy member ${hierarchyMember.userName} already has score: ${
           hierarchyMember.periodDiscipline?.percentage || 0
         }%`,
@@ -119,7 +120,7 @@ const HierarchicalScoreCard = ({
     );
 
     if (scoreData) {
-      console.log(
+      debugLog(
         `  ✅ Merged score for ${hierarchyMember.userName}: ${
           scoreData.periodDiscipline?.percentage || 0
         }%`,
@@ -127,7 +128,7 @@ const HierarchicalScoreCard = ({
       return { ...hierarchyMember, ...scoreData };
     }
 
-    console.log(`  ⚠️ No score data found for ${hierarchyMember.userName}`);
+    debugLog(`  ⚠️ No score data found for ${hierarchyMember.userName}`);
     return hierarchyMember;
   });
 
@@ -139,7 +140,7 @@ const HierarchicalScoreCard = ({
       m.parentCoachId === coachPerformance.userId,
   );
 
-  console.log(
+  debugLog(
     "🔍 Direct Team Members Found:",
     directTeamMembers.length,
     directTeamMembers,
@@ -154,8 +155,8 @@ const HierarchicalScoreCard = ({
     (m) => m.role !== "coach" && !m.isCoach,
   );
 
-  console.log("👥 Direct Coaches:", directCoaches.length);
-  console.log("👤 Direct Regular Members:", directRegularMembers.length);
+  debugLog("👥 Direct Coaches:", directCoaches.length);
+  debugLog("👤 Direct Regular Members:", directRegularMembers.length);
 
   // Calculate DIRECT TEAM average (ALL Level 1 members)
   const directTeamAvg =
@@ -174,7 +175,7 @@ const HierarchicalScoreCard = ({
   const allMembersUnderDirectTeam = [];
 
   directTeamMembers.forEach((directMember) => {
-    console.log(
+    debugLog(
       `🔎 Checking underMembers for ${directMember.userName} (userId: ${directMember.userId})`,
     );
 
@@ -184,7 +185,7 @@ const HierarchicalScoreCard = ({
           m.parentCoachId === directMember.userId) &&
         m.userId !== directMember.userId;
 
-      console.log(
+      debugLog(
         `  - ${m.userName} (userId: ${m.userId}, coachId: ${
           m.coachId
         }, parentCoachId: ${m.parentCoachId}) → ${
@@ -195,7 +196,7 @@ const HierarchicalScoreCard = ({
       return matches;
     });
 
-    console.log(
+    debugLog(
       `  → Found ${underMembers.length} under members for ${directMember.userName}`,
     );
     membersByCoach[directMember.userId] = underMembers;
@@ -217,7 +218,7 @@ const HierarchicalScoreCard = ({
         )
       : 0;
 
-  console.log("📊 Calculated Scores:", {
+  debugLog("📊 Calculated Scores:", {
     myScore,
     directTeamAvg,
     membersUnderTeamAvg,

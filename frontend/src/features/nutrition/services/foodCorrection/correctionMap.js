@@ -1,11 +1,12 @@
 // Hybrid corrections lookup map (cached): global Herbalife + user-specific.
 import { cacheManager } from '../../../../shared/services/cacheManager';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || 'http://localhost:3000';
 
 export const clearGlobalCorrectionsCache = () => {
   cacheManager.clearPattern('globalCorrections');
-  console.log('[CACHE] Cleared global corrections cache');
+  debugLog('[CACHE] Cleared global corrections cache');
 };
 
 /**
@@ -18,8 +19,8 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
   return cacheManager.execute(
     cacheKey,
     async () => {
-      console.log('[HYBRID-AUTO] Fetching corrections from server...');
-      if (userId) console.log(`   👤 Including user-specific corrections for user ${userId}`);
+      debugLog('[HYBRID-AUTO] Fetching corrections from server...');
+      if (userId) debugLog(`   👤 Including user-specific corrections for user ${userId}`);
 
       const url = userId
         ? `${API_BASE_URL}/api/food-corrections/global?userId=${userId}&t=${Date.now()}`
@@ -42,7 +43,7 @@ export const getGlobalCorrectionsMap = async (userId = null) => {
         });
         const g = data.globalCount || 0;
         const u = data.userCount || 0;
-        console.log(`✅ [HYBRID-AUTO] Loaded ${map.size} corrections (${g} global + ${u} user)`);
+        debugLog(`✅ [HYBRID-AUTO] Loaded ${map.size} corrections (${g} global + ${u} user)`);
       }
       return map;
     },

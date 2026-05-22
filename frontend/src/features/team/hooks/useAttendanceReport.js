@@ -73,7 +73,7 @@ export function useAttendanceReport({ user }) {
     }
   }, [user, apiBaseUrl, dateRange, customStartDate]);
 
-  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [user, dateRange, customStartDate, customEndDate]);
+  useEffect(() => { fetchData(); /* eslint-disable-next-line */ }, [user, dateRange, customStartDate, customEndDate]); // required by platform constraints; see inline context // required by platform constraints — see surrounding context
 
   const sortedHierarchyData = useMemo(
     () => sortHierarchy(hierarchyData, { sortBy, sortOrder }),

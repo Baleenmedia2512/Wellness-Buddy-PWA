@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 import { motion, AnimatePresence } from "framer-motion";
 import wellnessValleyIcon from "../assets/wellness-valley-icon.png";
+import { debugLog } from '../shared/utils/logger.js';
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:3000";
 
@@ -82,7 +83,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
           `${API_BASE}/api/upline/request`,
           { coachId: yasheer.userId, email: userEmail }
         );
-        console.log('✅ [Demo] Upline request sent automatically:', requestResponse.data);
+        debugLog('✅ [Demo] Upline request sent automatically:', requestResponse.data);
 
         // Step 3: navigate to OTP screen
         if (onNavigateToOTP) {
@@ -198,7 +199,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         return;
       }
 
-      console.log(
+      debugLog(
         "⏭️ Skipping Team ID - Sending approval request WITHOUT Team ID:",
         {
           coachId: selectedCoach.userId,
@@ -214,7 +215,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         { coachId: selectedCoach.userId, email: userEmail },
       );
 
-      console.log("Approval request sent (no Team ID):", requestResponse.data);
+      debugLog("Approval request sent (no Team ID):", requestResponse.data);
 
       setSuccess(`Request sent!`);
 
@@ -254,7 +255,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         return;
       }
 
-      console.log("Claiming Team ID:", { teamId, email: userEmail });
+      debugLog("Claiming Team ID:", { teamId, email: userEmail });
 
       // Step 1: Claim Team ID
       const claimResponse = await axios.post(`${API_BASE}/api/team/claim-id`, {
@@ -262,9 +263,9 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         email: userEmail,
       });
 
-      console.log("Team ID claimed successfully:", claimResponse.data);
+      debugLog("Team ID claimed successfully:", claimResponse.data);
 
-      console.log("Sending approval request:", {
+      debugLog("Sending approval request:", {
         coachId: selectedCoach.userId,
         email: userEmail,
       });
@@ -275,7 +276,7 @@ const SetupWizard = ({ onClose, onNavigateToOTP, onLogout }) => {
         { coachId: selectedCoach.userId, email: userEmail },
       );
 
-      console.log("Approval request sent:", requestResponse.data);
+      debugLog("Approval request sent:", requestResponse.data);
 
       setSuccess(`Request sent!`);
 

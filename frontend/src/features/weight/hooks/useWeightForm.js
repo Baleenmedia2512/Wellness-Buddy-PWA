@@ -54,7 +54,7 @@ export function useWeightForm({ onSave, onClose } = {}) {
       reset();
       if (onClose) onClose();
     } catch (err) {
-      // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
       console.error('❌ Manual entry error:', err);
       setError(err.message || 'Failed to save weight');
     } finally {

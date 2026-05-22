@@ -1,4 +1,4 @@
-﻿package com.wellnessvalley.app.plugins;
+package com.wellnessvalley.app.plugins;
 
 import android.content.Intent;
 import android.net.Uri;

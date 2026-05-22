@@ -1,0 +1,75 @@
+name: Deploy Production
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  guard:
+    name: Pre-deploy guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Ensure tag is signed
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          git verify-tag ${{ github.ref_name }} || { echo "Tag not signed"; exit 1; }
+      - name: Block if `claude.md` modified without CTO approval label
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/claude-md-guard.js
+
+  deploy:
+    name: Vercel deploy
+    needs: guard
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://wellness-buddy-pwa.vercel.app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Vercel pull
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx -y vercel@latest pull --yes --environment=production --token=$VERCEL_TOKEN
+      - name: Vercel build
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx -y vercel@latest build --prod --token=$VERCEL_TOKEN
+      - name: Vercel deploy
+        id: deploy
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          url=$(npx -y vercel@latest deploy --prebuilt --prod --token=$VERCEL_TOKEN)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+  post-deploy:
+    name: Smoke + observability
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Smoke production
+        env:
+          SMOKE_BASE_URL: https://wellness-buddy-pwa.vercel.app
+        run: node scripts/smoke-test.js
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_RELEASES_WEBHOOK }}
+          STATUS: ${{ job.status }}
+          SHA: ${{ github.sha }}
+        run: node scripts/notify-slack.js

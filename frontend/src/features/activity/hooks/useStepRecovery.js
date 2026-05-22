@@ -51,7 +51,7 @@ export function useStepRecovery({
     setTodaySteps(dbSteps);
     setTodayCalories(calcCalories(dbSteps));
     refs.driftDetectedRef.current = false;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   const postRefreshDbResync = useCallback(async (sensorValue) => {
@@ -67,7 +67,7 @@ export function useStepRecovery({
       writeSaveAnchors(todayKey, sensorValue, entry.steps);
       refs.processSensorValueRef.current?.(sensorValue);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, []);
 
   const handleManualRefresh = useCallback(async () => {
@@ -114,7 +114,7 @@ export function useStepRecovery({
     } finally {
       finishToast();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [isNativePlatform]);
 
   return { handleManualRefresh };

@@ -99,7 +99,7 @@ export function useWeightHistoryData({ user, apiBaseUrl }) {
     setWeightHistory([]); setHasMoreWeights(false);
     offsetRef.current = 0; hasMoreRef.current = false;
     fetchWeightHistory({ reset: true });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [user?.id, user?.email]);
 
   // Infinite-scroll observer

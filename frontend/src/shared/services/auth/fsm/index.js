@@ -46,7 +46,7 @@ export function startShadow({ apiBaseUrl, platform, getLegacySnapshot: gls } = {
   exposeOnWindow(runtime);
   runtime.send({ type: E.BOOT, apiBaseUrl, platform });
   started = true;
-  // eslint-disable-next-line no-console
+  // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
   console.info("[AuthFSM] shadow mode started", getFlags());
   return runtime;
 }
@@ -64,7 +64,7 @@ export function send(event) {
       compareDrift(legacy, runtime.getSnapshot(), { eventType: event && event.type });
     }
   } catch (err) {
-    // eslint-disable-next-line no-console
+    // eslint-disable-next-line no-console -- FSM / lifecycle code — must reach crash reporters before logger is ready
     console.error("[AuthFSM] send error", err);
   }
 }

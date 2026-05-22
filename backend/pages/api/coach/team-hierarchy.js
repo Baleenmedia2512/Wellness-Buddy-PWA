@@ -1,4 +1,5 @@
 import { getSupabaseClient } from "../../../utils/supabaseClient.js";
+import logger from '../../../shared/lib/logger.js';
 
 /**
  * API: Get Hierarchical Team Structure
@@ -33,7 +34,7 @@ export default async function handler(req, res) {
   try {
     const { coachId, email, includeInactive } = req.query;
 
-    console.log("📊 [team-hierarchy] Request:", {
+    logger.debug("📊 [team-hierarchy] Request:", {
       coachId,
       email,
       includeInactive,
@@ -44,7 +45,7 @@ export default async function handler(req, res) {
 
     // If email is provided, look up the coach ID
     if (email) {
-      console.log("🔍 [team-hierarchy] Looking up coach by email:", email);
+      logger.debug("🔍 [team-hierarchy] Looking up coach by email:", email);
       const { data: coach, error: coachError } = await supabase
         .from("team_table")
         .select("UserId")
@@ -69,14 +70,14 @@ export default async function handler(req, res) {
       }
 
       coachIdInt = coach.UserId;
-      console.log("✅ [team-hierarchy] Found coach ID:", coachIdInt);
+      logger.debug("✅ [team-hierarchy] Found coach ID:", coachIdInt);
     } else if (coachId) {
       coachIdInt = parseInt(coachId);
       // ── Demo account redirect for App Store review ───────────────────────
       // The old build stored userId=9999 (fake). Silently remap to real user 554.
       if (coachIdInt === 9999) coachIdInt = 554;
       // ─────────────────────────────────────────────────────────────────────
-      console.log("✅ [team-hierarchy] Using provided coach ID:", coachIdInt);
+      logger.debug("✅ [team-hierarchy] Using provided coach ID:", coachIdInt);
     } else {
       console.error("❌ [team-hierarchy] No coach ID or email provided");
       res
@@ -105,10 +106,10 @@ export default async function handler(req, res) {
       return;
     }
 
-    console.log(
+    logger.debug(
       `📊 [team-hierarchy] Fetched ${allUsers?.length || 0} total users from database`,
     );
-    console.log(
+    logger.debug(
       `📊 [team-hierarchy] Users sample:`,
       allUsers?.slice(0, 5).map((u) => ({
         UserId: u.UserId,
@@ -132,7 +133,7 @@ export default async function handler(req, res) {
     // Get all unique CoachTeamIds
     // TEMPORARY: CoachTeamId is currently TeamId string until database migration
     const coachTeamIds = [...new Set(allUsers.map(u => u.CoachTeamId).filter(Boolean))];
-    console.log(`📊 [team-hierarchy] Fetching ${coachTeamIds.length} coach teams for co-coach derivation`);
+    logger.debug(`📊 [team-hierarchy] Fetching ${coachTeamIds.length} coach teams for co-coach derivation`);
     
     const coachTeamsMap = {}; // Maps TeamId string -> {CoachId, CoCoachId}
     if (coachTeamIds.length > 0) {
@@ -151,7 +152,7 @@ export default async function handler(req, res) {
             coCoachId: team.CoCoachId
           };
         });
-        console.log(`✅ [team-hierarchy] Loaded ${coachTeams.length} active coach team partnerships`);
+        logger.debug(`✅ [team-hierarchy] Loaded ${coachTeams.length} active coach team partnerships`);
       }
     }
     
@@ -228,7 +229,7 @@ export default async function handler(req, res) {
         );
       });
 
-      console.log(
+      logger.debug(
         `🔍 [team-hierarchy] User ${user.userName} (${userId}) has ${directReports.length} direct reports:`,
         directReports.map((r) => ({
           UserId: r.UserId,
@@ -294,7 +295,7 @@ export default async function handler(req, res) {
       return;
     }
 
-    console.log(`🔍 [team-hierarchy] Logged-in user:`, {
+    logger.debug(`🔍 [team-hierarchy] Logged-in user:`, {
       UserId: loggedInCoach.UserId,
       UserName: loggedInCoach.UserName,
       Role: loggedInCoach.Role,
@@ -334,7 +335,7 @@ export default async function handler(req, res) {
       managedTeam = teamByRole;
     }
     
-    console.log(`🔍 [team-hierarchy] Partnership lookup result:`, {
+    logger.debug(`🔍 [team-hierarchy] Partnership lookup result:`, {
       foundTeam: !!managedTeam,
       teamData: managedTeam ? {
         TeamId: managedTeam.TeamId,
@@ -348,7 +349,7 @@ export default async function handler(req, res) {
     if (managedTeam && managedTeam.CoachId && managedTeam.CoCoachId) {
       // This coach has a co-coach partner - exclude both from each other's nested view
       coachPartnerIds = [managedTeam.CoachId, managedTeam.CoCoachId];
-      console.log(`👥 [team-hierarchy] Co-coach partnership detected:`, {
+      logger.debug(`👥 [team-hierarchy] Co-coach partnership detected:`, {
         TeamId: managedTeam.TeamId,
         CoachId: managedTeam.CoachId,
         CoCoachId: managedTeam.CoCoachId,
@@ -385,7 +386,7 @@ export default async function handler(req, res) {
           totalMemberCount: 0,
         };
 
-        console.log(`✅ [team-hierarchy] Partnership setup complete:`, {
+        logger.debug(`✅ [team-hierarchy] Partnership setup complete:`, {
           LoggedInUser: {
             userId: hierarchy.userId,
             userName: hierarchy.userName,
@@ -418,7 +419,7 @@ export default async function handler(req, res) {
           return reportsToEitherPartner && !existingIds.has(u.UserId);
         });
 
-        console.log(`👥 [team-hierarchy] Merging ${partnerMembers.length} team members from partnership:`,
+        logger.debug(`👥 [team-hierarchy] Merging ${partnerMembers.length} team members from partnership:`,
           partnerMembers.map(m => ({ 
             UserId: m.UserId, 
             UserName: m.UserName, 
@@ -448,7 +449,7 @@ export default async function handler(req, res) {
         console.warn(`⚠️ [team-hierarchy] Partner data not found for partnerId: ${partnerId}`);
       }
     } else {
-      console.log(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
+      logger.debug(`ℹ️ [team-hierarchy] No co-coach partnership found for user ${coachIdInt}`);
     }
 
     // Flatten hierarchy to get all members (for enrollment reports)
@@ -499,10 +500,10 @@ export default async function handler(req, res) {
     
     const allMembers = Array.from(memberMap.values());
 
-    console.log(
+    logger.debug(
       `✅ [team-hierarchy] Team hierarchy built for coach ${coachIdInt}: ${allMembers.length} unique members`,
     );
-    console.log(
+    logger.debug(
       `✅ [team-hierarchy] All members:`,
       allMembers.map((m) => ({
         UserId: m.UserId,

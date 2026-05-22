@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { StatusBar, Style } from '@capacitor/status-bar';
+import { debugLog } from './logger.js';
 
 // Dynamic plugin loading for Android
 const initializeEdgeToEdgePlugins = async () => {
@@ -25,7 +26,7 @@ const initializeEdgeToEdgePlugins = async () => {
         darkButtons: true
       });
 
-      console.log('✅ Mobile UI initialized successfully');
+      debugLog('✅ Mobile UI initialized successfully');
     } catch (error) {
       console.error('❌ Error initializing mobile UI:', error);
     }

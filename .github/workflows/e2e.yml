@@ -1,0 +1,105 @@
+name: E2E
+
+# Playwright lives at the repo root (playwright.config.js).
+# - PRs / pushes to staging|release: smoke only (no creds, hits a built CRA preview).
+# - Nightly + manual dispatch: full @journey suite against PLAYWRIGHT_BASE_URL with E2E creds.
+# See claude.md §9.2 (E2E discipline) and governance/ROLLOUT.md Week 4.
+
+on:
+  pull_request:
+    branches: [staging, 'release/**']
+  push:
+    branches: [staging, 'release/**']
+  schedule:
+    - cron: '0 3 * * *' # 03:00 UTC nightly
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Override PLAYWRIGHT_BASE_URL (optional)'
+        required: false
+
+concurrency:
+  group: e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  smoke:
+    name: Playwright smoke (chromium)
+    if: github.event_name == 'pull_request' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
+      - name: Install root deps (Playwright)
+        run: npm ci --no-audit --no-fund
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install chromium
+        run: npx playwright install --with-deps chromium
+      - name: Build frontend (production-like)
+        env:
+          CI: 'true'
+          GENERATE_SOURCEMAP: 'false'
+        run: cd frontend && npm run build
+      - name: Serve build on :3000
+        run: npx --yes serve -s frontend/build -l 3000 &
+      - name: Wait for server
+        run: npx --yes wait-on http://127.0.0.1:3000 --timeout 60000
+      - name: Run @smoke
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3000
+        run: npm run e2e:smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-smoke
+          path: playwright-report
+          if-no-files-found: ignore
+
+  journey:
+    name: Playwright @journey (chromium, nightly)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '${{ env.NODE_VERSION }}'
+          cache: npm
+      - name: Install root deps (Playwright)
+        run: npm ci --no-audit --no-fund
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: pw-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - name: Install chromium
+        run: npx playwright install --with-deps chromium
+      - name: Run full E2E suite
+        env:
+          PLAYWRIGHT_BASE_URL: ${{ inputs.base_url || secrets.E2E_BASE_URL }}
+          E2E_USER_EMAIL: ${{ secrets.E2E_USER_EMAIL }}
+          E2E_USER_PASSWORD: ${{ secrets.E2E_USER_PASSWORD }}
+          E2E_COACH_EMAIL: ${{ secrets.E2E_COACH_EMAIL }}
+          E2E_COACH_PASSWORD: ${{ secrets.E2E_COACH_PASSWORD }}
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-journey
+          path: playwright-report
+          if-no-files-found: ignore

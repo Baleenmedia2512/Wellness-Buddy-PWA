@@ -4,18 +4,19 @@ import { isFoodLiquidOrShake, normalizeFoodName } from './normalize';
 import { getGlobalCorrectionsMap } from './correctionMap';
 import { findCorrectionMatch } from './correctionMatcher';
 import { buildCorrectedFood } from './correctionApplier';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const logSummary = (corrected, totalLiquids) => {
   if (corrected.length === 0) {
-    if (totalLiquids > 0) console.log(`   ℹ️ No liquid foods matched corrections (${totalLiquids} liquids analyzed)`);
+    if (totalLiquids > 0) debugLog(`   ℹ️ No liquid foods matched corrections (${totalLiquids} liquids analyzed)`);
     return;
   }
-  console.log(`✅ [HYBRID-AUTO] Auto-corrected ${corrected.length} of ${totalLiquids} liquid foods:`);
+  debugLog(`✅ [HYBRID-AUTO] Auto-corrected ${corrected.length} of ${totalLiquids} liquid foods:`);
   const globalC = corrected.filter((c) => c.source === 'global').length;
   const userC   = corrected.filter((c) => c.source === 'user-specific').length;
-  if (globalC > 0) console.log(`   🌍 ${globalC} global corrections applied`);
-  if (userC   > 0) console.log(`   👤 ${userC} user-specific corrections applied`);
-  corrected.forEach((c) => console.log(`   ${c.source === 'user-specific' ? '👤' : '🌍'} "${c.original}" → "${c.corrected}" (${c.matchType})`));
+  if (globalC > 0) debugLog(`   🌍 ${globalC} global corrections applied`);
+  if (userC   > 0) debugLog(`   👤 ${userC} user-specific corrections applied`);
+  corrected.forEach((c) => debugLog(`   ${c.source === 'user-specific' ? '👤' : '🌍'} "${c.original}" → "${c.corrected}" (${c.matchType})`));
 };
 
 export async function applyGlobalAutoCorrections(foods, currentUserId = null) {

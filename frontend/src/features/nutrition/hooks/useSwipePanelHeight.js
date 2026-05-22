@@ -65,7 +65,7 @@ export function useSwipePanelHeight({ heightDeps = [] } = {}) {
       cancelAnimationFrame(rafId);
       window.removeEventListener('resize', updateOverviewHeight);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: listed deps would cause an infinite re-render
   }, [activeOverviewPanel, ...heightDeps]);
 
   return {

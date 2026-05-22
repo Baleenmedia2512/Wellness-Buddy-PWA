@@ -1,4 +1,5 @@
 ﻿import { registerPlugin, Capacitor } from "@capacitor/core";
+import { debugLog } from '../utils/logger.js';
 
 // Register the native plugin
 const GalleryMonitor = registerPlugin('GalleryMonitor', {
@@ -31,7 +32,7 @@ const wrappedPlugin = {
 
           // Set initialized immediately since we've verified the plugin exists
           this._initialized = true;
-          // console.log("✅ GalleryMonitor plugin initialized successfully");
+          // debugLog("✅ GalleryMonitor plugin initialized successfully");
           resolve(true);
         } catch (error) {
           console.warn("Failed to initialize GalleryMonitor:", error);

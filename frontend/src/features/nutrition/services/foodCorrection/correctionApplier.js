@@ -1,6 +1,7 @@
 // Build a corrected food object from a matched correction record.
 // Preserves the AI-original name, applies type-safety, quantity, and nutrition.
 import { getFoodTypeByUnit } from './normalize';
+import { debugLog } from '../../../../shared/utils/logger.js';
 
 const macros = ['calories', 'protein', 'carbs', 'fat', 'fiber'];
 
@@ -29,7 +30,7 @@ const applyNutrition = (food, correction) => {
       applied = true;
     }
   }
-  if (applied) console.log(`   📊 Applied corrected nutrition for "${correction.user_corrected}"`);
+  if (applied) debugLog(`   📊 Applied corrected nutrition for "${correction.user_corrected}"`);
   return next;
 };
 
@@ -41,7 +42,7 @@ export function buildCorrectedFood(food, correction, matchType, trueOriginalAiNa
   const correctedType = getFoodTypeByUnit(correction.correctedUnit);
   const originalType  = getFoodTypeByUnit(food.unit);
   if (correctedType !== 'unknown' && originalType !== 'unknown' && correctedType !== originalType) {
-    console.log(`   ⚠️ TYPE MISMATCH SKIP: "${food.name}" (${originalType}) → "${correction.user_corrected}" (${correctedType})`);
+    debugLog(`   ⚠️ TYPE MISMATCH SKIP: "${food.name}" (${originalType}) → "${correction.user_corrected}" (${correctedType})`);
     return { food, skipped: true, skipReason: 'type-mismatch' };
   }
 

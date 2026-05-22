@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { getUserCorrections } from '../../food-corrections/services/food-corrections.api';
+import { getUserCorrections } from '../api/foodCorrectionsApi';
 import { getUserContext, formatContextForAI, subscribeToContextUpdates } from '../../../shared/services/userIdentity';
 import { geminiService } from '../../../shared/services/geminiService';
 import { X, RefreshCw, TrendingUp, Sparkles } from 'lucide-react';
 import { istToLocalDate } from '../../../shared/utils/timezoneUtils';
+import { debugLog } from '../../../shared/utils/logger.js';
 /**
  * Debug panel to view user's food corrections
  * Only visible in development mode
@@ -34,7 +35,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
       setUserContext(context);
       
       if (forceRefresh) {
-        console.log('✅ [Debug Panel] Force refreshed context:', context);
+        debugLog('✅ [Debug Panel] Force refreshed context:', context);
       }
     } catch (err) {
       console.error('Error loading data:', err);
@@ -56,7 +57,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
     if (!isOpen || !userId) return;
     
     const unsubscribe = subscribeToContextUpdates((updatedContext) => {
-      console.log('✅ [Debug Panel] Context updated automatically:', updatedContext);
+      debugLog('✅ [Debug Panel] Context updated automatically:', updatedContext);
       setUserContext(updatedContext);
       // Also refresh corrections in case food name was corrected
       getUserCorrections(userId).then(response => {
@@ -73,7 +74,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
     if (isOpen && activeTab === 'prompt') {
       const promptData = geminiService.getLastPrompt();
       setLastPrompt(promptData);
-      console.log('ðŸ” [Debug Panel] Loaded last prompt:', promptData);
+      debugLog('ðŸ” [Debug Panel] Loaded last prompt:', promptData);
     }
   }, [isOpen, activeTab]);
 
@@ -103,7 +104,7 @@ const FoodCorrectionsDebugPanel = ({ userId, isOpen, onClose }) => {
                     // Refresh prompt
                     const promptData = geminiService.getLastPrompt();
                     setLastPrompt(promptData);
-                    console.log('🔄 [Debug Panel] Refreshed prompt:', promptData);
+                    debugLog('🔄 [Debug Panel] Refreshed prompt:', promptData);
                   } else {
                     // Refresh corrections and context
                     loadData(true);

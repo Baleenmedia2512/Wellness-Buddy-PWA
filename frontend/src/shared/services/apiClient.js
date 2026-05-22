@@ -1,3 +1,5 @@
+import { debugLog } from '../utils/logger.js';
+
 /**
  * Optimized API Client
  * 
@@ -92,7 +94,7 @@ class APIClient {
         
         // Exponential backoff: 1s, 2s, 4s
         const delay = Math.pow(2, attempt) * 1000;
-        console.log(`⚠️ Request failed, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
+        debugLog(`⚠️ Request failed, retrying in ${delay}ms... (attempt ${attempt + 1}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
@@ -112,14 +114,14 @@ class APIClient {
     // if (options.cache !== false) {
     //   const cached = this.cache.get(cacheKey);
     //   if (cached && Date.now() - cached.timestamp < (options.cacheTTL || 60000)) {
-    //     console.log(`✅ Client cache HIT: ${endpoint}`);
+    //     debugLog(`✅ Client cache HIT: ${endpoint}`);
     //     return cached.data;
     //   }
     // }
 
     // Check if request is already pending (deduplication)
     if (this.isPending(cacheKey)) {
-      console.log(`⏳ Deduplicating request: ${endpoint}`);
+      debugLog(`⏳ Deduplicating request: ${endpoint}`);
       return this.waitForPending(cacheKey);
     }
 

@@ -11,6 +11,7 @@ import {
   getISTTimestamp,
 } from "../../../utils/supabaseClient.js";
 import bcrypt from "bcryptjs";
+import logger from '../../../shared/lib/logger.js';
 
 const MAX_OTP_ATTEMPTS = 5;
 
@@ -150,7 +151,7 @@ export default async function handler(req, res) {
     }
 
     // Verify OTP
-    console.log("Verifying OTP:", {
+    logger.debug("Verifying OTP:", {
       inputOtp: otp,
       storedHash: request.OtpHash?.substring(0, 20) + "...",
       requesterId: requesterId,
@@ -159,7 +160,7 @@ export default async function handler(req, res) {
 
     const isValid = (isDemoAccount && otp === '000000') || await bcrypt.compare(otp, request.OtpHash);
 
-    console.log("OTP validation result:", isValid);
+    logger.debug("OTP validation result:", isValid);
 
     if (!isValid) {
       // Increment attempts
@@ -190,12 +191,12 @@ export default async function handler(req, res) {
 
     const requesterTeamId = requesterData[0]?.TeamId;
 
-    console.log(`📊 [validate-otp] Requester TeamId: ${requesterTeamId || 'none'}`);
+    logger.debug(`📊 [validate-otp] Requester TeamId: ${requesterTeamId || 'none'}`);
 
     // STEP 1: Update coach_teams_table ONLY if user has a TeamId
     // This is now optional - users can complete account activation without Team ID
     if (requesterTeamId) {
-      console.log(`🔍 [validate-otp] Checking coach_teams_table for TeamId: ${requesterTeamId}`);
+      logger.debug(`🔍 [validate-otp] Checking coach_teams_table for TeamId: ${requesterTeamId}`);
       // Check if TeamId exists in coach_teams_table (including inactive)
       const { data: existingTeam, error: existingTeamError } = await supabase
         .from("coach_teams_table")
@@ -221,7 +222,7 @@ export default async function handler(req, res) {
               console.error("❌ Error adding co-coach to team:", coCoachUpdateError);
               throw coCoachUpdateError;
             }
-            console.log("✅ Added as co-coach to team:", requesterTeamId);
+            logger.debug("✅ Added as co-coach to team:", requesterTeamId);
           }
         } else {
           // Team is inactive, reactivate with requester as primary coach
@@ -240,7 +241,7 @@ export default async function handler(req, res) {
             console.error("❌ Error reactivating team:", reactivateError);
             throw reactivateError;
           }
-          console.log("✅ Reactivated team:", requesterTeamId);
+          logger.debug("✅ Reactivated team:", requesterTeamId);
         }
       } else {
         // Create new entry with requester as primary coach
@@ -259,10 +260,10 @@ export default async function handler(req, res) {
           console.error("❌ Error creating coach_teams_table entry:", insertError);
           throw insertError;
         }
-        console.log("✅ Created coach_teams_table entry for team:", requesterTeamId);
+        logger.debug("✅ Created coach_teams_table entry for team:", requesterTeamId);
       }
     } else {
-      console.log("ℹ️ User has no TeamId, skipping coach_teams_table creation");
+      logger.debug("ℹ️ User has no TeamId, skipping coach_teams_table creation");
     }
 
     // STEP 2: Get coach's team details
@@ -276,7 +277,7 @@ export default async function handler(req, res) {
     const coachTeamId = coachData[0]?.TeamId; // Coach's business team code (e.g., "ABC123")
     
     // TEMPORARY: Store TeamId string until database migration is complete
-    // TODO: After migrating CoachTeamId column to integer, store coach_teams_table.id instead
+    // TODO(#0): After migrating CoachTeamId column to integer, store coach_teams_table.id instead
     let coachTeamIdValue = coachTeamId; // For now, store the TeamId string
 
     // STEP 3: NOW update team_table

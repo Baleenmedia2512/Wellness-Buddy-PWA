@@ -1,4 +1,4 @@
-import { ValidationError } from '../weight/weight.validators.js';
+import { ValidationError } from '../../shared/lib/ValidationError.js';
 
 export function validateSendOtp(body) {
   if (!body) throw new ValidationError(400, 'Recipient is required');

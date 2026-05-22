@@ -3,14 +3,26 @@
   "private": true,
   "version": "3.0.0",
   "scripts": {
-    "vsa:check": "node scripts/vsa-analyze.js",
+    "vsa:check": "node scripts/vsa-diagnostic.js",
     "smoke": "node scripts/smoke-test.js",
     "smoke:prod": "cross-env SMOKE_BASE_URL=https://wellness-buddy-pwa.vercel.app node scripts/smoke-test.js",
     "lint:backend": "cd backend && npx eslint .",
     "lint:frontend": "cd frontend && npx eslint src",
-    "lint": "npm run lint:backend && npm run lint:frontend"
+    "lint": "npm run lint:backend && npm run lint:frontend",
+    "governance:check": "node scripts/forbidden-patterns.js && node scripts/file-size-guard.js && node scripts/find-duplicates.js",
+    "governance:forbidden": "node scripts/forbidden-patterns.js",
+    "governance:size": "node scripts/file-size-guard.js",
+    "governance:duplicates": "node scripts/find-duplicates.js",
+    "governance:arch": "npm run vsa:check && npx dependency-cruiser --config .dependency-cruiser.cjs backend frontend/src",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui",
+    "e2e:smoke": "playwright test --grep @smoke",
+    "e2e:journey": "playwright test --grep @journey",
+    "e2e:report": "playwright show-report"
   },
   "dependencies": {
+    "@playwright/test": "^1.60.0",
     "pg": "^8.16.3",
     "react-easy-crop": "^5.5.7"
   }

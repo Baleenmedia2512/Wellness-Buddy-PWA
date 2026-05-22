@@ -13,6 +13,7 @@ import { Filesystem } from "@capacitor/filesystem";
 import TouchFeedbackButton from "./TouchFeedbackButton";
 import CustomAlertModal from "./CustomAlertModal";
 import { Camera as CameraIcon, Image as GalleryIcon } from "lucide-react";
+import { debugLog } from '../utils/logger.js';
 import {
   validateImageFreshness,
   validateImageForEducation,
@@ -141,8 +142,8 @@ const ImageUpload = forwardRef(
             return;
           }
 
-          console.log("✅ Image validated:", validation.message);
-          console.log("📸 Image timestamp:", validation.imageTimestamp);
+          debugLog("✅ Image validated:", validation.message);
+          debugLog("📸 Image timestamp:", validation.imageTimestamp);
 
           // Pass both file and timestamp to parent
           // Fall back to file.lastModified if EXIF timestamp unavailable
@@ -200,7 +201,7 @@ const ImageUpload = forwardRef(
                   const localDate = new Date(yr, mo - 1, dy, hr, mn, sc);
                   if (!isNaN(localDate.getTime())) {
                     captureTimestamp = toLocalISOString(localDate);
-                    console.log(
+                    debugLog(
                       "📸 Camera EXIF capture time:",
                       captureTimestamp,
                     );
@@ -213,7 +214,7 @@ const ImageUpload = forwardRef(
             // (on native camera the photo is just taken, so now ≈ capture time)
             if (!captureTimestamp) {
               captureTimestamp = toLocalISOString(new Date());
-              console.log(
+              debugLog(
                 "📸 No EXIF from camera, using current time:",
                 captureTimestamp,
               );
@@ -319,7 +320,7 @@ const ImageUpload = forwardRef(
                   return;
                 }
 
-                console.log(
+                debugLog(
                   "Gallery image validated via EXIF:",
                   toLocalISOString(photoDate),
                 );
@@ -328,7 +329,7 @@ const ImageUpload = forwardRef(
               }
 
               // No EXIF from Capacitor — fall back to Filesystem.stat() for modification time
-              console.log(
+              debugLog(
                 " No EXIF metadata, checking Filesystem.stat() for education image",
               );
 
@@ -380,7 +381,7 @@ const ImageUpload = forwardRef(
                   return;
                 }
 
-                console.log(
+                debugLog(
                   "✅ Education gallery image validated via Filesystem.stat:",
                   toLocalISOString(fileDate),
                 );
@@ -433,7 +434,7 @@ const ImageUpload = forwardRef(
                   }
 
                   galleryTimestamp = toLocalISOString(parsed);
-                  console.log(
+                  debugLog(
                     "✅ Non-education gallery image validated via EXIF:",
                     galleryTimestamp,
                   );
@@ -443,7 +444,7 @@ const ImageUpload = forwardRef(
 
             // Fallback to Filesystem.stat() if EXIF is missing
             if (!galleryTimestamp) {
-              console.log(
+              debugLog(
                 "⚠️ No EXIF metadata, checking Filesystem.stat() for non-education image",
               );
 
@@ -482,7 +483,7 @@ const ImageUpload = forwardRef(
                 }
 
                 galleryTimestamp = toLocalISOString(fileDate);
-                console.log(
+                debugLog(
                   "✅ Non-education gallery image validated via Filesystem.stat:",
                   galleryTimestamp,
                 );
@@ -512,13 +513,15 @@ const ImageUpload = forwardRef(
       }
     };
 
-    // Expose reset method to parent component
+    // Expose reset method and openCamera to parent component
     useImperativeHandle(ref, () => ({
       resetInputs: () => {
         if (cameraInputRef.current) cameraInputRef.current.value = "";
         if (galleryInputRef.current) galleryInputRef.current.value = "";
         if (fallbackInputRef.current) fallbackInputRef.current.value = "";
       },
+      // Called by App.js to auto-open the camera (same as tapping Take Photo)
+      openCamera: () => triggerCamera(),
     }));
 
     // Taglines for loading overlay based on state and image type
