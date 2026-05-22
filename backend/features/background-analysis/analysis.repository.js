@@ -18,6 +18,12 @@ export async function listAnalyses({ userId, limit, offset }) {
     .select('*', { count: 'exact' })
     .eq('"UserID"', userId)
     .eq('"IsDeleted"', 0)
+    // Exclude pending-capture rows that were pre-created for the instant-share
+    // optimisation but never enriched with analysis data (e.g. because the
+    // captured image turned out to be a weight scale or education screenshot,
+    // not food).  Those rows have AnalysisData = NULL and would otherwise
+    // render as "Unknown Food" in the nutrition dashboard.
+    .not('"AnalysisData"', 'is', null)
     .order('"CreatedAt"', { ascending: false })
     .range(offset, offset + limit - 1);
   if (error) throw error;
@@ -179,6 +185,26 @@ export async function getCoachChain(startUserId) {
     depth += 1;
   }
   return chain;
+}
+
+/**
+ * Return true when userIdA and userIdB are active co-coach partners —
+ * i.e. a row exists in coach_teams_table where one is CoachId and the other
+ * is CoCoachId (either order). Used by the share-link permission check.
+ */
+export async function isCoCoachPaired(userIdA, userIdB) {
+  const supabase = getSupabaseClient();
+  const a = userIdA.toString();
+  const b = userIdB.toString();
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('Id')
+    .or(`and(CoachId.eq.${a},CoCoachId.eq.${b}),and(CoachId.eq.${b},CoCoachId.eq.${a})`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
 }
 
 /**

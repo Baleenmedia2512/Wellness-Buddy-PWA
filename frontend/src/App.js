@@ -3330,6 +3330,17 @@ function WellnessValleyApp() {
           loggedAt: new Date().toISOString(),
           userId: resolvedUserId, // â† real DB id, not Firebase uid
         });
+        // Soft-delete the pre-created pending capture row — this image is not
+        // food so the row must not appear in the nutrition dashboard.
+        pendingSharePromise.then((share) => {
+          if (share?.id && user?.id) {
+            fetch(`${apiBaseUrl}/api/background-analysis`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: share.id, userId: user.id }),
+            }).catch((err) => debugLog('[Share] cleanup of smartwatch pending capture failed:', err?.message));
+          }
+        });
         setLoading(false);
         return;
       }
@@ -3372,6 +3383,17 @@ function WellnessValleyApp() {
           setError("Failed to analyze meeting screenshot: " + err.message);
         }
 
+        // Soft-delete the pre-created pending capture row — this image is not
+        // food so the row must not appear in the nutrition dashboard.
+        pendingSharePromise.then((share) => {
+          if (share?.id && user?.id) {
+            fetch(`${apiBaseUrl}/api/background-analysis`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: share.id, userId: user.id }),
+            }).catch((err) => debugLog('[Share] cleanup of education pending capture failed:', err?.message));
+          }
+        });
         setLoading(false);
         return;
       }
@@ -3564,6 +3586,17 @@ function WellnessValleyApp() {
           return;
         }
 
+        // Soft-delete the pre-created pending capture row — this image is not
+        // food so the row must not appear in the nutrition dashboard.
+        pendingSharePromise.then((share) => {
+          if (share?.id && user?.id) {
+            fetch(`${apiBaseUrl}/api/background-analysis`, {
+              method: 'DELETE',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: share.id, userId: user.id }),
+            }).catch((err) => debugLog('[Share] cleanup of weight pending capture failed:', err?.message));
+          }
+        });
         setLoading(false);
         return;
       }
@@ -4617,16 +4650,11 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // New user — SetupWizard handles profile collection, no popup needed
-        if (isNewUser || parsedUser.isNewUser) {
-          debugLog(
-            "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
-          );
-        } else {
-          // ✅ Existing user — check profile completion immediately after login
-          if (userEmail) {
-            await checkProfileCompletion(userEmail, parsedUser);
-          }
+        // Check profile completion for all users — new users will always have missing
+        // fields and the CompleteProfilePage gate will show. The SetupWizard handles
+        // coach/team linking (a separate flow), not personal detail collection.
+        if (userEmail) {
+          await checkProfileCompletion(userEmail, parsedUser);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
