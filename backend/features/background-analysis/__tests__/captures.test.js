@@ -6,7 +6,7 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture, list } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list, resolvePublicCapture } from '../analysis.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
@@ -14,12 +14,16 @@ jest.mock('../analysis.repository.js', () => ({
   insertPendingCapture: jest.fn(),
   updateWithAnalysisResult: jest.fn(),
   findPublicByToken: jest.fn(),
+  findOwnerByToken: jest.fn(),
   insertAnalysis: jest.fn(),
   listAnalyses: jest.fn(),
   softDeleteAnalysis: jest.fn(),
   checkOwnership: jest.fn(),
   restoreAnalysis: jest.fn(),
   touchLastActive: jest.fn(),
+  getCoachChain: jest.fn(),
+  findUserName: jest.fn(),
+  isCoCoachPaired: jest.fn(),
   getISTTimestamp: () => new Date().toISOString(),
   convertToIST: (ts) => ({ istTimestamp: ts }),
 }));
@@ -260,5 +264,77 @@ describe('list', () => {
     await list({ userId: '42', limit: 10, offset: 30 });
 
     expect(repo.listAnalyses).toHaveBeenCalledWith({ userId: '42', limit: 10, offset: 30 });
+  });
+});
+
+// ─── resolvePublicCapture ────────────────────────────────────────────────────
+
+describe('resolvePublicCapture', () => {
+  const TOKEN = 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11';
+  const FUTURE = new Date(Date.now() + 1e9).toISOString();
+  const PAST   = new Date(Date.now() - 1000).toISOString();
+  const OWNER  = '10';  // Adithya
+  const COACH  = '20';  // Adithya's upline coach
+  const COCOACH = '30'; // Praveen — co-coach partner of Adithya
+  const STRANGER = '99';
+
+  const ownerRow = { UserID: OWNER, CreatedAt: FUTURE, ShareExpiresAt: FUTURE };
+
+  afterEach(() => jest.resetAllMocks());
+
+  it('returns 404 when token has no matching row', async () => {
+    repo.findOwnerByToken.mockResolvedValue(null);
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
+    expect(r.httpStatus).toBe(404);
+    expect(r.body.error.code).toBe('NOT_FOUND');
+  });
+
+  it('returns 410 when token is expired', async () => {
+    repo.findOwnerByToken.mockResolvedValue({ ...ownerRow, ShareExpiresAt: PAST });
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
+    expect(r.httpStatus).toBe(410);
+    expect(r.body.error.code).toBe('EXPIRED');
+  });
+
+  it('returns 200 isSelf=true when viewer is the owner (no chain lookup)', async () => {
+    repo.findOwnerByToken.mockResolvedValue(ownerRow);
+    repo.findUserName.mockResolvedValue('Adithya');
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.data.isSelf).toBe(true);
+    expect(repo.getCoachChain).not.toHaveBeenCalled();
+    expect(repo.isCoCoachPaired).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 when viewer is in the upline coach chain', async () => {
+    repo.findOwnerByToken.mockResolvedValue(ownerRow);
+    repo.getCoachChain.mockResolvedValue([OWNER, COACH]);
+    repo.findUserName.mockResolvedValue('Adithya');
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COACH });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.data.isSelf).toBe(false);
+    expect(repo.isCoCoachPaired).not.toHaveBeenCalled();
+  });
+
+  it('returns 200 when viewer is a co-coach partner of the owner', async () => {
+    // Adithya (OWNER) and Praveen (COCOACH) are paired in coach_teams_table.
+    // Praveen is NOT in the upline chain — co-coach check must grant access.
+    repo.findOwnerByToken.mockResolvedValue(ownerRow);
+    repo.getCoachChain.mockResolvedValue([OWNER, COACH]); // Praveen absent
+    repo.isCoCoachPaired.mockResolvedValue(true);
+    repo.findUserName.mockResolvedValue('Adithya');
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COCOACH });
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.ok).toBe(true);
+    expect(repo.isCoCoachPaired).toHaveBeenCalledWith(OWNER, COCOACH);
+  });
+
+  it('returns 403 when viewer is neither in chain nor a co-coach partner', async () => {
+    repo.findOwnerByToken.mockResolvedValue(ownerRow);
+    repo.getCoachChain.mockResolvedValue([OWNER, COACH]);
+    repo.isCoCoachPaired.mockResolvedValue(false);
+    const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: STRANGER });
+    expect(r.httpStatus).toBe(403);
+    expect(r.body.error.code).toBe('FORBIDDEN');
   });
 });

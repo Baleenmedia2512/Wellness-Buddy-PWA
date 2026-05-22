@@ -272,11 +272,16 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   const viewer = viewerUserId.toString();
   const isSelf = viewer === ownerUserId;
   if (!isSelf) {
-    // Permission: viewer must be in the owner's coach chain (i.e. owner is
-    // a descendant of the viewer in the team hierarchy).
+    // Permission check (either condition is sufficient):
+    // 1. Viewer appears in the owner's upline coach chain.
+    // 2. Viewer and owner are active co-coach partners in coach_teams_table.
     const chain = await repo.getCoachChain(ownerUserId);
-    if (!chain.includes(viewer)) {
-      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
+    const isInChain = chain.includes(viewer);
+    if (!isInChain) {
+      const paired = await repo.isCoCoachPaired(ownerUserId, viewer);
+      if (!paired) {
+        return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
+      }
     }
   }
 

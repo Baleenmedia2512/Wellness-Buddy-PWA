@@ -188,6 +188,26 @@ export async function getCoachChain(startUserId) {
 }
 
 /**
+ * Return true when userIdA and userIdB are active co-coach partners —
+ * i.e. a row exists in coach_teams_table where one is CoachId and the other
+ * is CoCoachId (either order). Used by the share-link permission check.
+ */
+export async function isCoCoachPaired(userIdA, userIdB) {
+  const supabase = getSupabaseClient();
+  const a = userIdA.toString();
+  const b = userIdB.toString();
+  const { data, error } = await supabase
+    .from('coach_teams_table')
+    .select('Id')
+    .or(`and(CoachId.eq.${a},CoCoachId.eq.${b}),and(CoachId.eq.${b},CoCoachId.eq.${a})`)
+    .eq('Status', 'active')
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
+/**
  * Fetch a user's display name. Returns null when not found.
  */
 export async function findUserName(userId) {
