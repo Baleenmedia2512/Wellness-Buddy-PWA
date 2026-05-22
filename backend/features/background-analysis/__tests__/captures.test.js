@@ -6,7 +6,7 @@
  * are pure unit tests with no DB dependency.
  */
 import { validateCreateCapture, validatePublicCapture } from '../analysis.validators.js';
-import { createPendingCapture, getPublicCapture } from '../analysis.service.js';
+import { createPendingCapture, getPublicCapture, list } from '../analysis.service.js';
 
 // ─── mock repository ─────────────────────────────────────────────────────────
 
@@ -192,5 +192,73 @@ describe('getPublicCapture', () => {
     const r = await getPublicCapture({ token: VALID_TOKEN });
     expect(r.httpStatus).toBe(200);
     expect(r.body.data.pending).toBe(true);
+  });
+});
+
+// ─── list ────────────────────────────────────────────────────────────────────
+// The repository layer enforces `.not('"AnalysisData"', 'is', null)` so that
+// pending-capture rows (pre-created for the instant-share optimisation but
+// never filled in because the image turned out to be weight/education/
+// smartwatch) are excluded from the nutrition dashboard.  These service-level
+// tests verify the expected contract once the repo filter is applied.
+
+describe('list', () => {
+  const userId = '99';
+
+  afterEach(() => { repo.listAnalyses.mockReset(); });
+
+  it('returns rows and correct pagination when repo returns enriched captures', async () => {
+    repo.listAnalyses.mockResolvedValue({
+      rows: [
+        { ID: 1, AnalysisData: JSON.stringify({ foods: [{ name: 'Rice' }] }), TotalCalories: 300 },
+        { ID: 2, AnalysisData: JSON.stringify({ foods: [{ name: 'Banana' }] }), TotalCalories: 89 },
+      ],
+      count: 2,
+    });
+
+    const r = await list({ userId, limit: 50, offset: 0 });
+
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(r.body.data).toHaveLength(2);
+    expect(r.body.pagination).toMatchObject({ total: 2, limit: 50, offset: 0, hasMore: false });
+    // Every returned row must have AnalysisData (pending-capture guard)
+    r.body.data.forEach((row) => expect(row.AnalysisData).not.toBeNull());
+  });
+
+  it('returns empty data when all pending-capture rows were filtered out by repo', async () => {
+    // Simulates the state where only orphan rows existed — the repo filter
+    // (introduced to fix the "Unknown Food" regression) excluded all of them.
+    repo.listAnalyses.mockResolvedValue({ rows: [], count: 0 });
+
+    const r = await list({ userId, limit: 50, offset: 0 });
+
+    expect(r.httpStatus).toBe(200);
+    expect(r.body.data).toHaveLength(0);
+    expect(r.body.pagination.total).toBe(0);
+    expect(r.body.pagination.hasMore).toBe(false);
+  });
+
+  it('sets hasMore correctly when more pages exist', async () => {
+    repo.listAnalyses.mockResolvedValue({
+      rows: Array.from({ length: 20 }, (_, i) => ({
+        ID: i + 1,
+        AnalysisData: JSON.stringify({ foods: [] }),
+      })),
+      count: 45,
+    });
+
+    const r = await list({ userId, limit: 20, offset: 0 });
+
+    expect(r.body.pagination.hasMore).toBe(true);
+    expect(r.body.pagination.total).toBe(45);
+  });
+
+  it('forwards userId, limit, and offset to repo.listAnalyses', async () => {
+    repo.listAnalyses.mockResolvedValue({ rows: [], count: 0 });
+
+    await list({ userId: '42', limit: 10, offset: 30 });
+
+    expect(repo.listAnalyses).toHaveBeenCalledWith({ userId: '42', limit: 10, offset: 30 });
   });
 });

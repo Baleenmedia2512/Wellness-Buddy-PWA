@@ -18,6 +18,12 @@ export async function listAnalyses({ userId, limit, offset }) {
     .select('*', { count: 'exact' })
     .eq('"UserID"', userId)
     .eq('"IsDeleted"', 0)
+    // Exclude pending-capture rows that were pre-created for the instant-share
+    // optimisation but never enriched with analysis data (e.g. because the
+    // captured image turned out to be a weight scale or education screenshot,
+    // not food).  Those rows have AnalysisData = NULL and would otherwise
+    // render as "Unknown Food" in the nutrition dashboard.
+    .not('"AnalysisData"', 'is', null)
     .order('"CreatedAt"', { ascending: false })
     .range(offset, offset + limit - 1);
   if (error) throw error;
