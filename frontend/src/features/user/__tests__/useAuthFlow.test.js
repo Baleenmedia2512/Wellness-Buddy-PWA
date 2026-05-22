@@ -161,6 +161,32 @@ describe('verifyOtp', () => {
     expect(stored.id).toBe(5);
     expect(stored.isNewUser).toBe(false);
   });
+
+  it('regression: stores isNewUser=true in localStorage for new OTP users', async () => {
+    // Regression guard for BUG: handleOtpVerified skipped checkProfileCompletion for
+    // new users, so the forced profile detail gate never appeared.
+    // Fix: checkProfileCompletion is now called unconditionally in handleOtpVerified.
+    // This test verifies useAuthFlow correctly propagates isNewUser=true so the
+    // App-level consumer can apply the fix.
+    jest.useFakeTimers();
+    const onOtpVerified = jest.fn().mockResolvedValue(undefined);
+    authService.verifyOtp.mockResolvedValue({
+      success: true,
+      user: { id: 99, email: 'brand-new@example.com' },
+      isNewUser: true,
+    });
+
+    const { result } = renderHook(() => useAuthFlow({ onOtpVerified }));
+    await act(async () => { await result.current.verifyOtp('123456'); });
+    await act(async () => { jest.advanceTimersByTime(1500); });
+
+    // hook must pass isNewUser=true to the App-level handler
+    expect(onOtpVerified).toHaveBeenCalledWith(true);
+    // localStorage must also carry the flag so handleOtpVerified can read it
+    const stored = JSON.parse(localStorage.getItem('otpUser'));
+    expect(stored.isNewUser).toBe(true);
+    expect(stored.email).toBe('brand-new@example.com');
+  });
 });
 
 // ─── resetOtpScreen ───────────────────────────────────────────────────────────

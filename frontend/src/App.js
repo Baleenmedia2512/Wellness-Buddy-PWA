@@ -4650,16 +4650,11 @@ function WellnessValleyApp() {
 
         setUser(parsedUser);
 
-        // New user — SetupWizard handles profile collection, no popup needed
-        if (isNewUser || parsedUser.isNewUser) {
-          debugLog(
-            "🆕 [handleOtpVerified] New user - SetupWizard will collect profile details",
-          );
-        } else {
-          // ✅ Existing user — check profile completion immediately after login
-          if (userEmail) {
-            await checkProfileCompletion(userEmail, parsedUser);
-          }
+        // Check profile completion for all users — new users will always have missing
+        // fields and the CompleteProfilePage gate will show. The SetupWizard handles
+        // coach/team linking (a separate flow), not personal detail collection.
+        if (userEmail) {
+          await checkProfileCompletion(userEmail, parsedUser);
         }
       } catch (error) {
         console.error("Failed to check OTP user status:", error);
