@@ -339,25 +339,27 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
             )}
           </button>
 
-          {/* Demo Skip Button for App Review */}
-          <button
-            className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
-            onClick={() => {
-              const demoOtp = ['0','0','0','0','0','0'];
-              setOtp(demoOtp);
-              setTimeout(() => validateOtp(), 100);
-            }}
-            disabled={validating}
-          >
-            <span>Skip & Continue (Demo)</span>
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </button>
+          {/* Demo Skip Button — only visible for demo/admin account */}
+          {(localStorage.getItem('userEmail') || '').toLowerCase().trim() === 'testereasywork@gmail.com' && (
+            <button
+              className="w-full mt-3 py-3 rounded-xl font-semibold text-sm text-gray-500 border border-gray-200 hover:bg-gray-50 transition-all flex items-center justify-center gap-2"
+              onClick={() => {
+                const demoOtp = ['0','0','0','0','0','0'];
+                setOtp(demoOtp);
+                setTimeout(() => validateOtp(), 100);
+              }}
+              disabled={validating}
+            >
+              <span>Skip & Continue (Demo)</span>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 9l3 3m0 0l-3 3m3-3H8m13 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            </button>
+          )}
           
           <div className="mt-6 text-center">
             <button 
               onClick={handleCancel} 
               disabled={validating || cancelling}
-              className="text-gray-400 text-sm hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1 mx-auto transition-colors"
+              className="w-full py-3 rounded-xl font-semibold text-sm border-2 border-gray-300 text-gray-600 hover:border-red-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mx-auto transition-all"
             >
               {cancelling ? (
                 <>
@@ -366,8 +368,8 @@ const ValidateOTP = ({ onClose, onSuccess, onLogout }) => {
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                  <span>Cancel Verification</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                  <span>Go Back To Select Different Coach</span>
                 </>
               )}
             </button>

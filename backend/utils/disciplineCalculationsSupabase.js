@@ -425,7 +425,17 @@ export async function calculateMemberDisciplineSupabase(userId, startDate, endDa
     });
 
     // A day is disciplined if net calories (consumed - burned) <= BMR target
+    // Include ALL dates in the reporting period so rest/fasting days (0 consumed)
+    // are also evaluated — 0 consumed <= BMR target → disciplined day ✅
+    const allPeriodDates = new Set();
+    const periodCursor = new Date(startDate);
+    const periodEnd = new Date(endDate);
+    while (periodCursor <= periodEnd) {
+      allPeriodDates.add(periodCursor.toISOString().slice(0, 10));
+      periodCursor.setDate(periodCursor.getDate() + 1);
+    }
     const allActivityDates = new Set([
+      ...allPeriodDates,
       ...Object.keys(caloriesConsumedByDate),
       ...Object.keys(caloriesBurnedByDate),
     ]);
