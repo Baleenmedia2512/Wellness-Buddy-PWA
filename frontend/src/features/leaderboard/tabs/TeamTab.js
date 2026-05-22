@@ -111,6 +111,7 @@ const TeamTab = ({ vm }) => {
       renderExpandedDetails={renderExpandedDetails}
       isCurrentUser
       showTeamCount
+      showMemberList={false}
       getStatusStyle={getStatusStyle}
       searchQuery={vm.searchQuery}
       filter={vm.filter}
