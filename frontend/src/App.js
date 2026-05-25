@@ -198,6 +198,10 @@ function WellnessValleyApp() {
   const [showInactiveModal, setShowInactiveModal] = useState(false);
   const [showUserNotFoundModal, setShowUserNotFoundModal] = useState(false);
   const [isUserActive, setIsUserActive] = useState(true); // Track if user is active
+  // Set true only after requestAllPermissions() resolves. Guards the camera
+  // auto-open effect so the camera never fires during the permissions-dialog
+  // chain (camera → push → geolocation). On web this resolves immediately.
+  const [permissionsReady, setPermissionsReady] = useState(false);
   const [manualModeActive, setManualModeActive] = useState(false); // always AI by default; auto-set by openBestManualModal on AI failure
   const [manualModeToast, setManualModeToast] = useState(""); // "enabled" | "disabled" | ""
   const [showManualWeightModal, setShowManualWeightModal] = useState(false);
@@ -535,12 +539,24 @@ function WellnessValleyApp() {
 
   // Ref that always reflects whether the home screen is currently visible.
   // Used by the app-resume listener to avoid stale closure over state.
+  // NOTE: excludes showCompleteProfile — the profile gate overlays the home
+  // screen, so auto-camera-open must not fire while it is visible.
   const _homeScreenActiveRef = useRef(false);
   useEffect(() => {
     _homeScreenActiveRef.current =
-      !!user && !authLoading && !showDashboard &&
+      !!user && !authLoading && !showDashboard && !showCompleteProfile &&
       !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
-  }, [user, authLoading, showDashboard, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+
+  // Tracks whether CompleteProfilePage is currently mounted. Used by the
+  // foreground-resume listener below to skip checkProfileCompletion while
+  // the user is actively filling out the form. Without this guard, returning
+  // from camera/gallery fires checkProfileCompletion → profileChecking=true
+  // → LoadingSpinner replaces the page → form unmounts → all input is lost.
+  const _profileGateActiveRef = useRef(false);
+  useEffect(() => {
+    _profileGateActiveRef.current = showCompleteProfile;
+  }, [showCompleteProfile]);
 
   // App resume (phone unlocked / app foregrounded) → open camera if on home screen.
   useEffect(() => {
@@ -566,9 +582,17 @@ function WellnessValleyApp() {
   // Auto-open camera once per session when the user first arrives at the home
   // screen on a native device (fresh app launch or login). Retries until the
   // ImageUpload component has mounted and exposed its openCamera method.
+  //
+  // ORDER GUARANTEE: camera must NOT open until:
+  //   1. permissionsReady — all three permission dialogs (camera → push → location)
+  //      have resolved. Without this guard the camera fires mid-dialog chain,
+  //      which is jarring and blocks the location prompt.
+  //   2. isUserActive — user validation confirms the account is active. Inactive
+  //      users never reach the home screen so they should never get the camera.
   const _hasFiredCameraOnLoginRef = useRef(false);
   useEffect(() => {
     if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
+    if (!permissionsReady || !isUserActive) return;
     let cancelled = false;
     let attempts = 0;
     const tryOpen = () => {
@@ -587,7 +611,7 @@ function WellnessValleyApp() {
       cancelled = true;
       clearTimeout(t);
     };
-  }, [user]);
+  }, [user, permissionsReady, isUserActive]);
 
   // Deep-link handler: open the app via Android App Link
   // (https://<host>/share/<uuid>) or the custom scheme
@@ -1629,11 +1653,17 @@ function WellnessValleyApp() {
   }, [user?.id, forceLoggedOut]);
 
   // Setup for authenticated users.
+  // requestAllPermissions() is awaited so permissionsReady is only set true
+  // after all three dialogs (camera → push → geolocation) have resolved.
+  // This prevents the camera auto-open from firing mid-permission-flow.
   useEffect(() => {
-    if (user) {
-      requestAllPermissions();
-      handleSaveUserCache(user);
-    }
+    if (!user) return;
+    let mounted = true;
+    requestAllPermissions()
+      .then(() => { if (mounted) setPermissionsReady(true); })
+      .catch(() => { if (mounted) setPermissionsReady(true); }); // fail-open: dialogs already swallow errors
+    handleSaveUserCache(user);
+    return () => { mounted = false; };
   }, [user, requestAllPermissions, handleSaveUserCache]);
 
   // Fetch education time window from DB so ImageUpload uses live values (no hardcoding)
@@ -1761,6 +1791,11 @@ function WellnessValleyApp() {
     Promise.resolve(
       nativeLifecycle.addAppStateListener(({ isActive }) => {
         if (isActive && user) {
+          // Guard: skip while CompleteProfilePage is visible. Returning from
+          // camera/gallery triggers this listener; re-running checkProfileCompletion
+          // would set profileChecking=true, unmounting the form and discarding
+          // all typed input (height, phone, diet, selected photo).
+          if (_profileGateActiveRef.current) return;
           const userEmail = user.email || user.Email;
           if (userEmail) {
             debugLog("🔄 [Foreground] App resumed — running immediate profile check");

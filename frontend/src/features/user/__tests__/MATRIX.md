@@ -13,6 +13,10 @@ Reference: [claude.md §9.3](../../../../claude.md#93-feature-testing-matrix-tem
 | Error display with role="alert" | ✅ `LoginIntroPanel.test.js` | ⬜ | ⬜ | N/A | ✅ (absent when empty) |
 | Legal links (Terms / Privacy Policy) | ✅ `Login.test.js` | N/A | ⬜ | N/A | ⬜ |
 | resetOtpScreen | ✅ `useAuthFlow.test.js` | N/A | N/A | N/A | ✅ (idempotent call) |
+| CompleteProfilePage — form render when fields missing | ✅ `CompleteProfilePage.test.js` | ⬜ | ⬜ | N/A | ✅ (all-missing, all-present → onComplete) |
+| CompleteProfilePage — form validation | ✅ `CompleteProfilePage.test.js` | ⬜ | ⬜ | N/A | ✅ (disabled until valid, height out-of-range) |
+| CompleteProfilePage — picture section visibility | ✅ `CompleteProfilePage.test.js` | ⬜ | ⬜ | N/A | ✅ (hidden by default, shown with prop) |
+| CompleteProfilePage — camera/gallery race condition | ✅ `CompleteProfilePage.test.js` | ⬜ | ⬜ | N/A | ✅ (unmount-remount clears form; App.js guard prevents unmount) |
 
 Legend: ✅ covered · ⚠️ partial · ❌ missing · ⬜ not yet assessed.
 
