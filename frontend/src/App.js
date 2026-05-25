@@ -5026,7 +5026,7 @@ function WellnessValleyApp() {
             );
           })()}
 
-          {imageType === "food" && foodShareUrl && nutritionData && (
+          {imageType === "food" && foodShareUrl && (
             <div className="px-4 pb-3">
               <TouchFeedbackButton
                 disabled={isManualSharing}
