@@ -289,6 +289,11 @@ function WellnessValleyApp() {
   const foodShareCardRef = useRef(null);
   const foodShareImageDataUrlRef = useRef(null);
   const [foodShareUrl, setFoodShareUrl] = useState(null);
+  // Awaited in performNutritionSave before reading foodCaptureIdRef.current so
+  // that a fast Gemini response never races ahead of a slow /captures POST,
+  // which would leave captureId null and cause a duplicate DB row (INSERT
+  // instead of UPDATE on the pre-created pending row).
+  const pendingSharePromiseRef = useRef(null);
   // ⏱️ End-to-end timing: stamped when the user picks/captures an image, used
   // by every downstream step to log "+Nms from capture start" so the full
   // pipeline (compress → POST captures → Gemini → precapture → Share sheet)
@@ -336,6 +341,11 @@ function WellnessValleyApp() {
   // Tracks whether we've already auto-launched the share sheet for the current
   // food capture, so we don't re-open it after the user dismisses it.
   const foodAutoSharedRef = useRef(false);
+  // Guards the manual "Share Image + Link" fallback button so that a second
+  // tap while the share sheet is opening cannot spawn a duplicate sheet.
+  // Ref handles synchronous re-entry; state drives the visual disabled prop.
+  const isManualSharingRef = useRef(false);
+  const [isManualSharing, setIsManualSharing] = useState(false);
 
   // Reset the home/capture surface back to its initial state. Called after the
   // share sheet completes so the user lands back on Home, ready for the next
@@ -352,6 +362,8 @@ function WellnessValleyApp() {
     foodCaptureIdRef.current = null;
     foodShareImageDataUrlRef.current = null;
     foodAutoSharedRef.current = false;
+    isManualSharingRef.current = false;
+    setIsManualSharing(false);
     if (fileInputRef.current && fileInputRef.current.resetInputs) {
       fileInputRef.current.resetInputs();
     }
@@ -2895,6 +2907,19 @@ function WellnessValleyApp() {
       });
       setSaveLoading(true);
 
+      // Await the captures POST if it hasn't resolved yet, so captureId is
+      // always populated before saveNutritionAnalysis fires.  Without this,
+      // a fast Gemini response races ahead of a slow /captures network call
+      // and captureId arrives as null → the backend INSERTs a new row instead
+      // of UPDATing the pre-created pending row → two records in the DB.
+      if (pendingSharePromiseRef.current) {
+        const share = await pendingSharePromiseRef.current;
+        if (share && !foodCaptureIdRef.current) {
+          foodCaptureIdRef.current = share.id;
+        }
+        pendingSharePromiseRef.current = null;
+      }
+
       const saveRes = await saveNutritionAnalysis({
         ...saveData,
         // Pass captureId so the backend updates the pre-created pending row
@@ -3247,6 +3272,9 @@ function WellnessValleyApp() {
           return null;
         }
       })();
+      // Store a reference so performNutritionSave can await this promise
+      // and guarantee captureId is set before the save request goes out.
+      pendingSharePromiseRef.current = pendingSharePromise;
 
       // ⚡ [Share] FAST CLASSIFICATION — kick off a lightweight Gemini call
       // that ONLY returns the image type label (no nutrition extraction).
@@ -3887,6 +3915,12 @@ function WellnessValleyApp() {
           }
 
           setError(errorMessage);
+          // Clear share state – the Share button must not linger when AI
+          // yields no food data (e.g. Gemini quota exhausted for the day).
+          setFoodShareUrl(null);
+          setImageType(null);
+          foodCaptureIdRef.current = null;
+          pendingSharePromiseRef.current = null;
           // ✅ "Enter Manually" button is shown in the error card for ALL error types
           setLoading(false);
           return;
@@ -4992,10 +5026,17 @@ function WellnessValleyApp() {
             );
           })()}
 
-          {imageType === "food" && foodShareUrl && (
+          {imageType === "food" && foodShareUrl && nutritionData && (
             <div className="px-4 pb-3">
               <TouchFeedbackButton
+                disabled={isManualSharing}
                 onClick={async () => {
+                  // Ref check prevents re-entry on rapid taps; state disables
+                  // the button visually so the user gets immediate feedback.
+                  if (isManualSharingRef.current) return;
+                  isManualSharingRef.current = true;
+                  setIsManualSharing(true);
+                  try {
                   const captionText =
                     `Check out my meal on Wellness Valley!\n${foodShareUrl}`;
                   const dataUrl = foodShareImageDataUrlRef.current;
@@ -5029,8 +5070,12 @@ function WellnessValleyApp() {
                     );
                     resetCaptureToHome();
                   } catch (_) { /* user cancelled */ }
+                  } finally {
+                    isManualSharingRef.current = false;
+                    setIsManualSharing(false);
+                  }
                 }}
-                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors"
+                className="w-full flex items-center justify-center gap-2 bg-emerald-600 text-white px-4 py-3 rounded-xl text-sm font-semibold hover:bg-emerald-700 active:bg-emerald-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Share2 className="w-4 h-4 flex-shrink-0" />
                 Share Image + Link

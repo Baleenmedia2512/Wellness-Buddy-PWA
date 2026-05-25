@@ -72,6 +72,9 @@ const ImageUpload = forwardRef(
 
     // Image preview modal state
     const [showImageModal, setShowImageModal] = useState(false);
+    // True while the native camera / gallery picker dialog is open.
+    // Disables both buttons to prevent a second dialog opening mid-session.
+    const [cameraActive, setCameraActive] = useState(false);
 
     // Helper to convert base64 to File
     const base64ToFile = async (base64String, filename = "image.jpg") => {
@@ -163,6 +166,7 @@ const ImageUpload = forwardRef(
     const triggerCamera = async () => {
       // Use Capacitor Camera for native platforms
       if (Capacitor.isNativePlatform()) {
+        setCameraActive(true);
         try {
           const photo = await Camera.getPhoto({
             quality: 85,
@@ -228,6 +232,8 @@ const ImageUpload = forwardRef(
           if (err.message !== "User cancelled photos app") {
             cameraInputRef.current?.click();
           }
+        } finally {
+          setCameraActive(false);
         }
       } else {
         cameraInputRef.current?.click();
@@ -237,6 +243,7 @@ const ImageUpload = forwardRef(
     const triggerGallery = async () => {
       // Use Capacitor Camera for native platforms (more reliable for gallery)
       if (Capacitor.isNativePlatform()) {
+        setCameraActive(true);
         try {
           const photo = await Camera.getPhoto({
             quality: 90,
@@ -507,6 +514,8 @@ const ImageUpload = forwardRef(
           if (err.message !== "User cancelled photos app") {
             galleryInputRef.current?.click();
           }
+        } finally {
+          setCameraActive(false);
         }
       } else {
         galleryInputRef.current?.click();
@@ -693,7 +702,7 @@ const ImageUpload = forwardRef(
               <div className="grid grid-cols-2 gap-2 sm:gap-3">
                 <TouchFeedbackButton
                   onClick={triggerCamera}
-                  disabled={loading}
+                  disabled={loading || cameraActive}
                   className="bg-blue-100 text-blue-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-blue-200 transition-colors duration-200 border border-blue-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   ariaLabel="Take Photo"
                 >
@@ -707,7 +716,7 @@ const ImageUpload = forwardRef(
                 </TouchFeedbackButton>
                 <TouchFeedbackButton
                   onClick={triggerGallery}
-                  disabled={loading}
+                  disabled={loading || cameraActive}
                   className="bg-green-100 text-green-700 py-2.5 px-3 sm:py-3 sm:px-4 rounded-lg text-sm sm:text-base font-medium hover:bg-green-200 transition-colors duration-200 border border-green-300 flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                   ariaLabel="From Gallery"
                 >
@@ -737,7 +746,8 @@ const ImageUpload = forwardRef(
                 <div className="flex gap-2 sm:gap-4 mb-2.5 sm:mb-4 w-full">
                   <TouchFeedbackButton
                     onClick={triggerCamera}
-                    className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0"
+                    disabled={loading || cameraActive}
+                    className="flex-1 bg-gradient-to-r from-blue-500 to-blue-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-blue-600 hover:to-blue-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     ariaLabel="Take Photo"
                   >
                     {isIOS ? (
@@ -751,7 +761,8 @@ const ImageUpload = forwardRef(
                   </TouchFeedbackButton>
                   <TouchFeedbackButton
                     onClick={triggerGallery}
-                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0"
+                    disabled={loading || cameraActive}
+                    className="flex-1 bg-gradient-to-r from-green-500 to-green-600 text-white py-3 px-2 sm:py-3 sm:px-6 rounded-lg text-xs sm:text-base font-semibold shadow-lg hover:from-green-600 hover:to-green-700 transition-all duration-200 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 min-w-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     ariaLabel="From Gallery"
                   >
                     {isIOS ? (
