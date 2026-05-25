@@ -17,9 +17,7 @@ import TimeRangeFilter from './shared/TimeRangeFilter';
 
 import TokensTab from './tabs/TokensTab';
 import UsersTab from './tabs/UsersTab';
-import ReportsTab from './tabs/ReportsTab';
 import CorrectionsTab from './tabs/CorrectionsTab';
-import AnalyticsTab from './tabs/AnalyticsTab';
 
 import useAdminFilters from '../hooks/useAdminFilters';
 import useTokenManagement from '../hooks/useTokenManagement';
@@ -84,7 +82,14 @@ const AdminDashboard = ({ user, onClose }) => {
         </AnimatePresence>
 
         {activeTab === 'tokens' && (
-          <TokensTab {...skel} summary={reports.summary} perMillionCosts={corrections.perMillionCosts} />
+          <TokensTab {...skel}
+            summary={reports.summary}
+            userCount={reports.userSpending.length}
+            timeRange={filters.timeRange}
+            dateRangeLabel={reports.dateRangeLabel}
+            customStartDate={filters.customStartDate}
+            customEndDate={filters.customEndDate}
+          />
         )}
         {activeTab === 'users' && (
           <UsersTab {...skel}
@@ -92,12 +97,6 @@ const AdminDashboard = ({ user, onClose }) => {
             searchQuery={filters.searchQuery} setSearchQuery={filters.setSearchQuery}
             sortField={filters.sortField} sortDirection={filters.sortDirection}
             onToggleSort={filters.handleSort} />
-        )}
-        {activeTab === 'reports' && (
-          <ReportsTab {...skel}
-            summary={reports.summary} dateRangeLabel={reports.dateRangeLabel}
-            timeRange={filters.timeRange} lastUpdated={tokens.lastUpdated}
-            userCount={reports.userSpending.length} />
         )}
         {activeTab === 'corrections' && (
           <CorrectionsTab
@@ -111,10 +110,6 @@ const AdminDashboard = ({ user, onClose }) => {
             onClose={() => setActiveTab('tokens')}
           />
         )}
-        {activeTab === 'analytics' && (
-          <AnalyticsTab {...skel} summary={reports.summary} userCount={reports.userSpending.length} />
-        )}
-
         {tokens.lastUpdated && (
           <div className="text-center text-xs text-gray-400">
             Last updated: {tokens.lastUpdated.toLocaleTimeString()}

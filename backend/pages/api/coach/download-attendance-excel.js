@@ -23,6 +23,40 @@ function extractMainAreaName(cityString) {
 }
 
 /**
+ * Format DB CreatedAt for Excel without introducing timezone drift.
+ *
+ * Rules:
+ * - If CreatedAt includes timezone info (Z / +/-HH:MM), convert to IST display.
+ * - If CreatedAt is a naive local timestamp (no timezone), preserve clock time.
+ */
+function formatAttendanceDateTime(createdAt) {
+  if (!createdAt) {
+    return { date: '', time: '' };
+  }
+
+  const raw = String(createdAt).trim();
+  const hasTimezone = /(Z|[+-]\d{2}:\d{2})$/i.test(raw);
+
+  if (!hasTimezone) {
+    const normalized = raw.replace(' ', 'T');
+    const match = normalized.match(/^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2}:\d{2})/);
+    if (match) {
+      return { date: match[1], time: match[2] };
+    }
+  }
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) {
+    return { date: '', time: '' };
+  }
+
+  return {
+    date: parsed.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }),
+    time: parsed.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }),
+  };
+}
+
+/**
  * Helper function to get team hierarchy with partnership support
  * Same logic as hierarchical-club-attendance.js
  */
@@ -313,15 +347,7 @@ export default async function handler(req, res) {
         // Simple logic: if center_name is null/empty, show "Remote", otherwise show the center name
         const clubName = log.center_name || 'Remote';
         
-        // Convert to IST and format for Excel sorting
-        const istDate = new Date(log.CreatedAt);
-        const dateStr = istDate.toLocaleDateString('en-CA', { // YYYY-MM-DD format
-          timeZone: 'Asia/Kolkata'
-        });
-        const timeStr = istDate.toLocaleTimeString('en-GB', { // HH:MM:SS format (24-hour)
-          timeZone: 'Asia/Kolkata',
-          hour12: false
-        });
+        const { date: dateStr, time: timeStr } = formatAttendanceDateTime(log.CreatedAt);
         
         attendanceRecords.push({
           userId: user.UserId,
