@@ -13,8 +13,9 @@
 import Head from 'next/head';
 
 const APP_PACKAGE = 'com.wellnessvalley.app';
+const APP_STORE_ID = '6764327692';
 const PLAY_STORE_URL = `https://play.google.com/store/apps/details?id=${APP_PACKAGE}`;
-const APP_STORE_URL = 'https://apps.apple.com/'; // TODO: replace with real App Store URL once published
+const APP_STORE_URL = `https://apps.apple.com/in/app/wellness-valley/id${APP_STORE_ID}`;
 
 export async function getServerSideProps({ params, req }) {
   const token = (params?.token || '').toString();
