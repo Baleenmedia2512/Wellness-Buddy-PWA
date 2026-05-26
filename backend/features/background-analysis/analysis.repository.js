@@ -143,14 +143,14 @@ export async function findPublicByToken(token) {
 
 /**
  * Lightweight lookup used by the deep-link resolve endpoint. Returns just
- * the owner UserID, the meal date, and the share expiry — no image / no
- * nutrition payload. Returns null when no row matches.
+ * the owner UserID, the meal ID, the meal date, and the share expiry — no
+ * image / no nutrition payload. Returns null when no row matches.
  */
 export async function findOwnerByToken(token) {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('food_nutrition_data_table')
-    .select('UserID, CreatedAt, ShareExpiresAt')
+    .select('ID, UserID, CreatedAt, ShareExpiresAt')
     .eq('PublicShareToken', token)
     .limit(1)
     .maybeSingle();

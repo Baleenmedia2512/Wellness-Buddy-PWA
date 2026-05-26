@@ -248,12 +248,12 @@ export async function createPendingCapture({ userId, imageBase64 }) {
 
 /**
  * Look up the OWNER + meal date for a shared token. Used by the in-app
- * deep-link handler: the app opens Dashboard for that user/date instead of
- * rendering the public share page. Enforces permission — viewer must be
- * the owner OR appear in the owner's upline coach chain.
+ * deep-link handler: the app opens Dashboard for that user/date and
+ * automatically expands the specific meal card. Enforces permission — viewer
+ * must be the owner OR appear in the owner's upline coach chain.
  *
  * Returns:
- *   { ok: true,  data: { ownerUserId, ownerUserName, mealDate, isSelf } }
+ *   { ok: true,  data: { mealId, ownerUserId, ownerUserName, mealDate, isSelf } }
  *   { ok: false, error: { code: 'NOT_FOUND' | 'EXPIRED' | 'FORBIDDEN', message } }
  */
 export async function resolvePublicCapture({ token, viewerUserId }) {
@@ -264,6 +264,7 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   if (row.ShareExpiresAt && new Date(row.ShareExpiresAt) < new Date()) {
     return { httpStatus: 410, body: { ok: false, error: { code: 'EXPIRED', message: 'This share link has expired' } } };
   }
+  const mealId = row.ID ? row.ID.toString() : null;
   const ownerUserId = row.UserID ? row.UserID.toString() : null;
   if (!ownerUserId) {
     return { httpStatus: 404, body: { ok: false, error: { code: 'NOT_FOUND', message: 'Share link has no owner' } } };
@@ -292,6 +293,7 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
     body: {
       ok: true,
       data: {
+        mealId,
         ownerUserId,
         ownerUserName,
         mealDate,

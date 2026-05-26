@@ -278,7 +278,7 @@ describe('resolvePublicCapture', () => {
   const COCOACH = '30'; // Praveen — co-coach partner of Adithya
   const STRANGER = '99';
 
-  const ownerRow = { UserID: OWNER, CreatedAt: FUTURE, ShareExpiresAt: FUTURE };
+  const ownerRow = { ID: 123, UserID: OWNER, CreatedAt: FUTURE, ShareExpiresAt: FUTURE };
 
   afterEach(() => jest.resetAllMocks());
 
@@ -302,6 +302,7 @@ describe('resolvePublicCapture', () => {
     const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: OWNER });
     expect(r.httpStatus).toBe(200);
     expect(r.body.data.isSelf).toBe(true);
+    expect(r.body.data.mealId).toBe('123');
     expect(repo.getCoachChain).not.toHaveBeenCalled();
   });
 
@@ -312,6 +313,7 @@ describe('resolvePublicCapture', () => {
     const r = await resolvePublicCapture({ token: TOKEN, viewerUserId: COACH });
     expect(r.httpStatus).toBe(200);
     expect(r.body.data.isSelf).toBe(false);
+    expect(r.body.data.mealId).toBe('123');
   });
 
   it('returns 403 when viewer is a co-coach partner (not in upline chain)', async () => {

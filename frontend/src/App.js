@@ -183,6 +183,7 @@ function WellnessValleyApp() {
   // Cleared in showMainPage so a normal Dashboard open won't reuse them.
   const [dashboardInitialSelectedMember, setDashboardInitialSelectedMember] = useState(null);
   const [dashboardInitialDate, setDashboardInitialDate] = useState(null);
+  const [dashboardInitialMealId, setDashboardInitialMealId] = useState(null);
   const [bmrUpdateKey, setBmrUpdateKey] = useState(0); // Increment to force BMR re-fetch in NutritionDashboard
   // const [showStepCounter, setShowStepCounter] = useState(false); // moved below — FEATURE DISABLED
   const [user, setUser] = useState(null);
@@ -692,6 +693,7 @@ function WellnessValleyApp() {
           });
         }
         setDashboardInitialDate(data.mealDate || null);
+        setDashboardInitialMealId(data.mealId || null);
         setDashboardInitialTab("nutrition");
         startTransition(() => setShowDashboard(true));
       } catch (err) {
@@ -1081,6 +1083,7 @@ function WellnessValleyApp() {
     setDashboardInitialTab(null); // Clear initial tab when going back
     setDashboardInitialSelectedMember(null); // Clear deep-link member context
     setDashboardInitialDate(null); // Clear deep-link date context
+    setDashboardInitialMealId(null); // Clear deep-link meal ID
 
     // Clear weight result, education result, and images when going back to main page
     if (weightResult) {
@@ -4846,6 +4849,7 @@ function WellnessValleyApp() {
           watchBurnedCalories={watchBurnedCalories}
           initialSelectedMember={dashboardInitialSelectedMember}
           initialDate={dashboardInitialDate}
+          initialMealId={dashboardInitialMealId}
         />
       </Suspense>
     );

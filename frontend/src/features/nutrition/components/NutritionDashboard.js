@@ -79,6 +79,7 @@ const NutritionDashboard = ({
   setSelectedDate: propSetSelectedDate,
   bmrUpdateKey = 0,
   watchBurnedCalories = 0, // calories from a just-saved watch image (pushed from App.js)
+  initialMealId = null, // meal ID to auto-open (from deep link)
 }) => {
   const isIOS = Capacitor.getPlatform() === "ios";
   // Use parent's selectedDate if provided, otherwise use local state
@@ -296,6 +297,21 @@ const NutritionDashboard = ({
     }
     setShowCalendar(false);
   }, [selectedDate]);
+
+  // Auto-open meal from deep link (when shared via WhatsApp/external link)
+  useEffect(() => {
+    if (!initialMealId || loading || !analyses || analyses.length === 0) return;
+    
+    const meal = analyses.find(m => m.ID && m.ID.toString() === initialMealId.toString());
+    if (meal) {
+      debugLog('🔗 [NutritionDashboard] Auto-opening meal from deep link:', initialMealId);
+      setSelectedMeal(meal);
+    } else {
+      debugLog('⚠️ [NutritionDashboard] Meal not found for deep link ID:', initialMealId);
+    }
+    // Run only once when analyses load with the initial meal ID
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyses, loading]);
 
   // fetchDayAnalyses + auto-refresh effect moved to useDayAnalyses hook.
 
