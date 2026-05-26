@@ -729,6 +729,17 @@ function WellnessValleyApp() {
 
   // Pre-capture the weight share image in the background as soon as the result
   // card is rendered. Tap -> share sheet then skips html2canvas entirely.
+  // IMPORTANT: idealWeight and weightDiff are in the dep array so the cache is
+  // invalidated and re-captured after the async profile / history API calls
+  // resolve. Without them the timer fires before those values arrive, producing
+  // a cached image that silently omits the ideal-weight strip and the
+  // vs-previous row.
+  //
+  // The 900 ms timeout acts as a debounce: weightResult, weightDiff, and
+  // idealWeight all arrive at different times (~0 ms, ~500 ms, ~800 ms after
+  // the save). Each new arrival cancels the previous timer via the cleanup
+  // function, so exactly ONE html2canvas render fires — 900 ms after the last
+  // dependency settles — with all three values present in the DOM.
   useEffect(() => {
     cachedWeightShareDataUrlRef.current = null;
     if (imageType !== "weight" || !weightResult || !imagePreview) return;
@@ -738,7 +749,7 @@ function WellnessValleyApp() {
       precaptureShareImage(weightAnalysisShareRef.current).then((dataUrl) => {
         if (!cancelled) cachedWeightShareDataUrlRef.current = dataUrl;
       });
-    }, 300);
+    }, 900);
     return () => {
       cancelled = true;
       clearTimeout(t);
@@ -749,6 +760,8 @@ function WellnessValleyApp() {
     imagePreview,
     savedProfileImage,
     sharePhotoBase64,
+    idealWeight,
+    weightDiff,
   ]);
 
   // ---------- Helpers for BgNutrition fast-path + ack -----------------
@@ -5083,17 +5096,33 @@ function WellnessValleyApp() {
                   const dataUrl = foodShareImageDataUrlRef.current;
                   // Fast path: cached pre-painted card image.
                   if (dataUrl) {
+                    if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
+                      // Android: pass base64 directly to the native plugin —
+                      // no Filesystem.writeFile step, share sheet opens in
+                      // < 200 ms. The share intent resolves on launch, not on
+                      // completion, so we stay on the result page and let the
+                      // user navigate away themselves when they are done.
+                      await shareCachedDataUrl(dataUrl, {
+                        title: "My Meal",
+                        text: captionText,
+                        fileName: `wellness-valley-meal-${Date.now()}.jpg`,
+                      });
+                      return;
+                    }
+                    // iOS / web: write file then open system share sheet.
                     const result = await shareViaCapacitorAPI(dataUrl, {
                       title: "My Meal",
                       text: captionText,
                       fileName: `wellness-valley-meal-${Date.now()}.jpg`,
                     });
-                    if (result.ok) {
+                    // Only reset to home when the user actually shared.
+                    // A dismissed (cancelled) sheet means they want to stay.
+                    if (result.ok && !result.dismissed) {
                       resetCaptureToHome();
-                      return;
                     }
+                    return;
                   }
-                  // Fallback: capture live, or share raw photo with link.
+                  // Fallback: live html2canvas capture.
                   try {
                     if (foodShareCardRef.current) {
                       await captureAndShare(foodShareCardRef.current, {
@@ -5101,15 +5130,14 @@ function WellnessValleyApp() {
                         text: captionText,
                         fileName: `wellness-valley-meal-${Date.now()}.jpg`,
                       });
-                      resetCaptureToHome();
-                      return;
+                      return; // stay on result page; user navigates away when ready
                     }
+                    // Last resort: share raw photo + link text.
                     await shareImageWithLink(
                       processedImageRef.current || imagePreview,
                       foodShareUrl,
                       { title: "My Meal", text: "Check out my meal on Wellness Valley!" },
-                    );
-                    resetCaptureToHome();
+                    ).catch(() => {}); // user may cancel
                   } catch (_) { /* user cancelled */ }
                   } finally {
                     isManualSharingRef.current = false;
