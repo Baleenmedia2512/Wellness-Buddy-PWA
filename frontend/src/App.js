@@ -4484,6 +4484,8 @@ function WellnessValleyApp() {
         return "Too many attempts. Please wait a moment and try again.";
       case "auth/user-disabled":
         return "This account has been disabled. Please contact support.";
+      case "auth/developer-error":
+        return "Google Sign-In setup error. Please update the app or contact support.";
       default:
         // Check for popup-related error messages
         if (error.message?.toLowerCase().includes("popup")) {

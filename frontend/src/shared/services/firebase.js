@@ -196,6 +196,22 @@ export const signInWithGoogle = async (forceRedirect = false) => {
       throw new Error('Sign-in was cancelled. Please try again.');
     }
 
+    // Handle Google Play Services DEVELOPER_ERROR (code 10)
+    // This occurs when the app's SHA certificate fingerprint is not registered
+    // in Firebase Console → Project Settings → Android app → SHA fingerprints
+    if (
+      error.message?.includes('DEVELOPER_ERROR') ||
+      error.message?.startsWith('10:') ||
+      error.message?.trim() === '10'
+    ) {
+      const err = new Error(
+        'Google Sign-In is not configured for this app build. Please contact support. (Error: DEVELOPER_ERROR)'
+      );
+      err.code = 'auth/developer-error';
+      console.error('❌ Google Sign-in DEVELOPER_ERROR: SHA fingerprint not registered in Firebase Console');
+      throw err;
+    }
+
     console.error('❌ Google Sign-in error:', error);
     throw error;
   }

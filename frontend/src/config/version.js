@@ -91,7 +91,7 @@ export const APP_VERSION = {
   
   // Platform release notes
   PLATFORMS: {
-    ANDROID: { versionCode: 39, versionName: '3.2' },
+    ANDROID: { versionCode: 40, versionName: '3.2' },
     IOS: { buildNumber: 39, versionName: '3.1' },
   },
 };

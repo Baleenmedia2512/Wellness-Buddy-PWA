@@ -272,21 +272,20 @@ export async function resolvePublicCapture({ token, viewerUserId }) {
   const viewer = viewerUserId.toString();
   const isSelf = viewer === ownerUserId;
   if (!isSelf) {
-    // Permission check (either condition is sufficient):
-    // 1. Viewer appears in the owner's upline coach chain.
-    // 2. Viewer and owner are active co-coach partners in coach_teams_table.
+    // Permission: viewer must appear in the owner's upline coach chain.
+    // Co-coach partners are NOT granted access — they are peers of the owner's
+    // coach and have no supervisory relationship with the owner.
     const chain = await repo.getCoachChain(ownerUserId);
-    const isInChain = chain.includes(viewer);
-    if (!isInChain) {
-      const paired = await repo.isCoCoachPaired(ownerUserId, viewer);
-      if (!paired) {
-        return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
-      }
+    if (!chain.includes(viewer)) {
+      return { httpStatus: 403, body: { ok: false, error: { code: 'FORBIDDEN', message: "You don't have access to this meal" } } };
     }
   }
 
   const ownerUserName = isSelf ? null : await repo.findUserName(ownerUserId);
-  const mealDate = row.CreatedAt ? new Date(row.CreatedAt).toISOString() : null;
+  // Slice the IST-stored CreatedAt to YYYY-MM-DD so the Dashboard opens the
+  // correct local date. Using toISOString() would shift a late-evening IST
+  // timestamp to the next UTC day, showing the wrong nutrition entries.
+  const mealDate = row.CreatedAt ? row.CreatedAt.toString().slice(0, 10) : null;
 
   return {
     httpStatus: 200,
