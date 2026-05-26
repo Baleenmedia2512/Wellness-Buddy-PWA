@@ -468,15 +468,14 @@ function WellnessValleyApp() {
         `⏱️ [PERF] 📤 shareTextViaWhatsApp resolved in ${Date.now() - shareStart}ms (ok=${ok})`,
       );
 
+      _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera after first share
       if (!ok) {
         // Hard failure — reset the guard so a manual retry is possible.
         foodAutoSharedRef.current = false;
-      } else {
-        // Share delivered — return the user to the camera immediately.
-        // The in-flight Gemini analysis continues in the background and
-        // updates the DB row via performNutritionSave once complete.
-        resetCaptureUiOnly();
       }
+      // Keep analysis on screen — user returns from WhatsApp and sees the
+      // AI results (loading → complete). Camera will NOT auto-reopen because
+      // imagePreview is still set → _homeScreenActiveRef stays false.
     })();
 
     return () => {
@@ -600,8 +599,9 @@ function WellnessValleyApp() {
   useEffect(() => {
     _homeScreenActiveRef.current =
       !!user && !authLoading && !showDashboard && !showCompleteProfile &&
-      !showActivityTimeReport && !showDisciplineReport && !showScreenTime;
-  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime]);
+      !showActivityTimeReport && !showDisciplineReport && !showScreenTime &&
+      !imagePreview && !selectedImage; // don't re-open camera while analysis is in progress
+  }, [user, authLoading, showDashboard, showCompleteProfile, showActivityTimeReport, showDisciplineReport, showScreenTime, imagePreview, selectedImage]);
 
   // Tracks whether CompleteProfilePage is currently mounted. Used by the
   // foreground-resume listener below to skip checkProfileCompletion while
@@ -620,6 +620,12 @@ function WellnessValleyApp() {
     let cancelled = false;
     nativeLifecycle.addAppStateListener(({ isActive }) => {
       if (isActive && _homeScreenActiveRef.current && !cancelled) {
+        // Only auto-open camera AFTER user has completed their first share.
+        // This prevents the annoying "user closes camera without taking photo →
+        // app resumes → camera re-opens" loop. Matches Snapchat: camera opens
+        // once on launch, but if you close it, you stay on feed until you actively
+        // use the camera again.
+        if (!_hasCompletedFirstShareRef.current) return;
         // If the camera was just closed (user cancelled), don't immediately
         // re-open it — that would create an infinite open→cancel→open loop.
         // Allow 3 seconds after any camera close before auto-opening again.
@@ -649,6 +655,11 @@ function WellnessValleyApp() {
   //      which is jarring and blocks the location prompt.
   //   2. isUserActive — user validation confirms the account is active. Inactive
   //      users never reach the home screen so they should never get the camera.
+  // Tracks whether user has completed their first share (any image type).
+  // Foreground-resume camera auto-open is DISABLED until this is true, preventing
+  // the annoying "close camera → app resumes → camera re-opens" loop when user
+  // just wants to browse the home screen without taking photos.
+  const _hasCompletedFirstShareRef = useRef(false);
   const _hasFiredCameraOnLoginRef = useRef(false);
   useEffect(() => {
     if (!user || !Capacitor.isNativePlatform() || _hasFiredCameraOnLoginRef.current) return;
@@ -1671,16 +1682,16 @@ function WellnessValleyApp() {
                   "⏭️ [Auth State] User skipped setup (database), bypassing wizard",
                 );
                 Session.markSetupSkipped();
-                await checkProfileCompletion(userEmail, user);
+                await checkProfileCompletion(userEmail, user, { silent: true });
                 return;
               } else if (status.result === "pendingOtp") {
                 if (Session.isCoachOtpVerified()) {
                   debugLog("✅ [Auth State] Coach OTP already verified (localStorage), skipping modal");
-                  await checkProfileCompletion(userEmail, user);
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
                   debugLog("🤖 [Auth State] Demo account pending OTP — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user);
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
                   debugLog("📧 [Auth State] Pending OTP detected, showing OTP modal");
                   setShowValidateOTP(true);
@@ -1689,7 +1700,7 @@ function WellnessValleyApp() {
                 if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
                   debugLog("🤖 [Auth State] Demo account setup incomplete — completing silently");
                   await silentlyCompleteDemoSetup(userEmail);
-                  await checkProfileCompletion(userEmail, user);
+                  await checkProfileCompletion(userEmail, user, { silent: true });
                 } else {
                   debugLog("🔧 [Auth State] Setup incomplete, showing setup wizard");
                   setShowSetupWizard(true);
@@ -1697,7 +1708,7 @@ function WellnessValleyApp() {
               } else {
                 // status.result === "complete"
                 debugLog("✅ [Auth State] Setup already complete");
-                await checkProfileCompletion(userEmail, user);
+                await checkProfileCompletion(userEmail, user, { silent: true });
               }
             } catch (setupError) {
               console.warn(
@@ -2006,12 +2017,12 @@ function WellnessValleyApp() {
         } else if (status.result === "pendingOtp") {
           if (Session.isCoachOtpVerified()) {
             debugLog("✅ [Setup Check] Coach OTP already verified (localStorage), skipping modal");
-            await checkProfileCompletion(userEmail);
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
             debugLog("🤖 [Setup Check] Demo account pending OTP — completing silently");
             await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail);
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
             debugLog("📧 [Setup Check] Pending OTP detected, showing OTP modal");
@@ -2021,7 +2032,7 @@ function WellnessValleyApp() {
           if ((userEmail || "").toLowerCase().trim() === DEMO_EMAIL) {
             debugLog("🤖 [Setup Check] Demo account setup incomplete — completing silently");
             await silentlyCompleteDemoSetup(userEmail);
-            await checkProfileCompletion(userEmail);
+            await checkProfileCompletion(userEmail, null, { silent: true });
             setTimeout(() => checkProfilePicture(user), 800);
           } else {
             debugLog("🔧 [Setup Check] Setup incomplete, showing setup wizard");
@@ -2030,7 +2041,7 @@ function WellnessValleyApp() {
         } else {
           // status.result === "complete"
           debugLog("✅ [Setup Check] Setup already complete");
-          await checkProfileCompletion(userEmail);
+          await checkProfileCompletion(userEmail, null, { silent: true });
           setTimeout(() => checkProfilePicture(user), 800);
         }
       } catch (setupError) {
@@ -3556,8 +3567,9 @@ function WellnessValleyApp() {
           if (!share?.url || foodAutoSharedRef.current) return;
           foodAutoSharedRef.current = true;
           shareTextViaWhatsApp(share.url).then((ok) => {
-            if (!ok) { foodAutoSharedRef.current = false; return; }
-            resetCaptureUiOnly();
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen — do NOT resetCaptureUiOnly.
           });
         });
         setLoading(false);
@@ -3611,8 +3623,9 @@ function WellnessValleyApp() {
           if (!share?.url || foodAutoSharedRef.current) return;
           foodAutoSharedRef.current = true;
           shareTextViaWhatsApp(share.url).then((ok) => {
-            if (!ok) { foodAutoSharedRef.current = false; return; }
-            resetCaptureUiOnly();
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen — do NOT resetCaptureUiOnly.
           });
         });
         setLoading(false);
@@ -3816,8 +3829,9 @@ function WellnessValleyApp() {
           if (!share?.url || foodAutoSharedRef.current) return;
           foodAutoSharedRef.current = true;
           shareTextViaWhatsApp(share.url).then((ok) => {
-            if (!ok) { foodAutoSharedRef.current = false; return; }
-            resetCaptureUiOnly();
+            _hasCompletedFirstShareRef.current = true; // enable foreground-resume camera
+            if (!ok) { foodAutoSharedRef.current = false; }
+            // Keep analysis on screen — do NOT resetCaptureUiOnly.
           });
         });
         setLoading(false);
